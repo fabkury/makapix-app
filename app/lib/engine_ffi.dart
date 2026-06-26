@@ -22,6 +22,10 @@ typedef _StateC = Pointer<Utf8> Function(Pointer<Void>);
 typedef _StateD = Pointer<Utf8> Function(Pointer<Void>);
 typedef _OutlineC = Int32 Function(Pointer<Void>, Pointer<Uint8>, IntPtr);
 typedef _OutlineD = int Function(Pointer<Void>, Pointer<Uint8>, int);
+typedef _FrameHashC = Uint64 Function(Pointer<Void>, Uint32);
+typedef _FrameHashD = int Function(Pointer<Void>, int);
+typedef _FrameThumbC = Int32 Function(Pointer<Void>, Uint32, Uint32, Uint32, Pointer<Uint8>, IntPtr);
+typedef _FrameThumbD = int Function(Pointer<Void>, int, int, int, Pointer<Uint8>, int);
 typedef _SaveC = Pointer<Uint8> Function(Pointer<Void>, Pointer<Uint64>);
 typedef _SaveD = Pointer<Uint8> Function(Pointer<Void>, Pointer<Uint64>);
 typedef _LoadC = Int32 Function(Pointer<Void>, Pointer<Uint8>, IntPtr);
@@ -80,6 +84,8 @@ class Engine {
   late final _CompositeD _composite = _lib.lookupFunction<_CompositeC, _CompositeD>('mkpx_composite_frame');
   late final _StateD _state = _lib.lookupFunction<_StateC, _StateD>('mkpx_state_json');
   late final _OutlineD _outline = _lib.lookupFunction<_OutlineC, _OutlineD>('mkpx_outline_mask');
+  late final _FrameHashD _frameHash = _lib.lookupFunction<_FrameHashC, _FrameHashD>('mkpx_frame_hash');
+  late final _FrameThumbD _frameThumb = _lib.lookupFunction<_FrameThumbC, _FrameThumbD>('mkpx_frame_thumb');
   late final _SaveD _save = _lib.lookupFunction<_SaveC, _SaveD>('mkpx_save');
   late final _LoadD _load = _lib.lookupFunction<_LoadC, _LoadD>('mkpx_load');
   late final _FreeStringD _freeStr = _lib.lookupFunction<_FreeStringC, _FreeStringD>('mkpx_free_string');
@@ -137,6 +143,19 @@ class Engine {
     final s = p.toDartString();
     _freeStr(p);
     return s;
+  }
+
+  /// Low-64-bit content hash of a frame (for thumbnail cache invalidation).
+  int frameHash(int frame) => _frameHash(_s, frame);
+
+  /// A `tw`×`th` nearest-downscaled composite of `frame` (straight RGBA bytes).
+  Uint8List frameThumb(int frame, int tw, int th) {
+    final cap = tw * th * 4;
+    final out = malloc<Uint8>(cap);
+    final n = _frameThumb(_s, frame, tw, th, out, cap);
+    final bytes = n > 0 ? Uint8List.fromList(out.asTypedList(n)) : Uint8List(0);
+    malloc.free(out);
+    return bytes;
   }
 
   /// 1-byte-per-pixel selection coverage (1=selected) for drawing the outline; empty if none.

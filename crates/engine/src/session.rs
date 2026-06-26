@@ -90,6 +90,35 @@ impl Session {
         render::composite_frame(f, self.doc.size.w as u32, self.doc.size.h as u32).to_rgba_bytes()
     }
 
+    /// Content hash of a frame (low 64 bits) — used by the shell to cache thumbnails.
+    pub fn frame_hash(&self, frame: usize) -> u64 {
+        let i = frame.min(self.doc.frames.len() - 1);
+        self.doc.frames[i].content_hash() as u64
+    }
+
+    /// A small nearest-downscaled composite of `frame` (`tw`×`th` straight RGBA) for the
+    /// film-roll thumbnails — keeps shell memory bounded for big animations.
+    pub fn frame_thumb_bytes(&self, frame: usize, tw: u32, th: u32) -> Vec<u8> {
+        let i = frame.min(self.doc.frames.len() - 1);
+        let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
+        let flat = render::composite_frame(&self.doc.frames[i], w, h);
+        let (tw, th) = (tw.max(1), th.max(1));
+        let mut out = vec![0u8; (tw * th * 4) as usize];
+        for ty in 0..th {
+            for tx in 0..tw {
+                let sx = (tx * w / tw) as i32;
+                let sy = (ty * h / th) as i32;
+                let c = flat.get(sx, sy);
+                let o = ((ty * tw + tx) * 4) as usize;
+                out[o] = c.r;
+                out[o + 1] = c.g;
+                out[o + 2] = c.b;
+                out[o + 3] = c.a;
+            }
+        }
+        out
+    }
+
     pub fn display_bytes(&self, onion: bool, grid: bool, checker: bool) -> Vec<u8> {
         let af = self.doc.active_frame;
         let ov = render::Overlays {

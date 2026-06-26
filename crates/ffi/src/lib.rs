@@ -125,6 +125,35 @@ pub extern "C" fn mkpx_outline_mask(ptr: *mut Session, out: *mut u8, cap: usize)
     s.outline_mask_bytes(slice) as c_int
 }
 
+/// Content hash (low 64 bits) of a frame — for caching film-roll thumbnails.
+#[no_mangle]
+pub extern "C" fn mkpx_frame_hash(ptr: *mut Session, frame: u32) -> u64 {
+    session(ptr).map(|s| s.frame_hash(frame as usize)).unwrap_or(0)
+}
+
+/// Fill `out` with a `tw`×`th` nearest-downscaled composite of `frame` (straight RGBA).
+/// Returns bytes written, or -1 if the buffer is too small.
+#[no_mangle]
+pub extern "C" fn mkpx_frame_thumb(
+    ptr: *mut Session,
+    frame: u32,
+    tw: u32,
+    th: u32,
+    out: *mut u8,
+    cap: usize,
+) -> c_int {
+    let s = match session(ptr) {
+        Some(s) => s,
+        None => return -1,
+    };
+    let bytes = s.frame_thumb_bytes(frame as usize, tw, th);
+    if bytes.len() > cap || out.is_null() {
+        return -1;
+    }
+    unsafe { slice::from_raw_parts_mut(out, bytes.len()).copy_from_slice(&bytes) };
+    bytes.len() as c_int
+}
+
 /// Return the document state as a malloc'd JSON C string (free with `mkpx_free_string`).
 #[no_mangle]
 pub extern "C" fn mkpx_state_json(ptr: *mut Session) -> *mut c_char {

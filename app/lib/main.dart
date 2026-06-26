@@ -136,6 +136,9 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
   List<String> _toolOrder = tools.map((t) => t.dsl).toList();
   bool _reorderMode = false;
   static const _prefsKey = 'tool_order_v1';
+  // film-roll frame thumbnails (cached, invalidated by per-frame content hash)
+  final Map<int, _Thumb> _frameThumbs = {};
+  final Set<int> _thumbInFlight = {};
 
   bool get _isPrecision => _tool == 'PrecisionPencil';
 
@@ -213,6 +216,10 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
   void dispose() {
     _playTimer?.cancel();
     _antCtrl.dispose();
+    for (final t in _frameThumbs.values) {
+      t.img.dispose();
+    }
+    _frameThumbs.clear();
     if (_engineReady) engine.dispose();
     super.dispose();
   }
@@ -714,15 +721,13 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               child: Text(s, style: const TextStyle(fontSize: 10, color: Colors.white38)),
             );
-        final canvasArea = wide
+        final belowFilmRoll = wide
             ? Row(children: [
                 Expanded(child: _buildCanvas()),
                 Container(width: 1, color: Colors.black26),
                 SizedBox(
                   width: 300,
                   child: Column(children: [
-                    panelLabel('FRAMES'),
-                    _buildTimeline(),
                     panelLabel('LAYERS'),
                     _buildLayers(layers),
                     const Expanded(child: ColoredBox(color: Color(0xFF1A1C1F))),
@@ -731,12 +736,12 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
               ])
             : Column(children: [
                 Expanded(child: _buildCanvas()),
-                _buildTimeline(),
                 _buildLayers(layers),
               ]);
         return Column(
           children: [
-            Expanded(child: canvasArea),
+            _buildFilmRoll(), // film-roll of frame previews at the top of the canvas area
+            Expanded(child: belowFilmRoll),
             const Divider(height: 1),
             _buildToolOptions(),
             _buildPalette(),
@@ -842,56 +847,111 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
     });
   }
 
-  Widget _buildTimeline() {
+  (int, int) _thumbSize() {
+    final w = engine.width, h = engine.height;
+    const maxSide = 64;
+    if (w >= h) {
+      final t = (maxSide * h / w).round().clamp(1, maxSide).toInt();
+      return (maxSide, t);
+    }
+    final t = (maxSide * w / h).round().clamp(1, maxSide).toInt();
+    return (t, maxSide);
+  }
+
+  Future<void> _genFrameThumb(int i, int hash) async {
+    if (_thumbInFlight.contains(i)) return;
+    _thumbInFlight.add(i);
+    final (tw, th) = _thumbSize();
+    final bytes = engine.frameThumb(i, tw, th);
+    if (bytes.length < tw * th * 4) {
+      _thumbInFlight.remove(i);
+      return;
+    }
+    final img = await _decode(bytes, tw, th);
+    _thumbInFlight.remove(i);
+    if (!mounted) {
+      img.dispose();
+      return;
+    }
+    _frameThumbs[i]?.img.dispose();
+    _frameThumbs[i] = _Thumb(hash, img);
+    if (_frameThumbs.length > 80) {
+      final victim = _frameThumbs.keys.firstWhere((k) => k != engine.activeFrame, orElse: () => -1);
+      if (victim >= 0) _frameThumbs.remove(victim)?.img.dispose();
+    }
+    setState(() {});
+  }
+
+  // Horizontal "film roll" of frame thumbnails at the top of the canvas area.
+  Widget _buildFilmRoll() {
     final count = engine.frameCount;
     final active = engine.activeFrame;
+    final (tw, th) = _thumbSize();
+    final tileW = (46.0 * tw / th).clamp(28.0, 84.0);
     return Container(
-      height: 44,
-      color: const Color(0xFF1A1C1F),
+      height: 70,
+      color: const Color(0xFF15171A),
       child: Row(children: [
-        IconButton(iconSize: 18, tooltip: 'Add frame', onPressed: () => _act('AddFrame()'), icon: const Icon(Icons.add_box)),
-        IconButton(iconSize: 18, tooltip: 'Duplicate frame', onPressed: () => _act('DuplicateFrame($active)'), icon: const Icon(Icons.copy)),
-        IconButton(
-            iconSize: 18,
-            tooltip: 'Delete frame',
-            onPressed: count > 1 ? () => _act('RemoveFrame($active)') : null,
-            icon: const Icon(Icons.delete_outline)),
-        IconButton(iconSize: 18, tooltip: 'Frame duration', onPressed: _editDuration, icon: const Icon(Icons.timer_outlined)),
-        IconButton(iconSize: 18, tooltip: 'Move frame left', onPressed: active > 0 ? () => _act('ReorderFrame($active, ${active - 1})') : null, icon: const Icon(Icons.first_page)),
-        IconButton(iconSize: 18, tooltip: 'Move frame right', onPressed: active + 1 < count ? () => _act('ReorderFrame($active, ${active + 1})') : null, icon: const Icon(Icons.last_page)),
-        const SizedBox(width: 4),
+        IconButton(iconSize: 20, tooltip: 'Add frame', onPressed: () => _act('AddFrame()'), icon: const Icon(Icons.add_box)),
+        Container(width: 1, color: Colors.black26),
         Expanded(
-          child: ReorderableListView.builder(
+          child: ListView.builder(
             scrollDirection: Axis.horizontal,
-            buildDefaultDragHandles: false,
             itemCount: count,
-            onReorder: (oldI, newI) {
-              if (newI > oldI) newI -= 1;
-              _act('ReorderFrame($oldI, $newI)');
-            },
+            padding: const EdgeInsets.symmetric(horizontal: 4),
             itemBuilder: (_, i) {
+              final hash = engine.frameHash(i);
+              final cached = _frameThumbs[i];
+              if (cached == null || cached.hash != hash) _genFrameThumb(i, hash);
               final sel = i == active;
-              return ReorderableDelayedDragStartListener(
-                key: ValueKey('frame_$i'),
-                index: i,
-                child: GestureDetector(
-                  onTap: () => _act('SetActiveFrame($i)'),
-                  child: Container(
-                    width: 34,
-                    margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: sel ? const Color(0xFF4080C0) : const Color(0xFF2A2D31),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text('${i + 1}', style: const TextStyle(fontSize: 12)),
+              return GestureDetector(
+                onTap: () => _act('SetActiveFrame($i)'),
+                onLongPress: () => _frameMenu(i),
+                child: Container(
+                  width: tileW + 6,
+                  margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF101214),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: sel ? const Color(0xFF4080C0) : Colors.black26, width: sel ? 2 : 1),
                   ),
+                  child: Column(children: [
+                    Expanded(
+                      child: Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.all(2),
+                        color: const Color(0xFF3A3D42),
+                        alignment: Alignment.center,
+                        child: cached != null
+                            ? RawImage(image: cached.img, fit: BoxFit.contain, filterQuality: FilterQuality.none)
+                            : const SizedBox.shrink(),
+                      ),
+                    ),
+                    Text('${i + 1}', style: TextStyle(fontSize: 9, color: sel ? Colors.white : Colors.white54)),
+                  ]),
                 ),
               );
             },
           ),
         ),
       ]),
+    );
+  }
+
+  void _frameMenu(int i) {
+    final count = engine.frameCount;
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(dense: true, title: Text('Frame ${i + 1} of $count', style: const TextStyle(fontWeight: FontWeight.bold))),
+          ListTile(leading: const Icon(Icons.copy), title: const Text('Duplicate'), onTap: () { Navigator.pop(ctx); _act('DuplicateFrame($i)'); }),
+          ListTile(leading: const Icon(Icons.timer_outlined), title: const Text('Duration…'), onTap: () { Navigator.pop(ctx); _act('SetActiveFrame($i)'); _editDuration(); }),
+          ListTile(leading: const Icon(Icons.chevron_left), title: const Text('Move left'), enabled: i > 0, onTap: () { Navigator.pop(ctx); _act('ReorderFrame($i, ${i - 1})'); }),
+          ListTile(leading: const Icon(Icons.chevron_right), title: const Text('Move right'), enabled: i + 1 < count, onTap: () { Navigator.pop(ctx); _act('ReorderFrame($i, ${i + 1})'); }),
+          ListTile(leading: const Icon(Icons.delete, color: Colors.redAccent), title: const Text('Delete'), enabled: count > 1, onTap: () { Navigator.pop(ctx); _act('RemoveFrame($i)'); }),
+        ]),
+      ),
     );
   }
 
@@ -1504,6 +1564,13 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
       setState(() {});
     }
   }
+}
+
+// A cached frame thumbnail tagged with the frame content hash it was generated from.
+class _Thumb {
+  final int hash;
+  final ui.Image img;
+  _Thumb(this.hash, this.img);
 }
 
 class _CanvasPainter extends CustomPainter {

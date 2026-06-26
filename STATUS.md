@@ -40,7 +40,7 @@ Honest coverage of every feature listed in the brief and the SPEC. Legend:
 | Selected pixels move / copy / cut / paste | ✅ | |
 | Copy pixels frame→frame | ✅ | `PasteToFrame` in engine/DSL (UI pastes to active frame) |
 | Move/Duplicate layers from 1 frame → N frames | ✅ | layer options sheet → "Copy to all frames" (`DuplicateLayerToFrames`) |
-| Duplicate / reorder animation frame | ✅ | add/duplicate/delete + move-left/right reorder buttons in the timeline |
+| Duplicate / reorder animation frame | ✅ | film-roll of frame previews at the top of the canvas (tap to go to a frame; long-press for duplicate/duration/move/delete); engine-rendered cached thumbnails |
 | Per-frame duration 16.6–1000 ms + bulk tools | ✅ | µs-precise; UI dialog (this frame / all frames / fps presets) |
 | Palettes: create/edit/save/load, add/remove/edit/dup color, RGB+HSV | ✅ | multiple palettes (selector + new), add/edit/duplicate/remove color (long-press swatch), RGB+HSV picker, eyedropper, **save/load `.gpl`/JSON**, embedded in `.mkpx` |
 | Select multiple layers, move together | ✅ | layer "move group" toggle + nudge pad → `NudgeLayers` (one undoable edit) |
