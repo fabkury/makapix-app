@@ -1579,10 +1579,13 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
   }
 
   Widget _buildPalette() {
+    // Swatches are laid out in two rows that scroll horizontally together: each column holds the
+    // top swatch (even index) and the bottom swatch (odd index), filled column by column.
+    final cols = (_palette.length + 1) ~/ 2;
     return Container(
       color: const Color(0xFF1C1F22),
       child: SizedBox(
-        height: 42,
+        height: 60,
         child: Row(children: [
           GestureDetector(
             onTap: () => _pickColor(initial: _primary, onPick: _setPrimary),
@@ -1596,24 +1599,31 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
           Expanded(
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              itemCount: _palette.length,
-              itemBuilder: (_, i) {
-                final c = _palette[i];
-                return GestureDetector(
-                  onTap: () => _setPrimary(c),
-                  onLongPress: () => _paletteSwatchMenu(i, c),
-                  child: Container(
-                    width: 28,
-                    margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 6),
-                    decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(3), border: Border.all(color: Colors.black26)),
-                  ),
-                );
-              },
+              itemCount: cols,
+              itemBuilder: (_, col) => Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [_paletteSwatch(col * 2), _paletteSwatch(col * 2 + 1)],
+              ),
             ),
           ),
           // palette controls: tucked into a button after the last swatch
           IconButton(iconSize: 18, tooltip: 'Palette controls', onPressed: _paletteControlsMenu, icon: const Icon(Icons.palette, color: Colors.white70)),
         ]),
+      ),
+    );
+  }
+
+  Widget _paletteSwatch(int i) {
+    if (i >= _palette.length) return const SizedBox(width: 30); // keep the column width for an odd last swatch
+    final c = _palette[i];
+    return GestureDetector(
+      onTap: () => _setPrimary(c),
+      onLongPress: () => _paletteSwatchMenu(i, c),
+      child: Container(
+        width: 26,
+        height: 24,
+        margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+        decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(3), border: Border.all(color: Colors.black26)),
       ),
     );
   }
