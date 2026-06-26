@@ -146,19 +146,18 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
   double _accX = 0, _accY = 0;
   int _cursorX = 0, _cursorY = 0; // reticle position (canvas px), mirrored from the engine
   int? _eraserX, _eraserY; // eraser footprint centre (canvas px) during an active erase drag
-  // multi-touch handling on the canvas: only the first finger drives a tool. Extra fingers are
-  // ignored once the primary is actively drawing; a still 2/3-finger tap is an undo/redo gesture.
-  final Set<int> _touches = {}; // pointer ids currently on the canvas
-  int? _drawPointer; // the pointer that owns the in-progress draw (null = none/suspended)
-  bool _gestureMode = false; // this touch session became a multi-finger gesture (drawing suspended)
-  int _maxTouches = 0; // peak simultaneous fingers this session
-  Duration? _sessionStart; // when the first finger landed (monotonic), for tap-duration timing
-  double _primaryMoved = 0; // screen-px the primary finger has travelled (tap vs. draw)
-  double _gestureMoved = 0; // screen-px moved during gesture mode (disqualifies a sloppy tap)
-  final Stopwatch _touchClock = Stopwatch()..start();
-  static const double _kDrawSlop = 10; // primary travel before a stroke counts as "real drawing"
-  static const double _kGestureSlop = 18; // max finger travel still counted as a tap
-  static const int _kTapMaxMs = 400; // max duration of a multi-finger tap
+  // Canvas view transform: _zoom is relative to fit-to-screen (1.0 = fit), _pan is an extra
+  // screen-pixel offset. Two fingers pan/zoom; the app-bar Fit button resets both.
+  double _zoom = 1.0;
+  Offset _pan = Offset.zero;
+  static const double _kMinZoom = 0.25, _kMaxZoom = 32.0;
+  // Multi-touch on the canvas: one finger draws, two+ fingers pan/zoom. While pinching, drawing is
+  // suspended until all fingers lift.
+  final Map<int, Offset> _touchPos = {}; // live position of every finger on the canvas
+  int? _drawPointer; // the finger that owns the in-progress draw (null = none/suspended)
+  bool _pinching = false;
+  double _pinchStartDist = 1, _pinchStartZoom = 1;
+  Offset _pinchStartMid = Offset.zero, _pinchStartPan = Offset.zero;
   // configurable bottom toolbar
   List<String> _toolOrder = tools.map((t) => t.dsl).toList();
   bool _reorderMode = false;
@@ -444,19 +443,63 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
     _redraw();
   }
 
-  Rect _fittedRect(Size box, int w, int h) {
-    final s1 = box.width / w;
-    final s2 = box.height / h;
-    final s = s1 < s2 ? s1 : s2;
-    final dw = w * s, dh = h * s;
-    return Rect.fromLTWH((box.width - dw) / 2, (box.height - dh) / 2, dw, dh);
+  // ---- canvas view transform (fit + two-finger pan/zoom) ----
+
+  // Screen pixels per canvas pixel when fit-to-screen (zoom == 1).
+  double _fitScale(Size box) {
+    final sx = box.width / engine.width, sy = box.height / engine.height;
+    return sx < sy ? sx : sy;
   }
 
-  Offset _toCanvas(Offset local, Size box, int w, int h) {
-    final r = _fittedRect(box, w, h);
-    final px = ((local.dx - r.left) / r.width * w).floorToDouble();
-    final py = ((local.dy - r.top) / r.height * h).floorToDouble();
-    return Offset(px, py);
+  // Top-left of the canvas, in screen pixels, if it were centred at scale [s].
+  Offset _centeredOffset(Size box, double s) =>
+      Offset((box.width - engine.width * s) / 2, (box.height - engine.height * s) / 2);
+
+  // The effective view: (scale = screen px per canvas px, topLeft = canvas origin in screen px),
+  // for a given zoom/pan. Defaults to the current _zoom/_pan.
+  (double, Offset) _view(Size box, {double? zoom, Offset? pan}) {
+    final z = zoom ?? _zoom;
+    final s = _fitScale(box) * z;
+    return (s, _centeredOffset(box, s) + (pan ?? _pan));
+  }
+
+  Offset _toCanvas(Offset local, Size box) {
+    final (s, off) = _view(box);
+    return Offset(((local.dx - off.dx) / s).floorToDouble(), ((local.dy - off.dy) / s).floorToDouble());
+  }
+
+  void _fitView() => setState(() {
+        _zoom = 1.0;
+        _pan = Offset.zero;
+      });
+
+  void _startPinch() {
+    final pts = _touchPos.values.toList();
+    if (pts.length < 2) return;
+    _pinching = true;
+    _pinchStartDist = ((pts[1] - pts[0]).distance).clamp(1.0, double.infinity);
+    _pinchStartMid = (pts[0] + pts[1]) / 2;
+    _pinchStartZoom = _zoom;
+    _pinchStartPan = _pan;
+  }
+
+  // Focal-point pinch: the canvas point under the start midpoint stays under the live midpoint,
+  // while the distance ratio drives the zoom. Pan is left unclamped (zoom-out with margins is OK).
+  void _updatePinch(Size box) {
+    final pts = _touchPos.values.toList();
+    if (pts.length < 2) return;
+    final dist = (pts[1] - pts[0]).distance;
+    final mid = (pts[0] + pts[1]) / 2;
+    final sFit = _fitScale(box);
+    final newZoom = (_pinchStartZoom * (dist / _pinchStartDist)).clamp(_kMinZoom, _kMaxZoom);
+    final (s0, off0) = _view(box, zoom: _pinchStartZoom, pan: _pinchStartPan);
+    final c = (_pinchStartMid - off0) / s0; // focal point in canvas space
+    final s1 = sFit * newZoom;
+    final off1 = mid - c * s1; // desired top-left so the focal point sits under the live midpoint
+    setState(() {
+      _zoom = newZoom;
+      _pan = off1 - _centeredOffset(box, s1);
+    });
   }
 
   void _play() {
@@ -823,6 +866,10 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
                 _redraw();
               },
               icon: Icon(Icons.grid_on, color: _grid ? Colors.amber : null)),
+          IconButton(
+              tooltip: 'Fit to screen',
+              onPressed: (_zoom != 1.0 || _pan != Offset.zero) ? _fitView : null,
+              icon: const Icon(Icons.fit_screen)),
         ],
       ),
       body: Column(
@@ -877,82 +924,71 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
   Widget _buildCanvas() {
     return LayoutBuilder(builder: (context, c) {
       final box = Size(c.maxWidth, c.maxHeight);
+      final (vScale, vOff) = _view(box);
       return Container(
         color: const Color(0xFF222428),
         child: Listener(
           behavior: HitTestBehavior.opaque,
           onPointerDown: (e) {
-            if (_isTransformTool) return; // transform action groups don't draw on the canvas
-            final wasEmpty = _touches.isEmpty;
-            _touches.add(e.pointer);
-            if (wasEmpty) {
-              // first finger: start a draw session
-              _drawPointer = e.pointer;
-              _gestureMode = false;
-              _maxTouches = 1;
-              _sessionStart = _touchClock.elapsed;
-              _primaryMoved = 0;
-              _gestureMoved = 0;
-              _beginDraw(e.localPosition, box);
+            _touchPos[e.pointer] = e.localPosition;
+            if (_touchPos.length >= 2) {
+              // a second finger → pan/zoom; abort any single-finger draw in progress
+              if (!_pinching) {
+                if (_drawPointer != null) {
+                  _cancelDraw();
+                  _drawPointer = null;
+                }
+                _startPinch();
+              }
             } else {
-              if (_touches.length > _maxTouches) _maxTouches = _touches.length;
-              // A second/third finger landed. If the primary finger has barely moved it's a
-              // multi-finger tap gesture: abort the nascent stroke and suspend drawing. Otherwise
-              // the primary is actively drawing, so ignore the extra finger.
-              if (!_gestureMode && _primaryMoved <= _kDrawSlop) {
-                _gestureMode = true;
-                _drawPointer = null;
-                _cancelDraw();
+              // first finger → draw (unless this tool doesn't draw on the canvas)
+              if (!_isTransformTool) {
+                _drawPointer = e.pointer;
+                _beginDraw(e.localPosition, box);
               }
             }
           },
           onPointerMove: (e) {
-            if (_isTransformTool) return;
-            if (_gestureMode) {
-              _gestureMoved += e.delta.distance;
+            if (!_touchPos.containsKey(e.pointer)) return;
+            _touchPos[e.pointer] = e.localPosition;
+            if (_pinching) {
+              _updatePinch(box);
               return;
             }
-            if (e.pointer != _drawPointer) return; // ignore extra fingers while drawing
-            _primaryMoved += e.delta.distance;
-            _continueDraw(e.localPosition, box);
+            if (e.pointer == _drawPointer) _continueDraw(e.localPosition, box);
           },
-          onPointerUp: (e) {
-            if (_isTransformTool) return;
-            _touches.remove(e.pointer);
-            if (_gestureMode) {
-              if (_touches.isEmpty) {
-                _fireTapGesture();
-                _resetTouchSession();
-              }
-              return;
-            }
-            if (e.pointer == _drawPointer) {
-              _endDraw();
-              _drawPointer = null;
-            }
-            if (_touches.isEmpty) _resetTouchSession();
-          },
-          onPointerCancel: (e) {
-            if (_isTransformTool) return;
-            _touches.remove(e.pointer);
-            if (!_gestureMode && e.pointer == _drawPointer) {
-              _cancelDraw(); // interrupted draw → roll back, leaving no stray mark
-              _drawPointer = null;
-            }
-            if (_touches.isEmpty) _resetTouchSession();
-          },
+          onPointerUp: (e) => _endTouch(e.pointer, cancel: false),
+          onPointerCancel: (e) => _endTouch(e.pointer, cancel: true),
           child: Stack(fit: StackFit.expand, children: [
-            CustomPaint(painter: _CanvasPainter(_image), size: Size.infinite),
-            CustomPaint(painter: _OutlinePainter(_outlineEdges, engine.width, engine.height, _antCtrl), size: Size.infinite),
+            CustomPaint(painter: _CanvasPainter(_image, vScale, vOff), size: Size.infinite),
+            CustomPaint(painter: _OutlinePainter(_outlineEdges, vScale, vOff, _antCtrl), size: Size.infinite),
             if (_isCursorTool)
               CustomPaint(
-                painter: _ReticlePainter(_cursorX, _cursorY, engine.width, engine.height, _antCtrl),
+                painter: _ReticlePainter(_cursorX, _cursorY, vScale, vOff, _antCtrl),
                 size: Size.infinite,
               ),
           ]),
         ),
       );
     });
+  }
+
+  // A finger left the canvas (lifted or cancelled). End the pinch or the draw as appropriate; once
+  // pinching, drawing stays suspended until every finger has lifted.
+  void _endTouch(int pointer, {required bool cancel}) {
+    _touchPos.remove(pointer);
+    if (_pinching) {
+      if (_touchPos.length < 2) _pinching = false; // back to ≤1 finger: stop pinching, don't draw
+      return;
+    }
+    if (pointer == _drawPointer) {
+      if (cancel) {
+        _cancelDraw();
+      } else {
+        _endDraw();
+      }
+      _drawPointer = null;
+    }
   }
 
   // ---- single-pointer draw helpers (driven by the multi-touch state machine above) ----
@@ -964,7 +1000,7 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
       _accY = 0;
       return; // off-finger: drag moves the reticle, acting is via buttons
     }
-    final p = _toCanvas(pos, box, engine.width, engine.height);
+    final p = _toCanvas(pos, box);
     if (_tool == 'Eraser') {
       _eraserX = p.dx.toInt();
       _eraserY = p.dy.toInt();
@@ -976,8 +1012,7 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
   void _continueDraw(Offset pos, Size box) {
     if (_isCursorTool) {
       final last = _lastTouch ?? pos;
-      final r = _fittedRect(box, engine.width, engine.height);
-      final scale = r.width / engine.width;
+      final (scale, _) = _view(box);
       _accX += (pos.dx - last.dx) / scale;
       _accY += (pos.dy - last.dy) / scale;
       _lastTouch = pos;
@@ -991,7 +1026,7 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
       }
       return;
     }
-    final p = _toCanvas(pos, box, engine.width, engine.height);
+    final p = _toCanvas(pos, box);
     if (_tool == 'Eraser') {
       _eraserX = p.dx.toInt();
       _eraserY = p.dy.toInt();
@@ -1016,8 +1051,8 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
     setState(() {});
   }
 
-  // Abort an in-progress draw, discarding its marks without an undo step (used when a gesture
-  // interrupts a nascent stroke).
+  // Abort an in-progress draw, discarding its marks without an undo step (used when a second finger
+  // interrupts a nascent stroke to begin pan/zoom).
   void _cancelDraw() {
     if (_isCursorTool) {
       _lastTouch = null;
@@ -1030,29 +1065,6 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
     _refreshState();
     _redraw();
     setState(() {});
-  }
-
-  void _resetTouchSession() {
-    _touches.clear();
-    _drawPointer = null;
-    _gestureMode = false;
-    _maxTouches = 0;
-    _sessionStart = null;
-    _primaryMoved = 0;
-    _gestureMoved = 0;
-  }
-
-  // A still 2/3-finger tap maps to undo/redo. Fired when the last finger of a gesture session lifts.
-  void _fireTapGesture() {
-    final dur = _sessionStart == null ? Duration.zero : (_touchClock.elapsed - _sessionStart!);
-    final quick = dur.inMilliseconds <= _kTapMaxMs;
-    final still = _gestureMoved <= _kGestureSlop;
-    if (!quick || !still) return;
-    if (_maxTouches >= 3) {
-      if (_state['can_redo'] == true) _act('Redo()');
-    } else if (_maxTouches == 2) {
-      if (_state['can_undo'] == true) _act('Undo()');
-    }
   }
 
   (int, int) _thumbSize() {
@@ -1936,14 +1948,14 @@ class _Thumb {
 
 class _CanvasPainter extends CustomPainter {
   final ui.Image? image;
-  _CanvasPainter(this.image);
+  final double scale; // screen px per canvas px (view transform)
+  final Offset off; // canvas top-left in screen px
+  _CanvasPainter(this.image, this.scale, this.off);
   @override
   void paint(Canvas canvas, Size size) {
     if (image == null) return;
     final iw = image!.width.toDouble(), ih = image!.height.toDouble();
-    final scale = (size.width / iw) < (size.height / ih) ? (size.width / iw) : (size.height / ih);
-    final dw = iw * scale, dh = ih * scale;
-    final dst = Rect.fromLTWH((size.width - dw) / 2, (size.height - dh) / 2, dw, dh);
+    final dst = Rect.fromLTWH(off.dx, off.dy, iw * scale, ih * scale);
     final paint = Paint()
       ..filterQuality = FilterQuality.none
       ..isAntiAlias = false;
@@ -1951,23 +1963,22 @@ class _CanvasPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_CanvasPainter old) => old.image != image;
+  bool shouldRepaint(_CanvasPainter old) => old.image != image || old.scale != scale || old.off != off;
 }
 
 // Thin, animated marching-ants selection outline drawn in SCREEN space (so it stays a
 // hairline regardless of how large the canvas pixels are scaled).
 class _OutlinePainter extends CustomPainter {
   final List<List<int>> edges; // [x1,y1,x2,y2,t] in canvas-corner coords
-  final int cw, ch;
+  final double scale; // screen px per canvas px (view transform)
+  final Offset off; // canvas top-left in screen px
   final Animation<double> anim;
-  _OutlinePainter(this.edges, this.cw, this.ch, this.anim) : super(repaint: anim);
+  _OutlinePainter(this.edges, this.scale, this.off, this.anim) : super(repaint: anim);
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (edges.isEmpty || cw <= 0 || ch <= 0) return;
-    final scale = (size.width / cw) < (size.height / ch) ? (size.width / cw) : (size.height / ch);
-    final ox = (size.width - cw * scale) / 2;
-    final oy = (size.height - ch * scale) / 2;
+    if (edges.isEmpty || scale <= 0) return;
+    final ox = off.dx, oy = off.dy;
     final phase = (anim.value * 4).floor(); // 4-unit marching period
     final dark = <Offset>[];
     final light = <Offset>[];
@@ -2000,18 +2011,17 @@ class _OutlinePainter extends CustomPainter {
 /// target pixel (cell outline + four crosshair arms). Drawn in screen pixels — never baked into
 /// canvas pixels — so it stays crisp at any zoom, like the selection outline.
 class _ReticlePainter extends CustomPainter {
-  final int cx, cy, cw, ch; // reticle target pixel + canvas dims
+  final int cx, cy; // reticle target pixel
+  final double scale; // screen px per canvas px (view transform)
+  final Offset off; // canvas top-left in screen px
   final Animation<double> anim;
-  _ReticlePainter(this.cx, this.cy, this.cw, this.ch, this.anim) : super(repaint: anim);
+  _ReticlePainter(this.cx, this.cy, this.scale, this.off, this.anim) : super(repaint: anim);
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (cw <= 0 || ch <= 0) return;
-    final scale = (size.width / cw) < (size.height / ch) ? (size.width / cw) : (size.height / ch);
-    final ox = (size.width - cw * scale) / 2;
-    final oy = (size.height - ch * scale) / 2;
-    final left = ox + cx * scale;
-    final top = oy + cy * scale;
+    if (scale <= 0) return;
+    final left = off.dx + cx * scale;
+    final top = off.dy + cy * scale;
     final cell = Rect.fromLTWH(left, top, scale, scale);
     final center = cell.center;
     final gap = scale * 0.5 + 3; // keep the target pixel + its ring uncovered
