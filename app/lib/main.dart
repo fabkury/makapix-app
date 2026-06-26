@@ -92,7 +92,7 @@ const toolTips = <String, String>{
   'Burn': 'Drag over pixels to darken them. Set intensity.',
   'Eyedropper': 'Tap a pixel to pick its colour as primary.',
   'Move': 'Select first, then drag the selected pixels to move them.',
-  'MoveLayer': 'Drag on the canvas to move the whole active layer; arrows nudge 1px.',
+  'MoveLayer': 'Drag the canvas to move the active layer (or the move-group); arrows nudge 1px. Group layers via a layer\'s long-press menu.',
   'SelectRect': 'Drag to select a rectangle. Use Add/Subtract/Intersect modes.',
   'SelectEllipse': 'Drag to select an ellipse. Combine with Add/Subtract modes.',
   'SelectCircle': 'Drag from centre outward to select a circle.',
@@ -137,6 +137,7 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
   Timer? _playTimer;
   Map<String, dynamic> _state = {};
   String? _error;
+  final Set<int> _selLayers = {}; // layers grouped to move together with the Move-Layer tool
   String _clubUrl = 'http://localhost:8080';
   String _clubToken = '';
   // precision pencil / airbrush off-finger cursor
@@ -1057,7 +1058,29 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
     return [];
   }
 
-  void _nudgeLayer(int dx, int dy) => _act('NudgeLayers($dx,$dy)');
+  int _activeLayerIndex() {
+    final frames = (_state['frame_detail'] as List?);
+    if (frames != null && engine.activeFrame < frames.length) {
+      return frames[engine.activeFrame]['active_layer'] ?? 0;
+    }
+    return 0;
+  }
+
+  // Push the current move-group to the engine's layer selection so both the Move-Layer drag and
+  // the nudge buttons act on the whole group (or just the active layer when none is grouped).
+  void _syncLayerSel() {
+    if (_selLayers.length > 1) {
+      final list = (_selLayers.toList()..sort()).join(',');
+      _send('SetActiveLayers($list)');
+    } else {
+      _send('SetActiveLayer(${_activeLayerIndex()})');
+    }
+  }
+
+  void _nudgeLayer(int dx, int dy) {
+    _syncLayerSel();
+    _act('NudgeLayers($dx,$dy)');
+  }
 
   Future<void> _genLayerThumb(int frame, int layer, int hash) async {
     final key = _layerKey(frame, layer);
@@ -1090,6 +1113,7 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
       builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
         int opacity = l['opacity'] ?? 255;
         bool locked = l['locked'] ?? false;
+        bool inGroup = _selLayers.contains(i);
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(12),
@@ -1101,6 +1125,24 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
                 Text('$opacity'),
               ]),
               SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, title: const Text('Locked'), value: locked, onChanged: (v) { setS(() => locked = v); _act('SetLayerLocked($i, $v)'); }),
+              SwitchListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('In move group'),
+                subtitle: const Text('Move together with the Move-Layer tool', style: TextStyle(fontSize: 11)),
+                value: inGroup,
+                onChanged: (v) {
+                  setS(() => inGroup = v);
+                  setState(() {
+                    if (v) {
+                      _selLayers.add(i);
+                    } else {
+                      _selLayers.remove(i);
+                    }
+                  });
+                  _syncLayerSel();
+                },
+              ),
               Wrap(spacing: 8, children: [
                 ActionChip(avatar: const Icon(Icons.control_point_duplicate, size: 16), label: const Text('Duplicate'), onPressed: () { Navigator.pop(ctx); _act('DuplicateLayer($i)'); }),
                 ActionChip(avatar: const Icon(Icons.arrow_upward, size: 16), label: const Text('Up'), onPressed: i + 1 < count ? () { Navigator.pop(ctx); _act('ReorderLayer($i, ${i + 1})'); } : null),
@@ -1145,13 +1187,14 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
             itemBuilder: (_, i) {
               final l = layers[i] as Map<String, dynamic>;
               final sel = i == activeLayer;
+              final inGroup = _selLayers.contains(i);
               final visible = l['visible'] == true;
               final hash = engine.layerHash(frame, i);
               final key = _layerKey(frame, i);
               final cached = _layerThumbs[key];
               if (cached == null || cached.hash != hash) _genLayerThumb(frame, i, hash);
               return GestureDetector(
-                onTap: () => _act('SetActiveLayer($i)'),
+                onTap: () { setState(() => _selLayers.clear()); _act('SetActiveLayer($i)'); },
                 onLongPress: () => _layerOptions(i, l, layers.length),
                 child: Container(
                   width: tileW + 6,
@@ -1159,7 +1202,10 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
                   decoration: BoxDecoration(
                     color: const Color(0xFF101214),
                     borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: sel ? const Color(0xFF4080C0) : Colors.black26, width: sel ? 2 : 1),
+                    border: Border.all(
+                      color: inGroup ? Colors.amber : (sel ? const Color(0xFF4080C0) : Colors.black26),
+                      width: (sel || inGroup) ? 2 : 1,
+                    ),
                   ),
                   child: Stack(fit: StackFit.expand, children: [
                     Padding(

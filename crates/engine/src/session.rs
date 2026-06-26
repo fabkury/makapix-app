@@ -42,6 +42,10 @@ pub struct Session {
     playing: bool,
     stroke: Option<Stroke>,
     last_gradient: Option<(GradientKind, Vec<Stop>, Point, Point, u32, u32)>,
+    /// Move-layer drag state: pre-drag pixel snapshots of each moved layer, plus the pre-drag
+    /// frame (and its id) for a single grouped undo. Set on pointer_down, cleared on pointer_up.
+    move_layers: Vec<(usize, RgbaBuffer)>,
+    move_before: Option<(u32, crate::document::Frame)>,
 }
 
 impl Session {
@@ -61,6 +65,8 @@ impl Session {
             playing: false,
             stroke: None,
             last_gradient: None,
+            move_layers: Vec::new(),
+            move_before: None,
         }
     }
 
@@ -387,10 +393,6 @@ impl Session {
                     let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
                     tool::flood_fill(buf, sel.as_ref(), p, color, th, cont, PaintMode::Replace);
                 }
-                ToolKind::MoveLayer => {
-                    // snapshot the whole active layer; pointer_move re-blits it at the live offset
-                    floating = Some(self.doc.active_frame().active_layer().pixels.clone());
-                }
                 ToolKind::Move => {
                     // lift selected pixels into a floating buffer
                     if let Some(sel) = self.selection.clone() {
@@ -411,6 +413,34 @@ impl Session {
                 _ => {}
             }
         }
+        // Move-layer: snapshot every selected, editable layer (the move-group, or just the active
+        // layer when none is grouped) plus the pre-drag frame, so pointer_move can re-blit them at
+        // the live offset and pointer_up records one grouped undo.
+        if self.tool == ToolKind::MoveLayer {
+            let fi = self.doc.active_frame;
+            let editable = |li: usize, f: &crate::document::Frame| {
+                li < f.layers.len() && f.layers[li].visible && !f.layers[li].locked
+            };
+            let mut sel: Vec<usize> = self
+                .layer_sel
+                .iter()
+                .copied()
+                .filter(|&li| editable(li, &self.doc.frames[fi]))
+                .collect();
+            sel.sort_unstable();
+            sel.dedup();
+            if sel.is_empty() {
+                let al = self.doc.frames[fi].active_layer;
+                if editable(al, &self.doc.frames[fi]) {
+                    sel.push(al);
+                }
+            }
+            self.move_layers = sel
+                .iter()
+                .map(|&li| (li, self.doc.frames[fi].layers[li].pixels.clone()))
+                .collect();
+            self.move_before = Some((self.doc.frames[fi].id, self.doc.frames[fi].clone()));
+        }
         self.stroke = Some(Stroke { before, start: p, last: p, path: vec![p], floating });
     }
 
@@ -420,24 +450,26 @@ impl Session {
             Some(s) => s.last,
             None => return,
         };
-        // Move-layer: re-blit the snapshot at the live offset from the drag start (single undo,
-        // committed on pointer_up). Take the snapshot out to satisfy the borrow checker, then
-        // restore it.
+        // Move-layer: re-blit each snapshotted layer of the move-group at the live offset from the
+        // drag start (single grouped undo, committed on pointer_up). move_layers and doc are
+        // disjoint fields, so the index-based borrow is sound.
         if self.tool == ToolKind::MoveLayer {
-            let (start, float) = match self.stroke.as_mut() {
-                Some(s) => (s.start, s.floating.take()),
+            let start = match self.stroke.as_ref() {
+                Some(s) => s.start,
                 None => return,
             };
-            if let Some(f) = float.as_ref() {
-                if self.active_editable() {
-                    let (dx, dy) = (p.x - start.x, p.y - start.y);
-                    let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
+            let (dx, dy) = (p.x - start.x, p.y - start.y);
+            let fi = self.doc.active_frame;
+            for idx in 0..self.move_layers.len() {
+                let li = self.move_layers[idx].0;
+                if li < self.doc.frames[fi].layers.len() {
+                    let snap = &self.move_layers[idx].1;
+                    let buf = &mut self.doc.frames[fi].layers[li].pixels;
                     buf.clear();
-                    buf.blit_over(f, Point::new(dx, dy));
+                    buf.blit_over(snap, Point::new(dx, dy));
                 }
             }
             if let Some(s) = self.stroke.as_mut() {
-                s.floating = float;
                 s.last = p;
                 s.path.push(p);
             }
@@ -465,6 +497,19 @@ impl Session {
             Some(s) => s,
             None => return,
         };
+        // Move-layer: commit the grouped translation as one frame-content undo (or discard it if
+        // nothing actually moved, e.g. a tap).
+        if self.tool == ToolKind::MoveLayer {
+            if let Some((fid, before)) = self.move_before.take() {
+                if stroke.start != stroke.last {
+                    let fi = self.doc.active_frame;
+                    let after = self.doc.frames[fi].clone();
+                    self.doc.record_frame_content(fid, before, after);
+                }
+            }
+            self.move_layers.clear();
+            return;
+        }
         let (start, last) = (stroke.start, stroke.last);
         let is_pixel_tool = matches!(
             self.tool,
@@ -552,7 +597,7 @@ impl Session {
 
         // Commit pixel changes as one undo record.
         if is_pixel_tool
-            || matches!(self.tool, ToolKind::Gradient | ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse | ToolKind::Move | ToolKind::MoveLayer)
+            || matches!(self.tool, ToolKind::Gradient | ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse | ToolKind::Move)
         {
             self.commit_edit(stroke.before);
         }
