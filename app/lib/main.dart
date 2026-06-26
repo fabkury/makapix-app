@@ -161,7 +161,8 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
   Offset _pinchStartMid = Offset.zero, _pinchStartPan = Offset.zero;
   // configurable bottom toolbar
   List<String> _toolOrder = tools.map((t) => t.dsl).toList();
-  bool _reorderMode = false;
+  String? _dragTool; // tool dsl being long-press-dragged in row-3 (null = not dragging)
+  int? _dropIndex; // live insertion index among the non-dragged tools (for drag preview)
   static const _prefsKey = 'tool_order_v1';
   // film-roll frame thumbnails (cached, invalidated by per-frame content hash)
   final Map<int, _Thumb> _frameThumbs = {};
@@ -225,31 +226,24 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
     } catch (_) {}
   }
 
-  /// Reorder a tool from `from` to target slot `to` (drag-and-drop semantics).
-  void _reorderTool(int from, int to) {
-    if (from < 0 || from >= _toolOrder.length) return;
-    setState(() {
-      final item = _toolOrder.removeAt(from);
-      if (to > from) to -= 1;
-      _toolOrder.insert(to.clamp(0, _toolOrder.length), item);
-    });
-    _persistOrder();
+  // The row-3 order to display: while dragging, the dragged tool is placed at the live drop index
+  // among the other tools, so the menu rearranges in real time as a preview.
+  List<String> _displayToolOrder() {
+    if (_dragTool == null) return _toolOrder;
+    final others = _toolOrder.where((t) => t != _dragTool).toList();
+    final drop = (_dropIndex ?? others.length).clamp(0, others.length);
+    return [...others.sublist(0, drop), _dragTool!, ...others.sublist(drop)];
   }
 
-  /// Swap a tool with its neighbour (move left/right exactly one slot).
-  void _moveTool(int i, int delta) {
-    final j = i + delta;
-    if (i < 0 || j < 0 || i >= _toolOrder.length || j >= _toolOrder.length) return;
+  // Commit the live-previewed order when the drag ends.
+  void _commitToolDrag() {
+    if (_dragTool == null) return;
+    final order = _displayToolOrder();
     setState(() {
-      final t = _toolOrder[i];
-      _toolOrder[i] = _toolOrder[j];
-      _toolOrder[j] = t;
+      _toolOrder = order;
+      _dragTool = null;
+      _dropIndex = null;
     });
-    _persistOrder();
-  }
-
-  Future<void> _resetToolOrder() async {
-    setState(() => _toolOrder = tools.map((t) => t.dsl).toList());
     _persistOrder();
   }
 
@@ -1761,52 +1755,55 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
     );
   }
 
-  Widget _toolTile(int index) {
-    final dsl = _toolOrder[index];
+  // A single row-3 tool tile. Tap selects; long-press-drag reorders with live preview. `others` is
+  // the order minus the dragged tool, used to map a hovered tile to a drop index.
+  Widget _toolTile(String dsl, List<String> others) {
     final t = _toolDef(dsl);
     final selected = dsl == _tool;
-    if (!_reorderMode) {
-      return GestureDetector(onTap: () => _selectTool(dsl), child: _tileVisual(t, selected: selected));
-    }
-    // reorder mode: draggable + drop target, with ◀ ▶ one-slot buttons overlaid
-    return DragTarget<int>(
-      onWillAcceptWithDetails: (d) => d.data != index,
-      onAcceptWithDetails: (d) => _reorderTool(d.data, index),
+    final isDragged = dsl == _dragTool;
+    // A GlobalKey so the dragged tile's State (and its ongoing drag) survives being re-parented
+    // between the top and bottom Rows as the live preview reflows. Also used to read its bounds.
+    final key = GlobalObjectKey('toolslot_$dsl');
+    return DragTarget<String>(
+      key: key,
+      onWillAcceptWithDetails: (d) => d.data != dsl,
+      onMove: (d) {
+        final oi = others.indexOf(dsl);
+        if (oi < 0) return;
+        var insert = oi;
+        final box = key.currentContext?.findRenderObject() as RenderBox?;
+        if (box != null) {
+          final center = box.localToGlobal(box.size.center(Offset.zero));
+          if (d.offset.dx > center.dx) insert = oi + 1; // dropped on the right half → after
+        }
+        if (_dropIndex != insert) setState(() => _dropIndex = insert);
+      },
       builder: (ctx, cand, rej) {
-        return LongPressDraggable<int>(
-          data: index,
+        // While dragged, this tile shows a placeholder gap at its live position (the preview slot).
+        final gap = Container(
+          width: 54,
+          height: 42,
+          margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: Colors.amber, width: 2),
+            color: const Color(0x224080C0),
+          ),
+        );
+        return LongPressDraggable<String>(
+          data: dsl,
           dragAnchorStrategy: pointerDragAnchorStrategy,
+          onDragStarted: () => setState(() {
+            _dragTool = dsl;
+            // start the gap where the tool currently sits (insertion index into the others list)
+            _dropIndex = _toolOrder.indexOf(dsl).clamp(0, _toolOrder.length - 1);
+          }),
+          onDragEnd: (_) => _commitToolDrag(),
           feedback: Material(color: Colors.transparent, child: _tileVisual(t, selected: true)),
-          childWhenDragging: Opacity(opacity: 0.3, child: _tileVisual(t, selected: selected)),
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              _tileVisual(t, selected: selected, hover: cand.isNotEmpty),
-              Positioned(
-                left: 0,
-                top: 0,
-                child: InkWell(
-                  onTap: () => _moveTool(index, -1),
-                  child: Container(
-                    padding: const EdgeInsets.all(1),
-                    decoration: const BoxDecoration(color: Color(0xCC000000), shape: BoxShape.circle),
-                    child: const Icon(Icons.chevron_left, size: 15, color: Colors.amber),
-                  ),
-                ),
-              ),
-              Positioned(
-                right: 0,
-                top: 0,
-                child: InkWell(
-                  onTap: () => _moveTool(index, 1),
-                  child: Container(
-                    padding: const EdgeInsets.all(1),
-                    decoration: const BoxDecoration(color: Color(0xCC000000), shape: BoxShape.circle),
-                    child: const Icon(Icons.chevron_right, size: 15, color: Colors.amber),
-                  ),
-                ),
-              ),
-            ],
+          childWhenDragging: gap,
+          child: GestureDetector(
+            onTap: () => _selectTool(dsl),
+            child: _tileVisual(t, selected: selected && !isDragged),
           ),
         );
       },
@@ -1814,47 +1811,25 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
   }
 
   Widget _buildToolBar() {
-    final n = _toolOrder.length;
-    final cols = (n + 1) ~/ 2; // top row holds the first half (row-major)
-    final top = [for (var i = 0; i < cols; i++) _toolTile(i)];
-    final bottom = [for (var i = cols; i < n; i++) _toolTile(i)];
+    // Render from the live display order. Long-press any tile to drag it; the rest reflow in real
+    // time, and the order is committed on release. The "others" list (order minus the dragged tool)
+    // is the index space for drop positions.
+    final order = _displayToolOrder();
+    final others = _dragTool == null ? order : _toolOrder.where((t) => t != _dragTool).toList();
+    final n = order.length;
+    final cols = (n + 1) ~/ 2; // top row holds the first half
+    final top = [for (var i = 0; i < cols; i++) _toolTile(order[i], others)];
+    final bottom = [for (var i = cols; i < n; i++) _toolTile(order[i], others)];
     return Container(
       height: 100,
       color: const Color(0xFF15171A),
-      child: Row(children: [
-        // fixed leading control: toggle reorder mode (+ reset while reordering)
-        SizedBox(
-          width: 40,
-          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            IconButton(
-              iconSize: 22,
-              padding: EdgeInsets.zero,
-              tooltip: _reorderMode ? 'Done' : 'Rearrange tools',
-              onPressed: () => setState(() => _reorderMode = !_reorderMode),
-              icon: Icon(_reorderMode ? Icons.check_circle : Icons.dashboard_customize,
-                  color: _reorderMode ? const Color(0xFF30A050) : Colors.white70),
-            ),
-            if (_reorderMode)
-              IconButton(
-                iconSize: 18,
-                padding: EdgeInsets.zero,
-                tooltip: 'Reset to default order',
-                onPressed: _resetToolOrder,
-                icon: const Icon(Icons.restart_alt, color: Colors.white54),
-              ),
-          ]),
-        ),
-        Container(width: 1, color: Colors.black26),
-        Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Column(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
-              Row(children: top),
-              Row(children: bottom),
-            ]),
-          ),
-        ),
-      ]),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Column(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
+          Row(children: top),
+          Row(children: bottom),
+        ]),
+      ),
     );
   }
 
