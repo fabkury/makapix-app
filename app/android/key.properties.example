@@ -1,0 +1,16 @@
+# Release signing for the Makapix Editor Android app.
+#
+# Copy this file to `app/android/key.properties` (which is git-ignored) and fill in the
+# real values. When `key.properties` is absent, release builds fall back to debug signing,
+# so this is only needed to produce upload-key-signed APKs/AABs (Play Store + emailed testers).
+#
+#   storeFile  ABSOLUTE path to the upload keystore. Forward slashes work on Windows.
+#   keyAlias   the alias used when the keystore was created (e.g. `makapix`).
+#
+# Keep the keystore and this file OUT of the repo. Back up the keystore securely — losing it
+# means you can't sign updates (the Play *upload* key is resettable via Google, but don't rely on it).
+
+storePassword=CHANGEME
+keyPassword=CHANGEME
+keyAlias=makapix
+storeFile=C:/Users/fab/keys/makapix-upload.jks

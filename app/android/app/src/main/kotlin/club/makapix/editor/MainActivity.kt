@@ -1,4 +1,4 @@
-package club.makapix.makapix_editor
+package club.makapix.editor
 
 import io.flutter.embedding.android.FlutterActivity
 
