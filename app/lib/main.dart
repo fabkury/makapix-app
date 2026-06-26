@@ -1137,11 +1137,10 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
 
     final sizeTools = {'Pencil', 'PrecisionPencil', 'Brush', 'Airbrush', 'Eraser', 'Dodge', 'Burn', 'Line', 'Rectangle', 'Ellipse'};
     if (sizeTools.contains(_tool)) {
-      label('Size $_brushSize');
-      children.add(_slider(_brushSize.toDouble(), 1, 32, (v) {
+      _labeledSlider(children, 'Size', _brushSize.toDouble(), 1, 32, (v) {
         setState(() => _brushSize = v.round());
         _send('SetBrushSize($_brushSize)');
-      }));
+      });
       label('Shape');
       children.add(_toggle(['Round', 'Square'], _round ? 0 : 1, (i) {
         setState(() => _round = i == 0);
@@ -1149,18 +1148,16 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
       }));
     }
     if (_tool == 'Airbrush' || _tool == 'Dodge' || _tool == 'Burn') {
-      label('Intensity $_intensity');
-      children.add(_slider(_intensity.toDouble(), 1, 255, (v) {
+      _labeledSlider(children, 'Intensity', _intensity.toDouble(), 1, 255, (v) {
         setState(() => _intensity = v.round());
         _send('SetIntensity($_intensity)');
-      }));
+      });
     }
     if (_tool == 'Bucket' || _tool == 'SelectByColor') {
-      label('Threshold $_threshold');
-      children.add(_slider(_threshold.toDouble(), 0, 255, (v) {
+      _labeledSlider(children, 'Threshold', _threshold.toDouble(), 0, 255, (v) {
         setState(() => _threshold = v.round());
         _send('SetThreshold($_threshold)');
-      }));
+      });
       children.add(_toggle(['Contiguous', 'Global'], _contiguous ? 0 : 1, (i) {
         setState(() => _contiguous = i == 0);
         _send('SetContiguous($_contiguous)');
@@ -1203,12 +1200,9 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
       children.add(_miniBtn('Crop→Sel', () => _act('CropToSelection()')));
     }
     if (_tool == 'HsvShift') {
-      label('H ${_hsvH.toInt()}');
-      children.add(_slider(_hsvH, -180, 180, (v) => setState(() => _hsvH = v)));
-      label('S ${_hsvS.toStringAsFixed(1)}');
-      children.add(_slider(_hsvS, -1, 1, (v) => setState(() => _hsvS = v)));
-      label('V ${_hsvV.toStringAsFixed(1)}');
-      children.add(_slider(_hsvV, -1, 1, (v) => setState(() => _hsvV = v)));
+      _labeledSlider(children, 'H', _hsvH, -180, 180, (v) => setState(() => _hsvH = v));
+      _labeledSlider(children, 'S', _hsvS, -1, 1, (v) => setState(() => _hsvS = v), integer: false);
+      _labeledSlider(children, 'V', _hsvV, -1, 1, (v) => setState(() => _hsvV = v), integer: false);
       children.add(_miniBtn('Apply', () {
         _send('SetHsvShift($_hsvH, $_hsvS, $_hsvV)');
         _act('ApplyHsvShift()');
@@ -1516,6 +1510,55 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
       width: 120,
       child: Slider(value: v.clamp(min, max), min: min, max: max, onChanged: onChanged),
     );
+  }
+
+  // A row-1 slider with a tappable label: tapping the "Name value" label opens a numeric
+  // text-entry dialog so the exact value can be typed instead of dragged. The text path and
+  // the drag path share the same [onChanged], keeping behaviour identical.
+  void _labeledSlider(List<Widget> children, String name, double value, double min, double max,
+      ValueChanged<double> onChanged, {bool integer = true}) {
+    final shown = integer ? value.round().toString() : value.toStringAsFixed(1);
+    children.add(InkWell(
+      onTap: () => _editSliderValue(name, value, min, max, onChanged, integer: integer),
+      borderRadius: BorderRadius.circular(4),
+      child: Padding(
+        padding: const EdgeInsets.only(left: 8, right: 4),
+        child: Text('$name $shown',
+            style: const TextStyle(
+                fontSize: 11,
+                color: Colors.white60,
+                decoration: TextDecoration.underline,
+                decorationColor: Colors.white24)),
+      ),
+    ));
+    children.add(_slider(value, min, max, onChanged));
+  }
+
+  Future<void> _editSliderValue(String name, double value, double min, double max,
+      ValueChanged<double> onChanged, {required bool integer}) async {
+    String fmt(double d) => integer ? d.round().toString() : d.toStringAsFixed(1);
+    final ctrl = TextEditingController(text: integer ? value.round().toString() : value.toStringAsFixed(2));
+    ctrl.selection = TextSelection(baseOffset: 0, extentOffset: ctrl.text.length);
+    final entered = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(name),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          keyboardType: TextInputType.numberWithOptions(decimal: !integer, signed: min < 0),
+          decoration: InputDecoration(labelText: 'Value (${fmt(min)} – ${fmt(max)})'),
+          onSubmitted: (s) => Navigator.pop(ctx, double.tryParse(s.trim())),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, double.tryParse(ctrl.text.trim())), child: const Text('OK')),
+        ],
+      ),
+    );
+    if (entered != null && entered.isFinite) {
+      onChanged(entered.clamp(min, max).toDouble());
+    }
   }
 
   Widget _toggle(List<String> opts, int sel, ValueChanged<int> onTap) {
