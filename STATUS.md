@@ -15,7 +15,8 @@ Honest coverage of every feature listed in the brief and the SPEC. Legend:
 | Feature | Status | Notes |
 |---|---|---|
 | Rust core + Flutter UI | ✅ | engine via C-ABI DLL + `dart:ffi` |
-| Compact three-row UI/UX | ✅ | row-1 tool options · row-2 palette · row-3 tools |
+| Compact three-row UI/UX | ✅ | row-1 tool options · row-2 palette · row-3 tools (a **2-row, horizontally-scrolling, user-reorderable** tool grid) |
+| Configurable tool order | ✅ | "Rearrange" mode: drag-and-drop tools + ◀▶ move-one-slot buttons; order persisted across launches (shared_preferences) |
 | Mobile-first, responsive to tablet | ✅ | mobile-first column; **wide viewports (≥1000px) move frames+layers into a right side panel** |
 | Lossless `.mkpx` (frames + layers) | ✅ | chunked, versioned, sparse tiles; round-trip is a test gate |
 | Memory efficient (1024f / 256² / RGBA, per-frame undo) | ✅ | tiled COW + lazy alloc; 500f×20L = **48 MiB**, verified no-crash |

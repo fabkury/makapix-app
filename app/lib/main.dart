@@ -10,10 +10,12 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'engine_ffi.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const MakapixApp());
 }
 
@@ -130,6 +132,10 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
   bool _penDown = false;
   Offset? _lastTouch;
   double _accX = 0, _accY = 0;
+  // configurable bottom toolbar
+  List<String> _toolOrder = tools.map((t) => t.dsl).toList();
+  bool _reorderMode = false;
+  static const _prefsKey = 'tool_order_v1';
 
   bool get _isPrecision => _tool == 'PrecisionPencil';
 
@@ -139,6 +145,7 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
   void initState() {
     super.initState();
     _antCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 700))..repeat();
+    _loadToolOrder();
     try {
       engine = Engine(64, 64);
       _send('SelectTool(Pencil)');
@@ -147,6 +154,59 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
     } catch (e) {
       _error = '$e';
     }
+  }
+
+  ToolDef _toolDef(String dsl) => tools.firstWhere((t) => t.dsl == dsl, orElse: () => tools.first);
+
+  Future<void> _loadToolOrder() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getStringList(_prefsKey);
+      final all = tools.map((t) => t.dsl).toList();
+      if (saved != null) {
+        // keep saved order, drop unknown tools, append any new tools at the end
+        final reconciled = <String>[for (final d in saved) if (all.contains(d)) d];
+        for (final d in all) {
+          if (!reconciled.contains(d)) reconciled.add(d);
+        }
+        if (mounted) setState(() => _toolOrder = reconciled);
+      }
+    } catch (_) {/* prefs unavailable → keep default order */}
+  }
+
+  Future<void> _persistOrder() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_prefsKey, _toolOrder);
+    } catch (_) {}
+  }
+
+  /// Reorder a tool from `from` to target slot `to` (drag-and-drop semantics).
+  void _reorderTool(int from, int to) {
+    if (from < 0 || from >= _toolOrder.length) return;
+    setState(() {
+      final item = _toolOrder.removeAt(from);
+      if (to > from) to -= 1;
+      _toolOrder.insert(to.clamp(0, _toolOrder.length), item);
+    });
+    _persistOrder();
+  }
+
+  /// Swap a tool with its neighbour (move left/right exactly one slot).
+  void _moveTool(int i, int delta) {
+    final j = i + delta;
+    if (i < 0 || j < 0 || i >= _toolOrder.length || j >= _toolOrder.length) return;
+    setState(() {
+      final t = _toolOrder[i];
+      _toolOrder[i] = _toolOrder[j];
+      _toolOrder[j] = t;
+    });
+    _persistOrder();
+  }
+
+  Future<void> _resetToolOrder() async {
+    setState(() => _toolOrder = tools.map((t) => t.dsl).toList());
+    _persistOrder();
   }
 
   @override
@@ -1247,37 +1307,122 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
     return out;
   }
 
-  Widget _buildToolBar() {
+  // The static visual of a tool tile (icon + label, highlighted when selected/hovered).
+  Widget _tileVisual(ToolDef t, {required bool selected, bool hover = false}) {
     return Container(
-      height: 60,
-      color: const Color(0xFF15171A),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: tools.map((t) {
-            final sel = t.dsl == _tool;
-            return GestureDetector(
-              onTap: () => _selectTool(t.dsl),
-              child: Container(
-                width: 56,
-                margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 6),
-                decoration: BoxDecoration(
-                  color: sel ? const Color(0xFF4080C0) : const Color(0xFF26292E),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(t.icon, size: 20, color: sel ? Colors.white : Colors.white70),
-                    const SizedBox(height: 2),
-                    Text(t.label, style: const TextStyle(fontSize: 9)),
-                  ],
+      width: 54,
+      height: 42,
+      margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
+      decoration: BoxDecoration(
+        color: selected ? const Color(0xFF4080C0) : const Color(0xFF26292E),
+        borderRadius: BorderRadius.circular(6),
+        border: hover ? Border.all(color: Colors.amber, width: 2) : null,
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(t.icon, size: 18, color: selected ? Colors.white : Colors.white70),
+          const SizedBox(height: 1),
+          Text(t.label, style: const TextStyle(fontSize: 8.5), maxLines: 1, overflow: TextOverflow.clip),
+        ],
+      ),
+    );
+  }
+
+  Widget _toolTile(int index) {
+    final dsl = _toolOrder[index];
+    final t = _toolDef(dsl);
+    final selected = dsl == _tool;
+    if (!_reorderMode) {
+      return GestureDetector(onTap: () => _selectTool(dsl), child: _tileVisual(t, selected: selected));
+    }
+    // reorder mode: draggable + drop target, with ◀ ▶ one-slot buttons overlaid
+    return DragTarget<int>(
+      onWillAcceptWithDetails: (d) => d.data != index,
+      onAcceptWithDetails: (d) => _reorderTool(d.data, index),
+      builder: (ctx, cand, rej) {
+        return LongPressDraggable<int>(
+          data: index,
+          dragAnchorStrategy: pointerDragAnchorStrategy,
+          feedback: Material(color: Colors.transparent, child: _tileVisual(t, selected: true)),
+          childWhenDragging: Opacity(opacity: 0.3, child: _tileVisual(t, selected: selected)),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              _tileVisual(t, selected: selected, hover: cand.isNotEmpty),
+              Positioned(
+                left: 0,
+                top: 0,
+                child: InkWell(
+                  onTap: () => _moveTool(index, -1),
+                  child: Container(
+                    padding: const EdgeInsets.all(1),
+                    decoration: const BoxDecoration(color: Color(0xCC000000), shape: BoxShape.circle),
+                    child: const Icon(Icons.chevron_left, size: 15, color: Colors.amber),
+                  ),
                 ),
               ),
-            );
-          }).toList(),
+              Positioned(
+                right: 0,
+                top: 0,
+                child: InkWell(
+                  onTap: () => _moveTool(index, 1),
+                  child: Container(
+                    padding: const EdgeInsets.all(1),
+                    decoration: const BoxDecoration(color: Color(0xCC000000), shape: BoxShape.circle),
+                    child: const Icon(Icons.chevron_right, size: 15, color: Colors.amber),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildToolBar() {
+    final n = _toolOrder.length;
+    final cols = (n + 1) ~/ 2; // top row holds the first half (row-major)
+    final top = [for (var i = 0; i < cols; i++) _toolTile(i)];
+    final bottom = [for (var i = cols; i < n; i++) _toolTile(i)];
+    return Container(
+      height: 100,
+      color: const Color(0xFF15171A),
+      child: Row(children: [
+        // fixed leading control: toggle reorder mode (+ reset while reordering)
+        SizedBox(
+          width: 40,
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            IconButton(
+              iconSize: 22,
+              padding: EdgeInsets.zero,
+              tooltip: _reorderMode ? 'Done' : 'Rearrange tools',
+              onPressed: () => setState(() => _reorderMode = !_reorderMode),
+              icon: Icon(_reorderMode ? Icons.check_circle : Icons.dashboard_customize,
+                  color: _reorderMode ? const Color(0xFF30A050) : Colors.white70),
+            ),
+            if (_reorderMode)
+              IconButton(
+                iconSize: 18,
+                padding: EdgeInsets.zero,
+                tooltip: 'Reset to default order',
+                onPressed: _resetToolOrder,
+                icon: const Icon(Icons.restart_alt, color: Colors.white54),
+              ),
+          ]),
         ),
-      ),
+        Container(width: 1, color: Colors.black26),
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Column(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
+              Row(children: top),
+              Row(children: bottom),
+            ]),
+          ),
+        ),
+      ]),
     );
   }
 
