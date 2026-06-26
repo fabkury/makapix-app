@@ -25,6 +25,15 @@ struct Stroke {
     floating: Option<RgbaBuffer>, // for Move
 }
 
+/// Smallest rectangle covering both `a` and `b`.
+fn union_irect(a: crate::geom::IRect, b: crate::geom::IRect) -> crate::geom::IRect {
+    let x = a.x.min(b.x);
+    let y = a.y.min(b.y);
+    let right = a.right().max(b.right());
+    let bottom = a.bottom().max(b.bottom());
+    crate::geom::IRect::new(x, y, (right - x) as u32, (bottom - y) as u32)
+}
+
 pub struct Session {
     pub doc: Document,
     pub tool: ToolKind,
@@ -46,6 +55,8 @@ pub struct Session {
     /// frame (and its id) for a single grouped undo. Set on pointer_down, cleared on pointer_up.
     move_layers: Vec<(usize, RgbaBuffer)>,
     move_before: Option<(u32, crate::document::Frame)>,
+    /// Union opaque bounding box of the moved layers at drag start (for "protect pixels" clamping).
+    move_bbox: Option<crate::geom::IRect>,
 }
 
 impl Session {
@@ -67,6 +78,7 @@ impl Session {
             last_gradient: None,
             move_layers: Vec::new(),
             move_before: None,
+            move_bbox: None,
         }
     }
 
@@ -446,6 +458,13 @@ impl Session {
                 .map(|&li| (li, self.doc.frames[fi].layers[li].pixels.clone()))
                 .collect();
             self.move_before = Some((self.doc.frames[fi].id, self.doc.frames[fi].clone()));
+            // Union opaque bbox at drag start, for "protect pixels" offset clamping.
+            self.move_bbox = self.move_layers.iter().fold(None, |acc, (_li, snap)| {
+                match (acc, snap.opaque_bounds()) {
+                    (Some(a), Some(b)) => Some(union_irect(a, b)),
+                    (a, b) => a.or(b),
+                }
+            });
         }
         self.stroke = Some(Stroke { before, start: p, last: p, path: vec![p], floating });
     }
@@ -464,7 +483,16 @@ impl Session {
                 Some(s) => s.start,
                 None => return,
             };
-            let (dx, dy) = (p.x - start.x, p.y - start.y);
+            let (mut dx, mut dy) = (p.x - start.x, p.y - start.y);
+            // Protect pixels: clamp the offset so opaque content never leaves the canvas — the
+            // layer simply stops at the edge instead of being shown in an illegal position.
+            if self.settings.protect_pixels {
+                if let Some(bb) = self.move_bbox {
+                    let (cx, cy) = self.clamp_move_to_canvas(bb, dx, dy);
+                    dx = cx;
+                    dy = cy;
+                }
+            }
             let fi = self.doc.active_frame;
             for idx in 0..self.move_layers.len() {
                 let li = self.move_layers[idx].0;
@@ -514,6 +542,7 @@ impl Session {
                 }
             }
             self.move_layers.clear();
+            self.move_bbox = None;
             return;
         }
         let (start, last) = (stroke.start, stroke.last);
@@ -618,6 +647,7 @@ impl Session {
             let fi = self.doc.active_frame;
             self.doc.frames[fi] = before;
             self.move_layers.clear();
+            self.move_bbox = None;
             self.stroke = None;
             return;
         }
@@ -1042,6 +1072,30 @@ impl Session {
         self.layer_sel = v;
     }
 
+    /// Union of the opaque bounding boxes of the given layers (in the active frame), or `None` if
+    /// they are all empty.
+    fn union_opaque_bounds(&self, layers: &[usize]) -> Option<crate::geom::IRect> {
+        let f = self.doc.active_frame();
+        let mut acc: Option<crate::geom::IRect> = None;
+        for &li in layers {
+            if li < f.layers.len() {
+                if let Some(b) = f.layers[li].pixels.opaque_bounds() {
+                    acc = Some(match acc {
+                        Some(a) => union_irect(a, b),
+                        None => b,
+                    });
+                }
+            }
+        }
+        acc
+    }
+
+    /// Clamp a translation so an opaque bounding box `bbox` stays fully on-canvas.
+    fn clamp_move_to_canvas(&self, bbox: crate::geom::IRect, dx: i32, dy: i32) -> (i32, i32) {
+        let (w, h) = (self.doc.size.w as i32, self.doc.size.h as i32);
+        (dx.clamp(-bbox.x, w - bbox.right()), dy.clamp(-bbox.y, h - bbox.bottom()))
+    }
+
     /// Translate the content of all selected layers by (dx,dy), together, as one undoable
     /// frame edit (SPEC §15 "move multiple layers as one").
     pub fn nudge_layers(&mut self, dx: i32, dy: i32) {
@@ -1051,7 +1105,19 @@ impl Session {
             .copied()
             .filter(|&i| i < self.doc.active_frame().layers.len() && !self.doc.active_frame().layers[i].locked)
             .collect();
-        if layers.is_empty() || (dx == 0 && dy == 0) {
+        if layers.is_empty() {
+            return;
+        }
+        // Protect pixels: never push opaque content off-canvas (clamp the requested delta).
+        let (dx, dy) = if self.settings.protect_pixels {
+            match self.union_opaque_bounds(&layers) {
+                Some(bb) => self.clamp_move_to_canvas(bb, dx, dy),
+                None => (dx, dy),
+            }
+        } else {
+            (dx, dy)
+        };
+        if dx == 0 && dy == 0 {
             return;
         }
         self.edit_frame(|s| {
@@ -1608,6 +1674,27 @@ mod tests {
         assert_eq!(s.pixel(0, 0, 9, 9), Rgba8::TRANSPARENT);
         assert!(s.doc.undo()); // the first dot is still undoable (not orphaned)
         assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::TRANSPARENT);
+    }
+
+    #[test]
+    fn protect_pixels_clamps_layer_move_on_canvas() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(0, 0); // opaque pixel at the top-left corner of layer 0
+        s.settings.protect_pixels = true;
+        s.tool = ToolKind::MoveLayer;
+        s.set_active_layer(0);
+        // try to drag up-and-left by 5 → would push the corner pixel off-canvas; must be clamped
+        s.pointer_down(8, 8);
+        s.pointer_move(3, 3);
+        s.pointer_up();
+        assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::WHITE); // stayed put
+        // moving right by 3 is legal and applies
+        s.pointer_down(0, 0);
+        s.pointer_move(3, 0);
+        s.pointer_up();
+        assert_eq!(s.pixel(0, 0, 3, 0), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::TRANSPARENT);
     }
 
     #[test]

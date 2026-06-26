@@ -197,7 +197,8 @@ impl RgbaBuffer {
         self.tiles.iter().all(|t| t.is_none())
     }
 
-    /// Bounding box of all non-transparent pixels, or `None` if fully transparent.
+    /// Bounding box of all non-transparent pixels, or `None` if fully transparent. Used to keep
+    /// opaque content on-canvas when "protect pixels" is on (SPEC §15 / §28.1).
     pub fn opaque_bounds(&self) -> Option<IRect> {
         let (mut minx, mut miny, mut maxx, mut maxy) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
         for ty in 0..self.tiles_y {

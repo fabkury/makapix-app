@@ -131,6 +131,7 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
   Color _gradA = const Color(0xFF102040);
   Color _gradB = const Color(0xFFFFFFFF);
   double _hsvH = 60, _hsvS = 0, _hsvV = 0;
+  bool _protectPixels = false; // Move-Layer: keep opaque pixels on-canvas (non-destructive)
   bool _onion = false;
   bool _grid = false;
   bool _playing = false;
@@ -411,7 +412,7 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
     _send('SetBrushSize($_brushSize); SetBrushShape(${_round ? 'Round' : 'Square'})');
     _send('SetThreshold($_threshold); SetContiguous($_contiguous)');
     _send('SetIntensity($_intensity); SetShapeFill($_shapeFill)');
-    _send('SetSelectionMode($_selMode)');
+    _send('SetSelectionMode($_selMode); SetProtectPixels($_protectPixels)');
     if (t == 'Gradient') {
       _send('SetGradientType(${_radial ? 'Radial' : 'Linear'})');
       _send('SetGradientStops([${_hex(_gradA)}@0, ${_hex(_gradB)}@1])');
@@ -1426,6 +1427,19 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
         InkWell(onTap: () => _nudgeLayer(0, 1), child: const Icon(Icons.keyboard_arrow_down, size: 18)),
       ]));
       children.add(IconButton(iconSize: 20, tooltip: 'Move layer right', onPressed: () => _nudgeLayer(1, 0), icon: const Icon(Icons.chevron_right)));
+      children.add(const SizedBox(width: 6));
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: FilterChip(
+          selected: _protectPixels,
+          label: Text(_protectPixels ? 'Protect ✔' : 'Protect pixels'),
+          selectedColor: const Color(0xFF30A050),
+          onSelected: (v) {
+            setState(() => _protectPixels = v);
+            _send('SetProtectPixels($v)');
+          },
+        ),
+      ));
     }
     if (_tool == 'Airbrush') {
       // SPRAY (one airbrush dab at the reticle, off-finger)
