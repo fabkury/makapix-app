@@ -363,6 +363,12 @@ impl Session {
     // ---- pointer routing ----
 
     pub fn pointer_down(&mut self, x: i32, y: i32) {
+        // Defense-in-depth: never start a stroke on top of an unfinished one. A malformed event
+        // sequence (e.g. a dropped pointer_up) must not orphan the undo baseline, so finalize the
+        // previous stroke first — this keeps every begin_edit paired with a commit.
+        if self.stroke.is_some() {
+            self.pointer_up();
+        }
         let p = Point::new(x, y);
         // Tools that act once on press.
         match self.tool {
@@ -600,6 +606,36 @@ impl Session {
             || matches!(self.tool, ToolKind::Gradient | ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse | ToolKind::Move)
         {
             self.commit_edit(stroke.before);
+        }
+    }
+
+    /// Abort the in-progress stroke/drag, discarding its changes WITHOUT recording an undo step.
+    /// Used when a multi-finger gesture interrupts a nascent single-finger stroke, so the gesture
+    /// leaves no stray marks behind.
+    pub fn cancel_stroke(&mut self) {
+        // Move-layer drag: restore the whole pre-drag frame snapshot.
+        if let Some((_fid, before)) = self.move_before.take() {
+            let fi = self.doc.active_frame;
+            self.doc.frames[fi] = before;
+            self.move_layers.clear();
+            self.stroke = None;
+            return;
+        }
+        // Normal stroke: restore the active layer's pre-stroke pixels.
+        if let Some(stroke) = self.stroke.take() {
+            self.doc
+                .active_frame_mut()
+                .active_layer_mut()
+                .pixels
+                .restore_snapshot(&stroke.before);
+        }
+        // Precision pen line in progress.
+        if let Some(before) = self.precision_before.take() {
+            self.doc
+                .active_frame_mut()
+                .active_layer_mut()
+                .pixels
+                .restore_snapshot(&before);
         }
     }
 
@@ -1541,6 +1577,37 @@ mod tests {
         s.set_move_group(&[0, 1]); // group two other layers
         assert_eq!(s.doc.active_frame().active_layer, 2); // active stays put
         assert_eq!(s.layer_sel, vec![0, 1]); // but the move-group is those two
+    }
+
+    #[test]
+    fn cancel_stroke_discards_changes_without_undo() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(2, 2); // a committed dot (one undo step)
+        s.pointer_down(8, 8); // begin a fresh stroke, stamps (8,8)
+        assert_eq!(s.pixel(0, 0, 8, 8), Rgba8::WHITE);
+        s.cancel_stroke(); // abort: (8,8) reverted, nothing recorded
+        assert_eq!(s.pixel(0, 0, 8, 8), Rgba8::TRANSPARENT);
+        assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::WHITE); // earlier dot intact
+        assert!(s.doc.undo()); // exactly one undo step — the first dot
+        assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::TRANSPARENT);
+        assert!(!s.doc.undo()); // the aborted stroke left no undo behind
+    }
+
+    #[test]
+    fn reentrant_pointer_down_does_not_corrupt_undo() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        // a malformed sequence: a second pointer_down before the first's pointer_up
+        s.pointer_down(3, 3);
+        s.pointer_down(9, 9); // must finalize the first stroke, not orphan its baseline
+        s.pointer_up();
+        assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 0, 9, 9), Rgba8::WHITE);
+        assert!(s.doc.undo());
+        assert_eq!(s.pixel(0, 0, 9, 9), Rgba8::TRANSPARENT);
+        assert!(s.doc.undo()); // the first dot is still undoable (not orphaned)
+        assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::TRANSPARENT);
     }
 
     #[test]

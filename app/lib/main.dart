@@ -146,6 +146,19 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
   double _accX = 0, _accY = 0;
   int _cursorX = 0, _cursorY = 0; // reticle position (canvas px), mirrored from the engine
   int? _eraserX, _eraserY; // eraser footprint centre (canvas px) during an active erase drag
+  // multi-touch handling on the canvas: only the first finger drives a tool. Extra fingers are
+  // ignored once the primary is actively drawing; a still 2/3-finger tap is an undo/redo gesture.
+  final Set<int> _touches = {}; // pointer ids currently on the canvas
+  int? _drawPointer; // the pointer that owns the in-progress draw (null = none/suspended)
+  bool _gestureMode = false; // this touch session became a multi-finger gesture (drawing suspended)
+  int _maxTouches = 0; // peak simultaneous fingers this session
+  Duration? _sessionStart; // when the first finger landed (monotonic), for tap-duration timing
+  double _primaryMoved = 0; // screen-px the primary finger has travelled (tap vs. draw)
+  double _gestureMoved = 0; // screen-px moved during gesture mode (disqualifies a sloppy tap)
+  final Stopwatch _touchClock = Stopwatch()..start();
+  static const double _kDrawSlop = 10; // primary travel before a stroke counts as "real drawing"
+  static const double _kGestureSlop = 18; // max finger travel still counted as a tap
+  static const int _kTapMaxMs = 400; // max duration of a multi-finger tap
   // configurable bottom toolbar
   List<String> _toolOrder = tools.map((t) => t.dsl).toList();
   bool _reorderMode = false;
@@ -870,62 +883,63 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
           behavior: HitTestBehavior.opaque,
           onPointerDown: (e) {
             if (_isTransformTool) return; // transform action groups don't draw on the canvas
-            if (_isCursorTool) {
-              _lastTouch = e.localPosition;
-              _accX = 0;
-              _accY = 0;
-              return; // off-finger: drag moves the reticle, acting is via buttons
+            final wasEmpty = _touches.isEmpty;
+            _touches.add(e.pointer);
+            if (wasEmpty) {
+              // first finger: start a draw session
+              _drawPointer = e.pointer;
+              _gestureMode = false;
+              _maxTouches = 1;
+              _sessionStart = _touchClock.elapsed;
+              _primaryMoved = 0;
+              _gestureMoved = 0;
+              _beginDraw(e.localPosition, box);
+            } else {
+              if (_touches.length > _maxTouches) _maxTouches = _touches.length;
+              // A second/third finger landed. If the primary finger has barely moved it's a
+              // multi-finger tap gesture: abort the nascent stroke and suspend drawing. Otherwise
+              // the primary is actively drawing, so ignore the extra finger.
+              if (!_gestureMode && _primaryMoved <= _kDrawSlop) {
+                _gestureMode = true;
+                _drawPointer = null;
+                _cancelDraw();
+              }
             }
-            final p = _toCanvas(e.localPosition, box, engine.width, engine.height);
-            if (_tool == 'Eraser') {
-              _eraserX = p.dx.toInt();
-              _eraserY = p.dy.toInt();
-            }
-            _send('PointerDown(${p.dx.toInt()},${p.dy.toInt()})');
-            _redraw();
           },
           onPointerMove: (e) {
             if (_isTransformTool) return;
-            if (_isCursorTool) {
-              final last = _lastTouch ?? e.localPosition;
-              final r = _fittedRect(box, engine.width, engine.height);
-              final scale = r.width / engine.width;
-              _accX += (e.localPosition.dx - last.dx) / scale;
-              _accY += (e.localPosition.dy - last.dy) / scale;
-              _lastTouch = e.localPosition;
-              final mx = _accX.truncate();
-              final my = _accY.truncate();
-              if (mx != 0 || my != 0) {
-                _accX -= mx;
-                _accY -= my;
-                _moveCursor(mx, my);
-                _redraw();
-              }
+            if (_gestureMode) {
+              _gestureMoved += e.delta.distance;
               return;
             }
-            final p = _toCanvas(e.localPosition, box, engine.width, engine.height);
-            if (_tool == 'Eraser') {
-              _eraserX = p.dx.toInt();
-              _eraserY = p.dy.toInt();
-            }
-            _send('PointerMove(${p.dx.toInt()},${p.dy.toInt()})');
-            _redraw();
+            if (e.pointer != _drawPointer) return; // ignore extra fingers while drawing
+            _primaryMoved += e.delta.distance;
+            _continueDraw(e.localPosition, box);
           },
           onPointerUp: (e) {
             if (_isTransformTool) return;
-            if (_isCursorTool) {
-              _lastTouch = null;
-              if (_penDown) _refreshState();
+            _touches.remove(e.pointer);
+            if (_gestureMode) {
+              if (_touches.isEmpty) {
+                _fireTapGesture();
+                _resetTouchSession();
+              }
               return;
             }
-            if (_eraserX != null) {
-              _eraserX = null;
-              _eraserY = null;
+            if (e.pointer == _drawPointer) {
+              _endDraw();
+              _drawPointer = null;
             }
-            _send('PointerUp()');
-            _refreshState();
-            _redraw();
-            setState(() {});
+            if (_touches.isEmpty) _resetTouchSession();
+          },
+          onPointerCancel: (e) {
+            if (_isTransformTool) return;
+            _touches.remove(e.pointer);
+            if (!_gestureMode && e.pointer == _drawPointer) {
+              _cancelDraw(); // interrupted draw → roll back, leaving no stray mark
+              _drawPointer = null;
+            }
+            if (_touches.isEmpty) _resetTouchSession();
           },
           child: Stack(fit: StackFit.expand, children: [
             CustomPaint(painter: _CanvasPainter(_image), size: Size.infinite),
@@ -939,6 +953,106 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
         ),
       );
     });
+  }
+
+  // ---- single-pointer draw helpers (driven by the multi-touch state machine above) ----
+
+  void _beginDraw(Offset pos, Size box) {
+    if (_isCursorTool) {
+      _lastTouch = pos;
+      _accX = 0;
+      _accY = 0;
+      return; // off-finger: drag moves the reticle, acting is via buttons
+    }
+    final p = _toCanvas(pos, box, engine.width, engine.height);
+    if (_tool == 'Eraser') {
+      _eraserX = p.dx.toInt();
+      _eraserY = p.dy.toInt();
+    }
+    _send('PointerDown(${p.dx.toInt()},${p.dy.toInt()})');
+    _redraw();
+  }
+
+  void _continueDraw(Offset pos, Size box) {
+    if (_isCursorTool) {
+      final last = _lastTouch ?? pos;
+      final r = _fittedRect(box, engine.width, engine.height);
+      final scale = r.width / engine.width;
+      _accX += (pos.dx - last.dx) / scale;
+      _accY += (pos.dy - last.dy) / scale;
+      _lastTouch = pos;
+      final mx = _accX.truncate();
+      final my = _accY.truncate();
+      if (mx != 0 || my != 0) {
+        _accX -= mx;
+        _accY -= my;
+        _moveCursor(mx, my);
+        _redraw();
+      }
+      return;
+    }
+    final p = _toCanvas(pos, box, engine.width, engine.height);
+    if (_tool == 'Eraser') {
+      _eraserX = p.dx.toInt();
+      _eraserY = p.dy.toInt();
+    }
+    _send('PointerMove(${p.dx.toInt()},${p.dy.toInt()})');
+    _redraw();
+  }
+
+  void _endDraw() {
+    if (_isCursorTool) {
+      _lastTouch = null;
+      if (_penDown) _refreshState();
+      return;
+    }
+    if (_eraserX != null) {
+      _eraserX = null;
+      _eraserY = null;
+    }
+    _send('PointerUp()');
+    _refreshState();
+    _redraw();
+    setState(() {});
+  }
+
+  // Abort an in-progress draw, discarding its marks without an undo step (used when a gesture
+  // interrupts a nascent stroke).
+  void _cancelDraw() {
+    if (_isCursorTool) {
+      _lastTouch = null;
+      if (_penDown) _send('CancelStroke()'); // abort a precision pen line in progress
+    } else {
+      _eraserX = null;
+      _eraserY = null;
+      _send('CancelStroke()');
+    }
+    _refreshState();
+    _redraw();
+    setState(() {});
+  }
+
+  void _resetTouchSession() {
+    _touches.clear();
+    _drawPointer = null;
+    _gestureMode = false;
+    _maxTouches = 0;
+    _sessionStart = null;
+    _primaryMoved = 0;
+    _gestureMoved = 0;
+  }
+
+  // A still 2/3-finger tap maps to undo/redo. Fired when the last finger of a gesture session lifts.
+  void _fireTapGesture() {
+    final dur = _sessionStart == null ? Duration.zero : (_touchClock.elapsed - _sessionStart!);
+    final quick = dur.inMilliseconds <= _kTapMaxMs;
+    final still = _gestureMoved <= _kGestureSlop;
+    if (!quick || !still) return;
+    if (_maxTouches >= 3) {
+      if (_state['can_redo'] == true) _act('Redo()');
+    } else if (_maxTouches == 2) {
+      if (_state['can_undo'] == true) _act('Undo()');
+    }
   }
 
   (int, int) _thumbSize() {

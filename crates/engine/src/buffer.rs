@@ -233,6 +233,16 @@ impl RgbaBuffer {
         self.tiles.clone()
     }
 
+    /// Revert the buffer to a previously taken [`snapshot`](Self::snapshot), discarding any changes
+    /// made since (used to abort an in-progress stroke without recording undo). No-op on a size
+    /// mismatch.
+    pub fn restore_snapshot(&mut self, snap: &[Option<Arc<Tile>>]) {
+        if snap.len() == self.tiles.len() {
+            self.tiles.clear();
+            self.tiles.extend(snap.iter().cloned());
+        }
+    }
+
     /// Compute the patch that turns `before` into the current state (changed tiles only).
     pub fn diff_from(&self, before: &[Option<Arc<Tile>>]) -> TilePatch {
         let mut changed = Vec::new();
