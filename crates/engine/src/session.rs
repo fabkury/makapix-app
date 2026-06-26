@@ -993,6 +993,19 @@ impl Session {
         self.layer_sel = v;
     }
 
+    /// Set the move-group (layers that translate together) WITHOUT changing which layer is active,
+    /// so the active layer stays put while grouped. Falls back to the active layer if empty.
+    pub fn set_move_group(&mut self, idxs: &[usize]) {
+        let n = self.doc.active_frame().layers.len();
+        let mut v: Vec<usize> = idxs.iter().copied().filter(|&i| i < n).collect();
+        v.sort_unstable();
+        v.dedup();
+        if v.is_empty() {
+            v.push(self.doc.active_frame().active_layer.min(n.saturating_sub(1)));
+        }
+        self.layer_sel = v;
+    }
+
     /// Translate the content of all selected layers by (dx,dy), together, as one undoable
     /// frame edit (SPEC §15 "move multiple layers as one").
     pub fn nudge_layers(&mut self, dx: i32, dy: i32) {
@@ -1516,6 +1529,18 @@ mod tests {
         assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::TRANSPARENT);
         assert!(s.doc.undo()); // one undoable frame edit
         assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::WHITE);
+    }
+
+    #[test]
+    fn set_move_group_keeps_active_layer_put() {
+        let mut s = Session::new(16, 16);
+        s.add_layer();
+        s.add_layer(); // layers 0,1,2
+        s.set_active_layer(2);
+        assert_eq!(s.doc.active_frame().active_layer, 2);
+        s.set_move_group(&[0, 1]); // group two other layers
+        assert_eq!(s.doc.active_frame().active_layer, 2); // active stays put
+        assert_eq!(s.layer_sel, vec![0, 1]); // but the move-group is those two
     }
 
     #[test]

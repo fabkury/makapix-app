@@ -1070,8 +1070,9 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
   // the nudge buttons act on the whole group (or just the active layer when none is grouped).
   void _syncLayerSel() {
     if (_selLayers.length > 1) {
+      // SetMoveGroup sets the move-group without changing the active layer (it stays put).
       final list = (_selLayers.toList()..sort()).join(',');
-      _send('SetActiveLayers($list)');
+      _send('SetMoveGroup($list)');
     } else {
       _send('SetActiveLayer(${_activeLayerIndex()})');
     }
@@ -1203,7 +1204,9 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
                     color: const Color(0xFF101214),
                     borderRadius: BorderRadius.circular(4),
                     border: Border.all(
-                      color: inGroup ? Colors.amber : (sel ? const Color(0xFF4080C0) : Colors.black26),
+                      // active layer always shows blue (it stays put while grouped); other
+                      // grouped layers show amber.
+                      color: sel ? const Color(0xFF4080C0) : (inGroup ? Colors.amber : Colors.black26),
                       width: (sel || inGroup) ? 2 : 1,
                     ),
                   ),
