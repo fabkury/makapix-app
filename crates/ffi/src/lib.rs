@@ -2,6 +2,11 @@
 //! drives it with DSL command strings and pulls composited RGBA bytes for display. No
 //! panics cross the boundary (errors are returned as strings / status codes).
 
+// Every `extern "C"` export here necessarily dereferences raw pointers handed across the C ABI
+// from Dart; that is the whole point of this crate. Marking each `unsafe` would not change the
+// C ABI and only adds noise, so we allow the lint crate-wide (the contract is documented per fn).
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+
 use makapix_engine::Session;
 use std::ffi::{c_char, CStr, CString};
 use std::os::raw::c_int;
