@@ -1,0 +1,32 @@
+# ---- Rust build output ----
+/target
+**/target
+
+# ---- Harness artifacts (rendered PNGs, diffs, dumps) ----
+target/mkpx-artifacts/
+*.tmp
+
+# ---- Flutter build output (also covered by app/**/.gitignore) ----
+app/build/
+app/.dart_tool/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+
+# ---- Generated cross-compiled engine libraries ----
+# Rebuilt from the Rust source by build_android.ps1 (cargo-ndk); not source.
+app/android/app/src/main/jniLibs/
+
+# ---- Mock Makapix Club server output ----
+tools/uploads/
+
+# ---- Local Claude Code state (machine/user-specific) ----
+.claude/
+
+# ---- Editor/OS noise ----
+.idea/
+.vscode/
+*.iml
+Thumbs.db
+.DS_Store
+
+# NOTE: Cargo.lock IS committed (this is an application workspace).

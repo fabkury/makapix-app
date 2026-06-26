@@ -1,0 +1,203 @@
+// Dart FFI bindings to the Makapix engine C ABI (makapix_ffi.dll). See crates/ffi.
+import 'dart:convert';
+import 'dart:ffi';
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:ffi/ffi.dart';
+
+// ---- native signatures ----
+typedef _NewC = Pointer<Void> Function(Uint16, Uint16);
+typedef _NewD = Pointer<Void> Function(int, int);
+typedef _FreeC = Void Function(Pointer<Void>);
+typedef _FreeD = void Function(Pointer<Void>);
+typedef _RunC = Pointer<Utf8> Function(Pointer<Void>, Pointer<Uint8>, IntPtr);
+typedef _RunD = Pointer<Utf8> Function(Pointer<Void>, Pointer<Uint8>, int);
+typedef _U32C = Uint32 Function(Pointer<Void>);
+typedef _U32D = int Function(Pointer<Void>);
+typedef _DisplayC = Int32 Function(Pointer<Void>, Int32, Int32, Int32, Pointer<Uint8>, IntPtr);
+typedef _DisplayD = int Function(Pointer<Void>, int, int, int, Pointer<Uint8>, int);
+typedef _CompositeC = Int32 Function(Pointer<Void>, Uint32, Pointer<Uint8>, IntPtr);
+typedef _CompositeD = int Function(Pointer<Void>, int, Pointer<Uint8>, int);
+typedef _StateC = Pointer<Utf8> Function(Pointer<Void>);
+typedef _StateD = Pointer<Utf8> Function(Pointer<Void>);
+typedef _OutlineC = Int32 Function(Pointer<Void>, Pointer<Uint8>, IntPtr);
+typedef _OutlineD = int Function(Pointer<Void>, Pointer<Uint8>, int);
+typedef _SaveC = Pointer<Uint8> Function(Pointer<Void>, Pointer<Uint64>);
+typedef _SaveD = Pointer<Uint8> Function(Pointer<Void>, Pointer<Uint64>);
+typedef _LoadC = Int32 Function(Pointer<Void>, Pointer<Uint8>, IntPtr);
+typedef _LoadD = int Function(Pointer<Void>, Pointer<Uint8>, int);
+typedef _FreeStringC = Void Function(Pointer<Utf8>);
+typedef _FreeStringD = void Function(Pointer<Utf8>);
+typedef _FreeBytesC = Void Function(Pointer<Uint8>, Uint64);
+typedef _FreeBytesD = void Function(Pointer<Uint8>, int);
+typedef _ImportC = Int32 Function(Pointer<Void>, Pointer<Uint8>, IntPtr, Int32, Int32, Uint32, Int32, Int32, Int32, Int32);
+typedef _ImportD = int Function(Pointer<Void>, Pointer<Uint8>, int, int, int, int, int, int, int, int);
+typedef _ExportPngC = Pointer<Uint8> Function(Pointer<Void>, Uint32, Pointer<Uint64>);
+typedef _ExportPngD = Pointer<Uint8> Function(Pointer<Void>, int, Pointer<Uint64>);
+typedef _ExportGifC = Pointer<Uint8> Function(Pointer<Void>, Pointer<Uint64>);
+typedef _ExportGifD = Pointer<Uint8> Function(Pointer<Void>, Pointer<Uint64>);
+
+DynamicLibrary _open() {
+  // Android: the engine ships as libmakapix_ffi.so bundled in the APK (jniLibs).
+  if (Platform.isAndroid) {
+    return DynamicLibrary.open('libmakapix_ffi.so');
+  }
+  // iOS (future): statically linked into the app process.
+  if (Platform.isIOS) {
+    return DynamicLibrary.process();
+  }
+  // Windows / desktop: makapix_ffi.dll next to the exe, or the dev target dirs.
+  final exeDir = File(Platform.resolvedExecutable).parent.path;
+  final candidates = <String>[
+    'makapix_ffi.dll',
+    '$exeDir\\makapix_ffi.dll',
+    '$exeDir\\..\\..\\..\\..\\..\\target\\release\\makapix_ffi.dll',
+    '${Directory.current.path}\\..\\target\\release\\makapix_ffi.dll',
+    '${Directory.current.path}\\..\\target\\debug\\makapix_ffi.dll',
+  ];
+  for (final c in candidates) {
+    try {
+      return DynamicLibrary.open(c);
+    } catch (_) {}
+  }
+  throw Exception('Could not locate makapix_ffi.dll. Build it with: cargo build -p makapix-ffi --release');
+}
+
+class Engine {
+  final DynamicLibrary _lib;
+  late final Pointer<Void> _s;
+
+  late final _NewD _new = _lib.lookupFunction<_NewC, _NewD>('mkpx_new');
+  late final _FreeD _freeS = _lib.lookupFunction<_FreeC, _FreeD>('mkpx_free');
+  late final _RunD _run = _lib.lookupFunction<_RunC, _RunD>('mkpx_run');
+  late final _U32D _width = _lib.lookupFunction<_U32C, _U32D>('mkpx_width');
+  late final _U32D _height = _lib.lookupFunction<_U32C, _U32D>('mkpx_height');
+  late final _U32D _frameCount = _lib.lookupFunction<_U32C, _U32D>('mkpx_frame_count');
+  late final _U32D _activeFrame = _lib.lookupFunction<_U32C, _U32D>('mkpx_active_frame');
+  late final _U32D _playFrame = _lib.lookupFunction<_U32C, _U32D>('mkpx_play_frame');
+  late final _U32D _primary = _lib.lookupFunction<_U32C, _U32D>('mkpx_primary_color');
+  late final _DisplayD _display = _lib.lookupFunction<_DisplayC, _DisplayD>('mkpx_display');
+  late final _CompositeD _composite = _lib.lookupFunction<_CompositeC, _CompositeD>('mkpx_composite_frame');
+  late final _StateD _state = _lib.lookupFunction<_StateC, _StateD>('mkpx_state_json');
+  late final _OutlineD _outline = _lib.lookupFunction<_OutlineC, _OutlineD>('mkpx_outline_mask');
+  late final _SaveD _save = _lib.lookupFunction<_SaveC, _SaveD>('mkpx_save');
+  late final _LoadD _load = _lib.lookupFunction<_LoadC, _LoadD>('mkpx_load');
+  late final _FreeStringD _freeStr = _lib.lookupFunction<_FreeStringC, _FreeStringD>('mkpx_free_string');
+  late final _FreeBytesD _freeBytes = _lib.lookupFunction<_FreeBytesC, _FreeBytesD>('mkpx_free_bytes');
+  late final _ImportD _import = _lib.lookupFunction<_ImportC, _ImportD>('mkpx_import');
+  late final _ExportPngD _exportPng = _lib.lookupFunction<_ExportPngC, _ExportPngD>('mkpx_export_png');
+  late final _ExportGifD _exportGif = _lib.lookupFunction<_ExportGifC, _ExportGifD>('mkpx_export_gif');
+
+  Engine(int w, int h) : _lib = _open() {
+    _s = _new(w, h);
+    if (_s == nullptr) throw Exception('mkpx_new failed');
+  }
+
+  int get width => _width(_s);
+  int get height => _height(_s);
+  int get frameCount => _frameCount(_s);
+  int get activeFrame => _activeFrame(_s);
+  int get playFrame => _playFrame(_s);
+  int get primaryColor => _primary(_s); // 0xRRGGBBAA
+
+  /// Run a DSL script; returns null on success or an error message.
+  String? run(String script) {
+    final units = utf8Encode(script);
+    final p = malloc<Uint8>(units.length);
+    p.asTypedList(units.length).setAll(0, units);
+    final err = _run(_s, p, units.length);
+    malloc.free(p);
+    if (err == nullptr) return null;
+    final msg = err.toDartString();
+    _freeStr(err);
+    return msg;
+  }
+
+  /// Active-frame display RGBA bytes (with overlays).
+  Uint8List display({bool onion = false, bool grid = false, bool checker = true}) {
+    final cap = width * height * 4;
+    final out = malloc<Uint8>(cap);
+    final n = _display(_s, onion ? 1 : 0, grid ? 1 : 0, checker ? 1 : 0, out, cap);
+    final bytes = Uint8List.fromList(out.asTypedList(n < 0 ? 0 : n));
+    malloc.free(out);
+    return bytes;
+  }
+
+  Uint8List compositeFrame(int frame) {
+    final cap = width * height * 4;
+    final out = malloc<Uint8>(cap);
+    final n = _composite(_s, frame, out, cap);
+    final bytes = Uint8List.fromList(out.asTypedList(n < 0 ? 0 : n));
+    malloc.free(out);
+    return bytes;
+  }
+
+  String stateJson() {
+    final p = _state(_s);
+    final s = p.toDartString();
+    _freeStr(p);
+    return s;
+  }
+
+  /// 1-byte-per-pixel selection coverage (1=selected) for drawing the outline; empty if none.
+  Uint8List outlineMask() {
+    final cap = width * height;
+    if (cap <= 0) return Uint8List(0);
+    final out = malloc<Uint8>(cap);
+    final n = _outline(_s, out, cap);
+    final bytes = n > 0 ? Uint8List.fromList(out.asTypedList(n)) : Uint8List(0);
+    malloc.free(out);
+    return bytes;
+  }
+
+  Uint8List save() {
+    final lenPtr = malloc<Uint64>();
+    final p = _save(_s, lenPtr);
+    final len = lenPtr.value;
+    final bytes = Uint8List.fromList(p.asTypedList(len));
+    _freeBytes(p, len);
+    malloc.free(lenPtr);
+    return bytes;
+  }
+
+  bool load(Uint8List data) {
+    final p = malloc<Uint8>(data.length);
+    p.asTypedList(data.length).setAll(0, data);
+    final ok = _load(_s, p, data.length) == 0;
+    malloc.free(p);
+    return ok;
+  }
+
+  /// Import an image; mode 0=Fit,1=Stretch,2=Crop. Pass a crop rect (source pixels) to use
+  /// an explicit interactive crop region (stretched to the canvas).
+  bool importImage(Uint8List data,
+      {int mode = 0, bool asLayer = true, int startFrame = 0, int cropX = 0, int cropY = 0, int cropW = 0, int cropH = 0}) {
+    final p = malloc<Uint8>(data.length);
+    p.asTypedList(data.length).setAll(0, data);
+    final ok = _import(_s, p, data.length, mode, asLayer ? 1 : 0, startFrame, cropX, cropY, cropW, cropH) == 0;
+    malloc.free(p);
+    return ok;
+  }
+
+  Uint8List exportPng(int frame) {
+    final lenPtr = malloc<Uint64>();
+    final p = _exportPng(_s, frame, lenPtr);
+    final out = p == nullptr ? Uint8List(0) : Uint8List.fromList(p.asTypedList(lenPtr.value));
+    if (p != nullptr) _freeBytes(p, lenPtr.value);
+    malloc.free(lenPtr);
+    return out;
+  }
+
+  Uint8List exportGif() {
+    final lenPtr = malloc<Uint64>();
+    final p = _exportGif(_s, lenPtr);
+    final out = p == nullptr ? Uint8List(0) : Uint8List.fromList(p.asTypedList(lenPtr.value));
+    if (p != nullptr) _freeBytes(p, lenPtr.value);
+    malloc.free(lenPtr);
+    return out;
+  }
+
+  void dispose() => _freeS(_s);
+}
+
+List<int> utf8Encode(String s) => const Utf8Encoder().convert(s);

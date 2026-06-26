@@ -1,0 +1,15 @@
+[package]
+name = "makapix-codec"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Image import/export for Makapix (GIF/PNG/APNG/JPEG/BMP/WebP)."
+
+[dependencies]
+makapix-engine = { path = "../engine" }
+
+[dependencies.image]
+version = "0.25"
+default-features = false
+features = ["png", "gif", "bmp", "jpeg", "webp"]

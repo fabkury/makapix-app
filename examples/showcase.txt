@@ -1,0 +1,36 @@
+# Feature showcase: exercises most tools on a 64x64 canvas across two layers.
+NewDocument(64, 64)
+
+# --- Layer 0: linear alpha gradient sky + airbrush stars ---
+SelectTool(Gradient); SetGradientType(Linear)
+SetGradientStops([#0A1030FF@0, #3060A0FF@0.7, #80C0FFFF@1])
+Stroke([(0,0),(0,63)])
+SelectTool(Airbrush); SetPrimaryColor(#FFFFFFFF); SetBrushSize(2); SetIntensity(255); SetSeed(7)
+Tap(8,8); Tap(20,5); Tap(40,10); Tap(55,6); Tap(30,14)
+
+# --- Layer 1: a character-ish blob ---
+AddLayer()
+SetPrimaryColor(#30C040FF); SelectTool(Bucket)
+SelectTool(Ellipse); SetShapeFill(true); SetPrimaryColor(#30C040FF)
+Stroke([(20,28),(44,56)])
+# eyes with pencil
+SelectTool(Pencil); SetPrimaryColor(#101010FF); SetBrushSize(3); SetBrushShape(Round)
+Tap(28,38); Tap(36,38)
+# outline with line tool
+SetPrimaryColor(#0A300AFF); SelectTool(Line); SetBrushSize(1)
+Stroke([(20,42),(44,42)])
+
+# --- Selection + HSV shift on a band ---
+SelectTool(SelectRect); SetSelectionMode(Replace)
+Stroke([(0,46),(63,52)])
+SetHsvShift(-40, 0.2, 0.0); ApplyHsvShift()
+SelectNone()
+
+# --- Dodge highlight ---
+SelectTool(Dodge); SetBrushSize(6); SetIntensity(220)
+Tap(30,34)
+
+# --- a second animation frame (duplicate) + set durations ---
+DuplicateFrame(0)
+SetActiveFrame(0)
+SetAllDurations(80)

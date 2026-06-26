@@ -1,0 +1,20 @@
+# Makapix harness demo: layers, gradient, shapes, selection, fill, undo.
+NewDocument(48, 48)
+# Layer 0: a radial gradient background
+SelectTool(Gradient); SetGradientType(Radial)
+SetGradientStops([#102040FF@0, #4080C0FF@0.6, #FFFFFFFF@1])
+Stroke([(24,24),(24,2)])
+# Layer 1: a filled red ellipse + black outline rectangle
+AddLayer()
+SetPrimaryColor(#E03040FF); SelectTool(Ellipse); SetShapeFill(true)
+Stroke([(8,16),(24,32)])
+SetPrimaryColor(#101010FF); SelectTool(Rectangle); SetShapeFill(false); SetLineWidth(1)
+Stroke([(28,8),(44,40)])
+# Pencil signature stroke
+SelectTool(Pencil); SetPrimaryColor(#FFE020FF); SetBrushSize(2); SetBrushShape(Round)
+Stroke([(30,12),(40,12),(40,36),(30,36)])
+# Select a rectangle and HSV-shift its hue
+SelectTool(SelectRect); SetSelectionMode(Replace)
+Stroke([(6,6),(20,20)])
+SetHsvShift(60, 0, 0); ApplyHsvShift()
+SelectNone()

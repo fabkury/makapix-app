@@ -1,0 +1,15 @@
+[package]
+name = "makapix-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "C ABI bridge for the Makapix engine, consumed by the Flutter shell via dart:ffi."
+
+[lib]
+name = "makapix_ffi"
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+makapix-engine = { path = "../engine" }
+makapix-codec = { path = "../codec" }
