@@ -19,6 +19,11 @@ app/android/app/src/main/jniLibs/
 # ---- Mock Makapix Club server output ----
 tools/uploads/
 
+# ---- Read-only upstream clone of the Makapix Club server (reference only) ----
+# A throwaway clone of https://github.com/fabkury/makapix used to spec the
+# Club integration (see SPEC-CLUB.md). Never committed into this repo.
+reference/
+
 # ---- Local Claude Code state (machine/user-specific) ----
 .claude/
 

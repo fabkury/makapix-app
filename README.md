@@ -14,6 +14,11 @@ visual app is a thin, fully-inspectable projection of its state, which keeps the
   roadmap (loop foundations → layers+animation MVP → selections → advanced tools → import/export →
   palettes/UI → Club upload → iOS via cloud Mac CI → perf/release), per-phase acceptance gates, testing
   strategy, and the risk register.
+- **[`SPEC-CLUB.md`](SPEC-CLUB.md)** — the **Makapix Club integration** spec: turn the editor into a full
+  native client for the live social network (`makapix.club`) with the editor as its create/edit/remix surface.
+  Auth, artwork conformance, publish, remix-in-place, feeds, reactions, comments, profiles/following, search,
+  notifications, playlists, analytics, players, and a website→app feature-parity matrix. Supersedes `SPEC.md`
+  §21/§28.7's stubbed upload interface with the server's real API.
 
 ## Core decisions (see SPEC §25)
 - Rust core, first-class & up front; Flutter shell via `flutter_rust_bridge`.
