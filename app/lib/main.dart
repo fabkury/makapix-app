@@ -1232,6 +1232,7 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
 
     return Container(
       height: 48,
+      width: double.infinity, // span full width so narrow content doesn't expose the black background on each side
       color: const Color(0xFF202327),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
