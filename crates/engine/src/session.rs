@@ -130,7 +130,9 @@ impl Session {
             },
             grid,
             checker_bg: checker,
-            cursor: if self.tool == ToolKind::PrecisionPencil { Some(self.cursor) } else { None },
+            // The reticle is now drawn by the UI as a thin, screen-space, marching-ants overlay
+            // (not baked into canvas pixels), so the engine no longer renders it.
+            cursor: None,
         };
         let mut buf = render::render_display(&self.doc, self.doc.active_frame(), &ov);
         self.draw_tool_preview(&mut buf);
@@ -587,6 +589,18 @@ impl Session {
     pub fn plot_cursor(&mut self) {
         self.cursor_pen_down();
         self.cursor_pen_up();
+    }
+
+    /// Apply a single airbrush dab at the reticle, committed as one undo edit. This is the
+    /// "one go at a time" airbrush, driven off-finger like the precision pencil.
+    pub fn airbrush_cursor(&mut self) {
+        if !self.active_editable() {
+            return;
+        }
+        let before = self.begin_edit();
+        let p = self.cursor;
+        self.airbrush_active(p);
+        self.commit_edit(before);
     }
 
     // ---- selection / clipboard ops ----

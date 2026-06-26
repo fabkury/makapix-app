@@ -80,7 +80,7 @@ const toolTips = <String, String>{
   'PrecisionPencil':
       'Drag to move the ✛ reticle off your finger; arrows nudge 1px. Tap DRAW for a dot, or turn PEN on and drag to draw a line.',
   'Brush': 'Drag to paint, blending onto existing pixels.',
-  'Airbrush': 'Drag/hold to spray — density builds up. Set size & intensity.',
+  'Airbrush': 'Drag to aim the ◎ reticle off your finger; tap SPRAY for one burst. Set size & intensity.',
   'Eraser': 'Drag to erase pixels to transparent.',
   'Bucket': 'Tap an area to flood-fill. Threshold = colour tolerance.',
   'Gradient': 'Drag start→end to fill a gradient. Pick 2–3 colours, Linear/Radial.',
@@ -138,10 +138,12 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
   final Set<int> _selLayers = {}; // multi-selected layers for group move
   String _clubUrl = 'http://localhost:8080';
   String _clubToken = '';
-  // precision pencil
+  // precision pencil / airbrush off-finger cursor
   bool _penDown = false;
   Offset? _lastTouch;
   double _accX = 0, _accY = 0;
+  int _cursorX = 0, _cursorY = 0; // reticle position (canvas px), mirrored from the engine
+  int? _eraserX, _eraserY; // eraser footprint centre (canvas px) during an active erase drag
   // configurable bottom toolbar
   List<String> _toolOrder = tools.map((t) => t.dsl).toList();
   bool _reorderMode = false;
@@ -156,6 +158,11 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
   // engine's draw tool, and the canvas is inert while one is active.
   static const _transformTools = {'Flip', 'Rotate', 'Invert', 'Resize'};
   bool get _isTransformTool => _transformTools.contains(_tool);
+
+  // Off-finger "reticle" tools: dragging moves a cursor (drawn as a screen-space marching-ants
+  // overlay) rather than the finger, and an action button effects one operation at a time.
+  static const _cursorTools = {'PrecisionPencil', 'Airbrush'};
+  bool get _isCursorTool => _cursorTools.contains(_tool);
 
   bool get _engineReady => _error == null;
 
@@ -259,7 +266,53 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
         }
       }
     }
+    // While erasing, outline the eraser footprint at its current position so the user sees
+    // exactly which pixels are being erased.
+    if (_eraserX != null && _eraserY != null) {
+      _appendBrushFootprint(edges, _eraserX!, _eraserY!);
+    }
     _outlineEdges = edges;
+  }
+
+  // Append boundary segments outlining the configured brush footprint (size + Round/Square)
+  // centred at (ex,ey), clipped to the canvas — mirrors the engine's stamp footprint so the
+  // marching ants match exactly what a stamp at this position would cover.
+  void _appendBrushFootprint(List<List<int>> edges, int ex, int ey) {
+    final w = engine.width, h = engine.height;
+    final size = _brushSize < 1 ? 1 : _brushSize;
+    final radius = (size - 1) ~/ 2;
+    final covered = <int>{};
+    void add(int x, int y) {
+      if (x < 0 || y < 0 || x >= w || y >= h) return;
+      covered.add(y * w + x);
+    }
+    if (_round) {
+      if (size <= 1) {
+        add(ex, ey);
+      } else {
+        final r = radius < 1 ? 1 : radius;
+        for (var dy = -r; dy <= r; dy++) {
+          for (var dx = -r; dx <= r; dx++) {
+            if (dx * dx + dy * dy <= r * r) add(ex + dx, ey + dy);
+          }
+        }
+      }
+    } else {
+      for (var dy = -radius; dy <= radius; dy++) {
+        for (var dx = -radius; dx <= radius; dx++) {
+          add(ex + dx, ey + dy);
+        }
+      }
+    }
+    bool cov(int x, int y) => covered.contains(y * w + x) && x >= 0 && y >= 0 && x < w && y < h;
+    for (final key in covered) {
+      final x = key % w, y = key ~/ w;
+      final t = x + y;
+      if (!cov(x - 1, y)) edges.add([x, y, x, y + 1, t]);
+      if (!cov(x + 1, y)) edges.add([x + 1, y, x + 1, y + 1, t]);
+      if (!cov(x, y - 1)) edges.add([x, y, x + 1, y, t]);
+      if (!cov(x, y + 1)) edges.add([x, y + 1, x + 1, y + 1, t]);
+    }
   }
 
   String _hex(Color c) =>
@@ -329,8 +382,8 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
     setState(() => _tool = t);
     if (_transformTools.contains(t)) return; // UI-only action group: no engine tool change
     _send('SelectTool($t)');
-    if (t == 'PrecisionPencil') {
-      _send('SetCursor(${engine.width ~/ 2},${engine.height ~/ 2})');
+    if (_cursorTools.contains(t)) {
+      _setCursor(engine.width ~/ 2, engine.height ~/ 2);
       _redraw();
     }
     _send('SetBrushSize($_brushSize); SetBrushShape(${_round ? 'Round' : 'Square'})');
@@ -346,6 +399,26 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
   void _setPrimary(Color c) {
     setState(() => _primary = c);
     _send('SetPrimaryColor(${_hex(c)})');
+  }
+
+  // Place the reticle at an absolute canvas pixel, mirroring the engine's clamping.
+  void _setCursor(int x, int y) {
+    _cursorX = x.clamp(0, engine.width - 1);
+    _cursorY = y.clamp(0, engine.height - 1);
+    _send('SetCursor($_cursorX,$_cursorY)');
+  }
+
+  // Move the reticle by a pixel delta. Uses MoveCursor so the engine still paints the precision
+  // pen line while the pen is down; the local mirror clamps identically to stay in sync.
+  void _moveCursor(int dx, int dy) {
+    _cursorX = (_cursorX + dx).clamp(0, engine.width - 1);
+    _cursorY = (_cursorY + dy).clamp(0, engine.height - 1);
+    _send('MoveCursor($dx,$dy)');
+  }
+
+  void _nudgeCursor(int dx, int dy) {
+    _moveCursor(dx, dy);
+    _redraw();
   }
 
   Rect _fittedRect(Size box, int w, int h) {
@@ -812,19 +885,23 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
           behavior: HitTestBehavior.opaque,
           onPointerDown: (e) {
             if (_isTransformTool) return; // transform action groups don't draw on the canvas
-            if (_isPrecision) {
+            if (_isCursorTool) {
               _lastTouch = e.localPosition;
               _accX = 0;
               _accY = 0;
-              return; // precision: drag moves the reticle, drawing is via buttons
+              return; // off-finger: drag moves the reticle, acting is via buttons
             }
             final p = _toCanvas(e.localPosition, box, engine.width, engine.height);
+            if (_tool == 'Eraser') {
+              _eraserX = p.dx.toInt();
+              _eraserY = p.dy.toInt();
+            }
             _send('PointerDown(${p.dx.toInt()},${p.dy.toInt()})');
             _redraw();
           },
           onPointerMove: (e) {
             if (_isTransformTool) return;
-            if (_isPrecision) {
+            if (_isCursorTool) {
               final last = _lastTouch ?? e.localPosition;
               final r = _fittedRect(box, engine.width, engine.height);
               final scale = r.width / engine.width;
@@ -836,21 +913,29 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
               if (mx != 0 || my != 0) {
                 _accX -= mx;
                 _accY -= my;
-                _send('MoveCursor($mx,$my)');
+                _moveCursor(mx, my);
                 _redraw();
               }
               return;
             }
             final p = _toCanvas(e.localPosition, box, engine.width, engine.height);
+            if (_tool == 'Eraser') {
+              _eraserX = p.dx.toInt();
+              _eraserY = p.dy.toInt();
+            }
             _send('PointerMove(${p.dx.toInt()},${p.dy.toInt()})');
             _redraw();
           },
           onPointerUp: (e) {
             if (_isTransformTool) return;
-            if (_isPrecision) {
+            if (_isCursorTool) {
               _lastTouch = null;
               if (_penDown) _refreshState();
               return;
+            }
+            if (_eraserX != null) {
+              _eraserX = null;
+              _eraserY = null;
             }
             _send('PointerUp()');
             _refreshState();
@@ -860,6 +945,11 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
           child: Stack(fit: StackFit.expand, children: [
             CustomPaint(painter: _CanvasPainter(_image), size: Size.infinite),
             CustomPaint(painter: _OutlinePainter(_outlineEdges, engine.width, engine.height, _antCtrl), size: Size.infinite),
+            if (_isCursorTool)
+              CustomPaint(
+                painter: _ReticlePainter(_cursorX, _cursorY, engine.width, engine.height, _antCtrl),
+                size: Size.infinite,
+              ),
           ]),
         ),
       );
@@ -1099,15 +1189,17 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
         padding: const EdgeInsets.only(left: 8, right: 4),
         child: Text(s, style: const TextStyle(fontSize: 11, color: Colors.white60))));
 
-    if (_isPrecision) {
-      // reticle nudge pad
-      children.add(IconButton(iconSize: 20, tooltip: 'Nudge left', onPressed: () { _send('MoveCursor(-1,0)'); _redraw(); }, icon: const Icon(Icons.chevron_left)));
+    if (_isCursorTool) {
+      // off-finger reticle nudge pad (1px steps), shared by precision pencil + airbrush
+      children.add(IconButton(iconSize: 20, tooltip: 'Nudge left', onPressed: () => _nudgeCursor(-1, 0), icon: const Icon(Icons.chevron_left)));
       children.add(Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        InkWell(onTap: () { _send('MoveCursor(0,-1)'); _redraw(); }, child: const Icon(Icons.keyboard_arrow_up, size: 18)),
-        InkWell(onTap: () { _send('MoveCursor(0,1)'); _redraw(); }, child: const Icon(Icons.keyboard_arrow_down, size: 18)),
+        InkWell(onTap: () => _nudgeCursor(0, -1), child: const Icon(Icons.keyboard_arrow_up, size: 18)),
+        InkWell(onTap: () => _nudgeCursor(0, 1), child: const Icon(Icons.keyboard_arrow_down, size: 18)),
       ]));
-      children.add(IconButton(iconSize: 20, tooltip: 'Nudge right', onPressed: () { _send('MoveCursor(1,0)'); _redraw(); }, icon: const Icon(Icons.chevron_right)));
+      children.add(IconButton(iconSize: 20, tooltip: 'Nudge right', onPressed: () => _nudgeCursor(1, 0), icon: const Icon(Icons.chevron_right)));
       children.add(const SizedBox(width: 4));
+    }
+    if (_isPrecision) {
       // DRAW (single dot)
       children.add(Padding(
         padding: const EdgeInsets.symmetric(horizontal: 3),
@@ -1131,6 +1223,18 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
             _refreshState();
             _redraw();
           },
+        ),
+      ));
+    }
+    if (_tool == 'Airbrush') {
+      // SPRAY (one airbrush dab at the reticle, off-finger)
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
+          onPressed: () { _send('AirbrushCursor()'); _refreshState(); _redraw(); setState(() {}); },
+          icon: const Icon(Icons.blur_on, size: 16),
+          label: const Text('Spray'),
         ),
       ));
     }
@@ -1701,6 +1805,75 @@ class _OutlinePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_OutlinePainter old) => true; // driven by the animation
+}
+
+/// The off-finger cursor "bulls-eye": a thin, screen-space, marching-ants reticle around the
+/// target pixel (cell outline + four crosshair arms). Drawn in screen pixels — never baked into
+/// canvas pixels — so it stays crisp at any zoom, like the selection outline.
+class _ReticlePainter extends CustomPainter {
+  final int cx, cy, cw, ch; // reticle target pixel + canvas dims
+  final Animation<double> anim;
+  _ReticlePainter(this.cx, this.cy, this.cw, this.ch, this.anim) : super(repaint: anim);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (cw <= 0 || ch <= 0) return;
+    final scale = (size.width / cw) < (size.height / ch) ? (size.width / cw) : (size.height / ch);
+    final ox = (size.width - cw * scale) / 2;
+    final oy = (size.height - ch * scale) / 2;
+    final left = ox + cx * scale;
+    final top = oy + cy * scale;
+    final cell = Rect.fromLTWH(left, top, scale, scale);
+    final center = cell.center;
+    final gap = scale * 0.5 + 3; // keep the target pixel + its ring uncovered
+    final arm = scale * 1.5 + 7;
+    final segs = <List<Offset>>[
+      // outline of the exact target pixel cell
+      [cell.topLeft, cell.topRight],
+      [cell.topRight, cell.bottomRight],
+      [cell.bottomRight, cell.bottomLeft],
+      [cell.bottomLeft, cell.topLeft],
+      // four crosshair arms pointing inward from outside the gap
+      [Offset(center.dx, top - gap - arm), Offset(center.dx, top - gap)],
+      [Offset(center.dx, cell.bottom + gap), Offset(center.dx, cell.bottom + gap + arm)],
+      [Offset(left - gap - arm, center.dy), Offset(left - gap, center.dy)],
+      [Offset(cell.right + gap, center.dy), Offset(cell.right + gap + arm, center.dy)],
+    ];
+    final phase = anim.value; // 0..1, advances the ants along each segment
+    for (final s in segs) {
+      _march(canvas, s[0], s[1], phase);
+    }
+  }
+
+  // Draw a marching-ants dashed segment: alternating black/white dashes sliding with [phase].
+  void _march(Canvas canvas, Offset a, Offset b, double phase) {
+    const dash = 4.0;
+    final total = (b - a).distance;
+    if (total <= 0) return;
+    final dir = (b - a) / total;
+    final black = Paint()
+      ..color = Colors.black
+      ..strokeWidth = 1.4
+      ..isAntiAlias = false;
+    final white = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 1.4
+      ..isAntiAlias = false;
+    var pos = -((phase * dash * 2) % (dash * 2)); // negative start so ants march toward +dir
+    var idx = 0;
+    while (pos < total) {
+      final segStart = pos < 0 ? 0.0 : pos;
+      final segEnd = (pos + dash) > total ? total : (pos + dash);
+      if (segEnd > segStart) {
+        canvas.drawLine(a + dir * segStart, a + dir * segEnd, idx.isEven ? black : white);
+      }
+      pos += dash;
+      idx++;
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ReticlePainter old) => true; // driven by the animation
 }
 
 /// Interactive crop-rectangle picker over a source image. Returns the crop rect in
