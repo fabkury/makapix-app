@@ -119,6 +119,47 @@ impl Session {
         out
     }
 
+    /// A `tw`×`th` nearest-downscaled thumbnail of a single layer's raw pixels (straight RGBA,
+    /// transparent where empty) — for the layers film-strip, which shows each layer alone.
+    pub fn layer_thumb_bytes(&self, frame: usize, layer: usize, tw: u32, th: u32) -> Vec<u8> {
+        let fi = frame.min(self.doc.frames.len().saturating_sub(1));
+        let f = &self.doc.frames[fi];
+        if f.layers.is_empty() {
+            return Vec::new();
+        }
+        let li = layer.min(f.layers.len() - 1);
+        let src = &f.layers[li].pixels;
+        let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
+        let (tw, th) = (tw.max(1), th.max(1));
+        let mut out = vec![0u8; (tw * th * 4) as usize];
+        for ty in 0..th {
+            for tx in 0..tw {
+                let sx = (tx * w / tw) as i32;
+                let sy = (ty * h / th) as i32;
+                let c = src.get(sx, sy);
+                let o = ((ty * tw + tx) * 4) as usize;
+                out[o] = c.r;
+                out[o + 1] = c.g;
+                out[o + 2] = c.b;
+                out[o + 3] = c.a;
+            }
+        }
+        out
+    }
+
+    /// Content hash (low 64 bits) of a single layer — for caching layer film-strip thumbnails.
+    /// Bounds-safe (clamps indices) so it is safe to call across the FFI with possibly stale
+    /// indices, unlike the unchecked `layer_hash` used by the CLI probe.
+    pub fn layer_thumb_hash(&self, frame: usize, layer: usize) -> u64 {
+        let fi = frame.min(self.doc.frames.len().saturating_sub(1));
+        let f = &self.doc.frames[fi];
+        if f.layers.is_empty() {
+            return 0;
+        }
+        let li = layer.min(f.layers.len() - 1);
+        f.layers[li].content_hash() as u64
+    }
+
     pub fn display_bytes(&self, onion: bool, grid: bool, checker: bool) -> Vec<u8> {
         let af = self.doc.active_frame;
         let ov = render::Overlays {
@@ -346,6 +387,10 @@ impl Session {
                     let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
                     tool::flood_fill(buf, sel.as_ref(), p, color, th, cont, PaintMode::Replace);
                 }
+                ToolKind::MoveLayer => {
+                    // snapshot the whole active layer; pointer_move re-blits it at the live offset
+                    floating = Some(self.doc.active_frame().active_layer().pixels.clone());
+                }
                 ToolKind::Move => {
                     // lift selected pixels into a floating buffer
                     if let Some(sel) = self.selection.clone() {
@@ -375,6 +420,29 @@ impl Session {
             Some(s) => s.last,
             None => return,
         };
+        // Move-layer: re-blit the snapshot at the live offset from the drag start (single undo,
+        // committed on pointer_up). Take the snapshot out to satisfy the borrow checker, then
+        // restore it.
+        if self.tool == ToolKind::MoveLayer {
+            let (start, float) = match self.stroke.as_mut() {
+                Some(s) => (s.start, s.floating.take()),
+                None => return,
+            };
+            if let Some(f) = float.as_ref() {
+                if self.active_editable() {
+                    let (dx, dy) = (p.x - start.x, p.y - start.y);
+                    let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
+                    buf.clear();
+                    buf.blit_over(f, Point::new(dx, dy));
+                }
+            }
+            if let Some(s) = self.stroke.as_mut() {
+                s.floating = float;
+                s.last = p;
+                s.path.push(p);
+            }
+            return;
+        }
         if self.active_editable() {
             match self.tool {
                 ToolKind::Pencil => self.stroke_active(last, p, PaintMode::Replace, self.settings.primary),
@@ -484,7 +552,7 @@ impl Session {
 
         // Commit pixel changes as one undo record.
         if is_pixel_tool
-            || matches!(self.tool, ToolKind::Gradient | ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse | ToolKind::Move)
+            || matches!(self.tool, ToolKind::Gradient | ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse | ToolKind::Move | ToolKind::MoveLayer)
         {
             self.commit_edit(stroke.before);
         }

@@ -228,6 +228,7 @@ fn parse_tool(s: &str) -> Result<ToolKind, String> {
         "Dodge" => Dodge,
         "Burn" => Burn,
         "Move" => Move,
+        "MoveLayer" => MoveLayer,
         "Eyedropper" => Eyedropper,
         "Line" => Line,
         "Rectangle" => Rectangle,

@@ -61,6 +61,7 @@ const tools = <ToolDef>[
   ToolDef('Burn', Icons.dark_mode, 'Burn'),
   ToolDef('Eyedropper', Icons.colorize, 'Pick'),
   ToolDef('Move', Icons.open_with, 'Move'),
+  ToolDef('MoveLayer', Icons.control_camera, 'Move Lyr'),
   ToolDef('SelectRect', Icons.highlight_alt, 'Sel Rect'),
   ToolDef('SelectEllipse', Icons.lens_blur, 'Sel Oval'),
   ToolDef('SelectFree', Icons.gesture, 'Lasso'),
@@ -91,6 +92,7 @@ const toolTips = <String, String>{
   'Burn': 'Drag over pixels to darken them. Set intensity.',
   'Eyedropper': 'Tap a pixel to pick its colour as primary.',
   'Move': 'Select first, then drag the selected pixels to move them.',
+  'MoveLayer': 'Drag on the canvas to move the whole active layer; arrows nudge 1px.',
   'SelectRect': 'Drag to select a rectangle. Use Add/Subtract/Intersect modes.',
   'SelectEllipse': 'Drag to select an ellipse. Combine with Add/Subtract modes.',
   'SelectCircle': 'Drag from centre outward to select a circle.',
@@ -135,7 +137,6 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
   Timer? _playTimer;
   Map<String, dynamic> _state = {};
   String? _error;
-  final Set<int> _selLayers = {}; // multi-selected layers for group move
   String _clubUrl = 'http://localhost:8080';
   String _clubToken = '';
   // precision pencil / airbrush off-finger cursor
@@ -151,6 +152,10 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
   // film-roll frame thumbnails (cached, invalidated by per-frame content hash)
   final Map<int, _Thumb> _frameThumbs = {};
   final Set<int> _thumbInFlight = {};
+  // layers film-strip thumbnails, keyed by (frame,layer) and invalidated by per-layer content hash
+  final Map<int, _Thumb> _layerThumbs = {};
+  final Set<int> _layerThumbInFlight = {};
+  int _layerKey(int frame, int layer) => frame * 100000 + layer;
 
   bool get _isPrecision => _tool == 'PrecisionPencil';
 
@@ -242,6 +247,10 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
       t.img.dispose();
     }
     _frameThumbs.clear();
+    for (final t in _layerThumbs.values) {
+      t.img.dispose();
+    }
+    _layerThumbs.clear();
     if (_engineReady) engine.dispose();
     super.dispose();
   }
@@ -802,43 +811,18 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
               icon: Icon(Icons.grid_on, color: _grid ? Colors.amber : null)),
         ],
       ),
-      body: LayoutBuilder(builder: (context, c) {
-        final wide = c.maxWidth >= 1000; // tablet / desktop → side panel
-        Widget panelLabel(String s) => Container(
-              width: double.infinity,
-              color: const Color(0xFF141619),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              child: Text(s, style: const TextStyle(fontSize: 10, color: Colors.white38)),
-            );
-        final belowFilmRoll = wide
-            ? Row(children: [
-                Expanded(child: _buildCanvas()),
-                Container(width: 1, color: Colors.black26),
-                SizedBox(
-                  width: 300,
-                  child: Column(children: [
-                    panelLabel('LAYERS'),
-                    _buildLayers(layers),
-                    const Expanded(child: ColoredBox(color: Color(0xFF1A1C1F))),
-                  ]),
-                ),
-              ])
-            : Column(children: [
-                Expanded(child: _buildCanvas()),
-                _buildLayers(layers),
-              ]);
-        return Column(
-          children: [
-            _buildFilmRoll(), // film-roll of frame previews at the top of the canvas area
-            Expanded(child: belowFilmRoll),
-            const Divider(height: 1),
-            _buildToolOptions(),
-            _buildPalette(),
-            _buildToolBar(),
-            _buildTooltipBand(context),
-          ],
-        );
-      }),
+      body: Column(
+        children: [
+          _buildFilmRoll(), // film-roll of frame previews at the top of the canvas area
+          Expanded(child: _buildCanvas()),
+          const Divider(height: 1),
+          _buildLayers(layers), // layers film-strip, directly above the tool options
+          _buildToolOptions(), // row-1
+          _buildPalette(), // row-2
+          _buildToolBar(), // row-3
+          _buildTooltipBand(context),
+        ],
+      ),
     );
   }
 
@@ -1073,11 +1057,31 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
     return [];
   }
 
-  void _nudgeGroup(int dx, int dy) {
-    if (_selLayers.length > 1) {
-      _send('SetActiveLayers(${_selLayers.join(",")})');
+  void _nudgeLayer(int dx, int dy) => _act('NudgeLayers($dx,$dy)');
+
+  Future<void> _genLayerThumb(int frame, int layer, int hash) async {
+    final key = _layerKey(frame, layer);
+    if (_layerThumbInFlight.contains(key)) return;
+    _layerThumbInFlight.add(key);
+    final (tw, th) = _thumbSize();
+    final bytes = engine.layerThumb(frame, layer, tw, th);
+    if (bytes.length < tw * th * 4) {
+      _layerThumbInFlight.remove(key);
+      return;
     }
-    _act('NudgeLayers($dx,$dy)');
+    final img = await _decode(bytes, tw, th);
+    _layerThumbInFlight.remove(key);
+    if (!mounted) {
+      img.dispose();
+      return;
+    }
+    _layerThumbs[key]?.img.dispose();
+    _layerThumbs[key] = _Thumb(hash, img);
+    if (_layerThumbs.length > 60) {
+      final victim = _layerThumbs.keys.firstWhere((k) => k != key, orElse: () => -1);
+      if (victim >= 0) _layerThumbs.remove(victim)?.img.dispose();
+    }
+    setState(() {});
   }
 
   void _layerOptions(int i, Map<String, dynamic> l, int count) {
@@ -1086,7 +1090,6 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
       builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
         int opacity = l['opacity'] ?? 255;
         bool locked = l['locked'] ?? false;
-        bool inGroup = _selLayers.contains(i);
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(12),
@@ -1098,8 +1101,8 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
                 Text('$opacity'),
               ]),
               SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, title: const Text('Locked'), value: locked, onChanged: (v) { setS(() => locked = v); _act('SetLayerLocked($i, $v)'); }),
-              SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, title: const Text('In move group'), value: inGroup, onChanged: (v) { setS(() { if (v) { _selLayers.add(i); } else { _selLayers.remove(i); } }); setState(() {}); }),
               Wrap(spacing: 8, children: [
+                ActionChip(avatar: const Icon(Icons.control_point_duplicate, size: 16), label: const Text('Duplicate'), onPressed: () { Navigator.pop(ctx); _act('DuplicateLayer($i)'); }),
                 ActionChip(avatar: const Icon(Icons.arrow_upward, size: 16), label: const Text('Up'), onPressed: i + 1 < count ? () { Navigator.pop(ctx); _act('ReorderLayer($i, ${i + 1})'); } : null),
                 ActionChip(avatar: const Icon(Icons.arrow_downward, size: 16), label: const Text('Down'), onPressed: i > 0 ? () { Navigator.pop(ctx); _act('ReorderLayer($i, ${i - 1})'); } : null),
                 ActionChip(avatar: const Icon(Icons.dynamic_feed, size: 16), label: const Text('Copy to all frames'), onPressed: () {
@@ -1116,64 +1119,77 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
     );
   }
 
+  // Layers as a horizontal film-strip (mirrors the frame film-roll): each tile shows just that
+  // layer on a checkerboard (transparent) background. "Add layer" sits to the left; duplicate and
+  // the other per-layer actions live in the long-press menu.
   Widget _buildLayers(List<dynamic> layers) {
     final frames = (_state['frame_detail'] as List?);
     int activeLayer = 0;
     if (frames != null && engine.activeFrame < frames.length) {
       activeLayer = frames[engine.activeFrame]['active_layer'] ?? 0;
     }
+    final frame = engine.activeFrame;
+    final (tw, th) = _thumbSize();
+    final tileW = (40.0 * tw / th).clamp(26.0, 72.0);
     return Container(
-      height: 46,
+      height: 56,
       color: const Color(0xFF1A1C1F),
       child: Row(children: [
-        IconButton(iconSize: 18, tooltip: 'Add layer', onPressed: () => _act('AddLayer()'), icon: const Icon(Icons.add)),
-        IconButton(iconSize: 18, tooltip: 'Duplicate layer', onPressed: () => _act('DuplicateLayer($activeLayer)'), icon: const Icon(Icons.control_point_duplicate)),
-        // nudge pad (moves active layer, or the move-group if >1 selected)
-        IconButton(iconSize: 16, tooltip: 'Nudge left', onPressed: () => _nudgeGroup(-1, 0), icon: const Icon(Icons.chevron_left)),
-        Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          InkWell(onTap: () => _nudgeGroup(0, -1), child: const Icon(Icons.keyboard_arrow_up, size: 16)),
-          InkWell(onTap: () => _nudgeGroup(0, 1), child: const Icon(Icons.keyboard_arrow_down, size: 16)),
-        ]),
-        IconButton(iconSize: 16, tooltip: 'Nudge right', onPressed: () => _nudgeGroup(1, 0), icon: const Icon(Icons.chevron_right)),
-        const SizedBox(width: 2),
+        IconButton(iconSize: 20, tooltip: 'Add layer', onPressed: () => _act('AddLayer()'), icon: const Icon(Icons.add_box)),
+        Container(width: 1, color: Colors.black26),
         Expanded(
-          child: ReorderableListView.builder(
+          child: ListView.builder(
             scrollDirection: Axis.horizontal,
-            buildDefaultDragHandles: false,
             itemCount: layers.length,
-            onReorder: (oldI, newI) {
-              if (newI > oldI) newI -= 1;
-              _act('ReorderLayer($oldI, $newI)');
-            },
+            padding: const EdgeInsets.symmetric(horizontal: 4),
             itemBuilder: (_, i) {
               final l = layers[i] as Map<String, dynamic>;
               final sel = i == activeLayer;
-              final inGroup = _selLayers.contains(i);
-              return ReorderableDelayedDragStartListener(
-                key: ValueKey('layer_$i'),
-                index: i,
-                child: GestureDetector(
-                  onTap: () { setState(() => _selLayers.clear()); _act('SetActiveLayer($i)'); },
-                  onLongPress: () => _layerOptions(i, l, layers.length),
-                  child: Container(
-                    width: 96,
-                    margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 6),
-                    padding: const EdgeInsets.symmetric(horizontal: 6),
-                    decoration: BoxDecoration(
-                      color: sel ? const Color(0xFF34506A) : const Color(0xFF2A2D31),
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: inGroup ? Colors.amber : (sel ? const Color(0xFF4080C0) : Colors.transparent)),
-                    ),
-                    child: Row(children: [
-                      GestureDetector(
-                        onTap: () => _act('SetLayerVisible($i, ${!(l['visible'] as bool)})'),
-                        child: Icon(l['visible'] == true ? Icons.visibility : Icons.visibility_off, size: 15),
-                      ),
-                      if (l['locked'] == true) const Padding(padding: EdgeInsets.only(left: 2), child: Icon(Icons.lock, size: 12, color: Colors.white38)),
-                      const SizedBox(width: 4),
-                      Expanded(child: Text('${l['name']}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11))),
-                    ]),
+              final visible = l['visible'] == true;
+              final hash = engine.layerHash(frame, i);
+              final key = _layerKey(frame, i);
+              final cached = _layerThumbs[key];
+              if (cached == null || cached.hash != hash) _genLayerThumb(frame, i, hash);
+              return GestureDetector(
+                onTap: () => _act('SetActiveLayer($i)'),
+                onLongPress: () => _layerOptions(i, l, layers.length),
+                child: Container(
+                  width: tileW + 6,
+                  margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF101214),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: sel ? const Color(0xFF4080C0) : Colors.black26, width: sel ? 2 : 1),
                   ),
+                  child: Stack(fit: StackFit.expand, children: [
+                    Padding(
+                      padding: const EdgeInsets.all(2),
+                      child: Opacity(
+                        opacity: visible ? 1 : 0.35,
+                        child: CustomPaint(
+                          painter: const _CheckerPainter(),
+                          child: cached != null
+                              ? RawImage(image: cached.img, fit: BoxFit.contain, filterQuality: FilterQuality.none)
+                              : const SizedBox.shrink(),
+                        ),
+                      ),
+                    ),
+                    // quick visibility toggle (top-left)
+                    Positioned(
+                      left: 0,
+                      top: 0,
+                      child: GestureDetector(
+                        onTap: () => _act('SetLayerVisible($i, ${!visible})'),
+                        child: Container(
+                          padding: const EdgeInsets.all(1),
+                          color: const Color(0xCC000000),
+                          child: Icon(visible ? Icons.visibility : Icons.visibility_off, size: 13, color: Colors.white70),
+                        ),
+                      ),
+                    ),
+                    if (l['locked'] == true)
+                      const Positioned(right: 1, top: 1, child: Icon(Icons.lock, size: 12, color: Colors.white54)),
+                  ]),
                 ),
               );
             },
@@ -1225,6 +1241,16 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
           },
         ),
       ));
+    }
+    if (_tool == 'MoveLayer') {
+      // nudge the active layer 1px; dragging on the canvas also moves it (live)
+      label('Move layer');
+      children.add(IconButton(iconSize: 20, tooltip: 'Move layer left', onPressed: () => _nudgeLayer(-1, 0), icon: const Icon(Icons.chevron_left)));
+      children.add(Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        InkWell(onTap: () => _nudgeLayer(0, -1), child: const Icon(Icons.keyboard_arrow_up, size: 18)),
+        InkWell(onTap: () => _nudgeLayer(0, 1), child: const Icon(Icons.keyboard_arrow_down, size: 18)),
+      ]));
+      children.add(IconButton(iconSize: 20, tooltip: 'Move layer right', onPressed: () => _nudgeLayer(1, 0), icon: const Icon(Icons.chevron_right)));
     }
     if (_tool == 'Airbrush') {
       // SPRAY (one airbrush dab at the reticle, off-finger)
@@ -1874,6 +1900,31 @@ class _ReticlePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_ReticlePainter old) => true; // driven by the animation
+}
+
+/// A small two-tone checkerboard, used behind layer thumbnails so transparent areas read as
+/// transparent (the layers film-strip shows each layer against a transparent background).
+class _CheckerPainter extends CustomPainter {
+  const _CheckerPainter();
+  static const double cell = 5;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final light = Paint()..color = const Color(0xFF3A3D42);
+    final dark = Paint()..color = const Color(0xFF26282C);
+    canvas.drawRect(Offset.zero & size, light);
+    final cols = (size.width / cell).ceil();
+    final rows = (size.height / cell).ceil();
+    for (var r = 0; r < rows; r++) {
+      for (var c = 0; c < cols; c++) {
+        if ((r + c).isEven) continue;
+        canvas.drawRect(Rect.fromLTWH(c * cell, r * cell, cell, cell), dark);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_CheckerPainter old) => false;
 }
 
 /// Interactive crop-rectangle picker over a source image. Returns the crop rect in

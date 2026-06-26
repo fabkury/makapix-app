@@ -26,6 +26,10 @@ typedef _FrameHashC = Uint64 Function(Pointer<Void>, Uint32);
 typedef _FrameHashD = int Function(Pointer<Void>, int);
 typedef _FrameThumbC = Int32 Function(Pointer<Void>, Uint32, Uint32, Uint32, Pointer<Uint8>, IntPtr);
 typedef _FrameThumbD = int Function(Pointer<Void>, int, int, int, Pointer<Uint8>, int);
+typedef _LayerThumbC = Int32 Function(Pointer<Void>, Uint32, Uint32, Uint32, Uint32, Pointer<Uint8>, IntPtr);
+typedef _LayerThumbD = int Function(Pointer<Void>, int, int, int, int, Pointer<Uint8>, int);
+typedef _LayerHashC = Uint64 Function(Pointer<Void>, Uint32, Uint32);
+typedef _LayerHashD = int Function(Pointer<Void>, int, int);
 typedef _SaveC = Pointer<Uint8> Function(Pointer<Void>, Pointer<Uint64>);
 typedef _SaveD = Pointer<Uint8> Function(Pointer<Void>, Pointer<Uint64>);
 typedef _LoadC = Int32 Function(Pointer<Void>, Pointer<Uint8>, IntPtr);
@@ -86,6 +90,8 @@ class Engine {
   late final _OutlineD _outline = _lib.lookupFunction<_OutlineC, _OutlineD>('mkpx_outline_mask');
   late final _FrameHashD _frameHash = _lib.lookupFunction<_FrameHashC, _FrameHashD>('mkpx_frame_hash');
   late final _FrameThumbD _frameThumb = _lib.lookupFunction<_FrameThumbC, _FrameThumbD>('mkpx_frame_thumb');
+  late final _LayerThumbD _layerThumb = _lib.lookupFunction<_LayerThumbC, _LayerThumbD>('mkpx_layer_thumb');
+  late final _LayerHashD _layerHash = _lib.lookupFunction<_LayerHashC, _LayerHashD>('mkpx_layer_hash');
   late final _SaveD _save = _lib.lookupFunction<_SaveC, _SaveD>('mkpx_save');
   late final _LoadD _load = _lib.lookupFunction<_LoadC, _LoadD>('mkpx_load');
   late final _FreeStringD _freeStr = _lib.lookupFunction<_FreeStringC, _FreeStringD>('mkpx_free_string');
@@ -153,6 +159,20 @@ class Engine {
     final cap = tw * th * 4;
     final out = malloc<Uint8>(cap);
     final n = _frameThumb(_s, frame, tw, th, out, cap);
+    final bytes = n > 0 ? Uint8List.fromList(out.asTypedList(n)) : Uint8List(0);
+    malloc.free(out);
+    return bytes;
+  }
+
+  /// Low-64-bit content hash of one layer (within `frame`) — for layer thumbnail cache invalidation.
+  int layerHash(int frame, int layer) => _layerHash(_s, frame, layer);
+
+  /// A `tw`×`th` nearest-downscaled thumbnail of a single layer's raw pixels (straight RGBA,
+  /// transparent where empty).
+  Uint8List layerThumb(int frame, int layer, int tw, int th) {
+    final cap = tw * th * 4;
+    final out = malloc<Uint8>(cap);
+    final n = _layerThumb(_s, frame, layer, tw, th, out, cap);
     final bytes = n > 0 ? Uint8List.fromList(out.asTypedList(n)) : Uint8List(0);
     malloc.free(out);
     return bytes;

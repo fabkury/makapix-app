@@ -21,6 +21,7 @@ pub enum ToolKind {
     Dodge,
     Burn,
     Move,
+    MoveLayer,
     Eyedropper,
     Line,
     Rectangle,
