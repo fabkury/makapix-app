@@ -66,6 +66,12 @@ const tools = <ToolDef>[
   ToolDef('SelectFree', Icons.gesture, 'Lasso'),
   ToolDef('SelectByColor', Icons.colorize_outlined, 'Sel Color'),
   ToolDef('HsvShift', Icons.palette, 'HSV'),
+  // Transform actions: UI-only groups (no engine draw tool). Selecting one reveals its
+  // action button(s) in row-1; the canvas is inert while one is selected.
+  ToolDef('Flip', Icons.flip, 'Flip'),
+  ToolDef('Rotate', Icons.rotate_90_degrees_cw, 'Rotate'),
+  ToolDef('Invert', Icons.invert_colors, 'Invert'),
+  ToolDef('Resize', Icons.aspect_ratio, 'Resize'),
 ];
 
 // Succinct, teach-as-you-go help shown in the gesture-safe band at the bottom.
@@ -92,6 +98,10 @@ const toolTips = <String, String>{
   'SelectFree': 'Lasso: trace around pixels to select them.',
   'SelectByColor': 'Tap to select similar-colour pixels. Threshold = tolerance.',
   'HsvShift': 'Shift Hue/Sat/Value of the selection. Set H/S/V, then Apply.',
+  'Flip': 'Mirror the image — tap Flip H or Flip V.',
+  'Rotate': 'Rotate the canvas 90° CW, 90° CCW, or 180°.',
+  'Invert': 'Invert the colours of the image (or selection).',
+  'Resize': 'Change the canvas dimensions.',
 };
 
 class EditorPage extends StatefulWidget {
@@ -141,6 +151,11 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
   final Set<int> _thumbInFlight = {};
 
   bool get _isPrecision => _tool == 'PrecisionPencil';
+
+  // UI-only action groups: selecting one reveals its row-1 buttons but does not change the
+  // engine's draw tool, and the canvas is inert while one is active.
+  static const _transformTools = {'Flip', 'Rotate', 'Invert', 'Resize'};
+  bool get _isTransformTool => _transformTools.contains(_tool);
 
   bool get _engineReady => _error == null;
 
@@ -312,6 +327,7 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
       _penDown = false;
     }
     setState(() => _tool = t);
+    if (_transformTools.contains(t)) return; // UI-only action group: no engine tool change
     _send('SelectTool($t)');
     if (t == 'PrecisionPencil') {
       _send('SetCursor(${engine.width ~/ 2},${engine.height ~/ 2})');
@@ -795,6 +811,7 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
         child: Listener(
           behavior: HitTestBehavior.opaque,
           onPointerDown: (e) {
+            if (_isTransformTool) return; // transform action groups don't draw on the canvas
             if (_isPrecision) {
               _lastTouch = e.localPosition;
               _accX = 0;
@@ -806,6 +823,7 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
             _redraw();
           },
           onPointerMove: (e) {
+            if (_isTransformTool) return;
             if (_isPrecision) {
               final last = _lastTouch ?? e.localPosition;
               final r = _fittedRect(box, engine.width, engine.height);
@@ -828,6 +846,7 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
             _redraw();
           },
           onPointerUp: (e) {
+            if (_isTransformTool) return;
             if (_isPrecision) {
               _lastTouch = null;
               if (_penDown) _refreshState();
@@ -892,8 +911,6 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
       height: 70,
       color: const Color(0xFF15171A),
       child: Row(children: [
-        IconButton(iconSize: 20, tooltip: 'Add frame', onPressed: () => _act('AddFrame()'), icon: const Icon(Icons.add_box)),
-        Container(width: 1, color: Colors.black26),
         Expanded(
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
@@ -934,6 +951,8 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
             },
           ),
         ),
+        Container(width: 1, color: Colors.black26),
+        IconButton(iconSize: 20, tooltip: 'Add frame', onPressed: () => _act('AddFrame()'), icon: const Icon(Icons.add_box)),
       ]),
     );
   }
@@ -1181,6 +1200,7 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
       children.add(_miniBtn('Copy', () => _act('Copy()')));
       children.add(_miniBtn('Cut', () => _act('Cut()')));
       children.add(_miniBtn('Paste', () => _act('Paste()')));
+      children.add(_miniBtn('Crop→Sel', () => _act('CropToSelection()')));
     }
     if (_tool == 'HsvShift') {
       label('H ${_hsvH.toInt()}');
@@ -1194,15 +1214,21 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
         _act('ApplyHsvShift()');
       }));
     }
-    children.add(_miniBtn('Flip H', () => _act('FlipH()')));
-    children.add(_miniBtn('Flip V', () => _act('FlipV()')));
-    children.add(_miniBtn('Invert', () => _act('Invert()')));
-    children.add(const SizedBox(width: 6));
-    children.add(IconButton(iconSize: 18, tooltip: 'Rotate 90° CW', onPressed: () => _act('Rotate(1)'), icon: const Icon(Icons.rotate_right)));
-    children.add(IconButton(iconSize: 18, tooltip: 'Rotate 90° CCW', onPressed: () => _act('Rotate(3)'), icon: const Icon(Icons.rotate_left)));
-    children.add(_miniBtn('Rotate 180', () => _act('Rotate(2)')));
-    children.add(_miniBtn('Crop→Sel', () => _act('CropToSelection()')));
-    children.add(_miniBtn('Resize…', _resizeCanvasDialog));
+    if (_tool == 'Flip') {
+      children.add(_miniBtn('Flip H', () => _act('FlipH()')));
+      children.add(_miniBtn('Flip V', () => _act('FlipV()')));
+    }
+    if (_tool == 'Rotate') {
+      children.add(IconButton(iconSize: 18, tooltip: 'Rotate 90° CW', onPressed: () => _act('Rotate(1)'), icon: const Icon(Icons.rotate_right)));
+      children.add(IconButton(iconSize: 18, tooltip: 'Rotate 90° CCW', onPressed: () => _act('Rotate(3)'), icon: const Icon(Icons.rotate_left)));
+      children.add(_miniBtn('Rotate 180', () => _act('Rotate(2)')));
+    }
+    if (_tool == 'Invert') {
+      children.add(_miniBtn('Invert colours', () => _act('Invert()')));
+    }
+    if (_tool == 'Resize') {
+      children.add(_miniBtn('Resize…', _resizeCanvasDialog));
+    }
 
     return Container(
       height: 48,
@@ -1215,66 +1241,64 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
   }
 
   Widget _buildPalette() {
-    final names = (_state['palette_names'] as List?)?.cast<String>() ?? ['Default'];
-    final active = (_state['active_palette'] as int?) ?? 0;
     return Container(
       color: const Color(0xFF1C1F22),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        // header: palette selector + manage
-        SizedBox(
-          height: 30,
-          child: Row(children: [
-            const SizedBox(width: 6),
-            const Icon(Icons.palette, size: 15, color: Colors.white54),
-            const SizedBox(width: 4),
-            DropdownButton<int>(
-              value: active < names.length ? active : 0,
-              isDense: true,
-              underline: const SizedBox(),
-              style: const TextStyle(fontSize: 12, color: Colors.white),
-              dropdownColor: const Color(0xFF26292E),
-              items: [for (var i = 0; i < names.length; i++) DropdownMenuItem(value: i, child: Text(names[i]))],
-              onChanged: (v) => _act('SetActivePalette($v)'),
+      child: SizedBox(
+        height: 42,
+        child: Row(children: [
+          GestureDetector(
+            onTap: () => _pickColor(initial: _primary, onPick: _setPrimary),
+            child: Container(
+              width: 32, height: 32, margin: const EdgeInsets.all(5),
+              decoration: BoxDecoration(color: _primary, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.white70, width: 2)),
+              child: const Icon(Icons.edit, size: 13, color: Colors.white70),
             ),
-            IconButton(iconSize: 16, tooltip: 'New palette', onPressed: _newPalette, icon: const Icon(Icons.add_box_outlined)),
-            IconButton(iconSize: 16, tooltip: 'Save palette', onPressed: _savePalette, icon: const Icon(Icons.save_alt)),
-            IconButton(iconSize: 16, tooltip: 'Load palette (.json/.gpl)', onPressed: _loadPalette, icon: const Icon(Icons.file_download_outlined)),
-          ]),
-        ),
-        // swatches
-        SizedBox(
-          height: 42,
-          child: Row(children: [
-            GestureDetector(
-              onTap: () => _pickColor(initial: _primary, onPick: _setPrimary),
-              child: Container(
-                width: 32, height: 32, margin: const EdgeInsets.all(5),
-                decoration: BoxDecoration(color: _primary, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.white70, width: 2)),
-                child: const Icon(Icons.edit, size: 13, color: Colors.white70),
-              ),
+          ),
+          IconButton(iconSize: 18, tooltip: 'Add current color', onPressed: () => _act('AddPaletteColor(${_hex(_primary)})'), icon: const Icon(Icons.add_circle_outline)),
+          Expanded(
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: _palette.length,
+              itemBuilder: (_, i) {
+                final c = _palette[i];
+                return GestureDetector(
+                  onTap: () => _setPrimary(c),
+                  onLongPress: () => _paletteSwatchMenu(i, c),
+                  child: Container(
+                    width: 28,
+                    margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 6),
+                    decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(3), border: Border.all(color: Colors.black26)),
+                  ),
+                );
+              },
             ),
-            IconButton(iconSize: 18, tooltip: 'Add current color', onPressed: () => _act('AddPaletteColor(${_hex(_primary)})'), icon: const Icon(Icons.add_circle_outline)),
-            Expanded(
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: _palette.length,
-                itemBuilder: (_, i) {
-                  final c = _palette[i];
-                  return GestureDetector(
-                    onTap: () => _setPrimary(c),
-                    onLongPress: () => _paletteSwatchMenu(i, c),
-                    child: Container(
-                      width: 28,
-                      margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 6),
-                      decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(3), border: Border.all(color: Colors.black26)),
-                    ),
-                  );
-                },
-              ),
+          ),
+          // palette controls: tucked into a button after the last swatch
+          IconButton(iconSize: 18, tooltip: 'Palette controls', onPressed: _paletteControlsMenu, icon: const Icon(Icons.palette, color: Colors.white70)),
+        ]),
+      ),
+    );
+  }
+
+  void _paletteControlsMenu() {
+    final names = (_state['palette_names'] as List?)?.cast<String>() ?? ['Default'];
+    final active = (_state['active_palette'] as int?) ?? 0;
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          for (var i = 0; i < names.length; i++)
+            ListTile(
+              leading: Icon(i == active ? Icons.radio_button_checked : Icons.radio_button_unchecked, size: 18),
+              title: Text(names[i]),
+              onTap: () { Navigator.pop(ctx); _act('SetActivePalette($i)'); },
             ),
-          ]),
-        ),
-      ]),
+          const Divider(height: 1),
+          ListTile(leading: const Icon(Icons.add_box_outlined), title: const Text('New palette'), onTap: () { Navigator.pop(ctx); _newPalette(); }),
+          ListTile(leading: const Icon(Icons.save_alt), title: const Text('Save palette'), onTap: () { Navigator.pop(ctx); _savePalette(); }),
+          ListTile(leading: const Icon(Icons.file_download_outlined), title: const Text('Load palette (.json/.gpl)'), onTap: () { Navigator.pop(ctx); _loadPalette(); }),
+        ]),
+      ),
     );
   }
 
