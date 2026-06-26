@@ -292,28 +292,35 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
     // While erasing, outline the eraser footprint at its current position so the user sees
     // exactly which pixels are being erased.
     if (_eraserX != null && _eraserY != null) {
-      _appendBrushFootprint(edges, _eraserX!, _eraserY!);
+      edges.addAll(_footprintEdges(_eraserX!, _eraserY!, airbrush: false));
     }
     _outlineEdges = edges;
   }
 
-  // Append boundary segments outlining the configured brush footprint (size + Round/Square)
-  // centred at (ex,ey), clipped to the canvas — mirrors the engine's stamp footprint so the
-  // marching ants match exactly what a stamp at this position would cover.
-  void _appendBrushFootprint(List<List<int>> edges, int ex, int ey) {
+  // The exact set of canvas pixels a stamp/spray at (ex,ey) would cover with the current Size and
+  // Shape, clipped to the canvas — mirrors the engine so an outline of these pixels is faithful.
+  // `airbrush` uses the spray disc (radius == size, an approximation of the random dab); otherwise
+  // it's the brush/eraser stamp footprint (radius == (size-1)/2, Round disc or Square).
+  Set<int> _footprintCells(int ex, int ey, {required bool airbrush}) {
     final w = engine.width, h = engine.height;
     final size = _brushSize < 1 ? 1 : _brushSize;
-    final radius = (size - 1) ~/ 2;
     final covered = <int>{};
     void add(int x, int y) {
       if (x < 0 || y < 0 || x >= w || y >= h) return;
       covered.add(y * w + x);
     }
-    if (_round) {
+    if (airbrush) {
+      final r = size; // engine airbrush_dab sprays within radius == size
+      for (var dy = -r; dy <= r; dy++) {
+        for (var dx = -r; dx <= r; dx++) {
+          if (dx * dx + dy * dy <= r * r) add(ex + dx, ey + dy);
+        }
+      }
+    } else if (_round) {
       if (size <= 1) {
         add(ex, ey);
       } else {
-        final r = radius < 1 ? 1 : radius;
+        final r = ((size - 1) ~/ 2).clamp(1, size);
         for (var dy = -r; dy <= r; dy++) {
           for (var dx = -r; dx <= r; dx++) {
             if (dx * dx + dy * dy <= r * r) add(ex + dx, ey + dy);
@@ -321,13 +328,22 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
         }
       }
     } else {
-      for (var dy = -radius; dy <= radius; dy++) {
-        for (var dx = -radius; dx <= radius; dx++) {
+      final r = (size - 1) ~/ 2;
+      for (var dy = -r; dy <= r; dy++) {
+        for (var dx = -r; dx <= r; dx++) {
           add(ex + dx, ey + dy);
         }
       }
     }
-    bool cov(int x, int y) => covered.contains(y * w + x) && x >= 0 && y >= 0 && x < w && y < h;
+    return covered;
+  }
+
+  // Boundary segments (canvas-corner coords, with a marching-ants phase `t`) around a footprint.
+  List<List<int>> _footprintEdges(int ex, int ey, {required bool airbrush}) {
+    final w = engine.width;
+    final covered = _footprintCells(ex, ey, airbrush: airbrush);
+    final edges = <List<int>>[];
+    bool cov(int x, int y) => covered.contains(y * w + x);
     for (final key in covered) {
       final x = key % w, y = key ~/ w;
       final t = x + y;
@@ -336,6 +352,7 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
       if (!cov(x, y - 1)) edges.add([x, y, x + 1, y, t]);
       if (!cov(x, y + 1)) edges.add([x, y + 1, x + 1, y + 1, t]);
     }
+    return edges;
   }
 
   String _hex(Color c) =>
@@ -964,8 +981,15 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
             CustomPaint(painter: _CanvasPainter(_image, vScale, vOff), size: Size.infinite),
             CustomPaint(painter: _OutlinePainter(_outlineEdges, vScale, vOff, _antCtrl), size: Size.infinite),
             if (_isCursorTool)
+              // marching ants around the EXACT pixels the actuate button would draw (the airbrush
+              // shows its spray disc, an approximation, due to its randomized dabs)
               CustomPaint(
-                painter: _ReticlePainter(_cursorX, _cursorY, vScale, vOff, _antCtrl),
+                painter: _OutlinePainter(
+                  _footprintEdges(_cursorX, _cursorY, airbrush: _tool == 'Airbrush'),
+                  vScale,
+                  vOff,
+                  _antCtrl,
+                ),
                 size: Size.infinite,
               ),
           ]),
@@ -2019,74 +2043,6 @@ class _OutlinePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_OutlinePainter old) => true; // driven by the animation
-}
-
-/// The off-finger cursor "bulls-eye": a thin, screen-space, marching-ants reticle around the
-/// target pixel (cell outline + four crosshair arms). Drawn in screen pixels — never baked into
-/// canvas pixels — so it stays crisp at any zoom, like the selection outline.
-class _ReticlePainter extends CustomPainter {
-  final int cx, cy; // reticle target pixel
-  final double scale; // screen px per canvas px (view transform)
-  final Offset off; // canvas top-left in screen px
-  final Animation<double> anim;
-  _ReticlePainter(this.cx, this.cy, this.scale, this.off, this.anim) : super(repaint: anim);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (scale <= 0) return;
-    final left = off.dx + cx * scale;
-    final top = off.dy + cy * scale;
-    final cell = Rect.fromLTWH(left, top, scale, scale);
-    final center = cell.center;
-    final gap = scale * 0.5 + 3; // keep the target pixel + its ring uncovered
-    final arm = scale * 1.5 + 7;
-    final segs = <List<Offset>>[
-      // outline of the exact target pixel cell
-      [cell.topLeft, cell.topRight],
-      [cell.topRight, cell.bottomRight],
-      [cell.bottomRight, cell.bottomLeft],
-      [cell.bottomLeft, cell.topLeft],
-      // four crosshair arms pointing inward from outside the gap
-      [Offset(center.dx, top - gap - arm), Offset(center.dx, top - gap)],
-      [Offset(center.dx, cell.bottom + gap), Offset(center.dx, cell.bottom + gap + arm)],
-      [Offset(left - gap - arm, center.dy), Offset(left - gap, center.dy)],
-      [Offset(cell.right + gap, center.dy), Offset(cell.right + gap + arm, center.dy)],
-    ];
-    final phase = anim.value; // 0..1, advances the ants along each segment
-    for (final s in segs) {
-      _march(canvas, s[0], s[1], phase);
-    }
-  }
-
-  // Draw a marching-ants dashed segment: alternating black/white dashes sliding with [phase].
-  void _march(Canvas canvas, Offset a, Offset b, double phase) {
-    const dash = 4.0;
-    final total = (b - a).distance;
-    if (total <= 0) return;
-    final dir = (b - a) / total;
-    final black = Paint()
-      ..color = Colors.black
-      ..strokeWidth = 1.4
-      ..isAntiAlias = false;
-    final white = Paint()
-      ..color = Colors.white
-      ..strokeWidth = 1.4
-      ..isAntiAlias = false;
-    var pos = -((phase * dash * 2) % (dash * 2)); // negative start so ants march toward +dir
-    var idx = 0;
-    while (pos < total) {
-      final segStart = pos < 0 ? 0.0 : pos;
-      final segEnd = (pos + dash) > total ? total : (pos + dash);
-      if (segEnd > segStart) {
-        canvas.drawLine(a + dir * segStart, a + dir * segEnd, idx.isEven ? black : white);
-      }
-      pos += dash;
-      idx++;
-    }
-  }
-
-  @override
-  bool shouldRepaint(_ReticlePainter old) => true; // driven by the animation
 }
 
 /// A small two-tone checkerboard, used behind layer thumbnails so transparent areas read as
