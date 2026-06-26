@@ -24,6 +24,20 @@ tools/uploads/
 # Club integration (see SPEC-CLUB.md). Never committed into this repo.
 reference/
 
+# ---- Android signing secrets — NEVER commit ----
+# The upload/release keystore and the properties file that holds its passwords.
+# Losing/leaking these compromises the app's signing identity.
+*.jks
+*.keystore
+key.properties
+app/android/key.properties
+inbox/keystore/
+
+# ---- Firebase Admin service-account key — secret, NEVER commit ----
+# Downloaded from Firebase → Project settings → Service accounts. Used by the
+# SERVER (via its vault) to send FCM pushes; must never enter this repo.
+*firebase-adminsdk*.json
+
 # ---- Local Claude Code state (machine/user-specific) ----
 .claude/
 
