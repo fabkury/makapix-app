@@ -39,6 +39,14 @@ dependencies:
   http: ^1.6.0
   shared_preferences: ^2.5.5
 
+  # ---- Makapix Club social layer (SPEC-CLUB; C0+). All app-layer; the Rust engine
+  # stays network-free and is untouched by these. ----
+  flutter_riverpod: ^2.5.1        # app/UI state for the social layer
+  dio: ^5.7.0                     # HTTP client for the Club API (bearer + single-flight refresh)
+  flutter_secure_storage: ^9.2.2  # access/refresh tokens at rest
+  flutter_web_auth_2: ^4.1.0      # in-app browser for the server-brokered GitHub OAuth return leg
+  crypto: ^3.0.5                  # PKCE S256 challenge
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
