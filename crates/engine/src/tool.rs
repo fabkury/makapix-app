@@ -444,7 +444,7 @@ pub fn draw_shape(
 ) {
     let mut f = |x: i32, y: i32| plot(buf, sel, x, y, color, mode);
     match kind {
-        ToolKind::Line => raster::line(a, b, &mut f),
+        ToolKind::Line => raster::thick_line(a, b, line_width.max(1) as i32, &mut f),
         ToolKind::Rectangle => {
             if fill {
                 raster::rect_filled(a, b, &mut f)

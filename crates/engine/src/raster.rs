@@ -30,6 +30,21 @@ pub fn line(a: Point, b: Point, mut plot: impl FnMut(i32, i32)) {
     }
 }
 
+/// A line of the given pixel `thickness`: a square stamp of side `thickness` swept along the
+/// Bresenham line (thickness 1 = a plain hairline). Used by the Line tool's Width.
+pub fn thick_line(a: Point, b: Point, thickness: i32, mut plot: impl FnMut(i32, i32)) {
+    let r = (thickness.max(1) - 1) / 2;
+    if r <= 0 {
+        line(a, b, plot);
+        return;
+    }
+    let mut pts = Vec::new();
+    line(a, b, |x, y| pts.push(Point::new(x, y)));
+    for p in pts {
+        square(p, r, &mut plot);
+    }
+}
+
 /// A filled disc of `radius` (in pixels) centered at `c` — the round brush/eraser stamp.
 pub fn disc(c: Point, radius: i32, mut plot: impl FnMut(i32, i32)) {
     if radius <= 0 {

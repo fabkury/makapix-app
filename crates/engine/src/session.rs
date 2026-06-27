@@ -243,7 +243,7 @@ impl Session {
     fn render_shape_preview(&self, buf: &mut RgbaBuffer, a: Point, b: Point) {
         let color = self.settings.primary;
         match self.tool {
-            ToolKind::Line => crate::raster::line(a, b, |x, y| buf.blend_over(x, y, color)),
+            ToolKind::Line => crate::raster::thick_line(a, b, self.settings.line_width.max(1) as i32, |x, y| buf.blend_over(x, y, color)),
             ToolKind::Rectangle => {
                 if self.settings.shape_fill {
                     crate::raster::rect_filled(a, b, |x, y| buf.blend_over(x, y, color));
@@ -1510,6 +1510,13 @@ impl Session {
             p.colors.insert(i + 1, c);
         }
     }
+    /// Swap two palette entries (used by the shell to move a swatch left/right/up/down in the grid).
+    pub fn swap_palette_colors(&mut self, i: usize, j: usize) {
+        let p = self.doc.palette_mut();
+        if i != j && i < p.colors.len() && j < p.colors.len() {
+            p.colors.swap(i, j);
+        }
+    }
     pub fn new_palette(&mut self, name: impl Into<String>) {
         self.doc.palettes.push(crate::document::Palette { name: name.into(), colors: Vec::new() });
         self.doc.active_palette = self.doc.palettes.len() - 1;
@@ -1987,6 +1994,34 @@ mod tests {
         s.shape_commit();
         assert_eq!(s.pixel(0, 0, 4, 4), Rgba8::WHITE); // new corner drawn
         assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::TRANSPARENT); // old corner abandoned
+    }
+
+    #[test]
+    fn line_width_thickens_the_line() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tool = ToolKind::Line;
+        s.settings.line_width = 3; // square stamp radius 1 → 3px-thick line
+        s.shape_set(2, 8, 12, 8); // horizontal line at y=8
+        s.shape_commit();
+        // a 3px-thick horizontal line covers y = 7, 8, 9 at the interior
+        assert_eq!(s.pixel(0, 0, 6, 7), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 0, 6, 8), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 0, 6, 9), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 0, 6, 5), Rgba8::TRANSPARENT); // not 5px thick
+    }
+
+    #[test]
+    fn swap_palette_colors_reorders() {
+        let mut s = Session::new(16, 16);
+        s.run_script("AddPaletteColor(#FF0000FF); AddPaletteColor(#00FF00FF)").unwrap();
+        let before = s.doc.palette().colors.clone();
+        s.swap_palette_colors(0, 1);
+        let after = s.doc.palette().colors.clone();
+        assert_eq!(after[0], before[1]);
+        assert_eq!(after[1], before[0]);
+        s.swap_palette_colors(0, 99); // out of range → no-op
+        assert_eq!(s.doc.palette().colors, after);
     }
 
     #[test]
