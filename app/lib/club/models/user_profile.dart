@@ -32,6 +32,13 @@ class ProfileStats {
         totalViews: (j['total_views'] as num?)?.toInt() ?? 0,
         followerCount: (j['follower_count'] as num?)?.toInt() ?? 0,
       );
+
+  ProfileStats copyWith({int? followerCount}) => ProfileStats(
+        totalPosts: totalPosts,
+        totalReactionsReceived: totalReactionsReceived,
+        totalViews: totalViews,
+        followerCount: followerCount ?? this.followerCount,
+      );
 }
 
 /// `GET /user/u/{sqid}/profile` (UserProfileEnhanced).
