@@ -62,6 +62,7 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
   int _threshold = 16;
   bool _contiguous = true;
   bool _shapeFill = true;
+  int _lineWidth = 1; // outline thickness for Rectangle/Ellipse in Outline mode (engine line_width)
   // Pending figure draft (Line/Rect/Ellipse): two endpoints in canvas-pixel coords, or null when
   // no uncommitted figure. While set, a live preview + draggable handles show and row-1 gets
   // Commit/Cancel; nothing is written to the layer until Commit.

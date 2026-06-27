@@ -162,6 +162,14 @@ extension _EditorControls on _EditorPageState {
         _send('SetShapeFill($_shapeFill)');
         if (_hasShapeDraft) _redraw(); // the pending preview reflects fill/outline live
       }));
+      // Outline thickness — only meaningful in Outline mode (filled shapes ignore line_width).
+      if (!_shapeFill) {
+        _labeledSlider(children, 'Width', _lineWidth.toDouble(), 1, 16, (v) {
+          setState(() => _lineWidth = v.round());
+          _send('SetLineWidth($_lineWidth)');
+          if (_hasShapeDraft) _redraw(); // the pending preview reflects the new width live
+        });
+      }
     }
     if (_tool == 'Gradient') {
       children.add(_toggle(['Linear', 'Radial'], _radial ? 1 : 0, (i) {
