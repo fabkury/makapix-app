@@ -100,9 +100,9 @@ future engine task; when added, the publish gate gains a one-tap "Scale to {w×h
 ## Progress
 - [x] Plan written + self-reviewed (/config confirmed; conformance is server-driven)
 - [x] conformance.dart + tests (server_config model + config_api; 8 tests)
-- [ ] license_option model + upload_api (+ licenses) + publish_providers
-- [ ] publish_page UI
-- [ ] editor integration (replace legacy uploader)
+- [x] license_option model + upload_api (+ licenses) + publish_providers + publish_draft
+- [x] publish_page UI (conformance banner, metadata/license/visibility, success view)
+- [x] editor integration — legacy `_uploadToClub` (http /api/v1/artifacts) replaced by `_postToClub` → PublishPage
 - [ ] analyze + test + Android build; C2 acceptance
 
 ### Notes / findings

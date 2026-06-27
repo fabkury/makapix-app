@@ -10,10 +10,11 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'club/publish/publish_draft.dart';
 import 'club/ui/club_home_page.dart';
+import 'club/ui/publish_page.dart';
 import 'engine_ffi.dart';
 
 void main() {
@@ -143,8 +144,6 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
   Map<String, dynamic> _state = {};
   String? _error;
   final Set<int> _selLayers = {}; // layers grouped to move together with the Move-Layer tool
-  String _clubUrl = 'http://localhost:8080';
-  String _clubToken = '';
   // precision pencil / airbrush off-finger cursor
   bool _penDown = false;
   Offset? _lastTouch;
@@ -638,80 +637,26 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
     setState(() {});
   }
 
-  Future<void> _uploadToClub() async {
-    String title = 'Untitled';
-    String tags = '';
-    String visibility = 'public';
-    String format = 'mkpx';
-    final go = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setS) => AlertDialog(
-          title: const Text('Upload to Makapix Club'),
-          content: SizedBox(
-            width: 360,
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextField(decoration: const InputDecoration(labelText: 'Title'), controller: TextEditingController(text: title), onChanged: (v) => title = v),
-              TextField(decoration: const InputDecoration(labelText: 'Tags (comma-separated)'), onChanged: (v) => tags = v),
-              const SizedBox(height: 8),
-              Row(children: [
-                const Text('Artifact: '),
-                DropdownButton<String>(
-                  value: format,
-                  items: const [DropdownMenuItem(value: 'mkpx', child: Text('.mkpx')), DropdownMenuItem(value: 'gif', child: Text('GIF')), DropdownMenuItem(value: 'png', child: Text('PNG'))],
-                  onChanged: (v) => setS(() => format = v!),
-                ),
-                const Spacer(),
-                DropdownButton<String>(
-                  value: visibility,
-                  items: const [DropdownMenuItem(value: 'public', child: Text('Public')), DropdownMenuItem(value: 'unlisted', child: Text('Unlisted')), DropdownMenuItem(value: 'private', child: Text('Private'))],
-                  onChanged: (v) => setS(() => visibility = v!),
-                ),
-              ]),
-              const Divider(),
-              TextField(decoration: const InputDecoration(labelText: 'Server base URL'), controller: TextEditingController(text: _clubUrl), onChanged: (v) => _clubUrl = v),
-              TextField(decoration: const InputDecoration(labelText: 'Bearer token'), obscureText: true, onChanged: (v) => _clubToken = v),
-            ]),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Upload')),
-          ],
-        ),
-      ),
+  // Post to Makapix Club: export the document (static→PNG, animated→GIF) and open
+  // the publish flow (lib/club). The engine stays here; lib/club gets only bytes.
+  Future<void> _postToClub() async {
+    if (!_engineReady) return;
+    final animated = engine.frameCount > 1;
+    final bytes = animated ? engine.exportGif() : engine.exportPng(engine.activeFrame);
+    if (bytes.isEmpty) {
+      _toast('Export failed');
+      return;
+    }
+    final draft = PublishDraft(
+      bytes: bytes,
+      format: animated ? 'gif' : 'png',
+      filename: animated ? 'art.gif' : 'art.png',
+      width: engine.width,
+      height: engine.height,
+      frameCount: engine.frameCount,
     );
-    if (go != true) return;
-
-    final Uint8List data;
-    final String filename;
-    switch (format) {
-      case 'gif':
-        data = engine.exportGif();
-        filename = 'art.gif';
-        break;
-      case 'png':
-        data = engine.exportPng(engine.activeFrame);
-        filename = 'art.png';
-        break;
-      default:
-        data = engine.save();
-        filename = 'art.mkpx';
-    }
-    try {
-      final req = http.MultipartRequest('POST', Uri.parse('$_clubUrl/api/v1/artifacts'));
-      if (_clubToken.isNotEmpty) req.headers['Authorization'] = 'Bearer $_clubToken';
-      req.fields['metadata'] = '{"title":"$title","tags":[${tags.split(',').where((t) => t.trim().isNotEmpty).map((t) => '"${t.trim()}"').join(',')}],"visibility":"$visibility"}';
-      req.files.add(http.MultipartFile.fromBytes('file', data, filename: filename));
-      final resp = await req.send().timeout(const Duration(seconds: 15));
-      final body = await resp.stream.bytesToString();
-      if (resp.statusCode >= 200 && resp.statusCode < 300) {
-        _toast('Uploaded to Club (${data.length ~/ 1024} KiB): $body');
-      } else {
-        _toast('Club upload failed (${resp.statusCode})');
-      }
-    } catch (e) {
-      _toast('Upload error: $e');
-    }
+    if (!mounted) return;
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => PublishPage(draft: draft)));
   }
 
   Future<void> _exportPng() async {
@@ -860,7 +805,7 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
               PopupMenuItem(value: 'gif', child: Text('Export animation as GIF…')),
             ],
           ),
-          IconButton(tooltip: 'Upload to Makapix Club', onPressed: _uploadToClub, icon: const Icon(Icons.cloud_upload_outlined)),
+          IconButton(tooltip: 'Post to Makapix Club', onPressed: _postToClub, icon: const Icon(Icons.cloud_upload_outlined)),
           const SizedBox(width: 8),
           IconButton(
               tooltip: 'Undo',
