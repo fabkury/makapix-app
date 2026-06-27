@@ -231,8 +231,9 @@ extension _EditorCanvas on _EditorPageState {
   // ---- figure draft gestures (Line/Rect/Ellipse: drag → adjust handles → commit) ----
 
   // Begin a figure gesture: grab the nearest endpoint handle if the press lands near one
-  // (generous screen-space tolerance — "near, not necessarily on"), otherwise start a fresh
-  // figure from this point.
+  // (generous screen-space tolerance — "near, not necessarily on"). With a draft already pending,
+  // a press OFF the handles does nothing (it never resets the draft); a fresh figure only starts
+  // when there is no draft yet.
   void _beginShape(Offset pos, Size box) {
     final p = _toCanvas(pos, box);
     _newShapeStart = null;
@@ -251,10 +252,7 @@ extension _EditorCanvas on _EditorPageState {
         _shapeB = p;
         _pushShape();
       } else {
-        // Off both handles: a potential new figure. Defer replacing the current draft until the
-        // finger moves (so a pinch-zoom or a tap on empty space doesn't discard existing work).
-        _shapeDrag = 3;
-        _newShapeStart = p;
+        _shapeDrag = 0; // off the handles → do nothing, keep the pending draft as-is
       }
     } else {
       // No draft yet: materialize a degenerate figure so a tap drops a starting handle.
@@ -272,14 +270,39 @@ extension _EditorCanvas on _EditorPageState {
     if (_shapeDrag == 0) return;
     final p = _toCanvas(pos, box);
     if (_shapeDrag == 1) {
-      _shapeA = p;
+      _shapeA = _ratioed(_shapeB!, p); // dragging A: anchor is B
     } else if (_shapeDrag == 2) {
-      _shapeB = p;
+      _shapeB = _ratioed(_shapeA!, p); // dragging B: anchor is A
     } else {
-      // New figure: the first movement replaces any prior draft (A fixed at the press point).
-      _shapeA = _newShapeStart ?? p;
-      _shapeB = p;
+      // New figure: A fixed at the press point, B follows (ratio-locked to A if enabled).
+      final a = _newShapeStart ?? p;
+      _shapeA = a;
+      _shapeB = _ratioed(a, p);
     }
+    _pushShape();
+    _redraw();
+    setState(() {});
+  }
+
+  // Constrain `moving` so that |moving - anchor| keeps the locked width:height ratio (Rect/Ellipse
+  // only). The box is sized to reach the finger in whichever axis is more extended. Clamped to the
+  // canvas so the handles match the engine-clamped preview.
+  Offset _ratioed(Offset anchor, Offset moving) {
+    if (!_lockRatio || (_tool != 'Rectangle' && _tool != 'Ellipse')) return moving;
+    final r = _ratio <= 0 ? 1.0 : _ratio;
+    final dw = moving.dx - anchor.dx;
+    final dh = moving.dy - anchor.dy;
+    final h = (dh.abs() > dw.abs() / r) ? dh.abs() : dw.abs() / r;
+    final w = h * r;
+    final bx = (anchor.dx + (dw < 0 ? -w : w)).roundToDouble().clamp(0, engine.width - 1).toDouble();
+    final by = (anchor.dy + (dh < 0 ? -h : h)).roundToDouble().clamp(0, engine.height - 1).toDouble();
+    return Offset(bx, by);
+  }
+
+  // Re-snap the pending draft to the current ratio (called when Lock Ratio or the ratio changes).
+  void _reapplyRatio() {
+    if (!_hasShapeDraft) return;
+    _shapeB = _ratioed(_shapeA!, _shapeB!);
     _pushShape();
     _redraw();
     setState(() {});

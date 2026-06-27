@@ -163,19 +163,44 @@ extension _EditorControls on _EditorPageState {
         _send('SetContiguous($_contiguous)');
       }));
     }
+    // Stroke width for figures that have one: Line always, Rect/Ellipse only in Outline mode.
+    void addWidth() {
+      _labeledSlider(children, 'Width', _lineWidth.toDouble(), 1, 16, (v) {
+        setState(() => _lineWidth = v.round());
+        _send('SetLineWidth($_lineWidth)');
+        if (_hasShapeDraft) _redraw(); // the pending preview reflects the new width live
+      });
+    }
+
+    if (_tool == 'Line') {
+      addWidth();
+    }
     if (_tool == 'Rectangle' || _tool == 'Ellipse') {
       children.add(_toggle(['Fill', 'Outline'], _shapeFill ? 0 : 1, (i) {
         setState(() => _shapeFill = i == 0);
         _send('SetShapeFill($_shapeFill)');
         if (_hasShapeDraft) _redraw(); // the pending preview reflects fill/outline live
       }));
-      // Outline thickness — only meaningful in Outline mode (filled shapes ignore line_width).
-      if (!_shapeFill) {
-        _labeledSlider(children, 'Width', _lineWidth.toDouble(), 1, 16, (v) {
-          setState(() => _lineWidth = v.round());
-          _send('SetLineWidth($_lineWidth)');
-          if (_hasShapeDraft) _redraw(); // the pending preview reflects the new width live
-        });
+      if (!_shapeFill) addWidth(); // outline thickness (filled shapes ignore line_width)
+      // Lock the shape's aspect ratio (width:height) to the slider value — e.g. ratio 1 makes the
+      // Rectangle draw squares and the Ellipse draw circles.
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: FilterChip(
+          selected: _lockRatio,
+          label: Text(_lockRatio ? 'Ratio ✔' : 'Lock Ratio'),
+          selectedColor: const Color(0xFF30A050),
+          onSelected: (v) {
+            setState(() => _lockRatio = v);
+            if (v) _reapplyRatio(); // snap the pending draft to the ratio immediately
+          },
+        ),
+      ));
+      if (_lockRatio) {
+        _labeledSlider(children, 'Ratio', _ratio, 0.25, 4.0, (v) {
+          setState(() => _ratio = v);
+          _reapplyRatio();
+        }, integer: false);
       }
     }
     if (_tool == 'Gradient') {
