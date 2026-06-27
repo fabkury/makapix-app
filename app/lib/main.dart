@@ -9,14 +9,18 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'club/ui/club_account_page.dart';
 import 'engine_ffi.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const MakapixApp());
+  // ProviderScope hosts the Club social-layer state (lib/club). The editor below
+  // is unchanged and does not depend on it.
+  runApp(const ProviderScope(child: MakapixApp()));
 }
 
 class MakapixApp extends StatelessWidget {
@@ -24,7 +28,7 @@ class MakapixApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Makapix Editor',
+      title: 'Makapix Club',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
@@ -832,6 +836,13 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
           Text('${engine.width}×${engine.height}', style: const TextStyle(fontSize: 12, color: Colors.white54)),
         ]),
         actions: [
+          IconButton(
+            tooltip: 'Makapix Club account',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const ClubAccountPage()),
+            ),
+            icon: const Icon(Icons.account_circle_outlined),
+          ),
           IconButton(tooltip: 'New', onPressed: _newDialog, icon: const Icon(Icons.insert_drive_file_outlined)),
           IconButton(tooltip: 'Open', onPressed: _open, icon: const Icon(Icons.folder_open)),
           IconButton(tooltip: 'Save', onPressed: _save, icon: const Icon(Icons.save)),
