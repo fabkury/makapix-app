@@ -87,7 +87,11 @@ Server has no remix edge. Post-as-new pre-fills the description with `Remix of {
 - [x] edit bridge (ClubEditRequest/Source + pendingClubEditProvider) + EditApi.download + UploadApi.replaceArtwork
 - [x] detail page "Edit in Makapix"; publish "Replace original" + remix pre-fill
 - [x] editor consumes pending edit (load + provenance); EditorPage → ConsumerStatefulWidget
-- [ ] analyze + test + Android build; C3 acceptance
+- [x] analyze + test (32) + Android build green — **C3 code-complete**; device round-trip remains (user)
 
 ### Notes / findings
-- (none yet)
+- **Verification:** analyze clean for lib/club; 32 tests; `flutter build apk --debug` (JBR 21) green.
+- Engine load uses the DSL `NewDocument(w,h)` + `importImage(mode:Stretch, asLayer:false)` (reuses existing
+  FFI). **Load fidelity** (animated frame timing/transparency on round-trip) is the one device-verified item.
+- "Edit in Makapix" is offered to everyone (remix-friendly); **Replace original** is offered only to the owner
+  client-side (the server enforces the real permission); non-owners use Post-as-new.
