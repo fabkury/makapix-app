@@ -50,6 +50,10 @@ pub struct Session {
     clock: VirtualClock,
     playing: bool,
     stroke: Option<Stroke>,
+    /// Uncommitted figure (Line/Rectangle/Ellipse) being previewed and fine-tuned: its two
+    /// defining endpoints in canvas pixels. The active tool decides how it renders. `None` when
+    /// no draft is pending. Committed (rasterized) only on an explicit `shape_commit()`.
+    shape_draft: Option<(Point, Point)>,
     last_gradient: Option<(GradientKind, Vec<Stop>, Point, Point, u32, u32)>,
     /// Move-layer drag state: pre-drag pixel snapshots of each moved layer, plus the pre-drag
     /// frame (and its id) for a single grouped undo. Set on pointer_down, cleared on pointer_up.
@@ -75,6 +79,7 @@ impl Session {
             clock: VirtualClock::default(),
             playing: false,
             stroke: None,
+            shape_draft: None,
             last_gradient: None,
             move_layers: Vec::new(),
             move_before: None,
@@ -200,13 +205,9 @@ impl Session {
 
     /// Live preview of a drag-in-progress for shape/selection/gradient/move tools, drawn on
     /// top of the display so the user can fine-tune before releasing.
-    fn draw_tool_preview(&self, buf: &mut RgbaBuffer) {
-        let stroke = match &self.stroke {
-            Some(s) => s,
-            None => return,
-        };
-        let (a, b) = (stroke.start, stroke.last);
-        let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
+    /// Blend a figure (Line/Rectangle/Ellipse) between `a` and `b` into `buf`, honouring the
+    /// fill/outline + line-width settings. Used both for the live preview and the draft preview.
+    fn render_shape_preview(&self, buf: &mut RgbaBuffer, a: Point, b: Point) {
         let color = self.settings.primary;
         match self.tool {
             ToolKind::Line => crate::raster::line(a, b, |x, y| buf.blend_over(x, y, color)),
@@ -224,6 +225,28 @@ impl Session {
                     crate::raster::ellipse_outline(a, b, self.settings.line_width.max(1) as i32, |x, y| buf.blend_over(x, y, color));
                 }
             }
+            _ => {}
+        }
+    }
+
+    fn draw_tool_preview(&self, buf: &mut RgbaBuffer) {
+        // A pending shape draft (the forgiving draw → adjust → commit flow) renders on its own,
+        // independent of any pointer stroke.
+        if let Some((a, b)) = self.shape_draft {
+            if matches!(self.tool, ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse) {
+                self.render_shape_preview(buf, a, b);
+                return;
+            }
+        }
+        let stroke = match &self.stroke {
+            Some(s) => s,
+            None => return,
+        };
+        let (a, b) = (stroke.start, stroke.last);
+        let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
+        match self.tool {
+            // Legacy immediate-draw preview (CLI / DSL pointer drags); the shell uses the draft path.
+            ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse => self.render_shape_preview(buf, a, b),
             // Selection-tool outlines are NOT baked into the pixel buffer (they would be as
             // thick as a canvas pixel). The shell draws them as a thin animated screen-space
             // outline using `outline_mask()` below.
@@ -667,6 +690,56 @@ impl Session {
                 .pixels
                 .restore_snapshot(&before);
         }
+    }
+
+    // ---- figure drafts (Line/Rectangle/Ellipse: draw → adjust → commit) ----
+    //
+    // A draft is an uncommitted figure the shell previews and lets the user fine-tune by dragging
+    // either endpoint, committing only on demand. The shell owns the interaction (hit-testing
+    // handles, deciding which endpoint moves); the engine just stores the two endpoints, renders
+    // the preview, and rasterizes on commit.
+
+    /// Set/replace the pending figure draft's endpoints (canvas pixels, clamped to the canvas).
+    /// Creates a draft if none is pending.
+    pub fn shape_set(&mut self, ax: i32, ay: i32, bx: i32, by: i32) {
+        let a = self.clamp_cursor(Point::new(ax, ay));
+        let b = self.clamp_cursor(Point::new(bx, by));
+        self.shape_draft = Some((a, b));
+    }
+
+    /// The pending figure draft's endpoints, if any (for the shell to draw handles).
+    pub fn shape_draft(&self) -> Option<(Point, Point)> {
+        self.shape_draft
+    }
+
+    /// Rasterize the pending figure into the active layer as one undo edit, then clear the draft.
+    /// No-op (draft preserved) if the active layer isn't editable or the active tool isn't a figure.
+    pub fn shape_commit(&mut self) {
+        if !matches!(self.tool, ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse) {
+            return;
+        }
+        if !self.active_editable() {
+            return;
+        }
+        let (a, b) = match self.shape_draft {
+            Some(ab) => ab,
+            None => return,
+        };
+        let before = self.begin_edit();
+        let color = self.settings.primary;
+        let (fill, lw, kind) = (self.settings.shape_fill, self.settings.line_width, self.tool);
+        let sel = self.selection.clone();
+        {
+            let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
+            tool::draw_shape(buf, sel.as_ref(), kind, a, b, color, fill, lw, PaintMode::Over);
+        }
+        self.commit_edit(before);
+        self.shape_draft = None;
+    }
+
+    /// Discard the pending figure draft without drawing anything.
+    pub fn shape_cancel(&mut self) {
+        self.shape_draft = None;
     }
 
     pub fn tap(&mut self, x: i32, y: i32) {
@@ -1284,6 +1357,7 @@ impl Session {
         if new_size == self.doc.size {
             return;
         }
+        self.shape_draft = None; // endpoints reference the old dimensions
         let old = self.doc.size;
         let (ox, oy) = if center {
             ((new_size.w as i32 - old.w as i32) / 2, (new_size.h as i32 - old.h as i32) / 2)
@@ -1745,6 +1819,59 @@ mod tests {
         s.rename_layer(7, "nope");
         assert_eq!(s.doc.active_frame().layers[0].name, "Layer 1");
         assert!(!s.doc.undo()); // nothing recorded
+    }
+
+    #[test]
+    fn shape_draft_previews_but_commits_only_on_demand() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::rgb(255, 0, 0);
+        s.tool = ToolKind::Line;
+        s.shape_set(0, 0, 0, 5); // a vertical red line, drafted but not committed
+
+        // It previews in the display buffer…
+        let disp = s.display_bytes(false, false, false);
+        let idx = (3 * 16) * 4; // pixel (0, 3) lies on the line
+        assert_eq!(&disp[idx..idx + 4], &[255, 0, 0, 255], "draft should preview in display");
+        // …but writes no pixels and records no undo yet.
+        assert_eq!(s.pixel(0, 0, 0, 3), Rgba8::TRANSPARENT);
+        assert!(!s.doc.can_undo());
+        assert_eq!(s.shape_draft(), Some((Point::new(0, 0), Point::new(0, 5))));
+
+        s.shape_commit(); // now it lands as one undo edit
+        assert_eq!(s.pixel(0, 0, 0, 3), Rgba8::rgb(255, 0, 0));
+        assert!(s.shape_draft().is_none());
+        assert!(s.doc.undo());
+        assert_eq!(s.pixel(0, 0, 0, 3), Rgba8::TRANSPARENT);
+        assert!(!s.doc.undo()); // exactly one step
+    }
+
+    #[test]
+    fn shape_draft_endpoint_adjust_then_commit() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tool = ToolKind::Rectangle;
+        s.settings.shape_fill = false;
+        s.shape_set(2, 2, 6, 6);
+        s.shape_set(4, 4, 6, 6); // re-drag the first endpoint to (4,4)
+        s.shape_commit();
+        assert_eq!(s.pixel(0, 0, 4, 4), Rgba8::WHITE); // new corner drawn
+        assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::TRANSPARENT); // old corner abandoned
+    }
+
+    #[test]
+    fn shape_cancel_discards_without_drawing() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tool = ToolKind::Line;
+        s.shape_set(0, 0, 5, 5);
+        s.shape_cancel();
+        assert!(s.shape_draft().is_none());
+        assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::TRANSPARENT);
+        assert!(!s.doc.can_undo());
+        // and the discarded draft no longer previews
+        let disp = s.display_bytes(false, false, false);
+        let idx = (3 * 16 + 3) * 4;
+        assert_eq!(&disp[idx..idx + 4], &[0, 0, 0, 0]);
     }
 
     #[test]
