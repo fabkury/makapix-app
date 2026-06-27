@@ -166,14 +166,27 @@ Inside `<application>` of `app/android/app/src/main/AndroidManifest.xml`:
 ## Progress
 
 - [x] Plan written + self-reviewed (this file) — 3 refinements folded into §8
-- [ ] Deps added; `flutter pub get` resolves
-- [ ] `config/` + `models/` (tokens, user, error)
-- [ ] `auth/`: pkce, token_store, github_oauth, club_session
-- [ ] `api/club_api_client.dart` (bearer + single-flight refresh)
-- [ ] `state/auth_controller.dart` (Riverpod)
-- [ ] `ui/` sign-in + account; AppBar Account entry; `ProviderScope` + manifest
-- [ ] Tests written; `flutter test` + `flutter analyze` green
-- [ ] Device round-trip (user) — acceptance
+- [x] Deps added; `flutter pub get` resolves (39 deps)
+- [x] `config/` + `models/` (tokens, user, error)
+- [x] `auth/`: pkce, token_store, github_oauth, club_session
+- [x] `api/club_api_client.dart` (bearer + single-flight refresh)
+- [x] `state/auth_controller.dart` (Riverpod)
+- [x] `ui/` sign-in + account; AppBar Account entry; `ProviderScope` + manifest
+- [x] Tests written; `flutter test` (13 pass) + `flutter analyze` clean for lib/club
+- [ ] Device round-trip (user) — acceptance: `build_android.ps1 -Install`
 
-### Notes / findings (append as we go)
-- (none yet)
+**C0 status: code-complete.** Only the on-device GitHub round-trip remains (user-run).
+
+### Notes / findings
+- `flutter pub get` resolved 39 deps at the pinned ranges (riverpod 2.6.1, dio 5.x,
+  flutter_secure_storage 9.x, flutter_web_auth_2 4.x → pulls url_launcher, crypto 3.x). No conflicts.
+- `flutter analyze`: **0 issues in lib/club**. 12 pre-existing `info`s remain in the editor's `main.dart`
+  (deprecated `Color.red/.green/.blue/.alpha` + one `use_build_context_synchronously`) — predate C0, left
+  untouched (out of scope for this phase).
+- `flutter test`: **13/13 pass**, including the PKCE S256 RFC 7636 vector
+  (`dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk` → `E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM`),
+  confirming our challenge generation matches the server's.
+- Endpoint independently verified earlier via curl: `/api/v1/auth/github/login` 307s to GitHub carrying our
+  state+challenge; a non-allowlisted `redirect_uri` → 400.
+- Deferred to the user's device step (heavy / device-bound): a full `flutter build apk` (needs the JBR + the
+  Rust `.so` from `build_android.ps1`) and the live sign-in round-trip.
