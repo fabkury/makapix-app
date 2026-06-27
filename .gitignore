@@ -12,6 +12,12 @@ app/.dart_tool/
 app/.flutter-plugins
 app/.flutter-plugins-dependencies
 
+# ---- Flutter-generated plugin registrants ----
+# Regenerated from pubspec by `flutter` on every build/pub-get; not source.
+**/generated_plugin_registrant.cc
+**/generated_plugin_registrant.h
+**/generated_plugins.cmake
+
 # ---- Generated cross-compiled engine libraries ----
 # Rebuilt from the Rust source by build_android.ps1 (cargo-ndk); not source.
 app/android/app/src/main/jniLibs/
@@ -37,6 +43,10 @@ inbox/keystore/
 # Downloaded from Firebase → Project settings → Service accounts. Used by the
 # SERVER (via its vault) to send FCM pushes; must never enter this repo.
 *firebase-adminsdk*.json
+
+# ---- Local working area (drafts + machine-local secrets; never committed) ----
+# Scratch dir for in-progress notes and downloaded secrets (firebase/, keystore/).
+inbox/
 
 # ---- Local Claude Code state (machine/user-specific) ----
 .claude/
