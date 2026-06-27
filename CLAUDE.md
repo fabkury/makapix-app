@@ -168,6 +168,17 @@ C5 real-time & players · C6 moderation & extras. Commits and branch work are ta
 
 ## Platform gotchas (Windows / Android)
 
+- **Windows needs the VS "C++ ATL" component.** `flutter_secure_storage_windows` `#include`s `<atlstr.h>`
+  (its `CA2W`/`CW2A` string macros), so a Windows build fails with `C1083: Cannot open include file:
+  'atlstr.h'` unless ATL is installed. Add it once (elevated): `setup.exe modify --installPath "<VS
+  BuildTools>" --add Microsoft.VisualStudio.Component.VC.ATL --quiet`, or via the VS Installer GUI ("C++ ATL
+  for latest build tools"). Every plugin version needs it — upgrading the package does **not** remove the dep.
+- **App shell mounts ONE pillar at a time — don't reintroduce `IndexedStack`.** Keeping both pillar
+  `Scaffold`s mounted simultaneously (Club + editor) crashes the Windows app on resize: the accessibility
+  bridge aborts with `Failed to update ui::AXTree: Nodes left pending` (exit `0xC000041D`). `AppShell` mounts
+  only the active pillar; the editor preserves its document across switches via `EditorSession` (`.mkpx`
+  snapshot in `dispose`/`initState`) and Club state lives in long-lived Riverpod providers. Don't "optimise"
+  this back into an always-both keep-alive.
 - **Android Gradle pinning:** the Flutter template generates AGP 9 / Gradle 9 / Kotlin 2.3, which
   `file_picker` can't compile against. The repo pins AGP 8.9.1 / Gradle 8.12 / Kotlin 2.1.20 in
   `app/android/settings.gradle.kts` + the wrapper, and disables lint in `app/android/build.gradle.kts`.
