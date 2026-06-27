@@ -103,7 +103,7 @@ future engine task; when added, the publish gate gains a one-tap "Scale to {w×h
 - [x] license_option model + upload_api (+ licenses) + publish_providers + publish_draft
 - [x] publish_page UI (conformance banner, metadata/license/visibility, success view)
 - [x] editor integration — legacy `_uploadToClub` (http /api/v1/artifacts) replaced by `_postToClub` → PublishPage
-- [ ] analyze + test + Android build; C2 acceptance
+- [x] analyze + test (30) + Android build green — **C2 code-complete**; live device publish remains (user)
 
 ### Notes / findings
 - **`GET /api/v1/config` exists** (brief §8; `/config/upload` is 404). It returns server-authoritative rules —
