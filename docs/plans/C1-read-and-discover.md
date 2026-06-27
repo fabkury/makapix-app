@@ -141,7 +141,7 @@ app:
 
 - [x] Plan written + self-reviewed (response shapes confirmed via curl)
 - [x] models/ + parsing tests (Page, Post, ReactionTotals, Comment tree, ClubNotification, UserProfile)
-- [ ] api/ domain classes + providers
+- [x] api/ domain classes (feed/post/profile/search/notifications) + api_providers
 - [ ] state/ paged notifier + providers
 - [ ] ui/ hub + feed grid + nav
 - [ ] ui/ artwork detail + reactions + comments
