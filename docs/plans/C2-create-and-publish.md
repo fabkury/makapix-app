@@ -98,12 +98,21 @@ future engine task; when added, the publish gate gains a one-tap "Scale to {w×h
 ---
 
 ## Progress
-- [ ] Plan written + self-reviewed
-- [ ] conformance.dart + tests
+- [x] Plan written + self-reviewed (/config confirmed; conformance is server-driven)
+- [x] conformance.dart + tests (server_config model + config_api; 8 tests)
 - [ ] license_option model + upload_api (+ licenses) + publish_providers
 - [ ] publish_page UI
 - [ ] editor integration (replace legacy uploader)
 - [ ] analyze + test + Android build; C2 acceptance
 
 ### Notes / findings
-- (none yet)
+- **`GET /api/v1/config` exists** (brief §8; `/config/upload` is 404). It returns server-authoritative rules —
+  use them, no hardcoded drift:
+  `{ max_comment_depth, max_comments_per_post, max_emojis_per_user_per_post, max_hashtags_per_post,
+  allowed_dimensions, max_art_file_bytes_default, upload:{ formats[], max_file_bytes, free_form_min,
+  free_form_max, small_whitelist[[w,h]], rotations_allowed } }`. `small_whitelist` already lists **both
+  orientations** (e.g. [8,16] and [16,8]) → membership check, no manual rotation. Fall back to a baked-in copy
+  only if the fetch fails offline.
+- `/license` = `{items:[{id, identifier, title, canonical_url, badge_path}]}` (public).
+- Conformance rule: reject if w>free_form_max or h>free_form_max; else ok if w≥free_form_min && h≥free_form_min;
+  else ok iff [w,h] ∈ small_whitelist; else reject.
