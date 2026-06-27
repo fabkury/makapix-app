@@ -7,32 +7,72 @@ part of 'editor_page.dart';
 // Row-3 reorderable tool grid + its tiles, the shared slider/toggle/mini-button
 // controls, and the new-document dialog.
 extension _EditorToolgrid on _EditorPageState {
-  Widget _tileVisual(ToolDef t, {required bool selected, bool hover = false}) {
-    return Container(
+  // `selected` = the active draw tool (blue). `active` = an on toggle like Onion/Play (amber).
+  // `enabled` = false dims the tile (e.g. Undo/Redo when there's nothing to undo/redo).
+  Widget _tileVisual(ToolDef t, {required bool selected, bool hover = false, bool active = false, bool enabled = true}) {
+    final fg = selected ? Colors.white : (active ? Colors.amber : Colors.white70);
+    final tile = Container(
       width: 54,
       height: 42,
       margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
       decoration: BoxDecoration(
         color: selected ? const Color(0xFF4080C0) : const Color(0xFF26292E),
         borderRadius: BorderRadius.circular(6),
-        border: hover ? Border.all(color: Colors.amber, width: 2) : null,
+        border: hover
+            ? Border.all(color: Colors.amber, width: 2)
+            : (active ? Border.all(color: Colors.amber, width: 1.5) : null),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(t.icon, size: 18, color: selected ? Colors.white : Colors.white70),
+          Icon(t.icon, size: 18, color: fg),
           const SizedBox(height: 1),
-          Text(t.label, style: const TextStyle(fontSize: 8.5), maxLines: 1, overflow: TextOverflow.clip),
+          Text(t.label, style: TextStyle(fontSize: 8.5, color: active ? Colors.amber : null), maxLines: 1, overflow: TextOverflow.clip),
         ],
       ),
     );
+    return enabled ? tile : Opacity(opacity: 0.4, child: tile);
+  }
+
+  // The (possibly dynamic) ToolDef for an action tool — Play/Pause swaps icon+label with playback.
+  ToolDef _actionDef(String dsl) =>
+      dsl == 'PlayPause' ? ToolDef('PlayPause', _playing ? Icons.pause : Icons.play_arrow, _playing ? 'Pause' : 'Play') : _toolDef(dsl);
+
+  bool _actionActive(String dsl) => (dsl == 'Onion' && _onion) || (dsl == 'PlayPause' && _playing);
+
+  bool _actionEnabled(String dsl) {
+    if (dsl == 'Undo') return _state['can_undo'] == true;
+    if (dsl == 'Redo') return _state['can_redo'] == true;
+    return true;
+  }
+
+  // Fire an action tool's action/toggle (not a tool selection).
+  void _doToolAction(String dsl) {
+    switch (dsl) {
+      case 'Undo':
+        if (_state['can_undo'] == true) _act('Undo()');
+        break;
+      case 'Redo':
+        if (_state['can_redo'] == true) _act('Redo()');
+        break;
+      case 'PlayPause':
+        _playing ? _pause() : _play();
+        break;
+      case 'Onion':
+        setState(() => _onion = !_onion);
+        _redraw();
+        break;
+    }
   }
 
   // A single row-3 tool tile. Tap selects; long-press-drag reorders with live preview. `others` is
   // the order minus the dragged tool, used to map a hovered tile to a drop index.
   Widget _toolTile(String dsl, List<String> others) {
-    final t = _toolDef(dsl);
-    final selected = dsl == _tool;
+    final isAction = _actionTools.contains(dsl);
+    final t = isAction ? _actionDef(dsl) : _toolDef(dsl);
+    final selected = !isAction && dsl == _tool;
+    final active = isAction && _actionActive(dsl);
+    final enabled = !isAction || _actionEnabled(dsl);
     final isDragged = dsl == _dragTool;
     // A GlobalKey so the dragged tile's State (and its ongoing drag) survives being re-parented
     // between the top and bottom Rows as the live preview reflows. Also used to read its bounds.
@@ -75,8 +115,8 @@ extension _EditorToolgrid on _EditorPageState {
           feedback: Material(color: Colors.transparent, child: _tileVisual(t, selected: true)),
           childWhenDragging: gap,
           child: GestureDetector(
-            onTap: () => _selectTool(dsl),
-            child: _tileVisual(t, selected: selected && !isDragged),
+            onTap: () => isAction ? _doToolAction(dsl) : _selectTool(dsl),
+            child: _tileVisual(t, selected: selected && !isDragged, active: active, enabled: enabled),
           ),
         );
       },

@@ -35,6 +35,13 @@ const tools = <ToolDef>[
   ToolDef('Rotate', Icons.rotate_90_degrees_cw, 'Rotate'),
   ToolDef('Invert', Icons.invert_colors, 'Invert'),
   ToolDef('Resize', Icons.aspect_ratio, 'Resize'),
+  // Action tools: tapping performs an action (or toggles) immediately instead of selecting a
+  // draw tool. Play/Pause swaps icon+label with playback; Onion lights up while on; Undo/Redo dim
+  // when unavailable. See _actionTools / _doToolAction in editor_page.
+  ToolDef('Undo', Icons.undo, 'Undo'),
+  ToolDef('Redo', Icons.redo, 'Redo'),
+  ToolDef('PlayPause', Icons.play_arrow, 'Play'),
+  ToolDef('Onion', Icons.layers, 'Onion'),
 ];
 
 // Succinct, teach-as-you-go help shown in the gesture-safe band at the bottom.

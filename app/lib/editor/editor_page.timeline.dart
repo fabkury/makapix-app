@@ -41,6 +41,8 @@ extension _EditorTimeline on _EditorPageState {
       height: 70,
       color: const Color(0xFF15171A),
       child: Row(children: [
+        _editorMenuButton(), // ☰ — the former top-bar items (file/import/export/grid/fit), left of the strip
+        Container(width: 1, color: Colors.black26),
         Expanded(
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
@@ -85,6 +87,73 @@ extension _EditorTimeline on _EditorPageState {
         IconButton(iconSize: 20, tooltip: 'Add frame', onPressed: () => _act('AddFrame()'), icon: const Icon(Icons.add_box)),
       ]),
     );
+  }
+
+  // The editor's ☰ menu (left of the film-strip): everything that used to be in the top bar except
+  // the Undo/Redo/Play/Onion actions (which are now row-3 tools).
+  PopupMenuItem<String> _menuRow(String value, IconData icon, String label) => PopupMenuItem<String>(
+        value: value,
+        child: Row(children: [Icon(icon, size: 18), const SizedBox(width: 12), Text(label)]),
+      );
+
+  Widget _editorMenuButton() {
+    return PopupMenuButton<String>(
+      tooltip: 'Menu',
+      icon: const Icon(Icons.menu),
+      onSelected: _onEditorMenu,
+      itemBuilder: (_) => [
+        PopupMenuItem<String>(
+          enabled: false,
+          child: Text('Makapix · ${engine.width}×${engine.height}',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+        ),
+        const PopupMenuDivider(),
+        _menuRow('new', Icons.insert_drive_file_outlined, 'New'),
+        _menuRow('open', Icons.folder_open, 'Open'),
+        _menuRow('save', Icons.save, 'Save'),
+        const PopupMenuDivider(),
+        _menuRow('import', Icons.image_outlined, 'Import image…'),
+        _menuRow('png', Icons.photo_outlined, 'Export frame as PNG…'),
+        _menuRow('gif', Icons.gif_box_outlined, 'Export animation as GIF…'),
+        _menuRow('post', Icons.cloud_upload_outlined, 'Post to Makapix Club'),
+        const PopupMenuDivider(),
+        CheckedPopupMenuItem<String>(value: 'grid', checked: _grid, child: const Text('Grid')),
+        _menuRow('fit', Icons.fit_screen, 'Fit to screen'),
+      ],
+    );
+  }
+
+  void _onEditorMenu(String v) {
+    switch (v) {
+      case 'new':
+        _newDialog();
+        break;
+      case 'open':
+        _open();
+        break;
+      case 'save':
+        _save();
+        break;
+      case 'import':
+        _importImage();
+        break;
+      case 'png':
+        _exportPng();
+        break;
+      case 'gif':
+        _exportGif();
+        break;
+      case 'post':
+        _postToClub();
+        break;
+      case 'grid':
+        setState(() => _grid = !_grid);
+        _redraw();
+        break;
+      case 'fit':
+        _fitView();
+        break;
+    }
   }
 
   void _frameMenu(int i) {

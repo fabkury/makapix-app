@@ -39,6 +39,9 @@ part 'editor_page.toolgrid.dart';
 const double _kMinZoom = 0.25, _kMaxZoom = 32.0;
 const _prefsKey = 'tool_order_v1';
 const _transformTools = {'Flip', 'Rotate', 'Invert', 'Resize'};
+// Row-3 "action" tools: tapping fires an action/toggle immediately rather than selecting a draw
+// tool (handled in _toolTile / _doToolAction). They live in the same reorderable grid as the rest.
+const _actionTools = {'Undo', 'Redo', 'PlayPause', 'Onion'};
 // Paint tools that support a "Precision" mode (off-finger reticle + draw-by-button). Precision is
 // a per-tool toggle, remembered independently per tool — see [_precisionTools].
 const _precisionTools = {'Pencil', 'Brush', 'Airbrush', 'Eraser'};
@@ -202,81 +205,23 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
       );
     }
     final layers = _layerList();
+    // No top bar: the frame film-strip (with its leading ☰ menu) is the topmost area. SafeArea
+    // keeps it clear of the status bar; the bottom inset is handled by the tooltip band.
     return Scaffold(
-      appBar: AppBar(
-        titleSpacing: 8,
-        title: Row(children: [
-          const Text('Makapix', style: TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(width: 6),
-          Text('${engine.width}×${engine.height}', style: const TextStyle(fontSize: 12, color: Colors.white54)),
-        ]),
-        actions: [
-          // (The "go to Club" affordance now lives in the app shell's bottom nav /
-          // navigation rail — see lib/shell/app_shell.dart — so the editor no longer
-          // pushes ClubHomePage itself.)
-          IconButton(tooltip: 'New', onPressed: _newDialog, icon: const Icon(Icons.insert_drive_file_outlined)),
-          IconButton(tooltip: 'Open', onPressed: _open, icon: const Icon(Icons.folder_open)),
-          IconButton(tooltip: 'Save', onPressed: _save, icon: const Icon(Icons.save)),
-          PopupMenuButton<String>(
-            tooltip: 'Import / Export',
-            icon: const Icon(Icons.import_export),
-            onSelected: (v) {
-              if (v == 'import') _importImage();
-              if (v == 'png') _exportPng();
-              if (v == 'gif') _exportGif();
-            },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'import', child: Text('Import image…')),
-              PopupMenuItem(value: 'png', child: Text('Export frame as PNG…')),
-              PopupMenuItem(value: 'gif', child: Text('Export animation as GIF…')),
-            ],
-          ),
-          IconButton(tooltip: 'Post to Makapix Club', onPressed: _postToClub, icon: const Icon(Icons.cloud_upload_outlined)),
-          const SizedBox(width: 8),
-          IconButton(
-              tooltip: 'Undo',
-              onPressed: (_state['can_undo'] == true) ? () => _act('Undo()') : null,
-              icon: const Icon(Icons.undo)),
-          IconButton(
-              tooltip: 'Redo',
-              onPressed: (_state['can_redo'] == true) ? () => _act('Redo()') : null,
-              icon: const Icon(Icons.redo)),
-          const SizedBox(width: 8),
-          IconButton(
-              tooltip: _playing ? 'Pause' : 'Play',
-              onPressed: _playing ? _pause : _play,
-              icon: Icon(_playing ? Icons.pause : Icons.play_arrow)),
-          IconButton(
-              tooltip: 'Onion skin',
-              onPressed: () {
-                setState(() => _onion = !_onion);
-                _redraw();
-              },
-              icon: Icon(Icons.layers, color: _onion ? Colors.amber : null)),
-          IconButton(
-              tooltip: 'Grid',
-              onPressed: () {
-                setState(() => _grid = !_grid);
-                _redraw();
-              },
-              icon: Icon(Icons.grid_on, color: _grid ? Colors.amber : null)),
-          IconButton(
-              tooltip: 'Fit to screen',
-              onPressed: (_zoom != 1.0 || _pan != Offset.zero) ? _fitView : null,
-              icon: const Icon(Icons.fit_screen)),
-        ],
-      ),
-      body: Column(
-        children: [
-          _buildFilmRoll(), // film-roll of frame previews at the top of the canvas area
-          Expanded(child: _buildCanvas()),
-          const Divider(height: 1),
-          _buildLayers(layers), // layers film-strip, directly above the tool options
-          _buildToolOptions(), // row-1
-          _buildPalette(), // row-2
-          _buildToolBar(), // row-3
-          _buildTooltipBand(context),
-        ],
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            _buildFilmRoll(), // frame film-strip + ☰ menu — the topmost area
+            Expanded(child: _buildCanvas()),
+            const Divider(height: 1),
+            _buildLayers(layers), // layers film-strip, directly above the tool options
+            _buildToolOptions(), // row-1
+            _buildPalette(), // row-2
+            _buildToolBar(), // row-3 (now also holds Undo/Redo/Play-Pause/Onion)
+            _buildTooltipBand(context),
+          ],
+        ),
       ),
     );
   }
