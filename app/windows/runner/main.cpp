@@ -27,7 +27,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   FlutterWindow window(project);
   Win32Window::Point origin(40, 24);
   Win32Window::Size size(980, 660);
-  if (!window.Create(L"Makapix Editor", origin, size)) {
+  if (!window.Create(L"Makapix Club", origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);

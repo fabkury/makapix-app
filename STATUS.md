@@ -1,17 +1,20 @@
-# Makapix Club app — Implementation Status (2026-06-25)
+# Makapix Club app — Implementation Status (2026-06-27)
 
-Honest coverage of the **Makapix Editor** pillar (the editor engine + Flutter shell), which is built and
-runnable on this workstation. The **social-networking** pillar (see [`SPEC-CLUB.md`](SPEC-CLUB.md)) is in
-spec + server-contract phase and is tracked there — note the "Direct upload to Makapix Club" row below
-reflects the *earlier mock/provisional* upload, now superseded by the real contract being built. Legend:
-**✅ done & tested** · **◑ partial** (engine done, UI/edges pending) · **○ stubbed / not yet**.
+Honest coverage of **both** of the app's co-equal pillars. The **Makapix Editor** (editor engine + Flutter
+shell) is built and runnable on this workstation. The **Makapix Club** social layer (see
+[`SPEC-CLUB.md`](SPEC-CLUB.md)) is **code-complete through phases C0–C3** (auth · read & discover · create &
+publish · edit & remix) against the live server contract; **C4–C6** (curate/manage · real-time & players ·
+moderation & extras) are **not yet** started. The two pillars sit under a neutral app shell
+(`lib/shell/app_shell.dart`): the app **opens on the Club pillar** (signed-out users get Club's welcome/sign-in
+funnel) and the editor is a co-equal feature reachable **without login** via the centre ⊕ Create button.
+Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending) · **○ stubbed / not yet**.
 
 ## Build artifacts
 - `crates/engine` — pure deterministic core (dependency-free). **56 lib + 8 scenario + 3 import + 1 perf tests.**
 - `crates/codec` — image import/export (`image` crate). **2 tests.**
 - `crates/ffi` — C-ABI DLL (`makapix_ffi.dll`). **2 tests** (lifecycle + GIF import→export).
 - `crates/cli` — `mkpx` headless harness (renders PNG, prints oracles/JSON; exit-code CI gate).
-- `app/` — Flutter Windows app → `app/build/windows/x64/runner/Release/makapix_editor.exe` (+ bundled DLL).
+- `app/` — Flutter Windows app → `app/build/windows/x64/runner/Release/makapix_club.exe` (+ bundled DLL).
 - **Total: 68 Rust tests green.** Engine loop verified by rendering `examples/demo.txt` & `showcase.txt`.
 
 ## Core first-class features
@@ -23,7 +26,7 @@ reflects the *earlier mock/provisional* upload, now superseded by the real contr
 | Mobile-first, responsive to tablet | ✅ | mobile-first column; **wide viewports (≥1000px) move frames+layers into a right side panel** |
 | Lossless `.mkpx` (frames + layers) | ✅ | chunked, versioned, sparse tiles; round-trip is a test gate |
 | Memory efficient (1024f / 256² / RGBA, per-frame undo) | ✅ | tiled COW + lazy alloc; 500f×20L = **48 MiB**, verified no-crash |
-| Direct upload to Makapix Club | ✅ | UI dialog → real HTTP multipart POST to the provisional contract (`.mkpx`/GIF/PNG + metadata + bearer token). Test it with `tools/mock_club_server.py` (default URL `http://localhost:8080`). Swap in the real base URL when supplied. |
+| Post to Makapix Club (publish) | ✅ | "Post to Club" exports the document (static→PNG, animated→GIF) and hands **only bytes** to `lib/club`, which runs conformance → metadata/license/visibility → bearer-auth upload (the real C2 publish flow). `tools/mock_club_server.py` remains an optional local harness; see the Club table below. |
 
 ## Tools & editing
 | Feature | Status | Notes |
@@ -53,23 +56,42 @@ reflects the *earlier mock/provisional* upload, now superseded by the real contr
 | `.mkpx` compression | ✅ | per-tile RLE (v2 format, v1 still readable) — a 10k-layer project shrank **48 MB → 1.2 MB** |
 | Drag-and-drop reorder (frames & layers) | ✅ | long-press to drag in the timeline / layer strip (button reorder also kept) |
 
+## Club social layer (C0–C3, Dart-only — `app/lib/club/`)
+| Area | Status | Notes |
+|---|---|---|
+| **C0** GitHub OAuth + PKCE + token store | ✅ | server-brokered OAuth, custom-scheme return leg (`flutter_web_auth_2`); tokens at rest in `flutter_secure_storage`; single-flight 401→refresh→retry (`api/club_api_client.dart`) |
+| **C0** Welcome / sign-in funnel | ✅ | signed-out users land on `ClubWelcomePage` (featured grid + sign-in), matching the website |
+| **C1** Feeds: Recent / Recommended / Following | ✅ | tabbed hub; cursor paging (`state/paged.dart`); pull-to-refresh |
+| **C1** Search (posts / hashtags / users) | ✅ | `ui/search_page.dart`, `ui/hashtag_feed_page.dart` |
+| **C1** Profiles + follow/unfollow | ✅ | `ui/profile_page.dart` |
+| **C1** Reactions + comments | ✅ | `ui/widgets/reactions_bar.dart`, `comments_section.dart` |
+| **C1** Notifications + unread badge | ✅ | `ui/notifications_page.dart`; badge in the hub |
+| **C2** Publish (editor → Club) | ✅ | export bytes → conformance → metadata/license/visibility → upload; auth-gated (`ui/publish_page.dart` shows a sign-in prompt when signed out) |
+| **C3** Edit / remix (Club → editor) | ✅ | a Club post opens in the editor via `pendingClubEditProvider`; `ClubEditSource` provenance enables **Replace original** vs **Post as new** |
+| **C4–C6** curate/manage · real-time & players · moderation | ○ | not yet started |
+
+## App shell
+| Feature | Status | Notes |
+|---|---|---|
+| Two co-equal pillars under a neutral shell | ✅ | `lib/app.dart` (root) → `lib/shell/app_shell.dart`; pillars in a keep-alive `IndexedStack` |
+| Opens on the social experience | ✅ | launches on the Club pillar; welcome/sign-in funnel when signed out |
+| Editor reachable without login | ✅ | prominent centre ⊕ **Create** button (notched `BottomAppBar` on phones, `NavigationRail` on wide windows) |
+
 ## How to exercise it
 - **Engine loop (no GUI):** `cargo test` and `cargo run -p makapix-cli -- run examples/showcase.txt render:0:out.png:6 state assert.roundtrip`
-- **The app:** `./build.ps1 -Run` (or launch the prebuilt exe). Draw with every tool, manage layers/frames,
-  pick colors (RGB/HSV), set durations, play the animation, import an image, export PNG/GIF, save/open `.mkpx`.
+- **The app:** `./build.ps1 -Run` (or launch the prebuilt exe). It opens on the Club hub; tap ⊕ Create to enter
+  the editor. Draw with every tool, manage layers/frames, pick colors (RGB/HSV), set durations, play the
+  animation, import an image, export PNG/GIF, save/open `.mkpx`; sign in to post to Club, or remix a Club post.
 
-## Remaining gaps / next up (honest, after the third pass)
-Essentially everything in the brief is now implemented. What genuinely remains is external or platform-bound:
-1. **Makapix Club production endpoint** — the uploader is real and verified against
-   `tools/mock_club_server.py`; it just needs the **production base URL + auth flow** when you have them.
+## Remaining gaps / next up (honest)
+The editor pillar is feature-complete; the Club pillar is complete through C3. What genuinely remains:
+1. **Club phases C4–C6** — curate/manage, real-time & players, moderation & extras (see `SPEC-CLUB.md` §28).
 2. **iOS build** — cannot be built on this Windows workstation; deferred to a cloud macOS CI runner (SPEC §3.1).
    All shared code is iOS-clean and the engine is integer-deterministic, so this is build/packaging only.
 3. Optional future polish: per-stop gradient-position UI editor, onion-skin range control, in-RAM compression
    of inactive frames (file compression already done), and localization.
 
-## Testing the Club upload
-```
-python tools/mock_club_server.py          # listens on http://localhost:8080
-# in the app: ☁ Upload → leave URL as http://localhost:8080, any token → Upload
-# the artifact lands in tools/uploads/ and the app shows the returned {id,url}
-```
+## Local upload harness (optional)
+The real publish flow runs against `development.makapix.club` / `makapix.club` (`config/club_config.dart`).
+For offline testing of the multipart upload leg, `tools/mock_club_server.py` listens on
+`http://localhost:8080` and writes received artifacts to `tools/uploads/`.

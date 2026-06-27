@@ -37,9 +37,12 @@ macOS CI — it cannot be built here, so don't try.
 ./build_android.ps1 -Install   # also `adb install -r` to a USB-connected phone (USB debugging on)
 ```
 
-The Windows exe is `app/build/windows/x64/runner/Release/makapix_editor.exe` (the desktop binary keeps the
-legacy `makapix_editor` name). The APK is `app/build/app/outputs/flutter-apk/app-release.apk`. The Android
-**app id is `club.makapix.editor`** (also the OAuth custom scheme — see `ClubConfig`).
+The Windows exe is `app/build/windows/x64/runner/Release/makapix_club.exe`. The APK is
+`app/build/app/outputs/flutter-apk/app-release.apk`. The Android **app id is `club.makapix.editor`** (also the
+OAuth custom scheme — see `ClubConfig`). That `…editor` app id is **accepted legacy, kept intentionally**: it
+is the installed-app identity and must match the server OAuth allowlist byte-for-byte, so it is *not* renamed
+alongside the desktop binary (which was migrated `makapix_editor` → `makapix_club`). It persists until an
+indeterminate, server-coordinated future migration.
 
 ### The fast editor dev loop (no GUI, no device)
 
@@ -121,9 +124,17 @@ Crates: `engine` (core) · `codec` (import GIF/PNG/APNG/JPEG/BMP/WebP, export PN
 
 ### The Flutter shell
 
-- **Editor UI:** all in `app/lib/main.dart` (~2200 lines) — the three-row UI (tool options · palette · tools),
-  canvas, timeline, layers, palette manager, pickers, import/export. It holds an `Engine` (the FFI wrapper)
-  and renders the RGBA bytes the engine returns.
+The app is **two co-equal pillars under a neutral shell**, not "an editor that can reach Club". `lib/main.dart`
+is a thin entry point; `lib/app.dart` is the neutral root `MaterialApp`; **`lib/shell/app_shell.dart`** hosts
+both pillars in a keep-alive `IndexedStack`. The app **opens on the Club pillar** (signed-out users land on
+Club's own welcome/sign-in funnel); the **editor is always reachable without login** via a prominent centre ⊕
+**Create** button (a notched `BottomAppBar` on phones, a `NavigationRail` on wide windows).
+
+- **Editor UI:** `app/lib/editor/`, mirroring `lib/club/` — `editor_page.dart` (the `EditorPage` +
+  `_EditorPageState`: the three-row UI of tool options · palette · tools, plus canvas, timeline, layers,
+  palette manager, pickers, import/export; holds an `Engine` and renders the RGBA bytes it returns) ·
+  `tools.dart` (tool catalogue) · `thumbnail.dart` · `widgets/painters.dart` · `dialogs/` (crop + colour
+  picker).
 - **Club social layer:** `app/lib/club/`, modular and **Dart-only** — the Rust engine stays network-free and
   is never touched by the social code. Structure: `api/` (typed REST per domain) · `auth/` (session, OAuth,
   PKCE, token store) · `models/` · `state/` (Riverpod providers/controllers) · `publish/` · `edit/` · `ui/`
@@ -140,9 +151,10 @@ Crates: `engine` (core) · `codec` (import GIF/PNG/APNG/JPEG/BMP/WebP, export PN
 The two pillars connect through one Riverpod `StateProvider`, `pendingClubEditProvider`
 (`app/lib/club/state/edit_bridge.dart`):
 
-- **Edit/remix (Club → editor):** the Club detail page sets a `ClubEditRequest`; the editor root (`main.dart`)
-  `ref.listen`s it, downloads the artwork, loads it as a fresh document, and records a `ClubEditSource` so the
-  user can later **Replace** the original or **Post as new**.
+- **Edit/remix (Club → editor):** the Club detail page sets a `ClubEditRequest`; on that one provider event
+  **`AppShell` switches to the editor pillar** while `EditorPage` (`lib/editor/editor_page.dart`) `ref.listen`s
+  it, downloads the artwork, loads it as a fresh document, and records a `ClubEditSource` so the user can later
+  **Replace** the original or **Post as new**. (Both listeners fire on the same dispatch — race-free.)
 - **Publish (editor → Club):** "Post to Club" exports the document to bytes (static→PNG, animated→GIF) and
   opens the publish flow in `lib/club`. The engine hands over **only bytes**; `lib/club` does conformance,
   metadata, license, visibility, and the upload.

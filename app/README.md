@@ -1,17 +1,21 @@
-# makapix_editor
+# makapix_club
 
-A new Flutter project.
+The Flutter shell for the **Makapix Club** app — the two-pillar native client (Rust engine + Flutter)
+for the `makapix.club` pixel-art social network. See the repo root [`README.md`](../README.md),
+[`CLAUDE.md`](../CLAUDE.md), [`SPEC.md`](../SPEC.md) (editor engine), and [`SPEC-CLUB.md`](../SPEC-CLUB.md)
+(social layer) for the full picture.
 
-## Getting Started
+## Structure (`lib/`)
 
-This project is a starting point for a Flutter application.
+- `main.dart` — thin Flutter entry point.
+- `app.dart` — the neutral root `MaterialApp`.
+- `shell/` — `app_shell.dart`, the two-pillar shell (Club + Editor) hosting both in a keep-alive
+  `IndexedStack`; opens on Club, with the editor one ⊕ tap away (no login required).
+- `editor/` — the **Makapix Editor** pillar (animated pixel-art editor) over the Rust engine via FFI.
+- `club/` — the **Makapix Club** social layer (Dart-only): `api/ auth/ models/ state/ publish/ edit/ ui/ config/`.
+- `engine_ffi.dart` — the `dart:ffi` wrapper around the Rust engine DLL/`.so`.
 
-A few resources to get you started if this is your first Flutter project:
+## Build & run
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+From the repo root: `./build.ps1 -Run` (Windows) or `./build_android.ps1 -Install` (Android).
+Tests: `flutter test`; lint: `flutter analyze`.

@@ -21,6 +21,6 @@ if ($LASTEXITCODE -ne 0) { exit 1 }
 
 $exeDir = "$root/app/build/windows/x64/runner/Release"
 Copy-Item "$root/target/release/makapix_ffi.dll" $exeDir -Force
-Write-Host "==> Done. App: $exeDir/makapix_editor.exe" -ForegroundColor Green
+Write-Host "==> Done. App: $exeDir/makapix_club.exe" -ForegroundColor Green
 
-if ($Run) { Start-Process "$exeDir/makapix_editor.exe" }
+if ($Run) { Start-Process "$exeDir/makapix_club.exe" }

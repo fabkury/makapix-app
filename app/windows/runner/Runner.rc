@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "club.makapix" "\0"
-            VALUE "FileDescription", "makapix_editor" "\0"
+            VALUE "FileDescription", "makapix_club" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "makapix_editor" "\0"
+            VALUE "InternalName", "makapix_club" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 club.makapix. All rights reserved." "\0"
-            VALUE "OriginalFilename", "makapix_editor.exe" "\0"
-            VALUE "ProductName", "makapix_editor" "\0"
+            VALUE "OriginalFilename", "makapix_club.exe" "\0"
+            VALUE "ProductName", "makapix_club" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

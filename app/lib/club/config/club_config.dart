@@ -28,6 +28,11 @@ class ClubConfig {
 
   // ---- GitHub OAuth (server-brokered; native custom-scheme return leg) ----
 
+  // NOTE — accepted legacy: the `.editor` token below is retained intentionally. It matches
+  // the Android applicationId (the installed-app identity) and the server OAuth allowlist
+  // byte-for-byte, so it is NOT renamed alongside the desktop binary (makapix_editor →
+  // makapix_club). It persists until an indeterminate, server-coordinated future migration.
+
   /// Custom scheme the app registers for the web-auth callback (Android manifest).
   static const String oauthScheme = 'club.makapix.editor';
 

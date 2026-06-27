@@ -88,8 +88,9 @@ cargo test                                          # full Tier-1 suite
 cargo run -p makapix-cli -- run examples/showcase.txt "render:0:out.png:6" state assert.roundtrip
 cd app && flutter run -d windows                    # interactive UI (debug)
 ```
-The prebuilt release app is at `app/build/windows/x64/runner/Release/makapix_editor.exe`. *(The Windows dev
-harness binary keeps the legacy `makapix_editor` name; the Android app id is `club.makapix.editor`.)*
+The prebuilt release app is at `app/build/windows/x64/runner/Release/makapix_club.exe`. *(The Android app id
+and OAuth scheme `club.makapix.editor` are intentionally retained as accepted legacy — they are server-allowlisted
+and the installed-app identity — and are not renamed alongside the desktop binary.)*
 
 ### Build & install on Android
 The Rust engine cross-compiles to an Android `.so` (bundled into the APK via `jniLibs`); the Dart loader
