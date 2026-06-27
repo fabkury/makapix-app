@@ -63,6 +63,43 @@ class OutlinePainter extends CustomPainter {
   bool shouldRepaint(OutlinePainter old) => true; // driven by the animation
 }
 
+/// Draggable endpoint markers for an uncommitted figure (Line/Rect/Ellipse). Drawn in SCREEN
+/// space as a ringed target at each endpoint so it stays a constant on-screen size and frames the
+/// pixel without hiding it.
+class HandlePainter extends CustomPainter {
+  final List<Offset> points; // endpoint positions in canvas-pixel coords (cell top-left)
+  final double scale; // screen px per canvas px
+  final Offset off; // canvas top-left in screen px
+  const HandlePainter(this.points, this.scale, this.off);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (scale <= 0) return;
+    final r = (scale * 0.8).clamp(8.0, 18.0);
+    final halo = Paint()
+      ..color = Colors.black
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4
+      ..isAntiAlias = true;
+    final ring = Paint()
+      ..color = const Color(0xFF4DA3FF)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5
+      ..isAntiAlias = true;
+    final dot = Paint()..color = Colors.white;
+    for (final p in points) {
+      final c = Offset(off.dx + (p.dx + 0.5) * scale, off.dy + (p.dy + 0.5) * scale);
+      canvas.drawCircle(c, r, halo);
+      canvas.drawCircle(c, r, ring);
+      canvas.drawCircle(c, 2.5, dot);
+    }
+  }
+
+  @override
+  bool shouldRepaint(HandlePainter old) =>
+      old.points != points || old.scale != scale || old.off != off;
+}
+
 /// A small two-tone checkerboard, used behind layer thumbnails so transparent areas read as
 /// transparent (the layers film-strip shows each layer against a transparent background).
 class CheckerPainter extends CustomPainter {

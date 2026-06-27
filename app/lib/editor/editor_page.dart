@@ -62,6 +62,15 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
   int _threshold = 16;
   bool _contiguous = true;
   bool _shapeFill = true;
+  // Pending figure draft (Line/Rect/Ellipse): two endpoints in canvas-pixel coords, or null when
+  // no uncommitted figure. While set, a live preview + draggable handles show and row-1 gets
+  // Commit/Cancel; nothing is written to the layer until Commit.
+  Offset? _shapeA, _shapeB;
+  int _shapeDrag = 0; // active gesture: 0=none, 1=dragging A, 2=dragging B, 3=drawing a new figure
+  // Start point of a not-yet-materialized new figure: when a press lands off the handles over an
+  // existing draft, we defer replacing it until the finger actually moves, so a pinch-zoom or a
+  // stray tap leaves the current draft intact.
+  Offset? _newShapeStart;
   bool _radial = false;
   int _intensity = 128;
   String _selMode = 'Replace';
@@ -122,6 +131,10 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
   // overlay) rather than the finger, and an action button effects one operation at a time. This
   // is exactly the active tool being in precision mode.
   bool get _isCursorTool => _isPrecision;
+
+  // Figure tools draw via the draft flow (drag → adjust handles → commit), not immediate-on-release.
+  bool get _isShapeTool => _tool == 'Line' || _tool == 'Rectangle' || _tool == 'Ellipse';
+  bool get _hasShapeDraft => _shapeA != null && _shapeB != null;
 
   bool get _engineReady => _error == null;
 

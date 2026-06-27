@@ -12,6 +12,29 @@ extension _EditorControls on _EditorPageState {
         padding: const EdgeInsets.only(left: 8, right: 4),
         child: Text(s, style: const TextStyle(fontSize: 11, color: Colors.white60))));
 
+    if (_isShapeTool && _hasShapeDraft) {
+      // Commit / cancel the uncommitted figure. Drag the on-canvas handles to fine-tune first.
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF30A050)),
+          onPressed: _commitShape,
+          icon: const Icon(Icons.check, size: 16),
+          label: const Text('Commit'),
+        ),
+      ));
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(minimumSize: const Size(0, 34), foregroundColor: const Color(0xFFE06060)),
+          onPressed: _cancelShapeDraft,
+          icon: const Icon(Icons.close, size: 16),
+          label: const Text('Cancel'),
+        ),
+      ));
+      children.add(const SizedBox(width: 8));
+    }
+
     if (_precisionCapable) {
       // The Precision toggle: turns the active paint tool into its off-finger reticle mode.
       // Remembered per tool (see _precisionOn).
@@ -129,6 +152,7 @@ extension _EditorControls on _EditorPageState {
       children.add(_toggle(['Fill', 'Outline'], _shapeFill ? 0 : 1, (i) {
         setState(() => _shapeFill = i == 0);
         _send('SetShapeFill($_shapeFill)');
+        if (_hasShapeDraft) _redraw(); // the pending preview reflects fill/outline live
       }));
     }
     if (_tool == 'Gradient') {

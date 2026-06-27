@@ -95,6 +95,12 @@ extension _EditorCanvas on _EditorPageState {
                 ),
                 size: Size.infinite,
               ),
+            if (_isShapeTool && _hasShapeDraft)
+              // draggable endpoint handles for the uncommitted figure
+              CustomPaint(
+                painter: HandlePainter([_shapeA!, _shapeB!], vScale, vOff),
+                size: Size.infinite,
+              ),
           ]),
         ),
       );
@@ -122,6 +128,10 @@ extension _EditorCanvas on _EditorPageState {
   // ---- single-pointer draw helpers (driven by the multi-touch state machine above) ----
 
   void _beginDraw(Offset pos, Size box) {
+    if (_isShapeTool) {
+      _beginShape(pos, box);
+      return;
+    }
     if (_isCursorTool) {
       _lastTouch = pos;
       _accX = 0;
@@ -138,6 +148,10 @@ extension _EditorCanvas on _EditorPageState {
   }
 
   void _continueDraw(Offset pos, Size box) {
+    if (_isShapeTool) {
+      _continueShape(pos, box);
+      return;
+    }
     if (_isCursorTool) {
       final last = _lastTouch ?? pos;
       final (scale, _) = _view(box);
@@ -164,6 +178,10 @@ extension _EditorCanvas on _EditorPageState {
   }
 
   void _endDraw() {
+    if (_isShapeTool) {
+      _endShape();
+      return;
+    }
     if (_isCursorTool) {
       _lastTouch = null;
       if (_penDown) _refreshState();
@@ -182,6 +200,21 @@ extension _EditorCanvas on _EditorPageState {
   // Abort an in-progress draw, discarding its marks without an undo step (used when a second finger
   // interrupts a nascent stroke to begin pan/zoom).
   void _cancelDraw() {
+    if (_isShapeTool) {
+      // A second finger interrupted a figure gesture (→ pan/zoom). Keep any established draft; but
+      // if this was a brand-new degenerate figure (a single point, e.g. a pinch starting on empty
+      // canvas), drop it so it leaves no stray dot behind.
+      if (_shapeDrag == 3 && _hasShapeDraft && _shapeA == _shapeB) {
+        _send('ShapeCancel()');
+        _shapeA = null;
+        _shapeB = null;
+      }
+      _shapeDrag = 0;
+      _newShapeStart = null;
+      _redraw();
+      setState(() {});
+      return;
+    }
     if (_isCursorTool) {
       _lastTouch = null;
       if (_penDown) _send('CancelStroke()'); // abort a precision pen line in progress
@@ -193,6 +226,77 @@ extension _EditorCanvas on _EditorPageState {
     _refreshState();
     _redraw();
     setState(() {});
+  }
+
+  // ---- figure draft gestures (Line/Rect/Ellipse: drag → adjust handles → commit) ----
+
+  // Begin a figure gesture: grab the nearest endpoint handle if the press lands near one
+  // (generous screen-space tolerance — "near, not necessarily on"), otherwise start a fresh
+  // figure from this point.
+  void _beginShape(Offset pos, Size box) {
+    final p = _toCanvas(pos, box);
+    _newShapeStart = null;
+    if (_hasShapeDraft) {
+      final (s, off) = _view(box);
+      Offset screenOf(Offset c) => Offset(off.dx + (c.dx + 0.5) * s, off.dy + (c.dy + 0.5) * s);
+      final tol = (s * 0.9).clamp(22.0, 44.0);
+      final dA = (pos - screenOf(_shapeA!)).distance;
+      final dB = (pos - screenOf(_shapeB!)).distance;
+      if (dA <= tol && dA <= dB) {
+        _shapeDrag = 1;
+        _shapeA = p;
+        _pushShape();
+      } else if (dB <= tol) {
+        _shapeDrag = 2;
+        _shapeB = p;
+        _pushShape();
+      } else {
+        // Off both handles: a potential new figure. Defer replacing the current draft until the
+        // finger moves (so a pinch-zoom or a tap on empty space doesn't discard existing work).
+        _shapeDrag = 3;
+        _newShapeStart = p;
+      }
+    } else {
+      // No draft yet: materialize a degenerate figure so a tap drops a starting handle.
+      _shapeDrag = 3;
+      _newShapeStart = p;
+      _shapeA = p;
+      _shapeB = p;
+      _pushShape();
+    }
+    _redraw();
+    setState(() {});
+  }
+
+  void _continueShape(Offset pos, Size box) {
+    if (_shapeDrag == 0) return;
+    final p = _toCanvas(pos, box);
+    if (_shapeDrag == 1) {
+      _shapeA = p;
+    } else if (_shapeDrag == 2) {
+      _shapeB = p;
+    } else {
+      // New figure: the first movement replaces any prior draft (A fixed at the press point).
+      _shapeA = _newShapeStart ?? p;
+      _shapeB = p;
+    }
+    _pushShape();
+    _redraw();
+    setState(() {});
+  }
+
+  // Releasing leaves the draft in place (preview + handles persist); commit is an explicit button.
+  void _endShape() {
+    _shapeDrag = 0;
+    _newShapeStart = null;
+    setState(() {});
+  }
+
+  // Mirror the local draft endpoints into the engine so the preview re-renders.
+  void _pushShape() {
+    if (!_hasShapeDraft) return;
+    final a = _shapeA!, b = _shapeB!;
+    _send('ShapeSet(${a.dx.toInt()},${a.dy.toInt()},${b.dx.toInt()},${b.dy.toInt()})');
   }
 
   (int, int) _thumbSize() {

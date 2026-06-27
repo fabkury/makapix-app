@@ -204,6 +204,13 @@ extension _EditorEngine on _EditorPageState {
       _send('CursorPenUp()');
       _penDown = false;
     }
+    // A pending figure draft belongs to the tool it was started with; changing tools discards it.
+    if (_hasShapeDraft) {
+      _send('ShapeCancel()');
+      _shapeA = null;
+      _shapeB = null;
+      _shapeDrag = 0;
+    }
     setState(() => _tool = t);
     if (_transformTools.contains(t)) return; // UI-only action group: no engine tool change
     _send('SelectTool($t)');
@@ -220,6 +227,29 @@ extension _EditorEngine on _EditorPageState {
       _send('SetGradientType(${_radial ? 'Radial' : 'Linear'})');
       _send('SetGradientStops([${_hex(_gradA)}@0, ${_hex(_gradB)}@1])');
     }
+  }
+
+  // Rasterize the pending figure draft into the active layer, then clear the handles/buttons.
+  void _commitShape() {
+    _send('ShapeCommit()');
+    setState(() {
+      _shapeA = null;
+      _shapeB = null;
+      _shapeDrag = 0;
+    });
+    _refreshState();
+    _redraw();
+  }
+
+  // Discard the pending figure draft without drawing anything.
+  void _cancelShapeDraft() {
+    _send('ShapeCancel()');
+    setState(() {
+      _shapeA = null;
+      _shapeB = null;
+      _shapeDrag = 0;
+    });
+    _redraw();
   }
 
   // Toggle the active paint tool's precision (off-finger reticle) mode. Remembered per tool.

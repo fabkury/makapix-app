@@ -37,6 +37,7 @@ Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending)
 | **Precision mode** (off-finger reticle, draw-by-button) | ✅ | a per-tool toggle on Pencil/Brush/Airbrush/Eraser; drag moves a ✛ reticle off the finger; arrows nudge 1px; DRAW/SPRAY = one dab; PEN toggle = continuous stroke/spray while dragging. Reticle frames the target pixel without covering it |
 | Bucket fill (contiguous / discontiguous, threshold) | ✅ | flood oracle-tested |
 | Eraser (square / round, size) | ✅ | |
+| **Figures** Line / Rectangle / Ellipse (draw → adjust → commit) | ✅ | drag previews an uncommitted figure with draggable endpoint handles; re-drag either handle (tap near, not on) to fine-tune; Fill/Outline updates the preview live; Commit ✓ rasterizes (one undo step), Cancel ✗ discards. Engine: `ShapeSet/ShapeCommit/ShapeCancel` |
 | Select by color threshold (cont/discont) | ✅ | |
 | Select rectangle / ellipse / circle / freeform | ✅ | polygon via freeform lasso path |
 | Selection ops Add / Subtract / Union / Intersect / Invert | ✅ | set-algebra tested |
