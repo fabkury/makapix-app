@@ -1,6 +1,9 @@
-# Makapix Editor — Implementation Status (2026-06-25)
+# Makapix Club app — Implementation Status (2026-06-25)
 
-Honest coverage of every feature listed in the brief and the SPEC. Legend:
+Honest coverage of the **Makapix Editor** pillar (the editor engine + Flutter shell), which is built and
+runnable on this workstation. The **social-networking** pillar (see [`SPEC-CLUB.md`](SPEC-CLUB.md)) is in
+spec + server-contract phase and is tracked there — note the "Direct upload to Makapix Club" row below
+reflects the *earlier mock/provisional* upload, now superseded by the real contract being built. Legend:
 **✅ done & tested** · **◑ partial** (engine done, UI/edges pending) · **○ stubbed / not yet**.
 
 ## Build artifacts

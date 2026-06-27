@@ -1,5 +1,5 @@
-name: makapix_editor
-description: "A new Flutter project."
+name: makapix_club
+description: "Makapix Club — a native (Rust + Flutter) pixel-art social network with a built-in animated pixel-art editor (Makapix Editor). A full app counterpart to the makapix.club website."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev

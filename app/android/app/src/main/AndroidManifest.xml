@@ -2,7 +2,7 @@
     <!-- Club upload uses HTTPS. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="Makapix"
+        android:label="Makapix Club"
         android:name="${applicationName}"
         android:usesCleartextTraffic="true"
         android:icon="@mipmap/ic_launcher">

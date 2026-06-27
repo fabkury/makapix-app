@@ -1,9 +1,11 @@
 # Makapix Editor — Development Plan (PLAN)
 
-> Companion to [`SPEC.md`](SPEC.md). This is the **how we build it, in what order, on this Windows 11
-> workstation** document. The SPEC is the stable *what*; this PLAN sequences the work, defines the dev/test
-> environment, and sets acceptance gates per phase.
-> **Last updated:** 2026-06-25.
+> Companion to [`SPEC.md`](SPEC.md): the build plan for the **Makapix Editor** pillar of the **Makapix Club**
+> app — **how we build it, in what order, on this Windows 11 workstation**. The SPEC is the stable *what*; this
+> PLAN sequences the work, defines the dev/test environment, and sets acceptance gates per phase. The
+> social-networking pillar has its own phased rollout in [`SPEC-CLUB.md`](SPEC-CLUB.md) §28. See
+> [`README.md`](README.md) for the product model.
+> **Last updated:** 2026-06-26.
 
 ---
 
