@@ -58,6 +58,8 @@ class _AppShellState extends ConsumerState<AppShell> {
     ref.listen<ClubEditRequest?>(pendingClubEditProvider, (_, next) {
       if (next != null) _select(_editor);
     });
+    // The Club top-bar Contribute button bumps this to surface the editor (with its current doc).
+    ref.listen<int>(openEditorProvider, (_, _) => _select(_editor));
 
     return LayoutBuilder(
       builder: (context, constraints) {
