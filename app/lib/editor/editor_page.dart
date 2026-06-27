@@ -86,6 +86,8 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
   int _intensity = 128;
   int _spacing = 25; // Brush/Airbrush stamp spacing, % of brush size (engine spacing)
   String _selMode = 'Replace';
+  int _alphaCutoff = 0; // Sel Lyr: alpha cutoff (0..254); pixels with alpha ≤ this are "selected"
+  String _selLyrMode = 'Replace'; // Sel Lyr: last-triggered (active) Replace/Add/Subtract/Intersect
   Color _gradA = const Color(0xFF102040);
   Color _gradB = const Color(0xFFFFFFFF);
   double _hsvH = 60, _hsvS = 0, _hsvV = 0;
@@ -138,6 +140,10 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
   // UI-only action groups: selecting one reveals its row-1 buttons but does not change the
   // engine's draw tool, and the canvas is inert while one is active.
   bool get _isTransformTool => _transformTools.contains(_tool);
+
+  // Tools whose canvas is inert (no drawing on tap/drag): the transform action groups and Sel Lyr
+  // (whose alpha→selection actions are triggered from row-1, not the canvas).
+  bool get _isInertCanvasTool => _isTransformTool || _tool == 'SelectLayer';
 
   // Off-finger "reticle" mode: dragging moves a cursor (drawn as a screen-space marching-ants
   // overlay) rather than the finger, and an action button effects one operation at a time. This

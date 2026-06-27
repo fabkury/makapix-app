@@ -28,6 +28,7 @@ const tools = <ToolDef>[
   ToolDef('SelectEllipse', Icons.lens_blur, 'Sel Oval'),
   ToolDef('SelectFree', Icons.gesture, 'Lasso'),
   ToolDef('SelectByColor', Icons.colorize_outlined, 'Sel Color'),
+  ToolDef('SelectLayer', Icons.opacity, 'Sel Lyr'),
   ToolDef('HsvShift', Icons.palette, 'HSV'),
   // Transform actions: UI-only groups (no engine draw tool). Selecting one reveals its
   // action button(s) in row-1; the canvas is inert while one is selected.
@@ -69,6 +70,7 @@ const toolTips = <String, String>{
   'SelectPoly': 'Trace an outline; it closes into a selection on release.',
   'SelectFree': 'Lasso: trace around pixels to select them.',
   'SelectByColor': 'Tap to select similar-colour pixels. Threshold = tolerance.',
+  'SelectLayer': 'Selects from the layer\'s alpha (cyan = pixels with alpha ≤ Threshold). Tap Replace/Add/Subtract/Intersect to apply; All/None select everything/nothing.',
   'HsvShift': 'Shift Hue/Sat/Value of the selection. Set H/S/V, then Apply.',
   'Flip': 'Mirror the image — tap Flip H or Flip V.',
   'Rotate': 'Rotate the canvas 90° CW, 90° CCW, or 180°.',

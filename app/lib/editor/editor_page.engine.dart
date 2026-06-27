@@ -226,7 +226,7 @@ extension _EditorEngine on _EditorPageState {
       _redraw();
     }
     _send('SetBrushSize($_brushSize); SetBrushShape(${_round ? 'Round' : 'Square'})');
-    _send('SetThreshold($_threshold); SetContiguous($_contiguous)');
+    _send('SetThreshold($_threshold); SetContiguous($_contiguous); SetAlphaCutoff($_alphaCutoff)');
     _send('SetIntensity($_intensity); SetShapeFill($_shapeFill); SetLineWidth($_lineWidth)');
     _send('SetSpacing($_spacing)');
     _send('SetSelectionMode($_selMode); SetProtectPixels($_protectPixels)');
@@ -234,6 +234,7 @@ extension _EditorEngine on _EditorPageState {
       _send('SetGradientType(${_radial ? 'Radial' : 'Linear'})');
       _send('SetGradientStops([${_hex(_gradA)}@0, ${_hex(_gradB)}@1])');
     }
+    if (t == 'SelectLayer') _redraw(); // show the alpha-selection preview overlay immediately
   }
 
   // Rasterize the pending figure draft into the active layer, then clear the handles/buttons.

@@ -63,7 +63,7 @@ extension _EditorCanvas on _EditorPageState {
               }
             } else {
               // first finger → draw (unless this tool doesn't draw on the canvas)
-              if (!_isTransformTool) {
+              if (!_isInertCanvasTool) {
                 _drawPointer = e.pointer;
                 _beginDraw(e.localPosition, box);
               }

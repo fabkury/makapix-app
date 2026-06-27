@@ -222,7 +222,40 @@ extension _EditorControls on _EditorPageState {
             _send('SetGradientStops([${_hex(_gradA)}@0, ${_hex(_gradB)}@1])');
           })));
     }
-    if (_tool.startsWith('Select')) {
+    if (_tool == 'SelectLayer') {
+      const accent = Color(0xFF00E5FF); // matches the cyan preview overlay
+      // Alpha cutoff: pixels with alpha ≤ threshold are "selected" (0 = only fully transparent).
+      _labeledSlider(children, 'Threshold', _alphaCutoff.toDouble(), 0, 254, (v) {
+        setState(() => _alphaCutoff = v.round());
+        _send('SetAlphaCutoff($_alphaCutoff)');
+        _redraw(); // refresh the live preview overlay
+      });
+      // Replace/Add/Subtract/Intersect — each runs the alpha→selection op now; the last one used
+      // stays highlighted (the "active" option).
+      for (final m in const ['Replace', 'Add', 'Subtract', 'Intersect']) {
+        final active = _selLyrMode == m;
+        children.add(Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size(0, 32),
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              backgroundColor: active ? accent : const Color(0xFF2A2D31),
+              foregroundColor: active ? Colors.black : Colors.white70,
+            ),
+            onPressed: () {
+              setState(() => _selLyrMode = m);
+              _act('SelectByAlpha($m)');
+            },
+            child: Text(m),
+          ),
+        ));
+      }
+      children.add(const SizedBox(width: 6));
+      children.add(_miniBtn('All', () => _act('SelectAll()')));
+      children.add(_miniBtn('None', () => _act('SelectNone()')));
+    }
+    if (_tool.startsWith('Select') && _tool != 'SelectLayer') {
       children.add(_toggle(['Replace', 'Add', 'Subtract', 'Intersect'],
           ['Replace', 'Add', 'Subtract', 'Intersect'].indexOf(_selMode), (i) {
         setState(() => _selMode = ['Replace', 'Add', 'Subtract', 'Intersect'][i]);
