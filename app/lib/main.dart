@@ -13,7 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'club/ui/club_account_page.dart';
+import 'club/ui/club_home_page.dart';
 import 'engine_ffi.dart';
 
 void main() {
@@ -837,11 +837,11 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
         ]),
         actions: [
           IconButton(
-            tooltip: 'Makapix Club account',
+            tooltip: 'Makapix Club',
             onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const ClubAccountPage()),
+              MaterialPageRoute(builder: (_) => const ClubHomePage()),
             ),
-            icon: const Icon(Icons.account_circle_outlined),
+            icon: const Icon(Icons.public),
           ),
           IconButton(tooltip: 'New', onPressed: _newDialog, icon: const Icon(Icons.insert_drive_file_outlined)),
           IconButton(tooltip: 'Open', onPressed: _open, icon: const Icon(Icons.folder_open)),

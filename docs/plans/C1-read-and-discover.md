@@ -143,10 +143,14 @@ app:
 - [x] models/ + parsing tests (Page, Post, ReactionTotals, Comment tree, ClubNotification, UserProfile)
 - [x] api/ domain classes (feed/post/profile/search/notifications) + api_providers
 - [x] state/ paged notifier + providers (feeds, post detail/reactions/comments, profile, notifications)
-- [ ] ui/ hub + feed grid + nav
-- [ ] ui/ artwork detail + reactions + comments
-- [ ] ui/ profile + search + notifications
+- [x] ui/ hub + feed grid + nav (ClubHomePage tabs; FeedGrid; editor AppBar → hub)
+- [x] ui/ artwork detail + reactions + comments (+ hashtag feed page; share=copy link)
+- [x] ui/ profile + search + notifications
 - [ ] analyze + test + Android build; C1 acceptance
+
+> Deferred polish within C1 (functional without them): profile Favourites/Highlights tabs
+> (gallery shipped), inline follow on the detail page (follow lives on the profile), and
+> richer downloads/share (copy-link shipped; byte download is C2-adjacent).
 
 ### Notes / findings
 - Confirmed shapes (curl, dev): `reactions` = `{totals:{emoji:n}, authenticated_totals, anonymous_totals,
