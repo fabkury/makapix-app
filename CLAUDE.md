@@ -168,3 +168,7 @@ C5 real-time & players · C6 moderation & extras. Commits and branch work are ta
   falls back to debug signing when absent.
 - **Club upload mock:** `python tools/mock_club_server.py` listens on `http://localhost:8080` for local
   upload testing (artifacts land in `tools/uploads/`).
+
+## Development and interaction style
+
+Feel free to ask questions to the user, but if you do so, prefer to give alternatives, include your recommendations, and use the "question asking tool" for convenience.
