@@ -263,6 +263,23 @@ impl Session {
     }
 
     fn draw_tool_preview(&self, buf: &mut RgbaBuffer) {
+        // Select-Layer: tint exactly the pixels the alpha cutoff would select (active layer's
+        // alpha ≤ cutoff), so the user sees pixel-perfectly what an action will use. Shown whenever
+        // the tool is active — no stroke needed.
+        if self.tool == ToolKind::SelectLayer {
+            let cutoff = self.settings.alpha_cutoff;
+            let overlay = Rgba8::new(0, 229, 255, 120); // semi-transparent cyan
+            let layer = self.doc.active_frame().active_layer();
+            let (w, h) = (self.doc.size.w as i32, self.doc.size.h as i32);
+            for y in 0..h {
+                for x in 0..w {
+                    if layer.pixels.get(x, y).a <= cutoff {
+                        buf.blend_over(x, y, overlay);
+                    }
+                }
+            }
+            return;
+        }
         // A pending shape draft (the forgiving draw → adjust → commit flow) renders on its own,
         // independent of any pointer stroke.
         if let Some((a, b)) = self.shape_draft {
@@ -953,6 +970,24 @@ impl Session {
     }
 
     // ---- selection / clipboard ops ----
+
+    /// Build a selection from the active layer's alpha (pixels with alpha ≤ the alpha cutoff) and
+    /// combine it with the current selection using `mode`. Selection is editor state — not undoable.
+    pub fn select_by_alpha(&mut self, mode: CombineMode) {
+        let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
+        let cutoff = self.settings.alpha_cutoff;
+        let buf = self.doc.active_frame().active_layer().pixels.clone();
+        let shape = Mask::from_plot(w, h, |plot| {
+            for y in 0..h as i32 {
+                for x in 0..w as i32 {
+                    if buf.get(x, y).a <= cutoff {
+                        plot(x, y);
+                    }
+                }
+            }
+        });
+        self.ensure_selection().combine(&shape, mode);
+    }
 
     pub fn select_all(&mut self) {
         self.ensure_selection().select_all();
@@ -2114,6 +2149,28 @@ mod tests {
         assert_eq!(s.pixel(0, 0, 9, 9), Rgba8::TRANSPARENT);
         assert!(s.doc.undo()); // the first dot is still undoable (not orphaned)
         assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::TRANSPARENT);
+    }
+
+    #[test]
+    fn select_by_alpha_uses_layer_alpha() {
+        let mut s = Session::new(8, 8);
+        s.settings.primary = Rgba8::WHITE;
+        s.tool = ToolKind::Pencil;
+        s.tap(0, 0); // one opaque pixel; the rest are fully transparent
+        // cutoff 0 → select the transparent pixels (everything except the opaque one)
+        s.settings.alpha_cutoff = 0;
+        s.run_script("SelectByAlpha(Replace)").unwrap();
+        let sel = s.selection.as_ref().expect("selection set");
+        assert!(!sel.get(0, 0), "the opaque pixel is NOT selected at cutoff 0");
+        assert!(sel.get(3, 3), "a transparent pixel IS selected");
+        // Intersect with a translucent test: raise cutoff to include alpha 128
+        s.settings.primary = Rgba8::new(255, 0, 0, 128);
+        s.tap(1, 1); // a translucent pixel (alpha 128)
+        s.settings.alpha_cutoff = 128;
+        s.run_script("SelectByAlpha(Replace)").unwrap();
+        let sel = s.selection.as_ref().unwrap();
+        assert!(sel.get(1, 1), "alpha 128 ≤ cutoff 128 → selected");
+        assert!(!sel.get(0, 0), "alpha 255 > cutoff 128 → not selected");
     }
 
     #[test]
