@@ -74,6 +74,7 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
   Offset? _newShapeStart;
   bool _radial = false;
   int _intensity = 128;
+  int _spacing = 25; // Brush/Airbrush stamp spacing, % of brush size (engine spacing)
   String _selMode = 'Replace';
   Color _gradA = const Color(0xFF102040);
   Color _gradB = const Color(0xFFFFFFFF);

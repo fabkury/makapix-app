@@ -222,6 +222,7 @@ extension _EditorEngine on _EditorPageState {
     _send('SetBrushSize($_brushSize); SetBrushShape(${_round ? 'Round' : 'Square'})');
     _send('SetThreshold($_threshold); SetContiguous($_contiguous)');
     _send('SetIntensity($_intensity); SetShapeFill($_shapeFill); SetLineWidth($_lineWidth)');
+    _send('SetSpacing($_spacing)');
     _send('SetSelectionMode($_selMode); SetProtectPixels($_protectPixels)');
     if (t == 'Gradient') {
       _send('SetGradientType(${_radial ? 'Radial' : 'Linear'})');

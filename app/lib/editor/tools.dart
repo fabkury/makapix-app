@@ -40,8 +40,8 @@ const tools = <ToolDef>[
 // Succinct, teach-as-you-go help shown in the gesture-safe band at the bottom.
 const toolTips = <String, String>{
   'Pencil': 'Drag to draw hard pixels in the primary colour. Turn on Precision to draw off-finger with a reticle.',
-  'Brush': 'Drag to paint, blending onto existing pixels. Turn on Precision to paint off-finger with a reticle.',
-  'Airbrush': 'Drag to spray in the primary colour. Set size & intensity. Turn on Precision to aim a reticle off-finger; tap SPRAY for one burst, or turn PEN on and drag.',
+  'Brush': 'Drag to paint, blending onto existing pixels. Spacing (% of size) sets how far apart stamps land. Turn on Precision to paint off-finger with a reticle.',
+  'Airbrush': 'Drag to spray in the primary colour. Set size, intensity & spacing. Turn on Precision to aim a reticle off-finger; tap SPRAY for one burst, or turn PEN on and drag.',
   'Eraser': 'Drag to erase pixels to transparent. Turn on Precision to erase off-finger with a reticle.',
   'Bucket': 'Tap an area to flood-fill. Threshold = colour tolerance.',
   'Gradient': 'Drag start→end to fill a gradient. Pick 2–3 colours, Linear/Radial.',
