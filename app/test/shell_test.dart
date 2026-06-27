@@ -1,6 +1,6 @@
 // Smoke test for the two-pillar app shell (lib/shell/app_shell.dart): the app opens on
-// the Club pillar with the signed-out welcome funnel (no login wall), and the centre ⊕
-// Create button reaches the editor pillar WITHOUT signing in.
+// the Club pillar with the signed-out welcome funnel (no login wall), and the welcome
+// page's Contribute button reaches the editor pillar WITHOUT signing in.
 //
 // Auth and the promoted feed are overridden so the test is deterministic — no
 // flutter_secure_storage and no Dio/network. The editor pillar is replaced with a stub so
@@ -18,6 +18,7 @@ import 'package:makapix_club/club/config/club_config.dart';
 import 'package:makapix_club/club/models/page.dart' as club;
 import 'package:makapix_club/club/models/post.dart';
 import 'package:makapix_club/club/state/auth_controller.dart';
+import 'package:makapix_club/club/state/edit_bridge.dart';
 import 'package:makapix_club/club/state/feed_providers.dart';
 import 'package:makapix_club/club/state/paged.dart';
 import 'package:makapix_club/shell/app_shell.dart';
@@ -58,17 +59,8 @@ Widget _harness() {
 // Windows accessibility bridge), so the editor stub is in the tree iff the editor is active.
 final _editorShowing = find.text('editor-stub');
 
-void _useNarrowPhone(WidgetTester tester) {
-  // Force the compact (bottom-bar + docked FAB) layout, not the wide NavigationRail.
-  tester.view.physicalSize = const Size(400, 800);
-  tester.view.devicePixelRatio = 1.0;
-  addTearDown(tester.view.resetPhysicalSize);
-  addTearDown(tester.view.resetDevicePixelRatio);
-}
-
 void main() {
   testWidgets('opens on the Club pillar with the signed-out welcome funnel', (tester) async {
-    _useNarrowPhone(tester);
     await tester.pumpWidget(_harness());
     await tester.pump();
 
@@ -77,19 +69,21 @@ void main() {
     expect(_editorShowing, findsNothing, reason: 'the app launches on the Club pillar');
   });
 
-  testWidgets('the centre Create button opens the editor without signing in', (tester) async {
-    _useNarrowPhone(tester);
+  testWidgets('the welcome Contribute button reaches the editor without signing in', (tester) async {
     await tester.pumpWidget(_harness());
     await tester.pump();
 
-    await tester.tap(find.byTooltip('Create'));
+    // Contribute on the signed-out welcome top bar opens the editor (no login wall).
+    await tester.tap(find.byTooltip('Contribute (open the editor)'));
     await tester.pump();
     expect(_editorShowing, findsOneWidget,
         reason: 'the editor pillar is reachable while signed out');
 
-    await tester.tap(find.byTooltip('Club'));
+    // The editor's ☰ → Club returns to the hub. The editor stub has no ☰, so drive the same
+    // provider signal the menu item bumps.
+    final container = ProviderScope.containerOf(tester.element(find.byType(AppShell)));
+    container.read(openClubProvider.notifier).state++;
     await tester.pump();
-    expect(_editorShowing, findsNothing,
-        reason: 'the bottom-bar Club button returns to the hub');
+    expect(_editorShowing, findsNothing, reason: 'openClubProvider returns to the Club pillar');
   });
 }

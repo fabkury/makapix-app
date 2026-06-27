@@ -9,3 +9,7 @@ final pendingClubEditProvider = StateProvider<ClubEditRequest?>((ref) => null);
 /// Bumped by a Club surface (the top-bar Contribute button) to ask the shell to open the editor
 /// pillar with its current document. The shell listens and switches pillars on any change.
 final openEditorProvider = StateProvider<int>((ref) => 0);
+
+/// Bumped by the editor's ☰ menu ("Club") to ask the shell to return to the Club pillar. The shell
+/// listens and switches pillars on any change.
+final openClubProvider = StateProvider<int>((ref) => 0);

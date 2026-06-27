@@ -108,6 +108,8 @@ extension _EditorTimeline on _EditorPageState {
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
         ),
         const PopupMenuDivider(),
+        _menuRow('club', Icons.public, 'Club'),
+        const PopupMenuDivider(),
         _menuRow('new', Icons.insert_drive_file_outlined, 'New'),
         _menuRow('open', Icons.folder_open, 'Open'),
         _menuRow('save', Icons.save, 'Save'),
@@ -125,6 +127,9 @@ extension _EditorTimeline on _EditorPageState {
 
   void _onEditorMenu(String v) {
     switch (v) {
+      case 'club':
+        ref.read(openClubProvider.notifier).state++;
+        break;
       case 'new':
         _newDialog();
         break;

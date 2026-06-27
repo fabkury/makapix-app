@@ -3,8 +3,10 @@
 // editor). Neither pillar is "the app" — this shell hosts both as peers.
 //
 // The app opens on the Club pillar (signed-out users land on Club's own welcome /
-// sign-in funnel). The editor is always reachable, without signing in, via the
-// prominent centre ⊕ Create button.
+// sign-in funnel). There is no persistent pillar-switching chrome (no bottom bar / rail):
+// navigation is in-content — the Club's top-bar "Contribute" button opens the editor (also
+// available, without signing in, on the welcome page), and the editor's ☰ menu → "Club"
+// returns to the hub.
 //
 // Only the ACTIVE pillar is mounted at a time. Keeping both pillar `Scaffold`s mounted
 // simultaneously (e.g. via IndexedStack) corrupts the Windows accessibility tree and
@@ -39,9 +41,6 @@ class AppShell extends ConsumerStatefulWidget {
 
 class _AppShellState extends ConsumerState<AppShell> {
   static const int _club = 0, _editor = 1;
-  // Material compact→medium boundary: phones get the bottom bar + docked FAB; wider
-  // windows (tablet/desktop) get a navigation rail.
-  static const double _kRailBreakpoint = 600;
 
   int _index = _club; // launch on the social pillar
 
@@ -58,84 +57,12 @@ class _AppShellState extends ConsumerState<AppShell> {
     ref.listen<ClubEditRequest?>(pendingClubEditProvider, (_, next) {
       if (next != null) _select(_editor);
     });
-    // The Club top-bar Contribute button bumps this to surface the editor (with its current doc).
+    // The Club's Contribute button surfaces the editor; the editor's ☰ → Club returns here.
     ref.listen<int>(openEditorProvider, (_, _) => _select(_editor));
+    ref.listen<int>(openClubProvider, (_, _) => _select(_club));
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final active = _index == _club ? widget.clubPillar : widget.editorPillar;
-        return constraints.maxWidth >= _kRailBreakpoint ? _wide(active) : _narrow(active);
-      },
-    );
-  }
-
-  // Phone: a centre-docked ⊕ Create FAB over a notched bottom bar whose single
-  // destination is the Club pillar.
-  Widget _narrow(Widget body) {
-    return Scaffold(
-      body: body,
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'shell-create',
-        tooltip: 'Create',
-        onPressed: () => _select(_editor),
-        child: const Icon(Icons.add),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: BottomAppBar(
-        shape: const CircularNotchedRectangle(),
-        notchMargin: 6,
-        child: Row(
-          children: [
-            IconButton(
-              tooltip: 'Club',
-              isSelected: _index == _club,
-              onPressed: () => _select(_club),
-              icon: const Icon(Icons.public),
-            ),
-            const Spacer(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // Tablet/desktop: a navigation rail with the Club destination and a prominent
-  // leading Create action.
-  Widget _wide(Widget body) {
-    return Scaffold(
-      body: Row(
-        children: [
-          NavigationRail(
-            selectedIndex: _index == _club ? 0 : null,
-            onDestinationSelected: (_) => _select(_club),
-            labelType: NavigationRailLabelType.all,
-            leading: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Column(
-                children: [
-                  FloatingActionButton(
-                    heroTag: 'shell-create-rail',
-                    tooltip: 'Create',
-                    onPressed: () => _select(_editor),
-                    child: const Icon(Icons.add),
-                  ),
-                  const SizedBox(height: 4),
-                  Text('Create', style: Theme.of(context).textTheme.labelSmall),
-                ],
-              ),
-            ),
-            destinations: const [
-              NavigationRailDestination(
-                icon: Icon(Icons.public_outlined),
-                selectedIcon: Icon(Icons.public),
-                label: Text('Club'),
-              ),
-            ],
-          ),
-          const VerticalDivider(width: 1),
-          Expanded(child: body),
-        ],
-      ),
-    );
+    // No pillar-switching chrome — only the active pillar is mounted (each pillar owns its
+    // own Scaffold). Keeping both Scaffolds mounted at once crashes the Windows AX bridge.
+    return _index == _club ? widget.clubPillar : widget.editorPillar;
   }
 }

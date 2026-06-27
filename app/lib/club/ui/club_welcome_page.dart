@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/post.dart';
+import '../state/edit_bridge.dart';
 import '../state/feed_providers.dart';
 import 'artwork_detail_page.dart';
 import 'club_account_page.dart';
@@ -19,7 +20,17 @@ class ClubWelcomePage extends ConsumerWidget {
     final promoted = ref.watch(feedProvider(FeedKind.promoted));
     final n = ref.read(feedProvider(FeedKind.promoted).notifier);
     return Scaffold(
-      appBar: AppBar(title: const Text('Makapix Club')),
+      appBar: AppBar(
+        title: const Text('Makapix Club'),
+        actions: [
+          // The editor stays reachable without signing in (mirrors the design's no-login Create).
+          IconButton(
+            tooltip: 'Contribute (open the editor)',
+            icon: const Icon(Icons.add_circle_outline),
+            onPressed: () => ref.read(openEditorProvider.notifier).state++,
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Padding(
