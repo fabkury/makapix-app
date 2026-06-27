@@ -124,8 +124,11 @@ app:
 
 - **Display images:** use `art_url` directly (the server returns a full URL; Flutter renders animated WebP/GIF).
   For large hi-dpi static display the `/d/{sqid}/upscaled` WebP is an optional enhancement; not required for C1.
-- **Signed-out browsing:** Recent/promoted/detail are public; the app shows them signed-out but routes
-  engagement (react/comment/follow) to sign-in. `/feed/following`, `/search`, notifications require auth.
+- **Signed-out browsing (updated 2026-06-26):** the Club hub is **gated** — signed-out users get a
+  welcome/sign-in funnel (`ClubWelcomePage`, promoted-art teaser), matching the website's redirect to
+  `/welcome`, instead of the Recent/Following feeds. Individual public artworks stay viewable (the teaser links
+  into public detail pages); all engagement + Following/search/notifications require auth. (Initial C1 left the
+  feeds open; changed per Fab's call to match the website.)
 - **`/feed/following` & comments pagination:** server may return `next_cursor: null` (not yet implemented) →
   `PagedNotifier` treats null as `atEnd` (single page). No client breakage.
 - **Reactions are add/remove (not toggle), ≤5/user:** optimistic UI reflects the user's `mine` set; a 409

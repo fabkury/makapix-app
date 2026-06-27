@@ -7,9 +7,9 @@ import '../state/feed_providers.dart';
 import '../state/notifications_providers.dart';
 import 'artwork_detail_page.dart';
 import 'club_account_page.dart';
+import 'club_welcome_page.dart';
 import 'notifications_page.dart';
 import 'search_page.dart';
-import 'widgets/common.dart';
 import 'widgets/feed_grid.dart';
 
 /// The social hub: tabbed feeds (Recent / Recommended / Following) plus search,
@@ -40,8 +40,15 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> with SingleTickerPr
 
   @override
   Widget build(BuildContext context) {
+    final auth = ref.watch(authControllerProvider);
+    // Match the website: signed-out users get a welcome/sign-in funnel, not the feeds.
+    if (auth.status == AuthStatus.loading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (!auth.isSignedIn) {
+      return const ClubWelcomePage();
+    }
     final unread = ref.watch(unreadCountProvider);
-    final signedIn = ref.watch(authControllerProvider).isSignedIn;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Makapix Club'),
@@ -69,13 +76,7 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> with SingleTickerPr
       body: TabBarView(controller: _tab, children: [
         _feed(FeedKind.recent),
         _feed(FeedKind.promoted),
-        signedIn
-            ? _feed(FeedKind.following)
-            : SignInPrompt(
-                message: 'Sign in to see art from artists you follow.',
-                onSignIn: () => Navigator.push(
-                    context, MaterialPageRoute(builder: (_) => const ClubAccountPage())),
-              ),
+        _feed(FeedKind.following),
       ]),
     );
   }
