@@ -16,7 +16,19 @@ import '../club/ui/club_home_page.dart';
 import '../editor/editor_page.dart';
 
 class AppShell extends ConsumerStatefulWidget {
-  const AppShell({super.key});
+  const AppShell({
+    super.key,
+    this.clubPillar = const ClubHomePage(),
+    this.editorPillar = const EditorPage(),
+  });
+
+  /// The social pillar (the launch experience). Overridable so tests can mount the
+  /// shell without the editor's FFI engine.
+  final Widget clubPillar;
+
+  /// The editor pillar (reachable without login via the centre ⊕ Create button).
+  final Widget editorPillar;
+
   @override
   ConsumerState<AppShell> createState() => _AppShellState();
 }
@@ -45,11 +57,11 @@ class _AppShellState extends ConsumerState<AppShell> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        // const children keep both pillars mounted across switches (keep-alive), so the
-        // editor's document/engine/animation persist while Club is foreground.
+        // Both pillars stay mounted across switches (keep-alive), so the editor's
+        // document/engine/animation persist while Club is foreground.
         final stack = IndexedStack(
           index: _index,
-          children: const [ClubHomePage(), EditorPage()],
+          children: [widget.clubPillar, widget.editorPillar],
         );
         return constraints.maxWidth >= _kRailBreakpoint ? _wide(stack) : _narrow(stack);
       },

@@ -21,7 +21,16 @@ class ClubHomePage extends ConsumerStatefulWidget {
 }
 
 class _ClubHomePageState extends ConsumerState<ClubHomePage> with SingleTickerProviderStateMixin {
-  late final TabController _tab = TabController(length: 3, vsync: this);
+  // Created in initState (not a lazy `late` field): a signed-out user never builds the
+  // TabBar, so a lazy field would force its first creation inside dispose() — an unsafe
+  // ancestor lookup that throws. Initializing here keeps create + dispose both safe.
+  late final TabController _tab;
+
+  @override
+  void initState() {
+    super.initState();
+    _tab = TabController(length: 3, vsync: this);
+  }
 
   @override
   void dispose() {
