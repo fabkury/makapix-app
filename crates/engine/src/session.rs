@@ -452,6 +452,8 @@ impl Session {
         let before = self.begin_edit();
         self.paint_acc = 0.0; // fresh stroke → reset Brush/Airbrush spacing
         let mut floating = None;
+        // The single Move tool moves the selected pixels when there's a selection, else the layer.
+        let has_sel = self.selection.as_ref().and_then(|s| s.bounds()).is_some();
         // Paint-immediately tools.
         if self.active_editable() {
             match self.tool {
@@ -488,10 +490,10 @@ impl Session {
                 _ => {}
             }
         }
-        // Move-layer: snapshot every selected, editable layer (the move-group, or just the active
-        // layer when none is grouped) plus the pre-drag frame, so pointer_move can re-blit them at
-        // the live offset and pointer_up records one grouped undo.
-        if self.tool == ToolKind::MoveLayer {
+        // Move tool with NO selection → move the layer(s): snapshot every selected, editable layer
+        // (the move-group, or just the active layer when none is grouped) plus the pre-drag frame,
+        // so pointer_move can re-blit them at the live offset and pointer_up records one grouped undo.
+        if self.tool == ToolKind::Move && !has_sel {
             let fi = self.doc.active_frame;
             let editable = |li: usize, f: &crate::document::Frame| {
                 li < f.layers.len() && f.layers[li].visible && !f.layers[li].locked
@@ -532,10 +534,11 @@ impl Session {
             Some(s) => s.last,
             None => return,
         };
-        // Move-layer: re-blit each snapshotted layer of the move-group at the live offset from the
-        // drag start (single grouped undo, committed on pointer_up). move_layers and doc are
-        // disjoint fields, so the index-based borrow is sound.
-        if self.tool == ToolKind::MoveLayer {
+        // Move tool in layer-move mode (no selection at drag start → move_before is set): re-blit
+        // each snapshotted layer of the move-group at the live offset from the drag start (single
+        // grouped undo, committed on pointer_up). move_layers and doc are disjoint fields, so the
+        // index-based borrow is sound.
+        if self.move_before.is_some() {
             let start = match self.stroke.as_ref() {
                 Some(s) => s.start,
                 None => return,
@@ -588,9 +591,9 @@ impl Session {
             Some(s) => s,
             None => return,
         };
-        // Move-layer: commit the grouped translation as one frame-content undo (or discard it if
-        // nothing actually moved, e.g. a tap).
-        if self.tool == ToolKind::MoveLayer {
+        // Move tool in layer-move mode: commit the grouped translation as one frame-content undo
+        // (or discard it if nothing actually moved, e.g. a tap).
+        if self.move_before.is_some() {
             if let Some((fid, before)) = self.move_before.take() {
                 if stroke.start != stroke.last {
                     let fi = self.doc.active_frame;
@@ -1303,6 +1306,48 @@ impl Session {
             }
         });
     }
+    /// Move the selected pixels by (dx,dy) as one undoable edit (the arrow-key equivalent of a Move
+    /// drag); the selection mask moves with them. No-op without an editable selection.
+    pub fn nudge_selection(&mut self, dx: i32, dy: i32) {
+        if (dx == 0 && dy == 0) || !self.active_editable() {
+            return;
+        }
+        let sel = match self.selection.clone() {
+            Some(s) => s,
+            None => return,
+        };
+        let bb = match sel.bounds() {
+            Some(b) => b,
+            None => return,
+        };
+        let before = self.begin_edit();
+        {
+            let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
+            let mut float = RgbaBuffer::new(bb.w, bb.h);
+            for j in 0..bb.h as i32 {
+                for i in 0..bb.w as i32 {
+                    if sel.get(bb.x + i, bb.y + j) {
+                        float.set(i, j, buf.get(bb.x + i, bb.y + j));
+                        buf.set(bb.x + i, bb.y + j, Rgba8::TRANSPARENT);
+                    }
+                }
+            }
+            buf.blit_over(&float, Point::new(bb.x + dx, bb.y + dy));
+        }
+        self.commit_edit(before);
+        self.selection = Some(sel.translated(dx, dy));
+    }
+
+    /// Nudge whatever the Move tool would drag: the selected pixels if a selection exists, else the
+    /// active layer / move-group.
+    pub fn nudge_move(&mut self, dx: i32, dy: i32) {
+        if self.selection.as_ref().and_then(|s| s.bounds()).is_some() {
+            self.nudge_selection(dx, dy);
+        } else {
+            self.nudge_layers(dx, dy);
+        }
+    }
+
     pub fn set_layer_opacity(&mut self, i: usize, o: u8) {
         if i < self.doc.active_frame().layers.len() {
             self.edit_frame(|s| s.doc.active_frame_mut().layers[i].opacity = o);
@@ -2072,12 +2117,39 @@ mod tests {
     }
 
     #[test]
+    fn move_tool_moves_layer_when_no_selection_and_pixels_when_selected() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tool = ToolKind::Pencil;
+        s.tap(2, 2);
+        s.tap(8, 8);
+        s.tool = ToolKind::Move;
+        // No selection → drag moves the whole layer by (+3,+3).
+        s.pointer_down(0, 0);
+        s.pointer_move(3, 3);
+        s.pointer_up();
+        assert_eq!(s.pixel(0, 0, 5, 5), Rgba8::WHITE); // 2,2 → 5,5
+        assert_eq!(s.pixel(0, 0, 11, 11), Rgba8::WHITE); // 8,8 → 11,11
+        // Now select just the pixel at (5,5) and drag → only that pixel moves.
+        s.tool = ToolKind::SelectRect;
+        s.pointer_down(5, 5);
+        s.pointer_up(); // 1px selection at (5,5)
+        s.tool = ToolKind::Move;
+        s.pointer_down(5, 5);
+        s.pointer_move(6, 5); // move selected pixel right by 1
+        s.pointer_up();
+        assert_eq!(s.pixel(0, 0, 6, 5), Rgba8::WHITE); // selected pixel moved
+        assert_eq!(s.pixel(0, 0, 5, 5), Rgba8::TRANSPARENT); // its origin cleared
+        assert_eq!(s.pixel(0, 0, 11, 11), Rgba8::WHITE); // the other pixel stayed
+    }
+
+    #[test]
     fn protect_pixels_clamps_layer_move_on_canvas() {
         let mut s = Session::new(16, 16);
         s.settings.primary = Rgba8::WHITE;
         s.tap(0, 0); // opaque pixel at the top-left corner of layer 0
         s.settings.protect_pixels = true;
-        s.tool = ToolKind::MoveLayer;
+        s.tool = ToolKind::Move; // no selection → layer move
         s.set_active_layer(0);
         // try to drag up-and-left by 5 → would push the corner pixel off-canvas; must be clamped
         s.pointer_down(8, 8);
