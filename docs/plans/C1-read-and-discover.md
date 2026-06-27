@@ -146,13 +146,15 @@ app:
 - [x] ui/ hub + feed grid + nav (ClubHomePage tabs; FeedGrid; editor AppBar → hub)
 - [x] ui/ artwork detail + reactions + comments (+ hashtag feed page; share=copy link)
 - [x] ui/ profile + search + notifications
-- [ ] analyze + test + Android build; C1 acceptance
+- [x] analyze + test + Android build green — **C1 code-complete**; live device smoke remains (user)
 
 > Deferred polish within C1 (functional without them): profile Favourites/Highlights tabs
 > (gallery shipped), inline follow on the detail page (follow lives on the profile), and
 > richer downloads/share (copy-link shipped; byte download is C2-adjacent).
 
 ### Notes / findings
+- **Verification:** `flutter analyze` clean for lib/club; **23 tests** pass (models + paged notifier);
+  `flutter build apk --debug` (JBR 21) green. Live device smoke is the user's step.
 - Confirmed shapes (curl, dev): `reactions` = `{totals:{emoji:n}, authenticated_totals, anonymous_totals,
   mine:[emoji]}`; `comments` = `Page` `{items, next_cursor}`; `profile` = user fields + `tag_badges`
   [{badge,label,icon_url_16}] + `stats` {total_posts, total_reactions_received, total_views, follower_count}
