@@ -5,6 +5,7 @@ import '../../models/comment.dart';
 import '../../state/auth_controller.dart';
 import '../../state/post_providers.dart';
 import '../club_account_page.dart';
+import '../profile_page.dart';
 import 'common.dart';
 
 /// Threaded comments (depth ≤2) with a composer, likes, reply, and delete-own.
@@ -110,6 +111,13 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
         ]),
       ]);
 
+  // Open a comment author's profile (no-op for anonymous/deleted authors with no public id).
+  void _openAuthor(CommentAuthor? author) {
+    final sqid = author?.sqid;
+    if (sqid == null || sqid.isEmpty) return;
+    Navigator.push(context, MaterialPageRoute(builder: (_) => ProfilePage(sqid: sqid)));
+  }
+
   Widget _tile(Comment c, String? mySub, {required int depth}) {
     final isOwn = c.author?.sqid != null && c.author!.sqid == mySub;
     final notifier = ref.read(commentsProvider(widget.postId).notifier);
@@ -117,13 +125,19 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
       padding: EdgeInsets.only(left: depth * 20.0, top: 6, bottom: 6),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          HandleAvatar(url: c.author?.avatarUrl, handle: c.author?.handle ?? '?', radius: 12),
+          GestureDetector(
+            onTap: () => _openAuthor(c.author),
+            child: HandleAvatar(url: c.author?.avatarUrl, handle: c.author?.handle ?? '?', radius: 12),
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
-                Text(c.author?.handle ?? 'guest',
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                GestureDetector(
+                  onTap: () => _openAuthor(c.author),
+                  child: Text(c.author?.handle ?? 'guest',
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                ),
                 const SizedBox(width: 6),
                 Text(timeAgo(c.createdAt), style: const TextStyle(fontSize: 11, color: Colors.white38)),
               ]),

@@ -6,6 +6,7 @@ import '../../state/auth_controller.dart';
 import '../../state/paged.dart';
 import '../../state/post_providers.dart';
 import '../club_account_page.dart';
+import '../comments_page.dart';
 import 'common.dart';
 
 /// Reusable infinite-scroll square grid of posts.
@@ -126,9 +127,16 @@ class _PostTile extends ConsumerWidget {
                   ]),
                 ),
                 const Spacer(),
-                const Icon(Icons.mode_comment_outlined, size: 13, color: Colors.white60),
-                const SizedBox(width: 4),
-                Text('${post.commentCount}', style: const TextStyle(fontSize: 11, color: Colors.white70)),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.push(
+                      context, MaterialPageRoute(builder: (_) => CommentsPage(post: post))),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.mode_comment_outlined, size: 13, color: Colors.white60),
+                    const SizedBox(width: 4),
+                    Text('${post.commentCount}', style: const TextStyle(fontSize: 11, color: Colors.white70)),
+                  ]),
+                ),
               ]),
             ),
           ],
