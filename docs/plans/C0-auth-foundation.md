@@ -188,5 +188,7 @@ Inside `<application>` of `app/android/app/src/main/AndroidManifest.xml`:
   confirming our challenge generation matches the server's.
 - Endpoint independently verified earlier via curl: `/api/v1/auth/github/login` 307s to GitHub carrying our
   state+challenge; a non-allowlisted `redirect_uri` → 400.
-- Deferred to the user's device step (heavy / device-bound): a full `flutter build apk` (needs the JBR + the
-  Rust `.so` from `build_android.ps1`) and the live sign-in round-trip.
+- **Android debug build passes**: `flutter build apk --debug` (JBR 21) → `app-debug.apk` built (exit 0). The
+  new plugins (flutter_web_auth_2 / flutter_secure_storage / dio / riverpod / crypto) and the manifest
+  `CallbackActivity` merge cleanly. Remaining device-bound step (user): the live GitHub sign-in round-trip via
+  `build_android.ps1 -Install` (which also bundles the Rust `.so`).
