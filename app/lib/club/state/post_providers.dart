@@ -25,7 +25,14 @@ class ReactionsController extends StateNotifier<AsyncValue<ReactionTotals>> {
 
   Future<void> _load() async {
     try {
-      state = AsyncValue.data(await ref.read(postApiProvider).reactions(postId));
+      var totals = await ref.read(postApiProvider).reactions(postId);
+      // If the viewer just liked/unliked this post on the grid, reflect that 👍 here even when the
+      // server read raced ahead of that still-in-flight write — the grid override is the intent.
+      final override = ref.read(gridLikesProvider)[postId];
+      if (override != null && override.liked != totals.hasMine('👍')) {
+        totals = totals.withLocal(emoji: '👍', add: override.liked);
+      }
+      state = AsyncValue.data(totals);
     } catch (e, st) {
       state = AsyncValue.error(e, st);
     }
@@ -45,6 +52,7 @@ class ReactionsController extends StateNotifier<AsyncValue<ReactionTotals>> {
       } else {
         await api.removeReaction(postId, emoji);
       }
+      _syncGrid(); // keep the grid tile's 👍 like + count in step with the detail
       return null;
     } on ClubError catch (e) {
       state = AsyncValue.data(cur); // rollback
@@ -53,6 +61,16 @@ class ReactionsController extends StateNotifier<AsyncValue<ReactionTotals>> {
       state = AsyncValue.data(cur);
       return 'Could not update reaction.';
     }
+  }
+
+  /// Push the current 👍 state and total reaction count into the grid override so the feed tile
+  /// stays consistent with what the user just did on the detail page.
+  void _syncGrid() {
+    if (!mounted) return;
+    final t = state.value;
+    if (t == null) return;
+    final total = t.totals.values.fold<int>(0, (a, b) => a + b);
+    ref.read(gridLikesProvider.notifier).set(postId, GridLikeState(t.hasMine('👍'), total));
   }
 }
 
@@ -81,6 +99,9 @@ class GridLikesController extends StateNotifier<Map<int, GridLikeState>> {
   /// The state to show for [post]: a local override if the user toggled it, else the feed values.
   GridLikeState resolve(Post post) => state[post.id] ?? GridLikeState(post.userHasLiked, post.reactionCount);
 
+  /// Set the override for a post (used by the detail page to keep the grid in step).
+  void set(int postId, GridLikeState s) => state = {...state, postId: s};
+
   /// Toggle the 👍 like for [post]. Optimistic; rolls back and returns a message on failure.
   Future<String?> toggle(Post post) async {
     final cur = resolve(post);
@@ -94,6 +115,9 @@ class GridLikesController extends StateNotifier<Map<int, GridLikeState>> {
       } else {
         await api.removeReaction(post.id, '👍');
       }
+      // Drop any cached detail reactions for this post so it reloads (and reconciles with this
+      // override) next time it's opened, instead of showing a pre-like snapshot.
+      ref.invalidate(reactionsProvider(post.id));
       return null;
     } on ClubError catch (e) {
       state = {...state, post.id: cur}; // rollback
