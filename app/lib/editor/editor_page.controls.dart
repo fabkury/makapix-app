@@ -342,18 +342,57 @@ extension _EditorControls on _EditorPageState {
   }
 
   void _paletteSwatchMenu(int i, Color c) {
+    // The palette is a 2-row column-major grid (even index = top of its column, odd = bottom), so
+    // left/right move a whole column (±2) and up/down swap the two rows of the column (±1). The
+    // sheet follows the swatch as it moves so you can nudge it several steps without reopening.
+    int cur = i;
     showModalBottomSheet(
       context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(leading: const Icon(Icons.edit), title: const Text('Edit color'), onTap: () {
-            Navigator.pop(ctx);
-            _pickColor(initial: c, onPick: (nc) => _act('EditPaletteColor($i, ${_hex(nc)})'));
-          }),
-          ListTile(leading: const Icon(Icons.copy), title: const Text('Duplicate'), onTap: () { Navigator.pop(ctx); _act('DuplicatePaletteColor($i)'); }),
-          ListTile(leading: const Icon(Icons.delete), title: const Text('Remove'), onTap: () { Navigator.pop(ctx); _act('RemovePaletteColor($i)'); }),
-        ]),
-      ),
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
+        final n = _palette.length;
+        final color = (cur >= 0 && cur < n) ? _palette[cur] : c;
+        final row = cur % 2;
+        final left = cur - 2 >= 0 ? cur - 2 : null;
+        final right = cur + 2 < n ? cur + 2 : null;
+        final up = row == 1 ? cur - 1 : null;
+        final down = (row == 0 && cur + 1 < n) ? cur + 1 : null;
+        void move(int? partner) {
+          if (partner == null) return;
+          _act('SwapPaletteColors($cur, $partner)');
+          setS(() => cur = partner); // follow the swatch to its new slot
+        }
+
+        return SafeArea(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            ListTile(
+              leading: Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.white24)),
+              ),
+              title: Text('Color ${cur + 1} of $n'),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                IconButton(tooltip: 'Move left', onPressed: left == null ? null : () => move(left), icon: const Icon(Icons.arrow_back)),
+                Column(mainAxisSize: MainAxisSize.min, children: [
+                  IconButton(iconSize: 20, tooltip: 'Move up', onPressed: up == null ? null : () => move(up), icon: const Icon(Icons.arrow_upward)),
+                  IconButton(iconSize: 20, tooltip: 'Move down', onPressed: down == null ? null : () => move(down), icon: const Icon(Icons.arrow_downward)),
+                ]),
+                IconButton(tooltip: 'Move right', onPressed: right == null ? null : () => move(right), icon: const Icon(Icons.arrow_forward)),
+              ]),
+            ),
+            const Divider(height: 1),
+            ListTile(leading: const Icon(Icons.edit), title: const Text('Edit color'), onTap: () {
+              Navigator.pop(ctx);
+              _pickColor(initial: color, onPick: (nc) => _act('EditPaletteColor($cur, ${_hex(nc)})'));
+            }),
+            ListTile(leading: const Icon(Icons.copy), title: const Text('Duplicate'), onTap: () { Navigator.pop(ctx); _act('DuplicatePaletteColor($cur)'); }),
+            ListTile(leading: const Icon(Icons.delete), title: const Text('Remove'), onTap: () { Navigator.pop(ctx); _act('RemovePaletteColor($cur)'); }),
+          ]),
+        );
+      }),
     );
   }
 
