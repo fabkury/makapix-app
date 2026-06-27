@@ -60,6 +60,54 @@ final reactionsProvider =
     StateNotifierProvider.family<ReactionsController, AsyncValue<ReactionTotals>, int>(
         (ref, postId) => ReactionsController(ref, postId));
 
+// ---- Grid "like" (👍) toggle ----
+//
+// The feed grid shows a single 👍 like affordance per tile. Fetching per-tile reaction totals
+// would be a request storm while scrolling, so tiles display the post's own `userHasLiked` /
+// `reactionCount` from the feed payload, and this controller keeps an optimistic per-post override
+// for likes the user toggles on the grid. Keyed by post id so it survives tile recycling on scroll.
+
+/// Displayed like-state of a grid tile: whether the viewer likes it, and the reaction count shown.
+class GridLikeState {
+  final bool liked;
+  final int count;
+  const GridLikeState(this.liked, this.count);
+}
+
+class GridLikesController extends StateNotifier<Map<int, GridLikeState>> {
+  final Ref ref;
+  GridLikesController(this.ref) : super(const {});
+
+  /// The state to show for [post]: a local override if the user toggled it, else the feed values.
+  GridLikeState resolve(Post post) => state[post.id] ?? GridLikeState(post.userHasLiked, post.reactionCount);
+
+  /// Toggle the 👍 like for [post]. Optimistic; rolls back and returns a message on failure.
+  Future<String?> toggle(Post post) async {
+    final cur = resolve(post);
+    final add = !cur.liked;
+    final raw = cur.count + (add ? 1 : -1);
+    state = {...state, post.id: GridLikeState(add, raw < 0 ? 0 : raw)};
+    try {
+      final api = ref.read(postApiProvider);
+      if (add) {
+        await api.addReaction(post.id, '👍');
+      } else {
+        await api.removeReaction(post.id, '👍');
+      }
+      return null;
+    } on ClubError catch (e) {
+      state = {...state, post.id: cur}; // rollback
+      return e.message;
+    } catch (_) {
+      state = {...state, post.id: cur};
+      return 'Could not update reaction.';
+    }
+  }
+}
+
+final gridLikesProvider =
+    StateNotifierProvider<GridLikesController, Map<int, GridLikeState>>((ref) => GridLikesController(ref));
+
 // ---- Comments ----
 
 class CommentsController extends StateNotifier<AsyncValue<List<Comment>>> {

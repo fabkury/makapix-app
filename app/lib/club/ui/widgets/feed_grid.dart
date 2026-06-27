@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/post.dart';
+import '../../state/auth_controller.dart';
 import '../../state/paged.dart';
+import '../../state/post_providers.dart';
+import '../club_account_page.dart';
 import 'common.dart';
 
 /// Reusable infinite-scroll square grid of posts.
@@ -60,8 +64,9 @@ class _FeedGridState extends State<FeedGrid> {
       child: GridView.builder(
         controller: _sc,
         padding: const EdgeInsets.all(4),
+        // Cells are a little taller than wide to fit the info bar below a ~square artwork.
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: cols, mainAxisSpacing: 4, crossAxisSpacing: 4),
+            crossAxisCount: cols, mainAxisSpacing: 4, crossAxisSpacing: 4, childAspectRatio: 0.84),
         itemCount: s.items.length + (s.atEnd ? 0 : 1),
         itemBuilder: (ctx, i) {
           if (i >= s.items.length) {
@@ -77,49 +82,69 @@ class _FeedGridState extends State<FeedGrid> {
   }
 }
 
-class _PostTile extends StatelessWidget {
+class _PostTile extends ConsumerWidget {
   final Post post;
   final VoidCallback onTap;
   const _PostTile({required this.post, required this.onTap});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Animated and static artworks are displayed alike (no GIF badge).
+    final like = ref.watch(gridLikesProvider.select((m) => m[post.id])) ??
+        GridLikeState(post.userHasLiked, post.reactionCount);
+    final likeColor = like.liked ? const Color(0xFF4DA3FF) : Colors.white60;
     return GestureDetector(
       onTap: onTap,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(4),
-        child: Stack(fit: StackFit.expand, children: [
-          PixelArtImage(url: post.artUrl),
-          if (post.isAnimated)
-            const Positioned(
-              top: 3,
-              right: 3,
-              child: Icon(Icons.gif_box_outlined, size: 16, color: Colors.white70),
-            ),
-          if (post.isPlaylist)
-            const Positioned(
-              top: 3,
-              left: 3,
-              child: Icon(Icons.playlist_play, size: 16, color: Colors.white70),
-            ),
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-              color: const Color(0x99000000),
-              child: Row(children: [
-                const Icon(Icons.bolt, size: 11, color: Colors.amberAccent),
-                Text(' ${post.reactionCount}', style: const TextStyle(fontSize: 10)),
-                const SizedBox(width: 6),
-                const Icon(Icons.mode_comment_outlined, size: 11, color: Colors.white70),
-                Text(' ${post.commentCount}', style: const TextStyle(fontSize: 10)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: Stack(fit: StackFit.expand, children: [
+                PixelArtImage(url: post.artUrl),
+                if (post.isPlaylist)
+                  const Positioned(
+                    top: 3,
+                    left: 3,
+                    child: Icon(Icons.playlist_play, size: 16, color: Colors.white70),
+                  ),
               ]),
             ),
-          ),
-        ]),
+            // Solid info bar directly below the artwork: likes (left, tappable) · comments (right).
+            Container(
+              color: const Color(0xFF2A2D31),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              child: Row(children: [
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _toggleLike(context, ref),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(like.liked ? Icons.thumb_up : Icons.thumb_up_outlined, size: 14, color: likeColor),
+                    const SizedBox(width: 4),
+                    Text('${like.count}', style: TextStyle(fontSize: 11, color: likeColor)),
+                  ]),
+                ),
+                const Spacer(),
+                const Icon(Icons.mode_comment_outlined, size: 13, color: Colors.white60),
+                const SizedBox(width: 4),
+                Text('${post.commentCount}', style: const TextStyle(fontSize: 11, color: Colors.white70)),
+              ]),
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  Future<void> _toggleLike(BuildContext context, WidgetRef ref) async {
+    if (!ref.read(authControllerProvider).isSignedIn) {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const ClubAccountPage()));
+      return;
+    }
+    final err = await ref.read(gridLikesProvider.notifier).toggle(post);
+    if (err != null && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+    }
   }
 }
