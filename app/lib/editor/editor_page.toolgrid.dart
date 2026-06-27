@@ -123,6 +123,14 @@ extension _EditorToolgrid on _EditorPageState {
     );
   }
 
+  // A pinned action tile (Undo/Redo): fixed at the left of row-3, never scrolls, not reorderable.
+  Widget _pinnedActionTile(ToolDef def) {
+    return GestureDetector(
+      onTap: () => _doToolAction(def.dsl),
+      child: _tileVisual(def, selected: false, enabled: _actionEnabled(def.dsl)),
+    );
+  }
+
   Widget _buildToolBar() {
     // Render from the live display order. Long-press any tile to drag it; the rest reflow in real
     // time, and the order is committed on release. The "others" list (order minus the dragged tool)
@@ -136,13 +144,23 @@ extension _EditorToolgrid on _EditorPageState {
     return Container(
       height: 100,
       color: const Color(0xFF15171A),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Column(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
-          Row(children: top),
-          Row(children: bottom),
+      child: Row(children: [
+        // Undo (top) / Redo (bottom) pinned at the left — fixed, don't scroll with the rest.
+        Column(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
+          _pinnedActionTile(undoToolDef),
+          _pinnedActionTile(redoToolDef),
         ]),
-      ),
+        Container(width: 1, color: Colors.black26),
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Column(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
+              Row(children: top),
+              Row(children: bottom),
+            ]),
+          ),
+        ),
+      ]),
     );
   }
 

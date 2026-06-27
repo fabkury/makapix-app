@@ -39,9 +39,10 @@ part 'editor_page.toolgrid.dart';
 const double _kMinZoom = 0.25, _kMaxZoom = 32.0;
 const _prefsKey = 'tool_order_v1';
 const _transformTools = {'Flip', 'Rotate', 'Invert', 'Resize'};
-// Row-3 "action" tools: tapping fires an action/toggle immediately rather than selecting a draw
-// tool (handled in _toolTile / _doToolAction). They live in the same reorderable grid as the rest.
-const _actionTools = {'Undo', 'Redo', 'PlayPause', 'Onion'};
+// Row-3 "action" tools in the reorderable grid: tapping fires an action/toggle immediately rather
+// than selecting a draw tool (handled in _toolTile / _doToolAction). Undo/Redo are NOT here — they
+// are pinned at the left of row-3 (see _buildToolBar / _pinnedActionTile).
+const _actionTools = {'PlayPause', 'Onion'};
 // Paint tools that support a "Precision" mode (off-finger reticle + draw-by-button). Precision is
 // a per-tool toggle, remembered independently per tool — see [_precisionTools].
 const _precisionTools = {'Pencil', 'Brush', 'Airbrush', 'Eraser'};

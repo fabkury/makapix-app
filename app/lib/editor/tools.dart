@@ -37,13 +37,16 @@ const tools = <ToolDef>[
   ToolDef('Invert', Icons.invert_colors, 'Invert'),
   ToolDef('Resize', Icons.aspect_ratio, 'Resize'),
   // Action tools: tapping performs an action (or toggles) immediately instead of selecting a
-  // draw tool. Play/Pause swaps icon+label with playback; Onion lights up while on; Undo/Redo dim
-  // when unavailable. See _actionTools / _doToolAction in editor_page.
-  ToolDef('Undo', Icons.undo, 'Undo'),
-  ToolDef('Redo', Icons.redo, 'Redo'),
+  // draw tool. Play/Pause swaps icon+label with playback; Onion lights up while on.
+  // (Undo/Redo are NOT here — they are pinned at the left of row-3, see _buildToolBar.)
   ToolDef('PlayPause', Icons.play_arrow, 'Play'),
   ToolDef('Onion', Icons.layers, 'Onion'),
 ];
+
+// Undo/Redo are pinned (fixed, non-reorderable) at the left of row-3, so they're kept out of the
+// reorderable `tools` list above but still need their icon/label here.
+const undoToolDef = ToolDef('Undo', Icons.undo, 'Undo');
+const redoToolDef = ToolDef('Redo', Icons.redo, 'Redo');
 
 // Succinct, teach-as-you-go help shown in the gesture-safe band at the bottom.
 const toolTips = <String, String>{
