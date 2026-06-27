@@ -120,12 +120,20 @@ extension _EditorControls on _EditorPageState {
         ),
       ));
     }
-    final sizeTools = {'Pencil', 'Brush', 'Airbrush', 'Eraser', 'Dodge', 'Burn', 'Line', 'Rectangle', 'Ellipse'};
+    // Brush footprint SIZE: every tool whose mark is a stamp/spray of `brush_size` — i.e. the
+    // pixel/paint tools, the airbrush spray radius, and dodge/burn. The figure tools (Line/Rect/
+    // Ellipse) ignore brush_size (they use line_width + fill), so they're deliberately excluded.
+    const sizeTools = {'Pencil', 'Brush', 'Airbrush', 'Eraser', 'Dodge', 'Burn'};
+    // Stamp SHAPE (Round/Square): only tools that stamp a footprint of `brush_shape`. The airbrush
+    // always sprays a disc (no shape), and figures don't stamp — both are excluded.
+    const shapeTools = {'Pencil', 'Brush', 'Eraser', 'Dodge', 'Burn'};
     if (sizeTools.contains(_tool)) {
       _labeledSlider(children, 'Size', _brushSize.toDouble(), 1, 32, (v) {
         setState(() => _brushSize = v.round());
         _send('SetBrushSize($_brushSize)');
       });
+    }
+    if (shapeTools.contains(_tool)) {
       label('Shape');
       children.add(_toggle(['Round', 'Square'], _round ? 0 : 1, (i) {
         setState(() => _round = i == 0);
