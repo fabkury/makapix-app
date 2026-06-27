@@ -5,10 +5,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -156,6 +156,9 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
   @override
   void initState() {
     super.initState();
+    // The editor is portrait-only (the Club side is unaffected). The shell mounts one pillar at a
+    // time, so locking here / unlocking in dispose scopes the lock to the editor.
+    SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp, DeviceOrientation.portraitDown]);
     _antCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 700))..repeat();
     _loadToolOrder();
     try {
@@ -174,6 +177,8 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
 
   @override
   void dispose() {
+    // Leaving the editor (e.g. back to Club) lifts the portrait lock so the Club side can rotate.
+    SystemChrome.setPreferredOrientations(const []);
     _playTimer?.cancel();
     // Snapshot the in-progress document so it survives this unmount (e.g. switching to
     // Club and back). Lossless .mkpx bytes; save before the engine is freed.
