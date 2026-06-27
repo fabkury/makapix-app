@@ -97,28 +97,33 @@ extension _EditorControls on _EditorPageState {
         ),
       ));
     }
-    if (_tool == 'MoveLayer') {
-      // nudge the active layer 1px; dragging on the canvas also moves it (live)
-      label('Move layer');
-      children.add(IconButton(iconSize: 20, tooltip: 'Move layer left', onPressed: () => _nudgeLayer(-1, 0), icon: const Icon(Icons.chevron_left)));
+    if (_tool == 'Move') {
+      // With a selection, Move moves the selected pixels; with none, it moves the layer/move-group.
+      // The arrow pad nudges whichever (engine decides via NudgeMove); dragging on the canvas does
+      // the same live. Protect-pixels only applies to layer moves, so it's hidden when selecting.
+      final hasSel = _outlineEdges.isNotEmpty;
+      label(hasSel ? 'Move pixels' : 'Move layer');
+      children.add(IconButton(iconSize: 20, tooltip: 'Nudge left', onPressed: () => _nudgeMove(-1, 0), icon: const Icon(Icons.chevron_left)));
       children.add(Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        InkWell(onTap: () => _nudgeLayer(0, -1), child: const Icon(Icons.keyboard_arrow_up, size: 18)),
-        InkWell(onTap: () => _nudgeLayer(0, 1), child: const Icon(Icons.keyboard_arrow_down, size: 18)),
+        InkWell(onTap: () => _nudgeMove(0, -1), child: const Icon(Icons.keyboard_arrow_up, size: 18)),
+        InkWell(onTap: () => _nudgeMove(0, 1), child: const Icon(Icons.keyboard_arrow_down, size: 18)),
       ]));
-      children.add(IconButton(iconSize: 20, tooltip: 'Move layer right', onPressed: () => _nudgeLayer(1, 0), icon: const Icon(Icons.chevron_right)));
-      children.add(const SizedBox(width: 6));
-      children.add(Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: FilterChip(
-          selected: _protectPixels,
-          label: Text(_protectPixels ? 'Protect ✔' : 'Protect pixels'),
-          selectedColor: const Color(0xFF30A050),
-          onSelected: (v) {
-            setState(() => _protectPixels = v);
-            _send('SetProtectPixels($v)');
-          },
-        ),
-      ));
+      children.add(IconButton(iconSize: 20, tooltip: 'Nudge right', onPressed: () => _nudgeMove(1, 0), icon: const Icon(Icons.chevron_right)));
+      if (!hasSel) {
+        children.add(const SizedBox(width: 6));
+        children.add(Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          child: FilterChip(
+            selected: _protectPixels,
+            label: Text(_protectPixels ? 'Protect ✔' : 'Protect pixels'),
+            selectedColor: const Color(0xFF30A050),
+            onSelected: (v) {
+              setState(() => _protectPixels = v);
+              _send('SetProtectPixels($v)');
+            },
+          ),
+        ));
+      }
     }
     // Brush footprint SIZE: every tool whose mark is a stamp/spray of `brush_size` — i.e. the
     // pixel/paint tools, the airbrush spray radius, and dodge/burn. The figure tools (Line/Rect/

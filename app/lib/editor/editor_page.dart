@@ -96,7 +96,7 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
   Timer? _playTimer;
   Map<String, dynamic> _state = {};
   String? _error;
-  final Set<int> _selLayers = {}; // layers grouped to move together with the Move-Layer tool
+  final Set<int> _selLayers = {}; // layers grouped to move together with the Move tool (no selection)
   ClubEditSource? _clubSource; // set when a Club artwork is opened (enables Replace / remix)
   // Precision mode is remembered per tool: a tool name is present here while its Precision toggle
   // is on. Only tools in [_precisionTools] are ever added.

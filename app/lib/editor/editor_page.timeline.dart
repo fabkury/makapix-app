@@ -195,8 +195,8 @@ extension _EditorTimeline on _EditorPageState {
     return 0;
   }
 
-  // Push the current move-group to the engine's layer selection so both the Move-Layer drag and
-  // the nudge buttons act on the whole group (or just the active layer when none is grouped).
+  // Push the current move-group to the engine's layer selection so both the Move-tool layer drag
+  // and the nudge buttons act on the whole group (or just the active layer when none is grouped).
   void _syncLayerSel() {
     if (_selLayers.length > 1) {
       // SetMoveGroup sets the move-group without changing the active layer (it stays put).
@@ -207,9 +207,11 @@ extension _EditorTimeline on _EditorPageState {
     }
   }
 
-  void _nudgeLayer(int dx, int dy) {
+  // Nudge whatever the Move tool would drag: the selected pixels if there's a selection, else the
+  // active layer / move-group (the engine decides via NudgeMove).
+  void _nudgeMove(int dx, int dy) {
     _syncLayerSel();
-    _act('NudgeLayers($dx,$dy)');
+    _act('NudgeMove($dx,$dy)');
   }
 
   Future<void> _genLayerThumb(int frame, int layer, int hash) async {
@@ -295,7 +297,7 @@ extension _EditorTimeline on _EditorPageState {
                 dense: true,
                 contentPadding: EdgeInsets.zero,
                 title: const Text('In move group'),
-                subtitle: const Text('Move together with the Move-Layer tool', style: TextStyle(fontSize: 11)),
+                subtitle: const Text('Move together with the Move tool (when nothing is selected)', style: TextStyle(fontSize: 11)),
                 value: inGroup,
                 onChanged: (v) {
                   setS(() => inGroup = v);
