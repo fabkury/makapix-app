@@ -40,7 +40,7 @@ pub struct Overlays<'a> {
     pub onion_next: Option<&'a Frame>,
     pub grid: bool,
     pub checker_bg: bool,
-    /// Precision-pencil reticle position (SPEC: precision pencil). Drawn last, on top.
+    /// Precision-mode reticle position (off-finger draw-by-button). Drawn last, on top.
     pub cursor: Option<Point>,
 }
 
@@ -96,7 +96,7 @@ pub fn render_display(doc: &Document, frame: &Frame, ov: &Overlays) -> RgbaBuffe
 }
 
 /// A crosshair reticle that points at the target pixel without covering it (the target
-/// pixel and its immediate ring stay visible — that's the point of the precision pencil).
+/// pixel and its immediate ring stay visible — that's the point of precision mode).
 fn draw_reticle(out: &mut RgbaBuffer, c: Point) {
     let mut put = |x: i32, y: i32| {
         // alternating black/white for contrast on any background

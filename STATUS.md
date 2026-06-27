@@ -34,7 +34,7 @@ Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending)
 | Up to 1024 frames / 64 layers | ✅ | enforced caps |
 | 128 undo/redo per frame + auto compaction | ✅ | global timeline, per-frame cap, absolute tile patches |
 | Pencil / Paintbrush / Airbrush (configurable size) | ✅ | airbrush seeded & reproducible |
-| **Precision pencil** (off-finger reticle, draw-by-button) | ✅ | drag moves a ✛ reticle off the finger; arrows nudge 1px; DRAW = dot; PEN toggle = draw lines while dragging. Reticle frames the target pixel without covering it |
+| **Precision mode** (off-finger reticle, draw-by-button) | ✅ | a per-tool toggle on Pencil/Brush/Airbrush/Eraser; drag moves a ✛ reticle off the finger; arrows nudge 1px; DRAW/SPRAY = one dab; PEN toggle = continuous stroke/spray while dragging. Reticle frames the target pixel without covering it |
 | Bucket fill (contiguous / discontiguous, threshold) | ✅ | flood oracle-tested |
 | Eraser (square / round, size) | ✅ | |
 | Select by color threshold (cont/discont) | ✅ | |

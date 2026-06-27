@@ -719,13 +719,29 @@ impl Session {
         tool::dodge_burn_stamp(buf, sel.as_ref(), p, size, shape, dv);
     }
 
-    // ---- precision pencil (draw-by-button, reticle off the finger) ----
+    // ---- precision mode (draw-by-button, reticle off the finger) ----
+    //
+    // Precision is a per-tool *mode* (toggled in the shell), not a tool of its own. The reticle
+    // path below honours whichever paint tool is active: Pencil replaces, Brush blends, Eraser
+    // clears, Airbrush sprays. `cursor_paint()` returns the stamp params for the stamp-style
+    // tools, or `None` for the Airbrush (which dabs instead of stamping a solid footprint).
 
     fn clamp_cursor(&self, p: Point) -> Point {
         Point::new(
             p.x.clamp(0, self.doc.size.w as i32 - 1),
             p.y.clamp(0, self.doc.size.h as i32 - 1),
         )
+    }
+
+    /// Stamp (mode, color) for the active stamp-style paint tool, or `None` if the active tool
+    /// sprays (Airbrush) or doesn't paint through the reticle path at all.
+    fn cursor_paint(&self) -> Option<(PaintMode, Rgba8)> {
+        match self.tool {
+            ToolKind::Pencil => Some((PaintMode::Replace, self.settings.primary)),
+            ToolKind::Brush => Some((PaintMode::Over, self.settings.primary)),
+            ToolKind::Eraser => Some((PaintMode::Erase, Rgba8::TRANSPARENT)),
+            _ => None,
+        }
     }
 
     pub fn cursor(&self) -> Point {
@@ -738,23 +754,32 @@ impl Session {
     }
 
     /// Move the reticle by (dx, dy). While the pen is down, paints from the old position to
-    /// the new one (so dragging draws a visible line offset from the finger).
+    /// the new one (so dragging draws a visible line offset from the finger), using the active
+    /// tool's paint mode — or sprays a dab at the new spot for the Airbrush.
     pub fn move_cursor(&mut self, dx: i32, dy: i32) {
         let old = self.cursor;
         self.cursor = self.clamp_cursor(Point::new(old.x + dx, old.y + dy));
         if self.precision_before.is_some() && self.active_editable() && self.cursor != old {
-            self.stroke_active(old, self.cursor, PaintMode::Replace, self.settings.primary);
+            match self.cursor_paint() {
+                Some((mode, color)) => self.stroke_active(old, self.cursor, mode, color),
+                None if self.tool == ToolKind::Airbrush => self.airbrush_active(self.cursor),
+                None => {}
+            }
         }
     }
 
-    /// Press the pen down at the reticle (begins a stroke and stamps the first pixel).
+    /// Press the pen down at the reticle (begins a stroke and stamps/sprays the first point).
     pub fn cursor_pen_down(&mut self) {
         if self.precision_before.is_some() || !self.active_editable() {
             return;
         }
         self.precision_before = Some(self.begin_edit());
         let p = self.cursor;
-        self.stamp_active(p, PaintMode::Replace, self.settings.primary);
+        match self.cursor_paint() {
+            Some((mode, color)) => self.stamp_active(p, mode, color),
+            None if self.tool == ToolKind::Airbrush => self.airbrush_active(p),
+            None => {}
+        }
     }
 
     /// Lift the pen, committing the precision stroke as one undo edit.
@@ -771,7 +796,7 @@ impl Session {
     }
 
     /// Apply a single airbrush dab at the reticle, committed as one undo edit. This is the
-    /// "one go at a time" airbrush, driven off-finger like the precision pencil.
+    /// "one go at a time" airbrush, driven off-finger by the Airbrush's precision mode.
     pub fn airbrush_cursor(&mut self) {
         if !self.active_editable() {
             return;
@@ -1149,6 +1174,12 @@ impl Session {
     pub fn set_layer_locked(&mut self, i: usize, v: bool) {
         if i < self.doc.active_frame().layers.len() {
             self.doc.active_frame_mut().layers[i].locked = v;
+        }
+    }
+    pub fn rename_layer(&mut self, i: usize, name: impl Into<String>) {
+        if i < self.doc.active_frame().layers.len() {
+            let name = name.into();
+            self.edit_frame(move |s| s.doc.active_frame_mut().layers[i].name = name);
         }
     }
 
@@ -1535,7 +1566,7 @@ mod tests {
     fn precision_pencil_plots_at_cursor_not_touch() {
         let mut s = Session::new(16, 16);
         s.settings.primary = Rgba8::WHITE;
-        s.tool = ToolKind::PrecisionPencil;
+        s.tool = ToolKind::Pencil; // precision is now a mode of the Pencil
         s.set_cursor(3, 4);
         s.plot_cursor(); // draws a dot at the reticle, not under any "touch"
         assert_eq!(s.pixel(0, 0, 3, 4), Rgba8::WHITE);
@@ -1547,7 +1578,7 @@ mod tests {
     fn precision_pen_draws_line_as_one_edit() {
         let mut s = Session::new(16, 16);
         s.settings.primary = Rgba8::WHITE;
-        s.tool = ToolKind::PrecisionPencil;
+        s.tool = ToolKind::Pencil;
         s.set_cursor(2, 2);
         s.cursor_pen_down();
         s.move_cursor(5, 0); // drag the reticle → draws a horizontal line
@@ -1559,6 +1590,58 @@ mod tests {
         assert!(s.doc.undo());
         assert_eq!(s.pixel(0, 0, 4, 2), Rgba8::TRANSPARENT);
         assert!(!s.doc.undo()); // nothing else to undo
+    }
+
+    #[test]
+    fn precision_eraser_clears_through_reticle() {
+        let mut s = Session::new(16, 16);
+        // paint a solid row first
+        s.settings.primary = Rgba8::WHITE;
+        s.tool = ToolKind::Pencil;
+        s.set_cursor(2, 2);
+        s.cursor_pen_down();
+        s.move_cursor(5, 0);
+        s.cursor_pen_up();
+        // now erase along it in precision mode
+        s.tool = ToolKind::Eraser;
+        s.set_cursor(2, 2);
+        s.cursor_pen_down();
+        s.move_cursor(5, 0);
+        s.cursor_pen_up();
+        assert_eq!(s.pixel(0, 0, 4, 2), Rgba8::TRANSPARENT); // erased back to transparent
+        assert!(s.doc.undo()); // erase is its own single undo step
+        assert_eq!(s.pixel(0, 0, 4, 2), Rgba8::WHITE);
+    }
+
+    #[test]
+    fn precision_brush_blends_through_reticle() {
+        let mut s = Session::new(16, 16);
+        // Brush uses alpha-over: a translucent stamp blends, not replaces.
+        s.settings.primary = Rgba8::new(255, 0, 0, 128);
+        s.tool = ToolKind::Brush;
+        s.set_cursor(5, 5);
+        s.plot_cursor();
+        let px = s.pixel(0, 0, 5, 5);
+        assert!(px.a > 0 && px.a < 255, "brush should blend (partial alpha), got {:?}", px);
+    }
+
+    #[test]
+    fn precision_airbrush_sprays_through_reticle() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.settings.intensity = 255;
+        s.settings.brush_size = 4;
+        s.tool = ToolKind::Airbrush;
+        s.set_cursor(8, 8);
+        // a continuous precision spray: pen down, drag, pen up — one undo edit
+        s.cursor_pen_down();
+        s.move_cursor(2, 0);
+        s.move_cursor(2, 0);
+        s.cursor_pen_up();
+        let h = s.doc.active_frame().active_layer().pixels.content_hash();
+        assert_ne!(h, RgbaBuffer::new(16, 16).content_hash(), "airbrush should have painted something");
+        assert!(s.doc.undo());
+        assert!(!s.doc.undo(), "the whole precision spray is a single undo step");
     }
 
     #[test]
@@ -1643,6 +1726,25 @@ mod tests {
         s.set_move_group(&[0, 1]); // group two other layers
         assert_eq!(s.doc.active_frame().active_layer, 2); // active stays put
         assert_eq!(s.layer_sel, vec![0, 1]); // but the move-group is those two
+    }
+
+    #[test]
+    fn rename_layer_via_dsl_and_undo() {
+        let mut s = Session::new(16, 16);
+        // DSL: index, then free-text name (which may itself contain commas).
+        s.run_script("RenameLayer(0, Sky, dawn)").unwrap();
+        assert_eq!(s.doc.active_frame().layers[0].name, "Sky, dawn");
+        // renaming is undoable (the name is part of frame content)
+        assert!(s.doc.undo());
+        assert_eq!(s.doc.active_frame().layers[0].name, "Layer 1");
+    }
+
+    #[test]
+    fn rename_layer_ignores_out_of_range_index() {
+        let mut s = Session::new(16, 16);
+        s.rename_layer(7, "nope");
+        assert_eq!(s.doc.active_frame().layers[0].name, "Layer 1");
+        assert!(!s.doc.undo()); // nothing recorded
     }
 
     #[test]

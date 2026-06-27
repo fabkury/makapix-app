@@ -12,7 +12,6 @@ use crate::util::SeededRng;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ToolKind {
     Pencil,
-    PrecisionPencil,
     Brush,
     Airbrush,
     Eraser,

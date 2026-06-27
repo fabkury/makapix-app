@@ -29,6 +29,7 @@ pub enum Action {
     SetLayerOpacity(usize, u8),
     SetLayerVisible(usize, bool),
     SetLayerLocked(usize, bool),
+    RenameLayer(usize, String),
     DuplicateLayerToFrames(Vec<usize>),
     SelectTool(ToolKind),
     SetPrimaryColor(Rgba8),
@@ -129,6 +130,7 @@ impl Session {
             SetLayerOpacity(i, o) => self.set_layer_opacity(i, o),
             SetLayerVisible(i, v) => self.set_layer_visible(i, v),
             SetLayerLocked(i, v) => self.set_layer_locked(i, v),
+            RenameLayer(i, name) => self.rename_layer(i, name),
             DuplicateLayerToFrames(t) => self.duplicate_layer_to_frames(&t),
             SelectTool(t) => self.tool = t,
             SetPrimaryColor(c) => self.settings.primary = c,
@@ -225,7 +227,9 @@ fn parse_tool(s: &str) -> Result<ToolKind, String> {
     use ToolKind::*;
     Ok(match s {
         "Pencil" => Pencil,
-        "PrecisionPencil" => PrecisionPencil,
+        // Legacy alias: "Precision" used to be a standalone tool; it is now a per-tool mode
+        // (driven entirely from the shell). Old recorded scripts still parse → plain Pencil.
+        "PrecisionPencil" => Pencil,
         "Brush" => Brush,
         "Airbrush" => Airbrush,
         "Eraser" => Eraser,
@@ -340,6 +344,13 @@ fn parse_line(line: &str) -> Result<Action, String> {
         "SetLayerOpacity" => SetLayerOpacity(usza(0)?, u8a(1)?),
         "SetLayerVisible" => SetLayerVisible(usza(0)?, boola(1)?),
         "SetLayerLocked" => SetLayerLocked(usza(0)?, boola(1)?),
+        "RenameLayer" => {
+            // index, then the rest is the (free-text) name — split on the first comma only so
+            // names may themselves contain commas.
+            let (idx, rest) = inner.split_once(',').ok_or("RenameLayer needs index, name")?;
+            let i = idx.trim().parse::<usize>().map_err(|_| "bad layer index".to_string())?;
+            RenameLayer(i, rest.trim().to_string())
+        }
         "DuplicateLayerToFrames" => {
             let mut v = Vec::new();
             for k in 0..args.len() {

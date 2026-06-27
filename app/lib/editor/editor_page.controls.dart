@@ -12,8 +12,22 @@ extension _EditorControls on _EditorPageState {
         padding: const EdgeInsets.only(left: 8, right: 4),
         child: Text(s, style: const TextStyle(fontSize: 11, color: Colors.white60))));
 
-    if (_isCursorTool) {
-      // off-finger reticle nudge pad (1px steps), shared by precision pencil + airbrush
+    if (_precisionCapable) {
+      // The Precision toggle: turns the active paint tool into its off-finger reticle mode.
+      // Remembered per tool (see _precisionOn).
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: FilterChip(
+          selected: _isPrecision,
+          avatar: Icon(Icons.gps_fixed, size: 16, color: _isPrecision ? Colors.white : Colors.white60),
+          label: Text(_isPrecision ? 'Precision ✔' : 'Precision'),
+          selectedColor: const Color(0xFF30A050),
+          onSelected: _setPrecision,
+        ),
+      ));
+    }
+    if (_isPrecision) {
+      // off-finger reticle nudge pad (1px steps), shared by every precision tool
       children.add(IconButton(iconSize: 20, tooltip: 'Nudge left', onPressed: () => _nudgeCursor(-1, 0), icon: const Icon(Icons.chevron_left)));
       children.add(Column(mainAxisAlignment: MainAxisAlignment.center, children: [
         InkWell(onTap: () => _nudgeCursor(0, -1), child: const Icon(Icons.keyboard_arrow_up, size: 18)),
@@ -21,19 +35,30 @@ extension _EditorControls on _EditorPageState {
       ]));
       children.add(IconButton(iconSize: 20, tooltip: 'Nudge right', onPressed: () => _nudgeCursor(1, 0), icon: const Icon(Icons.chevron_right)));
       children.add(const SizedBox(width: 4));
-    }
-    if (_isPrecision) {
-      // DRAW (single dot)
-      children.add(Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
-          onPressed: () { _send('PlotCursor()'); _refreshState(); _redraw(); setState(() {}); },
-          icon: const Icon(Icons.brush, size: 16),
-          label: const Text('Draw'),
-        ),
-      ));
-      // PEN toggle (continuous line while dragging the reticle)
+      if (_tool == 'Airbrush') {
+        // SPRAY (one airbrush dab at the reticle, off-finger)
+        children.add(Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          child: ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
+            onPressed: () { _send('AirbrushCursor()'); _refreshState(); _redraw(); setState(() {}); },
+            icon: const Icon(Icons.blur_on, size: 16),
+            label: const Text('Spray'),
+          ),
+        ));
+      } else {
+        // DRAW (single stamp at the reticle)
+        children.add(Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          child: ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
+            onPressed: () { _send('PlotCursor()'); _refreshState(); _redraw(); setState(() {}); },
+            icon: const Icon(Icons.brush, size: 16),
+            label: const Text('Draw'),
+          ),
+        ));
+      }
+      // PEN toggle (continuous stroke/spray while dragging the reticle)
       children.add(Padding(
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: FilterChip(
@@ -72,20 +97,7 @@ extension _EditorControls on _EditorPageState {
         ),
       ));
     }
-    if (_tool == 'Airbrush') {
-      // SPRAY (one airbrush dab at the reticle, off-finger)
-      children.add(Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
-          onPressed: () { _send('AirbrushCursor()'); _refreshState(); _redraw(); setState(() {}); },
-          icon: const Icon(Icons.blur_on, size: 16),
-          label: const Text('Spray'),
-        ),
-      ));
-    }
-
-    final sizeTools = {'Pencil', 'PrecisionPencil', 'Brush', 'Airbrush', 'Eraser', 'Dodge', 'Burn', 'Line', 'Rectangle', 'Ellipse'};
+    final sizeTools = {'Pencil', 'Brush', 'Airbrush', 'Eraser', 'Dodge', 'Burn', 'Line', 'Rectangle', 'Ellipse'};
     if (sizeTools.contains(_tool)) {
       _labeledSlider(children, 'Size', _brushSize.toDouble(), 1, 32, (v) {
         setState(() => _brushSize = v.round());

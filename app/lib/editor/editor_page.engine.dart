@@ -207,7 +207,8 @@ extension _EditorEngine on _EditorPageState {
     setState(() => _tool = t);
     if (_transformTools.contains(t)) return; // UI-only action group: no engine tool change
     _send('SelectTool($t)');
-    if (_cursorTools.contains(t)) {
+    // Entering a tool that remembers precision-on re-centres the reticle.
+    if (_precisionOn.contains(t)) {
       _setCursor(engine.width ~/ 2, engine.height ~/ 2);
       _redraw();
     }
@@ -219,6 +220,25 @@ extension _EditorEngine on _EditorPageState {
       _send('SetGradientType(${_radial ? 'Radial' : 'Linear'})');
       _send('SetGradientStops([${_hex(_gradA)}@0, ${_hex(_gradB)}@1])');
     }
+  }
+
+  // Toggle the active paint tool's precision (off-finger reticle) mode. Remembered per tool.
+  void _setPrecision(bool on) {
+    if (!_precisionCapable) return;
+    // Leaving precision while a pen line is mid-stroke commits it cleanly.
+    if (!on && _penDown) {
+      _send('CursorPenUp()');
+      _penDown = false;
+    }
+    setState(() {
+      if (on) {
+        _precisionOn.add(_tool);
+      } else {
+        _precisionOn.remove(_tool);
+      }
+    });
+    if (on) _setCursor(engine.width ~/ 2, engine.height ~/ 2); // park the reticle in the centre
+    _redraw();
   }
 
   void _setPrimary(Color c) {

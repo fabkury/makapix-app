@@ -163,6 +163,32 @@ extension _EditorTimeline on _EditorPageState {
     setState(() {});
   }
 
+  // Prompt for a new layer name and apply it. Cancelling (or an empty name) leaves the layer as-is.
+  // Newlines and ';' are stripped because they would split the DSL command; commas survive (the
+  // parser keeps everything after the index as the name).
+  Future<void> _renameLayer(int i, String current) async {
+    final ctrl = TextEditingController(text: current);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rename layer'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          onSubmitted: (_) => Navigator.pop(ctx, ctrl.text),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('Rename')),
+        ],
+      ),
+    );
+    if (name == null) return; // cancelled
+    final clean = name.replaceAll(RegExp(r'[\r\n;]'), ' ').trim();
+    if (clean.isEmpty) return;
+    _act('RenameLayer($i, $clean)');
+  }
+
   void _layerOptions(int i, Map<String, dynamic> l, int count) {
     showModalBottomSheet(
       context: context,
@@ -174,7 +200,17 @@ extension _EditorTimeline on _EditorPageState {
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('${l['name']}', style: const TextStyle(fontWeight: FontWeight.bold)),
+              InkWell(
+                onTap: () { Navigator.pop(ctx); _renameLayer(i, '${l['name']}'); },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Flexible(child: Text('${l['name']}', style: const TextStyle(fontWeight: FontWeight.bold))),
+                    const SizedBox(width: 6),
+                    const Icon(Icons.edit, size: 14, color: Colors.white54),
+                  ]),
+                ),
+              ),
               Row(children: [
                 const Text('Opacity'),
                 Expanded(child: Slider(value: opacity.toDouble(), max: 255, onChanged: (v) { setS(() => opacity = v.round()); _send('SetLayerOpacity($i, $opacity)'); _redraw(); })),

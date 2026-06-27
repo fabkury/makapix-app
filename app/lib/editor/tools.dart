@@ -11,7 +11,6 @@ class ToolDef {
 
 const tools = <ToolDef>[
   ToolDef('Pencil', Icons.edit, 'Pencil'),
-  ToolDef('PrecisionPencil', Icons.gps_fixed, 'Precision'),
   ToolDef('Brush', Icons.brush, 'Brush'),
   ToolDef('Airbrush', Icons.blur_on, 'Airbrush'),
   ToolDef('Eraser', Icons.auto_fix_normal, 'Eraser'),
@@ -40,12 +39,10 @@ const tools = <ToolDef>[
 
 // Succinct, teach-as-you-go help shown in the gesture-safe band at the bottom.
 const toolTips = <String, String>{
-  'Pencil': 'Drag to draw hard pixels in the primary colour.',
-  'PrecisionPencil':
-      'Drag to move the ✛ reticle off your finger; arrows nudge 1px. Tap DRAW for a dot, or turn PEN on and drag to draw a line.',
-  'Brush': 'Drag to paint, blending onto existing pixels.',
-  'Airbrush': 'Drag to aim the ◎ reticle off your finger; tap SPRAY for one burst. Set size & intensity.',
-  'Eraser': 'Drag to erase pixels to transparent.',
+  'Pencil': 'Drag to draw hard pixels in the primary colour. Turn on Precision to draw off-finger with a reticle.',
+  'Brush': 'Drag to paint, blending onto existing pixels. Turn on Precision to paint off-finger with a reticle.',
+  'Airbrush': 'Drag to spray in the primary colour. Set size & intensity. Turn on Precision to aim a reticle off-finger; tap SPRAY for one burst, or turn PEN on and drag.',
+  'Eraser': 'Drag to erase pixels to transparent. Turn on Precision to erase off-finger with a reticle.',
   'Bucket': 'Tap an area to flood-fill. Threshold = colour tolerance.',
   'Gradient': 'Drag start→end to fill a gradient. Pick 2–3 colours, Linear/Radial.',
   'Line': 'Drag from one point to another to draw a straight line.',

@@ -39,7 +39,9 @@ part 'editor_page.toolgrid.dart';
 const double _kMinZoom = 0.25, _kMaxZoom = 32.0;
 const _prefsKey = 'tool_order_v1';
 const _transformTools = {'Flip', 'Rotate', 'Invert', 'Resize'};
-const _cursorTools = {'PrecisionPencil', 'Airbrush'};
+// Paint tools that support a "Precision" mode (off-finger reticle + draw-by-button). Precision is
+// a per-tool toggle, remembered independently per tool — see [_precisionTools].
+const _precisionTools = {'Pencil', 'Brush', 'Airbrush', 'Eraser'};
 
 class EditorPage extends ConsumerStatefulWidget {
   const EditorPage({super.key});
@@ -75,7 +77,10 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
   String? _error;
   final Set<int> _selLayers = {}; // layers grouped to move together with the Move-Layer tool
   ClubEditSource? _clubSource; // set when a Club artwork is opened (enables Replace / remix)
-  // precision pencil / airbrush off-finger cursor
+  // Precision mode is remembered per tool: a tool name is present here while its Precision toggle
+  // is on. Only tools in [_precisionTools] are ever added.
+  final Set<String> _precisionOn = {};
+  // precision off-finger cursor (shared by whichever paint tool is in precision mode)
   bool _penDown = false;
   Offset? _lastTouch;
   double _accX = 0, _accY = 0;
@@ -104,15 +109,19 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
   final Set<int> _layerThumbInFlight = {};
   int _layerKey(int frame, int layer) => frame * 100000 + layer;
 
-  bool get _isPrecision => _tool == 'PrecisionPencil';
+  // Whether the current tool offers a Precision toggle at all.
+  bool get _precisionCapable => _precisionTools.contains(_tool);
+  // Whether the current tool is *in* precision mode right now.
+  bool get _isPrecision => _precisionOn.contains(_tool);
 
   // UI-only action groups: selecting one reveals its row-1 buttons but does not change the
   // engine's draw tool, and the canvas is inert while one is active.
   bool get _isTransformTool => _transformTools.contains(_tool);
 
-  // Off-finger "reticle" tools: dragging moves a cursor (drawn as a screen-space marching-ants
-  // overlay) rather than the finger, and an action button effects one operation at a time.
-  bool get _isCursorTool => _cursorTools.contains(_tool);
+  // Off-finger "reticle" mode: dragging moves a cursor (drawn as a screen-space marching-ants
+  // overlay) rather than the finger, and an action button effects one operation at a time. This
+  // is exactly the active tool being in precision mode.
+  bool get _isCursorTool => _isPrecision;
 
   bool get _engineReady => _error == null;
 
