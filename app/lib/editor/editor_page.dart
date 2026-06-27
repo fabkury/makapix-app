@@ -19,6 +19,7 @@ import 'package:makapix_club/club/state/edit_bridge.dart';
 import 'package:makapix_club/club/ui/publish_page.dart';
 import 'package:makapix_club/engine_ffi.dart';
 
+import 'editor_session.dart';
 import 'tools.dart';
 import 'thumbnail.dart';
 import 'widgets/painters.dart';
@@ -123,6 +124,10 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
     try {
       engine = Engine(64, 64);
       _send('SelectTool(Pencil)');
+      // Restore the document the user was working on before they last left the editor
+      // (the shell mounts one pillar at a time, so EditorPage is recreated on re-entry).
+      final snap = EditorSession.docSnapshot;
+      if (snap != null && snap.isNotEmpty) engine.load(snap);
       _refreshState();
       _redraw();
     } catch (e) {
@@ -133,6 +138,14 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
   @override
   void dispose() {
     _playTimer?.cancel();
+    // Snapshot the in-progress document so it survives this unmount (e.g. switching to
+    // Club and back). Lossless .mkpx bytes; save before the engine is freed.
+    if (_engineReady) {
+      try {
+        final bytes = engine.save();
+        if (bytes.isNotEmpty) EditorSession.docSnapshot = bytes;
+      } catch (_) {/* keep the previous snapshot if saving fails */}
+    }
     _antCtrl.dispose();
     for (final t in _frameThumbs.values) {
       t.img.dispose();

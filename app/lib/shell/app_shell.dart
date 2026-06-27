@@ -4,9 +4,13 @@
 //
 // The app opens on the Club pillar (signed-out users land on Club's own welcome /
 // sign-in funnel). The editor is always reachable, without signing in, via the
-// prominent centre ⊕ Create button. Both pillars live in an [IndexedStack] so the
-// editor's in-progress document, FFI engine, and marching-ants animation survive
-// pillar switches.
+// prominent centre ⊕ Create button.
+//
+// Only the ACTIVE pillar is mounted at a time. Keeping both pillar `Scaffold`s mounted
+// simultaneously (e.g. via IndexedStack) corrupts the Windows accessibility tree and
+// crashes the app on resize ("Failed to update ui::AXTree: Nodes left pending"). Club's
+// state survives remounts via its Riverpod providers; the editor preserves its in-progress
+// document across switches with an [EditorSession] snapshot (see editor_session.dart).
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -57,13 +61,8 @@ class _AppShellState extends ConsumerState<AppShell> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Both pillars stay mounted across switches (keep-alive), so the editor's
-        // document/engine/animation persist while Club is foreground.
-        final stack = IndexedStack(
-          index: _index,
-          children: [widget.clubPillar, widget.editorPillar],
-        );
-        return constraints.maxWidth >= _kRailBreakpoint ? _wide(stack) : _narrow(stack);
+        final active = _index == _club ? widget.clubPillar : widget.editorPillar;
+        return constraints.maxWidth >= _kRailBreakpoint ? _wide(active) : _narrow(active);
       },
     );
   }

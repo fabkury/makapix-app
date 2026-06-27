@@ -54,8 +54,9 @@ Widget _harness() {
   );
 }
 
-int _pillarIndex(WidgetTester tester) =>
-    tester.widget<IndexedStack>(find.byType(IndexedStack)).index ?? -1;
+// The shell mounts only the active pillar (mounting both Scaffolds at once crashes the
+// Windows accessibility bridge), so the editor stub is in the tree iff the editor is active.
+final _editorShowing = find.text('editor-stub');
 
 void _useNarrowPhone(WidgetTester tester) {
   // Force the compact (bottom-bar + docked FAB) layout, not the wide NavigationRail.
@@ -71,9 +72,9 @@ void main() {
     await tester.pumpWidget(_harness());
     await tester.pump();
 
-    expect(_pillarIndex(tester), 0, reason: 'app should launch on the Club pillar');
     expect(find.text('Sign in / Create account'), findsOneWidget,
         reason: 'signed-out users get Club\'s welcome funnel, not a login wall');
+    expect(_editorShowing, findsNothing, reason: 'the app launches on the Club pillar');
   });
 
   testWidgets('the centre Create button opens the editor without signing in', (tester) async {
@@ -83,10 +84,12 @@ void main() {
 
     await tester.tap(find.byTooltip('Create'));
     await tester.pump();
-    expect(_pillarIndex(tester), 1, reason: 'the editor pillar is reachable while signed out');
+    expect(_editorShowing, findsOneWidget,
+        reason: 'the editor pillar is reachable while signed out');
 
     await tester.tap(find.byTooltip('Club'));
     await tester.pump();
-    expect(_pillarIndex(tester), 0, reason: 'the bottom-bar Club button returns to the hub');
+    expect(_editorShowing, findsNothing,
+        reason: 'the bottom-bar Club button returns to the hub');
   });
 }
