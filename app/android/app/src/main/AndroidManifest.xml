@@ -38,7 +38,10 @@
              (club.makapix.editor://oauth/github). -->
         <activity
             android:name="com.linusu.flutter_web_auth_2.CallbackActivity"
-            android:exported="true">
+            android:exported="true"
+            android:taskAffinity="">
+            <!-- taskAffinity="" MUST match MainActivity above, or the OAuth callback lands in a
+                 separate task and the app won't return to the foreground after sign-in. -->
             <intent-filter android:label="flutter_web_auth_2">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

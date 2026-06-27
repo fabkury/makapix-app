@@ -192,3 +192,9 @@ Inside `<application>` of `app/android/app/src/main/AndroidManifest.xml`:
   new plugins (flutter_web_auth_2 / flutter_secure_storage / dio / riverpod / crypto) and the manifest
   `CallbackActivity` merge cleanly. Remaining device-bound step (user): the live GitHub sign-in round-trip via
   `build_android.ps1 -Install` (which also bundles the Rust `.so`).
+- **Device finding (fixed):** GitHub sign-in succeeded but the app didn't return to the foreground after the
+  redirect. Cause: `MainActivity` has `android:taskAffinity=""` but the `flutter_web_auth_2` `CallbackActivity`
+  didn't, so the OAuth callback resolved into a *separate* task — the code was captured (login worked) but
+  finishing the callback returned to the browser, not the app. Fix: set `android:taskAffinity=""` on the
+  CallbackActivity to match MainActivity. (The Chrome "open in app?" confirmation popup is inherent to
+  custom-scheme returns and is expected.)
