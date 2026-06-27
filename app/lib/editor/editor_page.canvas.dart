@@ -101,6 +101,12 @@ extension _EditorCanvas on _EditorPageState {
                 painter: HandlePainter([_shapeA!, _shapeB!], vScale, vOff),
                 size: Size.infinite,
               ),
+            if (_isRuler && _hasRuler)
+              // measurement line + endpoint coords + length (never drawn to the canvas)
+              CustomPaint(
+                painter: RulerPainter(_rulerA!, _rulerB!, vScale, vOff),
+                size: Size.infinite,
+              ),
           ]),
         ),
       );
@@ -128,6 +134,10 @@ extension _EditorCanvas on _EditorPageState {
   // ---- single-pointer draw helpers (driven by the multi-touch state machine above) ----
 
   void _beginDraw(Offset pos, Size box) {
+    if (_isRuler) {
+      _beginRuler(pos, box);
+      return;
+    }
     if (_isShapeTool) {
       _beginShape(pos, box);
       return;
@@ -148,6 +158,10 @@ extension _EditorCanvas on _EditorPageState {
   }
 
   void _continueDraw(Offset pos, Size box) {
+    if (_isRuler) {
+      _continueRuler(pos, box);
+      return;
+    }
     if (_isShapeTool) {
       _continueShape(pos, box);
       return;
@@ -178,6 +192,11 @@ extension _EditorCanvas on _EditorPageState {
   }
 
   void _endDraw() {
+    if (_isRuler) {
+      _rulerDrag = 0;
+      setState(() {});
+      return;
+    }
     if (_isShapeTool) {
       _endShape();
       return;
@@ -200,6 +219,11 @@ extension _EditorCanvas on _EditorPageState {
   // Abort an in-progress draw, discarding its marks without an undo step (used when a second finger
   // interrupts a nascent stroke to begin pan/zoom).
   void _cancelDraw() {
+    if (_isRuler) {
+      _rulerDrag = 0; // a second finger interrupted; keep the measurement as-is
+      setState(() {});
+      return;
+    }
     if (_isShapeTool) {
       // A second finger interrupted a figure gesture (→ pan/zoom). Keep any established draft; but
       // if this was a brand-new degenerate figure (a single point, e.g. a pinch starting on empty
@@ -305,6 +329,50 @@ extension _EditorCanvas on _EditorPageState {
     _shapeB = _ratioed(_shapeA!, _shapeB!);
     _pushShape();
     _redraw();
+    setState(() {});
+  }
+
+  // ---- ruler gestures (measure only — never draws to the canvas) ----
+
+  Offset _clampToCanvas(Offset p) =>
+      Offset(p.dx.clamp(0, engine.width - 1).toDouble(), p.dy.clamp(0, engine.height - 1).toDouble());
+
+  void _beginRuler(Offset pos, Size box) {
+    final p = _clampToCanvas(_toCanvas(pos, box));
+    if (_hasRuler) {
+      final (s, off) = _view(box);
+      Offset screenOf(Offset c) => Offset(off.dx + (c.dx + 0.5) * s, off.dy + (c.dy + 0.5) * s);
+      final tol = (s * 0.9).clamp(22.0, 44.0);
+      final dA = (pos - screenOf(_rulerA!)).distance;
+      final dB = (pos - screenOf(_rulerB!)).distance;
+      if (dA <= tol && dA <= dB) {
+        _rulerDrag = 1;
+        _rulerA = p;
+      } else if (dB <= tol) {
+        _rulerDrag = 2;
+        _rulerB = p;
+      } else {
+        // Off the handles → start a fresh measurement (the ruler draws nothing, so replacing is free).
+        _rulerDrag = 3;
+        _rulerA = p;
+        _rulerB = p;
+      }
+    } else {
+      _rulerDrag = 3;
+      _rulerA = p;
+      _rulerB = p;
+    }
+    setState(() {});
+  }
+
+  void _continueRuler(Offset pos, Size box) {
+    if (_rulerDrag == 0) return;
+    final p = _clampToCanvas(_toCanvas(pos, box));
+    if (_rulerDrag == 1) {
+      _rulerA = p;
+    } else {
+      _rulerB = p; // dragging B, or growing a new measurement (A stays put)
+    }
     setState(() {});
   }
 

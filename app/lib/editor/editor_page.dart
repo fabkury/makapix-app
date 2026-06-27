@@ -77,6 +77,10 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
   // existing draft, we defer replacing it until the finger actually moves, so a pinch-zoom or a
   // stray tap leaves the current draft intact.
   Offset? _newShapeStart;
+  // Ruler tool: a non-destructive measurement line (two draggable endpoints in canvas-pixel
+  // coords). Never drawn to the canvas; cleared when switching tools.
+  Offset? _rulerA, _rulerB;
+  int _rulerDrag = 0; // 0=none, 1=dragging A, 2=dragging B, 3=drawing a new measurement
   bool _radial = false;
   int _intensity = 128;
   int _spacing = 25; // Brush/Airbrush stamp spacing, % of brush size (engine spacing)
@@ -142,6 +146,10 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
   // Figure tools draw via the draft flow (drag → adjust handles → commit), not immediate-on-release.
   bool get _isShapeTool => _tool == 'Line' || _tool == 'Rectangle' || _tool == 'Ellipse';
   bool get _hasShapeDraft => _shapeA != null && _shapeB != null;
+
+  // The Ruler is a pure measurement overlay (no engine tool, no drawing).
+  bool get _isRuler => _tool == 'Ruler';
+  bool get _hasRuler => _rulerA != null && _rulerB != null;
 
   bool get _engineReady => _error == null;
 

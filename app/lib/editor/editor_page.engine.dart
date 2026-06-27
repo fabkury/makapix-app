@@ -211,9 +211,15 @@ extension _EditorEngine on _EditorPageState {
       _shapeB = null;
       _shapeDrag = 0;
     }
+    // Leaving the Ruler clears its measurement (it never touches the engine).
+    if (_hasRuler && t != 'Ruler') {
+      _rulerA = null;
+      _rulerB = null;
+      _rulerDrag = 0;
+    }
     setState(() => _tool = t);
     if (_transformTools.contains(t)) return; // UI-only action group: no engine tool change
-    _send('SelectTool($t)');
+    if (t != 'Ruler') _send('SelectTool($t)'); // Ruler is a pure overlay; no engine draw tool
     // Entering a tool that remembers precision-on re-centres the reticle.
     if (_precisionOn.contains(t)) {
       _setCursor(engine.width ~/ 2, engine.height ~/ 2);

@@ -100,6 +100,47 @@ class HandlePainter extends CustomPainter {
       old.points != points || old.scale != scale || old.off != off;
 }
 
+/// The Ruler tool's overlay: a measurement line between two canvas points, with draggable end
+/// dots, each end's X,Y, and the straight-line length in pixels. Drawn in SCREEN space; never
+/// touches the pixel buffer.
+class RulerPainter extends CustomPainter {
+  final Offset a, b; // endpoints in canvas-pixel coords (cell top-left)
+  final double scale; // screen px per canvas px
+  final Offset off; // canvas top-left in screen px
+  const RulerPainter(this.a, this.b, this.scale, this.off);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (scale <= 0) return;
+    Offset sc(Offset c) => Offset(off.dx + (c.dx + 0.5) * scale, off.dy + (c.dy + 0.5) * scale);
+    final pa = sc(a), pb = sc(b);
+    canvas.drawLine(pa, pb, Paint()..color = Colors.black..strokeWidth = 3..isAntiAlias = true);
+    canvas.drawLine(pa, pb, Paint()..color = const Color(0xFFFFC400)..strokeWidth = 1.5..isAntiAlias = true);
+    for (final pt in [pa, pb]) {
+      canvas.drawCircle(pt, 4.5, Paint()..color = Colors.black);
+      canvas.drawCircle(pt, 3, Paint()..color = const Color(0xFFFFC400));
+    }
+    final len = (b - a).distance;
+    _label(canvas, '${a.dx.toInt()}, ${a.dy.toInt()}', pa);
+    _label(canvas, '${b.dx.toInt()}, ${b.dy.toInt()}', pb);
+    _label(canvas, '${len.toStringAsFixed(1)} px', Offset((pa.dx + pb.dx) / 2, (pa.dy + pb.dy) / 2));
+  }
+
+  void _label(Canvas canvas, String text, Offset at) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: ' $text ',
+        style: const TextStyle(fontSize: 11, color: Colors.white, backgroundColor: Color(0xCC000000)),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(canvas, at + const Offset(7, -7));
+  }
+
+  @override
+  bool shouldRepaint(RulerPainter old) => old.a != a || old.b != b || old.scale != scale || old.off != off;
+}
+
 /// A small two-tone checkerboard, used behind layer thumbnails so transparent areas read as
 /// transparent (the layers film-strip shows each layer against a transparent background).
 class CheckerPainter extends CustomPainter {
