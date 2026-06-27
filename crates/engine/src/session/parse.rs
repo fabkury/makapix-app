@@ -37,6 +37,7 @@ pub enum Action {
     SetBrushSize(u16),
     SetBrushShape(BrushShape),
     SetIntensity(u8),
+    SetSpacing(u16),
     SetThreshold(u8),
     SetContiguous(bool),
     SetGradientType(GradientKind),
@@ -141,6 +142,7 @@ impl Session {
             SetBrushSize(s) => self.settings.brush_size = s.max(1),
             SetBrushShape(s) => self.settings.brush_shape = s,
             SetIntensity(i) => self.settings.intensity = i,
+            SetSpacing(s) => self.settings.spacing = s.clamp(1, 1000),
             SetThreshold(t) => self.settings.threshold = t,
             SetContiguous(b) => self.settings.contiguous = b,
             SetGradientType(k) => self.settings.gradient.kind = k,
@@ -374,6 +376,7 @@ fn parse_line(line: &str) -> Result<Action, String> {
             o => return Err(format!("bad shape '{}'", o)),
         }),
         "SetIntensity" => SetIntensity(u8a(0)?),
+        "SetSpacing" => SetSpacing(u16a(0)?),
         "SetThreshold" => SetThreshold(u8a(0)?),
         "SetContiguous" => SetContiguous(boola(0)?),
         "SetGradientType" => SetGradientType(match args.first().copied().unwrap_or("") {

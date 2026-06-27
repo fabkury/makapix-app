@@ -25,6 +25,34 @@ struct Stroke {
     floating: Option<RgbaBuffer>, // for Move
 }
 
+/// Stamp positions along `a`→`b`, one every `step` px of arc length. `acc` is the distance already
+/// travelled toward the next stamp (carried across calls so spacing stays even across a stroke that
+/// arrives as many short segments); it is updated in place. The segment's own endpoints are not
+/// implicitly stamped — the caller stamps the stroke's first point on press.
+fn spaced_points(a: Point, b: Point, step: f32, acc: &mut f32) -> Vec<Point> {
+    let mut out = Vec::new();
+    let (ax, ay) = (a.x as f32, a.y as f32);
+    let (dx, dy) = ((b.x - a.x) as f32, (b.y - a.y) as f32);
+    let len = (dx * dx + dy * dy).sqrt();
+    if len <= 0.0 {
+        return out;
+    }
+    let (ux, uy) = (dx / len, dy / len);
+    let step = step.max(1.0);
+    let mut traveled = 0.0_f32;
+    loop {
+        let need = step - *acc; // distance from here to the next stamp
+        if traveled + need > len {
+            *acc += len - traveled; // ran out of segment; keep the partial distance
+            break;
+        }
+        traveled += need;
+        *acc = 0.0;
+        out.push(Point::new((ax + ux * traveled).round() as i32, (ay + uy * traveled).round() as i32));
+    }
+    out
+}
+
 /// Smallest rectangle covering both `a` and `b`.
 fn union_irect(a: crate::geom::IRect, b: crate::geom::IRect) -> crate::geom::IRect {
     let x = a.x.min(b.x);
@@ -50,6 +78,10 @@ pub struct Session {
     clock: VirtualClock,
     playing: bool,
     stroke: Option<Stroke>,
+    /// Distance (canvas px) travelled since the last spaced Brush/Airbrush stamp in the current
+    /// stroke. Carried across pointer/reticle moves so stamps stay evenly spaced regardless of how
+    /// the path is chopped into events. Reset to 0 when a stroke begins.
+    paint_acc: f32,
     /// Uncommitted figure (Line/Rectangle/Ellipse) being previewed and fine-tuned: its two
     /// defining endpoints in canvas pixels. The active tool decides how it renders. `None` when
     /// no draft is pending. Committed (rasterized) only on an explicit `shape_commit()`.
@@ -79,6 +111,7 @@ impl Session {
             clock: VirtualClock::default(),
             playing: false,
             stroke: None,
+            paint_acc: 0.0,
             shape_draft: None,
             last_gradient: None,
             move_layers: Vec::new(),
@@ -417,6 +450,7 @@ impl Session {
             _ => {}
         }
         let before = self.begin_edit();
+        self.paint_acc = 0.0; // fresh stroke → reset Brush/Airbrush spacing
         let mut floating = None;
         // Paint-immediately tools.
         if self.active_editable() {
@@ -535,9 +569,9 @@ impl Session {
         if self.active_editable() {
             match self.tool {
                 ToolKind::Pencil => self.stroke_active(last, p, PaintMode::Replace, self.settings.primary),
-                ToolKind::Brush => self.stroke_active(last, p, PaintMode::Over, self.settings.primary),
+                ToolKind::Brush => self.brush_stroke_spaced(last, p, PaintMode::Over, self.settings.primary),
                 ToolKind::Eraser => self.stroke_active(last, p, PaintMode::Erase, Rgba8::TRANSPARENT),
-                ToolKind::Airbrush => self.airbrush_active(p),
+                ToolKind::Airbrush => self.airbrush_stroke_spaced(last, p),
                 ToolKind::Dodge => self.dodge_burn_active(p, self.dodge_dv(true)),
                 ToolKind::Burn => self.dodge_burn_active(p, self.dodge_dv(false)),
                 _ => {}
@@ -777,6 +811,36 @@ impl Session {
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
         tool::airbrush_dab(buf, sel.as_ref(), p, size, intensity, color, &mut self.rng);
     }
+
+    /// Distance (canvas px) between successive Brush/Airbrush stamps: spacing% of the brush size,
+    /// never below 1px.
+    fn brush_step(&self) -> f32 {
+        (self.settings.spacing as f32 / 100.0 * self.settings.brush_size as f32).max(1.0)
+    }
+
+    /// Stamp the brush along `a`→`b` at the configured spacing, carrying `paint_acc` so the spacing
+    /// is even across the whole stroke (not reset per segment/event).
+    fn brush_stroke_spaced(&mut self, a: Point, b: Point, mode: PaintMode, color: Rgba8) {
+        let pts = spaced_points(a, b, self.brush_step(), &mut self.paint_acc);
+        if pts.is_empty() {
+            return;
+        }
+        let (size, shape) = (self.settings.brush_size, self.settings.brush_shape);
+        let sel = self.selection.clone();
+        let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
+        for p in pts {
+            tool::stamp(buf, sel.as_ref(), p, size, shape, color, mode);
+        }
+    }
+
+    /// Spray airbrush dabs along `a`→`b` at the configured spacing (interpolated, carrying
+    /// `paint_acc`), so a fast drag still lays an even trail of dabs.
+    fn airbrush_stroke_spaced(&mut self, a: Point, b: Point) {
+        let pts = spaced_points(a, b, self.brush_step(), &mut self.paint_acc);
+        for p in pts {
+            self.airbrush_active(p);
+        }
+    }
     fn dodge_dv(&self, lighten: bool) -> f32 {
         let mag = self.settings.intensity as f32 / 255.0 * 0.25;
         if lighten {
@@ -833,10 +897,14 @@ impl Session {
         let old = self.cursor;
         self.cursor = self.clamp_cursor(Point::new(old.x + dx, old.y + dy));
         if self.precision_before.is_some() && self.active_editable() && self.cursor != old {
-            match self.cursor_paint() {
-                Some((mode, color)) => self.stroke_active(old, self.cursor, mode, color),
-                None if self.tool == ToolKind::Airbrush => self.airbrush_active(self.cursor),
-                None => {}
+            match self.tool {
+                // Brush/Airbrush honour the spacing setting; Pencil/Eraser stay continuous.
+                ToolKind::Brush => self.brush_stroke_spaced(old, self.cursor, PaintMode::Over, self.settings.primary),
+                ToolKind::Airbrush => self.airbrush_stroke_spaced(old, self.cursor),
+                _ => match self.cursor_paint() {
+                    Some((mode, color)) => self.stroke_active(old, self.cursor, mode, color),
+                    None => {}
+                },
             }
         }
     }
@@ -847,6 +915,7 @@ impl Session {
             return;
         }
         self.precision_before = Some(self.begin_edit());
+        self.paint_acc = 0.0; // fresh pen line → reset Brush/Airbrush spacing
         let p = self.cursor;
         match self.cursor_paint() {
             Some((mode, color)) => self.stamp_active(p, mode, color),
@@ -1819,6 +1888,68 @@ mod tests {
         s.rename_layer(7, "nope");
         assert_eq!(s.doc.active_frame().layers[0].name, "Layer 1");
         assert!(!s.doc.undo()); // nothing recorded
+    }
+
+    #[test]
+    fn brush_spacing_leaves_gaps_between_stamps() {
+        // A 1px brush dragged straight across, with spacing far larger than the brush, should lay
+        // discrete dots — not a solid line.
+        let mut s = Session::new(32, 1);
+        s.settings.primary = Rgba8::WHITE;
+        s.settings.brush_size = 1;
+        s.tool = ToolKind::Brush;
+        s.settings.spacing = 500; // step = 5px (500% of size 1)
+        s.pointer_down(0, 0); // first stamp at x=0
+        s.pointer_move(31, 0);
+        s.pointer_up();
+        // stamps at x = 0, 5, 10, 15, 20, 25, 30 …
+        assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 0, 5, 0), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 0, 10, 0), Rgba8::WHITE);
+        // …and gaps between them
+        assert_eq!(s.pixel(0, 0, 2, 0), Rgba8::TRANSPARENT);
+        assert_eq!(s.pixel(0, 0, 7, 0), Rgba8::TRANSPARENT);
+    }
+
+    #[test]
+    fn brush_spacing_is_even_across_chopped_segments() {
+        // The same straight drag delivered as many tiny moves must produce the same evenly spaced
+        // dots as one big move (the accumulator carries across events).
+        let stamps = |chop: bool| {
+            let mut s = Session::new(32, 1);
+            s.settings.primary = Rgba8::WHITE;
+            s.settings.brush_size = 1;
+            s.tool = ToolKind::Brush;
+            s.settings.spacing = 400; // step = 4px
+            s.pointer_down(0, 0);
+            if chop {
+                for x in 1..=31 {
+                    s.pointer_move(x, 0);
+                }
+            } else {
+                s.pointer_move(31, 0);
+            }
+            s.pointer_up();
+            (0..32).filter(|&x| s.pixel(0, 0, x, 0) == Rgba8::WHITE).collect::<Vec<_>>()
+        };
+        assert_eq!(stamps(true), stamps(false));
+        assert_eq!(stamps(false), vec![0, 4, 8, 12, 16, 20, 24, 28]);
+    }
+
+    #[test]
+    fn dense_spacing_paints_a_solid_line() {
+        // Tight spacing on a 1px brush fills every pixel (no regression vs. continuous strokes).
+        let mut s = Session::new(16, 1);
+        s.settings.primary = Rgba8::WHITE;
+        s.settings.brush_size = 1;
+        s.tool = ToolKind::Brush;
+        s.settings.spacing = 25; // step clamps to 1px for size 1
+        s.pointer_down(0, 0);
+        s.pointer_move(15, 0);
+        s.pointer_up();
+        for x in 0..16 {
+            assert_eq!(s.pixel(0, 0, x, 0), Rgba8::WHITE, "x={}", x);
+        }
     }
 
     #[test]

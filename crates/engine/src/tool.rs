@@ -97,6 +97,9 @@ pub struct ToolSettings {
     pub brush_size: u16,
     pub brush_shape: BrushShape,
     pub intensity: u8,
+    /// Brush/Airbrush stamp spacing along a stroke, as a percent of brush size (e.g. 25 = a stamp
+    /// every quarter-diameter). Higher = more separated stamps. 1..=1000.
+    pub spacing: u16,
     pub threshold: u8,
     pub contiguous: bool,
     pub gradient: GradientSpec,
@@ -114,6 +117,7 @@ impl Default for ToolSettings {
             brush_size: 1,
             brush_shape: BrushShape::Round,
             intensity: 128,
+            spacing: 25,
             threshold: 0,
             contiguous: true,
             gradient: GradientSpec::default(),
