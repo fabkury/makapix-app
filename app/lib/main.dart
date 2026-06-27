@@ -12,7 +12,9 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'club/edit/club_edit_request.dart';
 import 'club/publish/publish_draft.dart';
+import 'club/state/edit_bridge.dart';
 import 'club/ui/club_home_page.dart';
 import 'club/ui/publish_page.dart';
 import 'engine_ffi.dart';
@@ -111,13 +113,13 @@ const toolTips = <String, String>{
   'Resize': 'Change the canvas dimensions.',
 };
 
-class EditorPage extends StatefulWidget {
+class EditorPage extends ConsumerStatefulWidget {
   const EditorPage({super.key});
   @override
-  State<EditorPage> createState() => _EditorPageState();
+  ConsumerState<EditorPage> createState() => _EditorPageState();
 }
 
-class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateMixin {
+class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProviderStateMixin {
   late Engine engine;
   ui.Image? _image;
   late AnimationController _antCtrl; // marching-ants animation phase
@@ -144,6 +146,7 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
   Map<String, dynamic> _state = {};
   String? _error;
   final Set<int> _selLayers = {}; // layers grouped to move together with the Move-Layer tool
+  ClubEditSource? _clubSource; // set when a Club artwork is opened (enables Replace / remix)
   // precision pencil / airbrush off-finger cursor
   bool _penDown = false;
   Offset? _lastTouch;
@@ -553,6 +556,7 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
     if (res == null || res.files.single.path == null) return;
     final bytes = await File(res.files.single.path!).readAsBytes();
     if (engine.load(bytes)) {
+      _clubSource = null;
       _refreshState();
       _redraw();
       _toast('Opened ${res.files.single.name}');
@@ -654,9 +658,45 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
       width: engine.width,
       height: engine.height,
       frameCount: engine.frameCount,
+      source: _clubSource,
     );
     if (!mounted) return;
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => PublishPage(draft: draft)));
+  }
+
+  // club → editor: load a downloaded Club artwork as a fresh document and record
+  // its provenance so publishing can offer Replace / remix.
+  Future<void> _consumeClubEdit(ClubEditRequest req) async {
+    ref.read(pendingClubEditProvider.notifier).state = null; // clear so it doesn't re-fire
+    if (!_engineReady) return;
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Open in editor'),
+        content: Text('Load "${req.sourceTitle}" into the editor? This replaces your current document.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Open')),
+        ],
+      ),
+    );
+    if (go != true) return;
+    _send('NewDocument(${req.width},${req.height})');
+    final ok = engine.importImage(req.bytes, mode: 1, asLayer: false, startFrame: 0);
+    if (!ok) _toast('Could not load this artwork into the editor.');
+    setState(() {
+      _clubSource = ClubEditSource(
+        postId: req.sourcePostId,
+        sqid: req.sourceSqid,
+        title: req.sourceTitle,
+        ownerHandle: req.sourceOwnerHandle,
+        isOwner: req.isOwner,
+      );
+    });
+    _send('SelectTool($_tool)');
+    _refreshState();
+    _redraw();
+    if (mounted) _toast('Loaded "${req.sourceTitle}" — edit, then Post to Club');
   }
 
   Future<void> _exportPng() async {
@@ -759,6 +799,10 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
+    // club → editor bridge: when the Club UI requests an edit, load it.
+    ref.listen<ClubEditRequest?>(pendingClubEditProvider, (prev, next) {
+      if (next != null) _consumeClubEdit(next);
+    });
     if (!_engineReady) {
       return Scaffold(
         body: Center(
@@ -1911,6 +1955,7 @@ class _EditorPageState extends State<EditorPage> with SingleTickerProviderStateM
     if (ok == true) {
       _send('NewDocument($w,$h)');
       _send('SelectTool($_tool)');
+      _clubSource = null;
       _refreshState();
       _redraw();
       setState(() {});

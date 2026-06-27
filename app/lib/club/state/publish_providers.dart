@@ -69,6 +69,19 @@ class PublishController extends StateNotifier<PublishState> {
     }
   }
 
+  /// Replace an existing post's artwork in place (owner).
+  Future<void> replace({required int postId, required List<int> bytes, required String filename}) async {
+    state = const PublishState(PublishStatus.uploading);
+    try {
+      final post = await ref.read(uploadApiProvider).replaceArtwork(postId, bytes, filename);
+      state = PublishState(PublishStatus.success, post: post);
+    } on ClubError catch (e) {
+      state = PublishState(PublishStatus.error, error: e.message);
+    } catch (_) {
+      state = const PublishState(PublishStatus.error, error: 'Replace failed. Please try again.');
+    }
+  }
+
   void reset() => state = const PublishState(PublishStatus.editing);
 }
 

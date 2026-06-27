@@ -83,10 +83,10 @@ Server has no remix edge. Post-as-new pre-fills the description with `Remix of {
 ---
 
 ## Progress
-- [ ] Plan written + self-reviewed
-- [ ] edit bridge model + providers + replace/download API
-- [ ] detail page "Edit in Makapix"; publish "Replace original" + remix pre-fill
-- [ ] editor consumes pending edit (load + provenance); ConsumerStatefulWidget
+- [x] Plan written + self-reviewed (engine load via NewDocument + importImage)
+- [x] edit bridge (ClubEditRequest/Source + pendingClubEditProvider) + EditApi.download + UploadApi.replaceArtwork
+- [x] detail page "Edit in Makapix"; publish "Replace original" + remix pre-fill
+- [x] editor consumes pending edit (load + provenance); EditorPage → ConsumerStatefulWidget
 - [ ] analyze + test + Android build; C3 acceptance
 
 ### Notes / findings

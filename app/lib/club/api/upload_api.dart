@@ -51,4 +51,18 @@ class UploadApi {
       throw ClubError.fromDio(e);
     }
   }
+
+  /// Replace an existing post's artwork in place (owner / allow-edit; the server
+  /// enforces permission). Keeps the post's reactions/comments/stats.
+  Future<Post> replaceArtwork(int postId, List<int> bytes, String filename) async {
+    try {
+      final form = FormData.fromMap({'image': MultipartFile.fromBytes(bytes, filename: filename)});
+      final resp = await client.dio.post('/post/$postId/replace-artwork', data: form);
+      final data = (resp.data as Map?)?.cast<String, dynamic>() ?? const {};
+      final postJson = (data['post'] as Map?)?.cast<String, dynamic>() ?? data;
+      return Post.fromJson(postJson);
+    } on DioException catch (e) {
+      throw ClubError.fromDio(e);
+    }
+  }
 }

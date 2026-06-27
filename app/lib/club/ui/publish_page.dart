@@ -29,6 +29,11 @@ class _PublishPageState extends ConsumerState<PublishPage> {
   @override
   void initState() {
     super.initState();
+    final src = widget.draft.source;
+    if (src != null) {
+      _title.text = src.title;
+      _desc.text = 'Remix of "${src.title}" by @${src.ownerHandle}.';
+    }
     // Clear any prior success/error from a previous publish.
     WidgetsBinding.instance.addPostFrameCallback((_) => ref.read(publishControllerProvider.notifier).reset());
   }
@@ -140,15 +145,37 @@ class _PublishPageState extends ConsumerState<PublishPage> {
             child: Text(pub.error!, style: const TextStyle(color: Colors.redAccent)),
           ),
         const SizedBox(height: 4),
+        if (d.source != null && d.source!.isOwner) ...[
+          FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF4080C0)),
+            onPressed: (result.ok && !uploading) ? _replace : null,
+            icon: const Icon(Icons.published_with_changes),
+            label: const Text('Replace original'),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 6),
+            child: Text(
+                'Updates the existing post in place — keeps its reactions, comments, and stats. '
+                'The metadata above applies only when posting as new.',
+                style: TextStyle(fontSize: 11, color: Colors.white54)),
+          ),
+        ],
         FilledButton.icon(
           onPressed: (result.ok && !uploading) ? _submit : null,
           icon: uploading
               ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
               : const Icon(Icons.cloud_upload),
-          label: Text(uploading ? 'Uploading…' : 'Publish'),
+          label: Text(uploading ? 'Uploading…' : (d.source != null ? 'Post as new' : 'Publish')),
         ),
       ],
     );
+  }
+
+  void _replace() {
+    final d = widget.draft;
+    ref
+        .read(publishControllerProvider.notifier)
+        .replace(postId: d.source!.postId, bytes: d.bytes, filename: d.filename);
   }
 
   Widget _conformanceBanner(ConformanceResult r) {
