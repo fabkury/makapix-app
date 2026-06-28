@@ -407,8 +407,26 @@ extension _EditorTimeline on _EditorPageState {
                         ),
                       ),
                     ),
-                    if (l['locked'] == true)
-                      const Positioned(right: 1, top: 1, child: Icon(Icons.lock, size: 12, color: Colors.white54)),
+                    // top-right badges: in-move-group (amber move icon, ~ the size of the top-left
+                    // visibility icon) and locked. A Row keeps them from overlapping.
+                    if (inGroup || l['locked'] == true)
+                      Positioned(
+                        right: 1,
+                        top: 1,
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          if (inGroup)
+                            Container(
+                              padding: const EdgeInsets.all(1),
+                              color: const Color(0xCC000000),
+                              child: const Icon(Icons.open_with, size: 13, color: Colors.amber),
+                            ),
+                          if (l['locked'] == true)
+                            const Padding(
+                              padding: EdgeInsets.only(left: 1),
+                              child: Icon(Icons.lock, size: 12, color: Colors.white54),
+                            ),
+                        ]),
+                      ),
                   ]),
                 ),
               );
