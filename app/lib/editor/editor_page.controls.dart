@@ -340,7 +340,6 @@ extension _EditorControls on _EditorPageState {
       children.add(_miniBtn('All', () => _act('SelectAll()')));
       children.add(_miniBtn('None', () => _act('SelectNone()')));
       children.add(_miniBtn('Invert', () => _act('InvertSelection()')));
-      children.add(_miniBtn('Crop→Sel', () => _act('CropToSelection()')));
       // Clipboard ops (Copy/Cut/Paste) and Clear now live in the dedicated Copy & Paste tool.
     }
     if (_tool == 'CopyPaste') {
