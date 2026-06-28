@@ -340,9 +340,11 @@ extension _EditorCanvas on _EditorPageState {
   void _beginRuler(Offset pos, Size box) {
     final p = _clampToCanvas(_toCanvas(pos, box));
     if (_hasRuler) {
+      // Grab the nearer endpoint if the press lands within its reticle; a press anywhere else does
+      // nothing (so the measurement is only changed by dragging its reticles — fine adjustments).
       final (s, off) = _view(box);
       Offset screenOf(Offset c) => Offset(off.dx + (c.dx + 0.5) * s, off.dy + (c.dy + 0.5) * s);
-      final tol = (s * 0.9).clamp(22.0, 44.0);
+      const tol = kRulerReticleRadius;
       final dA = (pos - screenOf(_rulerA!)).distance;
       final dB = (pos - screenOf(_rulerB!)).distance;
       if (dA <= tol && dA <= dB) {
@@ -352,12 +354,10 @@ extension _EditorCanvas on _EditorPageState {
         _rulerDrag = 2;
         _rulerB = p;
       } else {
-        // Off the handles → start a fresh measurement (the ruler draws nothing, so replacing is free).
-        _rulerDrag = 3;
-        _rulerA = p;
-        _rulerB = p;
+        _rulerDrag = 0; // outside both reticles → do nothing, keep the measurement as-is
       }
     } else {
+      // No measurement yet: a fresh drag lays one down (A fixed at the press, B follows).
       _rulerDrag = 3;
       _rulerA = p;
       _rulerB = p;

@@ -100,9 +100,13 @@ class HandlePainter extends CustomPainter {
       old.points != points || old.scale != scale || old.off != off;
 }
 
-/// The Ruler tool's overlay: a measurement line between two canvas points, with draggable end
-/// dots, each end's X,Y, and the straight-line length in pixels. Drawn in SCREEN space; never
-/// touches the pixel buffer.
+/// Screen-space radius of the Ruler's endpoint reticles. Also the grab radius for dragging an end
+/// (shared with the gesture code), so "tap within the reticle to move that coordinate".
+const double kRulerReticleRadius = 28.0;
+
+/// The Ruler tool's overlay: a measurement line between two canvas points, a large draggable
+/// reticle targeting each end, each end's X,Y, and the straight-line length in pixels. Drawn in
+/// SCREEN space; never touches the pixel buffer.
 class RulerPainter extends CustomPainter {
   final Offset a, b; // endpoints in canvas-pixel coords (cell top-left)
   final double scale; // screen px per canvas px
@@ -116,14 +120,29 @@ class RulerPainter extends CustomPainter {
     final pa = sc(a), pb = sc(b);
     canvas.drawLine(pa, pb, Paint()..color = Colors.black..strokeWidth = 3..isAntiAlias = true);
     canvas.drawLine(pa, pb, Paint()..color = const Color(0xFFFFC400)..strokeWidth = 1.5..isAntiAlias = true);
-    for (final pt in [pa, pb]) {
-      canvas.drawCircle(pt, 4.5, Paint()..color = Colors.black);
-      canvas.drawCircle(pt, 3, Paint()..color = const Color(0xFFFFC400));
-    }
+    _reticle(canvas, pa);
+    _reticle(canvas, pb);
     final len = (b - a).distance;
-    _label(canvas, '${a.dx.toInt()}, ${a.dy.toInt()}', pa);
-    _label(canvas, '${b.dx.toInt()}, ${b.dy.toInt()}', pb);
+    const lbl = kRulerReticleRadius * 0.72;
+    _label(canvas, '${a.dx.toInt()}, ${a.dy.toInt()}', pa + const Offset(lbl, lbl));
+    _label(canvas, '${b.dx.toInt()}, ${b.dy.toInt()}', pb + const Offset(lbl, lbl));
     _label(canvas, '${len.toStringAsFixed(1)} px', Offset((pa.dx + pb.dx) / 2, (pa.dy + pb.dy) / 2));
+  }
+
+  // A gun-sight reticle: a ring with crosshair arms and a clear centre (so the target pixel shows).
+  void _reticle(Canvas canvas, Offset c) {
+    const r = kRulerReticleRadius;
+    const gap = 6.0;
+    final halo = Paint()..color = Colors.black..style = PaintingStyle.stroke..strokeWidth = 3.5..isAntiAlias = true;
+    final ring = Paint()..color = const Color(0xFFFFC400)..style = PaintingStyle.stroke..strokeWidth = 1.5..isAntiAlias = true;
+    canvas.drawCircle(c, r, halo);
+    canvas.drawCircle(c, r, ring);
+    for (final d in const [Offset(1, 0), Offset(-1, 0), Offset(0, 1), Offset(0, -1)]) {
+      final p1 = c + d * gap, p2 = c + d * r;
+      canvas.drawLine(p1, p2, halo);
+      canvas.drawLine(p1, p2, ring);
+    }
+    canvas.drawCircle(c, 1.8, Paint()..color = const Color(0xFFFFC400));
   }
 
   void _label(Canvas canvas, String text, Offset at) {
@@ -134,7 +153,7 @@ class RulerPainter extends CustomPainter {
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-    tp.paint(canvas, at + const Offset(7, -7));
+    tp.paint(canvas, at);
   }
 
   @override
