@@ -301,7 +301,6 @@ extension _EditorControls on _EditorPageState {
           })));
     }
     if (_tool == 'SelectLayer') {
-      const accent = Color(0xFF00E5FF); // matches the cyan preview overlay
       // Alpha cutoff: pixels with alpha > threshold (the opaque pixels) are "selected"
       // (0 = all non-transparent; raise to keep only more-opaque pixels).
       _labeledSlider(children, 'Threshold', _alphaCutoff.toDouble(), 0, 254, (v) {
@@ -309,26 +308,10 @@ extension _EditorControls on _EditorPageState {
         _send('SetAlphaCutoff($_alphaCutoff)');
         _redraw(); // refresh the live preview overlay
       });
-      // Replace/Add/Subtract/Intersect — each runs the alpha→selection op now; the last one used
-      // stays highlighted (the "active" option).
+      // Replace/Add/Subtract/Intersect are one-off triggers (each applies the alpha→selection op
+      // against the current selection right now) — NOT a remembered/toggled mode.
       for (final m in const ['Replace', 'Add', 'Subtract', 'Intersect']) {
-        final active = _selLyrMode == m;
-        children.add(Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2),
-          child: ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              minimumSize: const Size(0, 32),
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              backgroundColor: active ? accent : const Color(0xFF2A2D31),
-              foregroundColor: active ? Colors.black : Colors.white70,
-            ),
-            onPressed: () {
-              setState(() => _selLyrMode = m);
-              _act('SelectByAlpha($m)');
-            },
-            child: Text(m),
-          ),
-        ));
+        children.add(_miniBtn(m, () => _act('SelectByAlpha($m)')));
       }
       children.add(const SizedBox(width: 6));
       children.add(_miniBtn('All', () => _act('SelectAll()')));

@@ -119,7 +119,6 @@ class _EditorPageState extends ConsumerState<EditorPage>
   int _spacing = 25; // Brush/Airbrush stamp spacing, % of brush size (engine spacing)
   String _selMode = 'Replace';
   int _alphaCutoff = 0; // Sel Lyr: alpha cutoff (0..254); pixels with alpha > this (opaque) are "selected"
-  String _selLyrMode = 'Replace'; // Sel Lyr: last-triggered (active) Replace/Add/Subtract/Intersect
   Color _gradA = const Color(0xFF102040);
   Color _gradB = const Color(0xFFFFFFFF);
   double _hsvH = 60, _hsvS = 0, _hsvV = 0;
