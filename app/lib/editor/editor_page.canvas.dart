@@ -109,7 +109,7 @@ extension _EditorCanvas on _EditorPageState {
                     ),
                     size: Size.infinite,
                   ),
-                if (_isShapeTool && _hasShapeDraft)
+                if (_isDraftTool && _hasShapeDraft)
                   // draggable endpoint handles for the uncommitted figure
                   CustomPaint(
                     painter: HandlePainter([_shapeA!, _shapeB!], vScale, vOff),
@@ -154,7 +154,7 @@ extension _EditorCanvas on _EditorPageState {
       _beginRuler(pos, box);
       return;
     }
-    if (_isShapeTool) {
+    if (_isDraftTool) {
       _beginShape(pos, box);
       return;
     }
@@ -180,7 +180,7 @@ extension _EditorCanvas on _EditorPageState {
       _continueRuler(pos, box);
       return;
     }
-    if (_isShapeTool) {
+    if (_isDraftTool) {
       _continueShape(pos, box);
       return;
     }
@@ -218,7 +218,7 @@ extension _EditorCanvas on _EditorPageState {
       setState(() {});
       return;
     }
-    if (_isShapeTool) {
+    if (_isDraftTool) {
       _endShape();
       return;
     }
@@ -245,7 +245,7 @@ extension _EditorCanvas on _EditorPageState {
       setState(() {});
       return;
     }
-    if (_isShapeTool) {
+    if (_isDraftTool) {
       // A second finger interrupted a figure gesture (→ pan/zoom). Keep any established draft; but
       // if this was a brand-new degenerate figure (a single point, e.g. a pinch starting on empty
       // canvas), drop it so it leaves no stray dot behind.
@@ -256,6 +256,7 @@ extension _EditorCanvas on _EditorPageState {
       }
       _shapeDrag = 0;
       _newShapeStart = null;
+      _shapeMoveAnchor = _shapeMoveOrigA = _shapeMoveOrigB = null;
       _redraw();
       setState(() {});
       return;
@@ -275,17 +276,18 @@ extension _EditorCanvas on _EditorPageState {
 
   // ---- figure draft gestures (Line/Rect/Ellipse: drag → adjust handles → commit) ----
 
-  // Begin a figure gesture: grab the nearest endpoint handle if the press lands near one
-  // (generous screen-space tolerance — "near, not necessarily on"). With a draft already pending,
-  // a press OFF the handles does nothing (it never resets the draft); a fresh figure only starts
-  // when there is no draft yet.
+  // Begin a figure gesture: grab the nearest endpoint handle if the press lands near one (generous
+  // screen-space tolerance — "near, not necessarily on"). With a draft already pending, a press OFF
+  // the handles starts a whole-draft reposition (a drag translates both ends; a tap leaves it as-is
+  // and never resets it). A fresh figure only starts when there is no draft yet.
   void _beginShape(Offset pos, Size box) {
     final p = _toCanvas(pos, box);
     _newShapeStart = null;
     if (_hasShapeDraft) {
       final (s, off) = _view(box);
       Offset screenOf(Offset c) => Offset(off.dx + (c.dx + 0.5) * s, off.dy + (c.dy + 0.5) * s);
-      final tol = (s * 0.9).clamp(22.0, 44.0);
+      // A bit larger than the drawn reticle so the ends are easy to grab.
+      final tol = (s * 1.1).clamp(30.0, 56.0);
       final dA = (pos - screenOf(_shapeA!)).distance;
       final dB = (pos - screenOf(_shapeB!)).distance;
       if (dA <= tol && dA <= dB) {
@@ -297,7 +299,11 @@ extension _EditorCanvas on _EditorPageState {
         _shapeB = p;
         _pushShape();
       } else {
-        _shapeDrag = 0; // off the handles → do nothing, keep the pending draft as-is
+        // Off the handles → reposition the whole draft (the move happens on drag in _continueShape).
+        _shapeDrag = 4;
+        _shapeMoveAnchor = p;
+        _shapeMoveOrigA = _shapeA;
+        _shapeMoveOrigB = _shapeB;
       }
     } else {
       // No draft yet: materialize a degenerate figure so a tap drops a starting handle.
@@ -314,6 +320,10 @@ extension _EditorCanvas on _EditorPageState {
   void _continueShape(Offset pos, Size box) {
     if (_shapeDrag == 0) return;
     final p = _toCanvas(pos, box);
+    if (_shapeDrag == 4) {
+      _moveWholeDraft(p);
+      return;
+    }
     if (_shapeDrag == 1) {
       _shapeA = _ratioed(_shapeB!, p); // dragging A: anchor is B
     } else if (_shapeDrag == 2) {
@@ -324,6 +334,20 @@ extension _EditorCanvas on _EditorPageState {
       _shapeA = a;
       _shapeB = _ratioed(a, p);
     }
+    _pushShape();
+    _redraw();
+    setState(() {});
+  }
+
+  // Translate both endpoints by the drag delta from the press point, clamped so the whole draft
+  // stays on-canvas (a rigid move — both ends shift by the same amount).
+  void _moveWholeDraft(Offset p) {
+    final origA = _shapeMoveOrigA!, origB = _shapeMoveOrigB!, anchor = _shapeMoveAnchor!;
+    final w = (engine.width - 1).toDouble(), h = (engine.height - 1).toDouble();
+    final dx = (p.dx - anchor.dx).clamp(-math.min(origA.dx, origB.dx), w - math.max(origA.dx, origB.dx));
+    final dy = (p.dy - anchor.dy).clamp(-math.min(origA.dy, origB.dy), h - math.max(origA.dy, origB.dy));
+    _shapeA = Offset(origA.dx + dx, origA.dy + dy);
+    _shapeB = Offset(origB.dx + dx, origB.dy + dy);
     _pushShape();
     _redraw();
     setState(() {});
@@ -401,6 +425,7 @@ extension _EditorCanvas on _EditorPageState {
   void _endShape() {
     _shapeDrag = 0;
     _newShapeStart = null;
+    _shapeMoveAnchor = _shapeMoveOrigA = _shapeMoveOrigB = null;
     setState(() {});
   }
 

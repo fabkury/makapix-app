@@ -75,7 +75,7 @@ class HandlePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (scale <= 0) return;
-    final r = (scale * 0.8).clamp(8.0, 18.0);
+    final r = (scale * 0.95).clamp(11.0, 22.0);
     final halo = Paint()
       ..color = Colors.black
       ..style = PaintingStyle.stroke

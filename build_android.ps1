@@ -6,9 +6,10 @@
 #   cargo install cargo-ndk
 #   Android SDK + NDK installed (Android Studio or sdkmanager)
 #
-# Usage:  ./build_android.ps1            (build APK)
+# Usage:  ./build_android.ps1            (build APK, dev back end)
 #         ./build_android.ps1 -Install   (build, then install to a USB-connected phone)
-param([switch]$Install)
+#         ./build_android.ps1 -Prod      (point the app at the production back end, makapix.club)
+param([switch]$Install, [switch]$Prod)
 
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
@@ -24,9 +25,11 @@ Write-Host "==> Cross-compiling engine to Android (.so) for arm64-v8a + armeabi-
 cargo ndk -t arm64-v8a -t armeabi-v7a -o "$root\app\android\app\src\main\jniLibs" build -p makapix-ffi --release
 if ($LASTEXITCODE -ne 0) { exit 1 }
 
-Write-Host "==> Building release APK..." -ForegroundColor Cyan
+# CLUB_ENV selects the back end (club_config.dart); default `dev`, `prod` targets makapix.club.
+$clubEnv = if ($Prod) { "prod" } else { "dev" }
+Write-Host "==> Building release APK (CLUB_ENV=$clubEnv)..." -ForegroundColor Cyan
 Push-Location "$root\app"
-flutter build apk --release
+flutter build apk --release --dart-define=CLUB_ENV=$clubEnv
 Pop-Location
 if ($LASTEXITCODE -ne 0) { exit 1 }
 

@@ -84,11 +84,15 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
   // no uncommitted figure. While set, a live preview + draggable handles show and row-1 gets
   // Commit/Cancel; nothing is written to the layer until Commit.
   Offset? _shapeA, _shapeB;
-  int _shapeDrag = 0; // active gesture: 0=none, 1=dragging A, 2=dragging B, 3=drawing a new figure
+  // active gesture: 0=none, 1=dragging A, 2=dragging B, 3=drawing a new figure, 4=moving the whole draft
+  int _shapeDrag = 0;
   // Start point of a not-yet-materialized new figure: when a press lands off the handles over an
   // existing draft, we defer replacing it until the finger actually moves, so a pinch-zoom or a
   // stray tap leaves the current draft intact.
   Offset? _newShapeStart;
+  // Whole-draft reposition (drag off the handles): the canvas point where the move began and the
+  // two endpoints at that moment, so each move is a rigid translation from the originals.
+  Offset? _shapeMoveAnchor, _shapeMoveOrigA, _shapeMoveOrigB;
   // Ruler tool: a non-destructive measurement line (two draggable endpoints in canvas-pixel
   // coords). Never drawn to the canvas; cleared when switching tools.
   Offset? _rulerA, _rulerB;
@@ -168,8 +172,10 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
   // is exactly the active tool being in precision mode.
   bool get _isCursorTool => _isPrecision;
 
-  // Figure tools draw via the draft flow (drag → adjust handles → commit), not immediate-on-release.
-  bool get _isShapeTool => _tool == 'Line' || _tool == 'Rectangle' || _tool == 'Ellipse';
+  // Draft tools use the draft flow (drag → adjust the two endpoint handles → commit), not
+  // immediate-on-release: the figures (Line/Rect/Ellipse) and the Gradient.
+  bool get _isDraftTool =>
+      _tool == 'Line' || _tool == 'Rectangle' || _tool == 'Ellipse' || _tool == 'Gradient';
   bool get _hasShapeDraft => _shapeA != null && _shapeB != null;
 
   // The Ruler is a pure measurement overlay (no engine tool, no drawing).

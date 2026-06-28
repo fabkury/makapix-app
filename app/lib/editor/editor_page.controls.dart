@@ -12,7 +12,7 @@ extension _EditorControls on _EditorPageState {
         padding: const EdgeInsets.only(left: 8, right: 4),
         child: Text(s, style: const TextStyle(fontSize: 11, color: Colors.white60))));
 
-    if (_isShapeTool && _hasShapeDraft) {
+    if (_isDraftTool && _hasShapeDraft) {
       // Commit / cancel the uncommitted figure. Drag the on-canvas handles to fine-tune first.
       children.add(Padding(
         padding: const EdgeInsets.symmetric(horizontal: 3),
@@ -241,17 +241,24 @@ extension _EditorControls on _EditorPageState {
       }
     }
     if (_tool == 'Gradient') {
+      // Changing the gradient (type or either colour) updates a pending draft's preview instantly.
+      void sendStops() {
+        _send('SetGradientStops([${_hex(_gradA)}@0, ${_hex(_gradB)}@1])');
+        if (_hasShapeDraft) _redraw();
+      }
+
       children.add(_toggle(['Linear', 'Radial'], _radial ? 1 : 0, (i) {
         setState(() => _radial = i == 1);
         _send('SetGradientType(${_radial ? 'Radial' : 'Linear'})');
+        if (_hasShapeDraft) _redraw();
       }));
       children.add(_swatchButton(_gradA, () => _pickColor(initial: _gradA, onPick: (c) {
             setState(() => _gradA = c);
-            _send('SetGradientStops([${_hex(_gradA)}@0, ${_hex(_gradB)}@1])');
+            sendStops();
           })));
       children.add(_swatchButton(_gradB, () => _pickColor(initial: _gradB, onPick: (c) {
             setState(() => _gradB = c);
-            _send('SetGradientStops([${_hex(_gradA)}@0, ${_hex(_gradB)}@1])');
+            sendStops();
           })));
     }
     if (_tool == 'SelectLayer') {

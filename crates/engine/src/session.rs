@@ -276,6 +276,35 @@ impl Session {
         }
     }
 
+    /// Fill the gradient (p0=a → p1=b) into `buf`, clipped to the selection. Used for both the live
+    /// pointer-drag preview and the draft preview.
+    fn render_gradient_preview(&self, buf: &mut RgbaBuffer, a: Point, b: Point) {
+        let spec = &self.settings.gradient;
+        let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
+        // Sort stops once (not per pixel); a selection bounds the fill to its bbox. [audit F-14/F-15]
+        let mut stops = spec.stops.clone();
+        stops.sort_by(|p, q| p.t.total_cmp(&q.t));
+        let (x0, y0, x1, y1) = match self.selection.as_ref().and_then(|m| m.bounds()) {
+            Some(bb) => (
+                bb.x.max(0),
+                bb.y.max(0),
+                (bb.x + bb.w as i32).min(w as i32),
+                (bb.y + bb.h as i32).min(h as i32),
+            ),
+            None => (0, 0, w as i32, h as i32),
+        };
+        for y in y0..y1 {
+            for x in x0..x1 {
+                if let Some(m) = &self.selection {
+                    if !m.get(x, y) {
+                        continue;
+                    }
+                }
+                buf.set(x, y, tool::gradient_eval_sorted(spec.kind, &stops, a, b, x, y));
+            }
+        }
+    }
+
     fn draw_tool_preview(&self, buf: &mut RgbaBuffer) {
         // Select-Layer: tint exactly the pixels the alpha cutoff would select (active layer's
         // alpha > cutoff — the opaque/drawn pixels), so the user sees pixel-perfectly what an
@@ -297,12 +326,19 @@ impl Session {
             }
             return;
         }
-        // A pending shape draft (the forgiving draw → adjust → commit flow) renders on its own,
-        // independent of any pointer stroke.
+        // A pending draft (the forgiving draw → adjust → commit flow) renders on its own,
+        // independent of any pointer stroke. Shared by the figure tools and the gradient.
         if let Some((a, b)) = self.shape_draft {
-            if matches!(self.tool, ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse) {
-                self.render_shape_preview(buf, a, b);
-                return;
+            match self.tool {
+                ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse => {
+                    self.render_shape_preview(buf, a, b);
+                    return;
+                }
+                ToolKind::Gradient => {
+                    self.render_gradient_preview(buf, a, b);
+                    return;
+                }
+                _ => {}
             }
         }
         let stroke = match &self.stroke {
@@ -310,39 +346,11 @@ impl Session {
             None => return,
         };
         let (a, b) = (stroke.start, stroke.last);
-        let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
         match self.tool {
-            // Legacy immediate-draw preview (CLI / DSL pointer drags); the shell uses the draft path.
+            // Legacy immediate-draw previews (CLI / DSL pointer drags); the shell uses the draft
+            // path above. Selection-tool outlines are not baked in (the shell draws marching ants).
             ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse => self.render_shape_preview(buf, a, b),
-            // Selection-tool outlines are NOT baked into the pixel buffer (they would be as
-            // thick as a canvas pixel). The shell draws them as a thin animated screen-space
-            // outline using `outline_mask()` below.
-            ToolKind::Gradient => {
-                let spec = &self.settings.gradient;
-                // Sort stops once (not per pixel), and when a selection bounds the fill, scan only
-                // its bounding box instead of the whole canvas. [audit F-14 + F-15]
-                let mut stops = spec.stops.clone();
-                stops.sort_by(|a, b| a.t.total_cmp(&b.t));
-                let (x0, y0, x1, y1) = match self.selection.as_ref().and_then(|m| m.bounds()) {
-                    Some(bb) => (
-                        bb.x.max(0),
-                        bb.y.max(0),
-                        (bb.x + bb.w as i32).min(w as i32),
-                        (bb.y + bb.h as i32).min(h as i32),
-                    ),
-                    None => (0, 0, w as i32, h as i32),
-                };
-                for y in y0..y1 {
-                    for x in x0..x1 {
-                        if let Some(m) = &self.selection {
-                            if !m.get(x, y) {
-                                continue;
-                            }
-                        }
-                        buf.set(x, y, tool::gradient_eval_sorted(spec.kind, &stops, a, b, x, y));
-                    }
-                }
-            }
+            ToolKind::Gradient => self.render_gradient_preview(buf, a, b),
             ToolKind::Move => {
                 if let (Some(float), Some(sel)) = (&stroke.floating, &self.selection) {
                     if let Some(bb) = sel.bounds() {
@@ -835,10 +843,14 @@ impl Session {
         self.shape_draft
     }
 
-    /// Rasterize the pending figure into the active layer as one undo edit, then clear the draft.
-    /// No-op (draft preserved) if the active layer isn't editable or the active tool isn't a figure.
+    /// Rasterize the pending draft into the active layer as one undo edit, then clear the draft.
+    /// No-op (draft preserved) if the active layer isn't editable or the active tool isn't a draft
+    /// tool (Line/Rectangle/Ellipse or Gradient).
     pub fn shape_commit(&mut self) {
-        if !matches!(self.tool, ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse) {
+        if !matches!(
+            self.tool,
+            ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse | ToolKind::Gradient
+        ) {
             return;
         }
         if !self.active_editable() {
@@ -849,10 +861,19 @@ impl Session {
             None => return,
         };
         let before = self.begin_edit();
-        let color = self.settings.primary;
-        let (fill, lw, kind) = (self.settings.shape_fill, self.settings.line_width, self.tool);
         let sel = self.selection.clone();
-        {
+        if self.tool == ToolKind::Gradient {
+            let spec = self.settings.gradient.clone();
+            let (fi, li) = (self.doc.active_frame, self.doc.active_frame().active_layer);
+            {
+                let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
+                tool::apply_gradient(buf, sel.as_ref(), &spec, a, b, &mut self.rng);
+            }
+            let (fid, lid) = (self.doc.frames[fi].id, self.doc.frames[fi].layers[li].id);
+            self.last_gradient = Some((spec.kind, spec.stops.clone(), a, b, fid, lid));
+        } else {
+            let color = self.settings.primary;
+            let (fill, lw, kind) = (self.settings.shape_fill, self.settings.line_width, self.tool);
             let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
             tool::draw_shape(buf, sel.as_ref(), kind, a, b, color, fill, lw, PaintMode::Over);
         }
@@ -1981,6 +2002,32 @@ mod tests {
         for x in 0..16 {
             assert_eq!(s.pixel(0, 0, x, 0), Rgba8::WHITE, "x={}", x);
         }
+    }
+
+    #[test]
+    fn gradient_draft_previews_and_commits() {
+        let mut s = Session::new(16, 1);
+        s.tool = ToolKind::Gradient;
+        s.settings.gradient = tool::GradientSpec {
+            kind: GradientKind::Linear,
+            stops: vec![Stop::new(Rgba8::rgb(255, 0, 0), 0.0), Stop::new(Rgba8::rgb(0, 0, 255), 1.0)],
+            dither: false,
+        };
+        s.shape_set(0, 0, 15, 0); // horizontal red→blue gradient, drafted but not committed
+
+        // Previews in the display buffer…
+        let disp = s.display_bytes(false, false, false);
+        assert_eq!(&disp[0..4], &[255, 0, 0, 255], "left end is red in the preview");
+        // …but writes no pixels and records no undo yet.
+        assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::TRANSPARENT);
+        assert!(!s.doc.can_undo());
+
+        s.shape_commit();
+        assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::rgb(255, 0, 0));
+        assert_eq!(s.pixel(0, 0, 15, 0), Rgba8::rgb(0, 0, 255));
+        assert!(s.shape_draft().is_none());
+        assert!(s.doc.undo()); // a single undo step
+        assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::TRANSPARENT);
     }
 
     #[test]
