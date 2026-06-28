@@ -198,6 +198,12 @@ class _EditorPageState extends ConsumerState<EditorPage>
   bool get _isRuler => _tool == 'Ruler';
   bool get _hasRuler => _rulerA != null && _rulerB != null;
 
+  // Copy & Paste tool: hosts clipboard ops; a pending paste floats as a movable, semi-transparent
+  // draft until committed. `_hasPasteDraft` comes from the engine state JSON.
+  bool get _isCopyPaste => _tool == 'CopyPaste';
+  bool _hasPasteDraft = false;
+  Offset? _pasteDragLast; // last canvas position while dragging the paste draft
+
   bool get _engineReady => _error == null;
 
   @override

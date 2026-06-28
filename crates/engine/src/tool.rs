@@ -33,6 +33,9 @@ pub enum ToolKind {
     /// Select Layer: turn the active layer's alpha channel into a selection (alpha > cutoff).
     SelectLayer,
     HsvShift,
+    /// Copy & Paste: hosts the clipboard ops (Copy/Cut/Paste/Clear). Paste shows a movable, semi-
+    /// transparent draft that is dragged into place then committed. No drawing of its own.
+    CopyPaste,
 }
 
 impl ToolKind {

@@ -158,6 +158,10 @@ extension _EditorCanvas on _EditorPageState {
       _beginShape(pos, box);
       return;
     }
+    if (_isCopyPaste) {
+      _pasteDragLast = _toCanvas(pos, box); // a drag moves the floating paste draft (if any)
+      return;
+    }
     if (_isCursorTool) {
       _lastTouch = pos;
       _accX = 0;
@@ -182,6 +186,19 @@ extension _EditorCanvas on _EditorPageState {
     }
     if (_isDraftTool) {
       _continueShape(pos, box);
+      return;
+    }
+    if (_isCopyPaste) {
+      if (_hasPasteDraft && _pasteDragLast != null) {
+        final p = _toCanvas(pos, box);
+        final dx = (p.dx - _pasteDragLast!.dx).round();
+        final dy = (p.dy - _pasteDragLast!.dy).round();
+        if (dx != 0 || dy != 0) {
+          _send('PasteMove($dx, $dy)');
+          _pasteDragLast = p;
+          _redraw(full: false, refetchSelection: false); // paste preview is in the composited image
+        }
+      }
       return;
     }
     if (_isCursorTool) {
@@ -222,6 +239,10 @@ extension _EditorCanvas on _EditorPageState {
       _endShape();
       return;
     }
+    if (_isCopyPaste) {
+      _pasteDragLast = null; // releasing leaves the paste where it was dragged
+      return;
+    }
     if (_isCursorTool) {
       _lastTouch = null;
       if (_penDown) _refreshState();
@@ -243,6 +264,10 @@ extension _EditorCanvas on _EditorPageState {
     if (_isRuler) {
       _rulerDrag = 0; // a second finger interrupted; keep the measurement as-is
       setState(() {});
+      return;
+    }
+    if (_isCopyPaste) {
+      _pasteDragLast = null; // a second finger interrupted; keep the paste where it is
       return;
     }
     if (_isDraftTool) {

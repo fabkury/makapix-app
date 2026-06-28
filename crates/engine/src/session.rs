@@ -88,6 +88,10 @@ pub struct Session {
     cursor: Point,
     precision_before: Option<EditScope>,
     clipboard: Option<(RgbaBuffer, Point)>,
+    // A pending paste: the clipboard pixels floating at a top-left position, previewed semi-
+    // transparently and movable until committed (Copy & Paste tool). Editor state, not undoable
+    // until commit.
+    paste_draft: Option<(RgbaBuffer, Point)>,
     rng: SeededRng,
     clock: VirtualClock,
     playing: bool,
@@ -121,6 +125,7 @@ impl Session {
             cursor: Point::new(w as i32 / 2, h as i32 / 2),
             precision_before: None,
             clipboard: None,
+            paste_draft: None,
             rng: SeededRng::default(),
             clock: VirtualClock::default(),
             playing: false,
@@ -305,7 +310,29 @@ impl Session {
         }
     }
 
+    /// Preview a paste draft: the clip's pixels dimmed (alpha ~60%) and washed with a cyan tint so
+    /// it reads as a temporary, not-yet-committed overlay. Cropped to the canvas via `blend_over`.
+    fn render_paste_preview(&self, buf: &mut RgbaBuffer, clip: &RgbaBuffer, pos: Point) {
+        let tint = Rgba8::new(0, 200, 255, 70); // "this is a draft" wash
+        for j in 0..clip.height() as i32 {
+            for i in 0..clip.width() as i32 {
+                let c = clip.get(i, j);
+                if c.a == 0 {
+                    continue;
+                }
+                let (x, y) = (pos.x + i, pos.y + j);
+                buf.blend_over(x, y, Rgba8::new(c.r, c.g, c.b, (c.a as u16 * 3 / 5) as u8));
+                buf.blend_over(x, y, tint);
+            }
+        }
+    }
+
     fn draw_tool_preview(&self, buf: &mut RgbaBuffer) {
+        // A pending paste floats above everything as a dimmed, cyan-washed draft until committed.
+        if let Some((clip, pos)) = &self.paste_draft {
+            self.render_paste_preview(buf, clip, *pos);
+            return;
+        }
         // Select-Layer: tint exactly the pixels the alpha cutoff would select (active layer's
         // alpha > cutoff — the opaque/drawn pixels), so the user sees pixel-perfectly what an
         // action will use. Shown whenever the tool is active — no stroke needed.
@@ -437,7 +464,16 @@ impl Session {
     }
 
     pub fn state_json(&self) -> String {
-        crate::probe::state_json(&self.doc)
+        // Session-level fields (the clipboard + a pending paste draft live on Session, not Document)
+        // are appended to the document state JSON before its closing brace.
+        let mut s = crate::probe::state_json(&self.doc);
+        let paste = match self.paste_draft_rect() {
+            Some(r) => format!("[{},{},{},{}]", r.x, r.y, r.w, r.h),
+            None => "null".to_string(),
+        };
+        let extra = format!(",\"has_clipboard\":{},\"paste\":{}", self.clipboard.is_some(), paste);
+        s.insert_str(s.len() - 1, &extra); // before the final '}'
+        s
     }
 
     pub fn current_play_frame(&self) -> usize {
@@ -1183,6 +1219,54 @@ impl Session {
         self.doc.active_frame = prev_active;
     }
 
+    // ---- paste draft (movable, semi-transparent preview committed on demand) ----
+
+    /// Begin a paste draft from the clipboard, floating at the position it was copied from. No-op if
+    /// the clipboard is empty. Replaces any existing draft.
+    pub fn paste_begin(&mut self) {
+        if let Some((clip, origin)) = &self.clipboard {
+            self.paste_draft = Some((clip.clone(), *origin));
+        }
+    }
+
+    /// Translate the pending paste draft by (dx, dy) canvas pixels. No-op if none is pending.
+    pub fn paste_move(&mut self, dx: i32, dy: i32) {
+        if let Some((_, pos)) = &mut self.paste_draft {
+            pos.x += dx;
+            pos.y += dy;
+        }
+    }
+
+    /// The pending paste draft's rect (top-left + clip size), if any — for the shell.
+    pub fn paste_draft_rect(&self) -> Option<IRect> {
+        self.paste_draft
+            .as_ref()
+            .map(|(clip, pos)| IRect::new(pos.x, pos.y, clip.width(), clip.height()))
+    }
+
+    /// Stamp the pending paste draft into the active layer (alpha-over, cropped to the canvas) as one
+    /// undo edit, then clear it. No-op if no draft or the layer isn't editable.
+    pub fn paste_commit(&mut self) {
+        let (clip, pos) = match self.paste_draft.take() {
+            Some(d) => d,
+            None => return,
+        };
+        if !self.active_editable() {
+            return;
+        }
+        let before = self.begin_edit();
+        {
+            let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
+            buf.blit_over(&clip, pos);
+        }
+        self.commit_edit(before);
+    }
+
+    /// Discard the pending paste draft without drawing anything.
+    pub fn paste_cancel(&mut self) {
+        self.paste_draft = None;
+    }
+
     pub fn fill_selection(&mut self) {
         if !self.active_editable() {
             return;
@@ -1196,7 +1280,8 @@ impl Session {
     }
 
     pub fn clear_selection_pixels(&mut self) {
-        if !self.active_editable() {
+        // No selection → no-op (clearing "the selection" must not wipe the whole layer).
+        if self.selection.is_none() || !self.active_editable() {
             return;
         }
         let before = self.begin_edit();
@@ -1621,6 +1706,7 @@ impl Session {
         self.doc = io::load_from_bytes(data)?;
         self.selection = None;
         self.clipboard = None;
+        self.paste_draft = None;
         Ok(())
     }
 
@@ -1733,6 +1819,48 @@ mod tests {
         s.select_none();
         s.paste();
         assert_eq!(s.pixel(0, 0, 1, 1), Rgba8::WHITE);
+    }
+
+    #[test]
+    fn paste_draft_moves_then_commits() {
+        let mut s = Session::new(8, 8);
+        s.settings.primary = Rgba8::rgb(255, 0, 0);
+        s.tool = ToolKind::Pencil;
+        for (x, y) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+            s.tap(x, y);
+        }
+        s.tool = ToolKind::SelectRect;
+        s.stroke_path(&[(0, 0), (1, 1)]); // select the 2x2 red block
+        s.copy();
+        assert!(s.paste_draft_rect().is_none());
+        s.paste_begin(); // floats at the copy origin
+        assert_eq!(s.paste_draft_rect(), Some(IRect::new(0, 0, 2, 2)));
+        s.paste_move(4, 4);
+        assert_eq!(s.paste_draft_rect(), Some(IRect::new(4, 4, 2, 2)));
+        s.paste_commit();
+        assert!(s.paste_draft_rect().is_none());
+        assert_eq!(s.pixel(0, 0, 4, 4), Rgba8::rgb(255, 0, 0));
+        assert_eq!(s.pixel(0, 0, 5, 5), Rgba8::rgb(255, 0, 0));
+        assert!(s.doc.undo()); // the commit is a single undo step
+        assert_eq!(s.pixel(0, 0, 4, 4), Rgba8::TRANSPARENT);
+    }
+
+    #[test]
+    fn paste_begin_empty_is_noop_and_cancel_discards() {
+        let mut s = Session::new(8, 8);
+        s.paste_begin();
+        assert!(s.paste_draft_rect().is_none(), "no draft from an empty clipboard");
+        s.settings.primary = Rgba8::WHITE;
+        s.tool = ToolKind::Pencil;
+        s.tap(2, 2);
+        s.tool = ToolKind::SelectRect;
+        s.stroke_path(&[(2, 2), (2, 2)]);
+        s.copy();
+        s.paste_begin();
+        assert!(s.paste_draft_rect().is_some());
+        s.paste_cancel();
+        assert!(s.paste_draft_rect().is_none());
+        assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::WHITE); // cancel drew nothing
     }
 
     #[test]

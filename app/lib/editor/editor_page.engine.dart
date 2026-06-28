@@ -232,6 +232,7 @@ extension _EditorEngine on _EditorPageState {
       }
       _canvasW = w;
       _canvasH = h;
+      _hasPasteDraft = _state['paste'] != null; // [x,y,w,h] when a paste draft is floating, else null
       final pal = (_state['palette'] as List?)?.cast<String>() ?? [];
       _palette = pal.map(_parseHex).toList();
       final pc = engine.primaryColor;
@@ -267,6 +268,13 @@ extension _EditorEngine on _EditorPageState {
     // Navigating away mid-draft (changing tools) cancels the pending figure and erases its preview
     // — same as the row-1 Cancel button (this also redraws, so the outline doesn't linger).
     if (_hasShapeDraft) _cancelShapeDraft();
+    // Likewise, a pending paste draft is cancelled & erased when leaving the Copy & Paste tool.
+    if (_hasPasteDraft) {
+      _send('PasteCancel()');
+      _hasPasteDraft = false;
+      _pasteDragLast = null;
+      _redraw();
+    }
     // The Ruler keeps its measurement across tool switches (its overlay just hides while another
     // tool is active and reappears on return); clear it with the Ruler's row-1 "Clear" button.
     _rulerDrag = 0;

@@ -35,6 +35,29 @@ extension _EditorControls on _EditorPageState {
       children.add(const SizedBox(width: 8));
     }
 
+    if (_isCopyPaste && _hasPasteDraft) {
+      // Commit / cancel the floating paste. Drag anywhere on the canvas to position it first.
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF30A050)),
+          onPressed: () => _act('PasteCommit()'),
+          icon: const Icon(Icons.check, size: 16),
+          label: const Text('Commit'),
+        ),
+      ));
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(minimumSize: const Size(0, 34), foregroundColor: const Color(0xFFE06060)),
+          onPressed: () => _act('PasteCancel()'),
+          icon: const Icon(Icons.close, size: 16),
+          label: const Text('Cancel'),
+        ),
+      ));
+      children.add(const SizedBox(width: 8));
+    }
+
     if (_precisionCapable) {
       // The Precision toggle: turns the active paint tool into its off-finger reticle mode.
       // Remembered per tool (see _precisionOn).
@@ -320,11 +343,14 @@ extension _EditorControls on _EditorPageState {
       children.add(_miniBtn('All', () => _act('SelectAll()')));
       children.add(_miniBtn('None', () => _act('SelectNone()')));
       children.add(_miniBtn('Invert', () => _act('InvertSelection()')));
-      children.add(_miniBtn('Clear', () => _act('ClearSelection()')));
+      children.add(_miniBtn('Crop→Sel', () => _act('CropToSelection()')));
+      // Clipboard ops (Copy/Cut/Paste) and Clear now live in the dedicated Copy & Paste tool.
+    }
+    if (_tool == 'CopyPaste') {
       children.add(_miniBtn('Copy', () => _act('Copy()')));
       children.add(_miniBtn('Cut', () => _act('Cut()')));
-      children.add(_miniBtn('Paste', () => _act('Paste()')));
-      children.add(_miniBtn('Crop→Sel', () => _act('CropToSelection()')));
+      children.add(_miniBtn('Paste', () => _act('PasteDraft()')));
+      children.add(_miniBtn('Clear', () => _act('ClearSelection()')));
     }
     if (_tool == 'HsvShift') {
       _labeledSlider(children, 'H', _hsvH, -180, 180, (v) => setState(() => _hsvH = v));
