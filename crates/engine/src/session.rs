@@ -568,8 +568,14 @@ impl Session {
                     let color = self.settings.primary;
                     let (th, cont) = (self.settings.threshold, self.settings.contiguous);
                     let sel = self.selection.clone();
+                    // "All layers": decide the region from the composited frame (computed before the
+                    // mutable layer borrow), while the fill still lands in the active layer only.
+                    let reference = self
+                        .settings
+                        .fill_all_layers
+                        .then(|| render::composite_active(&self.doc));
                     let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-                    tool::flood_fill(buf, sel.as_ref(), p, color, th, cont, PaintMode::Replace);
+                    tool::flood_fill(buf, reference.as_ref(), sel.as_ref(), p, color, th, cont, PaintMode::Replace);
                 }
                 ToolKind::Move => {
                     // lift selected pixels into a floating buffer
@@ -1862,6 +1868,35 @@ mod tests {
         assert!(after.r > before.r, "dodge lightened the pixel ({} -> {})", before.r, after.r);
         assert!(s.doc.undo()); // one undo step
         assert_eq!(s.pixel(0, 0, 3, 3), before);
+    }
+
+    #[test]
+    fn bucket_all_layers_bounds_region_by_composite() {
+        let mut s = Session::new(8, 8);
+        for y in 0..8 {
+            s.doc.active_frame_mut().layers[0].pixels.set(4, y, Rgba8::BLACK); // wall on the bottom layer
+        }
+        let top = s.doc.new_layer("top");
+        s.doc.active_frame_mut().layers.push(top);
+        s.doc.active_frame_mut().active_layer = 1; // empty active layer on top
+
+        s.tool = ToolKind::Bucket;
+        s.settings.primary = Rgba8::WHITE;
+
+        // All layers ON: the composited wall bounds the fill (region = left of x=4).
+        s.settings.fill_all_layers = true;
+        s.tap(0, 0);
+        assert_eq!(s.pixel(0, 1, 3, 0), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 1, 4, 0), Rgba8::TRANSPARENT, "stops at the composited wall");
+        assert_eq!(s.pixel(0, 1, 5, 0), Rgba8::TRANSPARENT, "right of the wall is a separate region");
+
+        // All layers OFF: only the (empty) active layer decides, so the wall is invisible and the
+        // fill crosses x=4.
+        s.doc.undo();
+        s.settings.fill_all_layers = false;
+        s.tap(0, 0);
+        assert_eq!(s.pixel(0, 1, 4, 0), Rgba8::WHITE, "active layer has no wall, so the fill crosses x=4");
+        assert_eq!(s.pixel(0, 1, 5, 0), Rgba8::WHITE);
     }
 
     #[test]

@@ -198,6 +198,22 @@ extension _EditorControls on _EditorPageState {
         setState(() => _contiguous = i == 0);
         _send('SetContiguous($_contiguous)');
       }));
+      if (_tool == 'Bucket') {
+        // Decide which pixels to fill from the whole composited image (all visible layers), while
+        // still writing the fill into the active layer only.
+        children.add(Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          child: FilterChip(
+            selected: _fillAllLayers,
+            label: Text(_fillAllLayers ? 'All layers ✔' : 'All layers'),
+            selectedColor: const Color(0xFF30A050),
+            onSelected: (v) {
+              setState(() => _fillAllLayers = v);
+              _send('SetFillAllLayers($_fillAllLayers)');
+            },
+          ),
+        ));
+      }
     }
     // Stroke width for figures that have one: Line always, Rect/Ellipse only in Outline mode.
     void addWidth() {

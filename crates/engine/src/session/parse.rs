@@ -43,6 +43,7 @@ pub enum Action {
     SetAlphaCutoff(u8),
     SelectByAlpha(CombineMode),
     SetContiguous(bool),
+    SetFillAllLayers(bool),
     SetGradientType(GradientKind),
     SetGradientStops(Vec<Stop>),
     SetGradientDither(bool),
@@ -153,6 +154,7 @@ impl Session {
             SetAlphaCutoff(t) => self.settings.alpha_cutoff = t,
             SelectByAlpha(m) => self.select_by_alpha(m),
             SetContiguous(b) => self.settings.contiguous = b,
+            SetFillAllLayers(b) => self.settings.fill_all_layers = b,
             SetGradientType(k) => self.settings.gradient.kind = k,
             SetGradientStops(s) => self.settings.gradient.stops = s,
             SetGradientDither(b) => self.settings.gradient.dither = b,
@@ -410,6 +412,7 @@ fn parse_line(line: &str) -> Result<Action, String> {
             o => return Err(format!("bad selection mode '{}'", o)),
         }),
         "SetContiguous" => SetContiguous(boola(0)?),
+        "SetFillAllLayers" => SetFillAllLayers(boola(0)?),
         "SetGradientType" => SetGradientType(match args.first().copied().unwrap_or("") {
             "Linear" => GradientKind::Linear,
             "Radial" => GradientKind::Radial,

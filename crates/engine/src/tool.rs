@@ -144,6 +144,9 @@ pub struct ToolSettings {
     /// "selected". Default 0 (all non-transparent pixels).
     pub alpha_cutoff: u8,
     pub contiguous: bool,
+    /// Bucket "All layers": decide the fill region from the composited image (all visible layers),
+    /// while still writing the fill into the active layer only.
+    pub fill_all_layers: bool,
     pub gradient: GradientSpec,
     pub hsv: (f32, f32, f32),
     pub shape_fill: bool,
@@ -166,6 +169,7 @@ impl Default for ToolSettings {
             threshold: 0,
             alpha_cutoff: 0,
             contiguous: true,
+            fill_all_layers: false,
             gradient: GradientSpec::default(),
             hsv: (0.0, 0.0, 0.0),
             shape_fill: true,
@@ -234,8 +238,12 @@ pub fn stroke_segment(
 }
 
 /// Flood fill from `seed` (SPEC §11.2). Returns true if any pixel changed.
+/// Flood-fill from `seed`. The fill is always written to `buf` (the active layer). The region to
+/// fill is decided by `reference` when `Some` — the composited image, for the "All layers" mode, so
+/// connectivity/colour-matching considers every layer — otherwise by `buf` itself (active layer).
 pub fn flood_fill(
     buf: &mut RgbaBuffer,
+    reference: Option<&RgbaBuffer>,
     sel: Option<&Mask>,
     seed: Point,
     color: Rgba8,
@@ -248,7 +256,12 @@ pub fn flood_fill(
     if seed.x < 0 || seed.y < 0 || seed.x >= w || seed.y >= h {
         return;
     }
-    let target = buf.get(seed.x, seed.y);
+    // Sample the deciding buffer: the reference (composite) if given, else the layer being filled.
+    let read = |x: i32, y: i32, b: &RgbaBuffer| match reference {
+        Some(r) => r.get(x, y),
+        None => b.get(x, y),
+    };
+    let target = read(seed.x, seed.y, buf);
     let in_sel = |x: i32, y: i32| sel.map(|m| m.get(x, y)).unwrap_or(true);
     if contiguous {
         let mut visited = vec![false; (w * h) as usize];
@@ -262,7 +275,7 @@ pub fn flood_fill(
                 continue;
             }
             visited[idx] = true;
-            if !in_sel(p.x, p.y) || color::max_channel_delta(buf.get(p.x, p.y), target) > threshold {
+            if !in_sel(p.x, p.y) || color::max_channel_delta(read(p.x, p.y, buf), target) > threshold {
                 continue;
             }
             plot(buf, sel, p.x, p.y, color, mode);
@@ -274,7 +287,7 @@ pub fn flood_fill(
     } else {
         for y in 0..h {
             for x in 0..w {
-                if in_sel(x, y) && color::max_channel_delta(buf.get(x, y), target) <= threshold {
+                if in_sel(x, y) && color::max_channel_delta(read(x, y, buf), target) <= threshold {
                     plot(buf, sel, x, y, color, mode);
                 }
             }
@@ -541,7 +554,7 @@ mod tests {
     #[test]
     fn flood_fill_fills_region() {
         let mut b = RgbaBuffer::new(8, 8);
-        flood_fill(&mut b, None, Point::new(0, 0), Rgba8::WHITE, 0, true, PaintMode::Replace);
+        flood_fill(&mut b, None, None, Point::new(0, 0), Rgba8::WHITE, 0, true, PaintMode::Replace);
         // all-transparent target → fills entire canvas
         for y in 0..8 {
             for x in 0..8 {
@@ -557,7 +570,7 @@ mod tests {
         for y in 0..8 {
             b.set(4, y, Rgba8::BLACK);
         }
-        flood_fill(&mut b, None, Point::new(0, 0), Rgba8::WHITE, 0, true, PaintMode::Replace);
+        flood_fill(&mut b, None, None, Point::new(0, 0), Rgba8::WHITE, 0, true, PaintMode::Replace);
         assert_eq!(b.get(0, 0), Rgba8::WHITE);
         assert_eq!(b.get(3, 3), Rgba8::WHITE);
         assert_eq!(b.get(5, 3), Rgba8::TRANSPARENT); // other side untouched
