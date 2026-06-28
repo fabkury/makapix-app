@@ -266,6 +266,9 @@ extension _EditorEngine on _EditorPageState {
   }
 
   void _selectTool(String t) {
+    // Select Layer paints a live cyan alpha overlay into the composited image while it is the active
+    // engine tool; leaving it must drop the engine off Select Layer and redraw so the shading clears.
+    final leavingSelectLayer = _tool == 'SelectLayer' && t != 'SelectLayer';
     if (_playing) _pause(); // selecting another tool stops the animation preview
     if (_penDown) {
       _send('CursorPenUp()');
@@ -285,8 +288,20 @@ extension _EditorEngine on _EditorPageState {
     // tool is active and reappears on return); clear it with the Ruler's row-1 "Clear" button.
     _rulerDrag = 0;
     setState(() => _tool = t);
-    if (_transformTools.contains(t)) return; // UI-only action group: no engine tool change
-    if (t != 'Ruler') _send('SelectTool($t)'); // Ruler is a pure overlay; no engine draw tool
+    if (_transformTools.contains(t)) {
+      // UI-only action group: no engine draw-tool change. But if we left Select Layer, move the
+      // engine off it (any non-preview tool) and redraw so its cyan overlay clears.
+      if (leavingSelectLayer) {
+        _send('SelectTool(Move)');
+        _redraw();
+      }
+      return;
+    }
+    if (t != 'Ruler') {
+      _send('SelectTool($t)'); // Ruler is a pure overlay; no engine draw tool
+    } else if (leavingSelectLayer) {
+      _send('SelectTool(Move)'); // Ruler sends no draw tool — clear the Select Layer overlay
+    }
     // Entering a tool that remembers precision-on re-centres the reticle.
     if (_precisionOn.contains(t)) {
       _setCursor(engine.width ~/ 2, engine.height ~/ 2);
@@ -301,7 +316,8 @@ extension _EditorEngine on _EditorPageState {
       _send('SetGradientType(${_radial ? 'Radial' : 'Linear'})');
       _send('SetGradientStops([${_hex(_gradA)}@0, ${_hex(_gradB)}@1])');
     }
-    if (t == 'SelectLayer') _redraw(); // show the alpha-selection preview overlay immediately
+    // Show Select Layer's overlay immediately on entry; clear it (redraw) when leaving it.
+    if (t == 'SelectLayer' || leavingSelectLayer) _redraw();
   }
 
   // Rasterize the pending figure draft into the active layer, then clear the handles/buttons.
