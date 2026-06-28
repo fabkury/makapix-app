@@ -28,6 +28,34 @@ Nothing here requires a rewrite. The good patterns the codebase *already uses in
 
 ---
 
+## 1b. Implementation status (2026-06-27)
+
+All three sprints were executed on branch `audit-hardening-and-refactor` (Rust suite 106 tests + the
+new fuzz suite green throughout; `flutter analyze`/`flutter test` clean; Windows app and Android APK
+both build). Status by finding:
+
+**Done & verified**
+- **Sprint 1 (robustness):** F-1, F-2, F-3, F-4 (fuzz suite added — it immediately caught a real
+  `)(` parser panic, now fixed), F-5, F-6, F-7, F-8, F-28, F-29.
+- **Sprint 2 (editor perf):** F-9, F-10, F-11, F-12 (export off the UI thread, isolate + sync
+  fallback), F-13, F-14, F-15, F-16.
+- **Sprint 3 (maintainability):** F-19 (autoDispose), F-20 (tool-behavior table), F-22 (API `guard`
+  choke point), F-17 *(started — canvas transforms extracted to `session/canvas.rs`; the remaining
+  domains follow the same proven seam)*.
+
+**Deliberately deferred (do with on-device verification, not bundled pre-install)**
+- **F-18** (extract editor `ChangeNotifier` controllers): its perf payoff was already delivered by
+  F-9/F-10/F-11 in Sprint 2; the remaining work is pure cohesion refactoring of a UI with no
+  widget-interaction tests, so it can only be compile-verified, not behavior-verified, in this batch.
+- **F-21** (engine-authoritative tool params): a desync-sensitive change to the FFI state contract
+  that needs runtime verification.
+- **F-17 remainder** (pointer/layers/palette/preview submodules): mechanical, low-risk; continue the
+  `session/canvas.rs` pattern.
+- Polish items folded into "Continuous" (F-24 docs/dead-code, F-25, F-26, F-30 editor toasts, F-31,
+  F-32, F-33) remain as the ongoing queue.
+
+---
+
 ## 2. The eight cross-cutting themes
 
 Individual findings are in §4. The synthesis — the patterns that show up across *multiple* subsystems and therefore deserve a deliberate decision — is here.
