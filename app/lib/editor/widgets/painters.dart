@@ -160,6 +160,45 @@ class RulerPainter extends CustomPainter {
   bool shouldRepaint(RulerPainter old) => old.a != a || old.b != b || old.scale != scale || old.off != off;
 }
 
+/// The pixel grid: thin hairlines on every canvas-pixel boundary, drawn in SCREEN space so each
+/// line stays 1 device pixel regardless of how large the canvas pixels are upscaled (unlike baking
+/// it into the canvas, which produced thick, upscaled gridlines). Hidden when cells get too small
+/// to be useful, so a zoomed-out large canvas doesn't turn into a grey wash.
+class GridPainter extends CustomPainter {
+  final int cols, rows; // canvas size in pixels
+  final double scale; // screen px per canvas px
+  final Offset off; // canvas top-left in screen px
+  const GridPainter(this.cols, this.rows, this.scale, this.off);
+
+  // Below this on-screen cell size the per-pixel grid is suppressed (too dense to read).
+  static const double minCellPx = 3.0;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (scale < minCellPx || cols <= 0 || rows <= 0) return;
+    final paint = Paint()
+      ..color = const Color(0x55000000)
+      ..strokeWidth = 0 // hairline: as thin as the device allows (1 device pixel)
+      ..isAntiAlias = false;
+    final x0 = off.dx, y0 = off.dy;
+    final right = x0 + cols * scale, bottom = y0 + rows * scale;
+    final lines = <Offset>[];
+    for (var c = 0; c <= cols; c++) {
+      final x = x0 + c * scale;
+      lines..add(Offset(x, y0))..add(Offset(x, bottom));
+    }
+    for (var r = 0; r <= rows; r++) {
+      final y = y0 + r * scale;
+      lines..add(Offset(x0, y))..add(Offset(right, y));
+    }
+    canvas.drawPoints(ui.PointMode.lines, lines, paint);
+  }
+
+  @override
+  bool shouldRepaint(GridPainter o) =>
+      o.cols != cols || o.rows != rows || o.scale != scale || o.off != off;
+}
+
 /// A small two-tone checkerboard, used behind layer thumbnails so transparent areas read as
 /// transparent (the layers film-strip shows each layer against a transparent background).
 class CheckerPainter extends CustomPainter {

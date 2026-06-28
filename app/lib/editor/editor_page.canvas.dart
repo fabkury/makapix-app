@@ -89,6 +89,14 @@ extension _EditorCanvas on _EditorPageState {
                 child: CustomPaint(painter: CanvasPainter(img, vScale, vOff), size: Size.infinite),
               ),
             ),
+            // The pixel grid is a SCREEN-space overlay (thin hairlines on the pixel boundaries), not
+            // baked into the upscaled canvas — so it stays 1px thin at any zoom. Rebuilds with the
+            // outer build on zoom/pan.
+            if (_grid)
+              CustomPaint(
+                painter: GridPainter(engine.width, engine.height, vScale, vOff),
+                size: Size.infinite,
+              ),
             // Overlays repaint off _overlayVN so a freehand stroke can update them without a
             // full-tree setState (which would rebuild the per-tile-FFI film-roll/layer strips on
             // every pointer move). vScale/vOff are captured from the enclosing LayoutBuilder and are

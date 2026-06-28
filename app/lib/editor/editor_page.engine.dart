@@ -191,7 +191,9 @@ extension _EditorEngine on _EditorPageState {
     final frame = _playing ? engine.playFrame : engine.activeFrame;
     final bytes = _playing
         ? engine.compositeFrame(frame)
-        : engine.display(onion: _onion, grid: _grid, checker: true);
+        // grid:false — the pixel grid is drawn as a thin screen-space overlay (GridPainter), not
+        // baked into the upscaled canvas where it would render as thick lines.
+        : engine.display(onion: _onion, grid: false, checker: true);
     final img = await _decode(bytes, w, h);
     if (!mounted) {
       img.dispose(); // we navigated away mid-decode; don't leak the GPU image [audit F-10]
