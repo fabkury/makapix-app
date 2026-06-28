@@ -1,6 +1,7 @@
 # Plan: Artwork persistence — autosave, crash-recovery & a local working library
 
-> **Status:** in progress · Live guiding doc — update the checklist + notes as work lands.
+> **Status:** ✅ Tier 1 landed (A+B+C+D) — built & installed on device 2026-06-28. Future: Tier 2
+> (write-ahead journal) / Tier 3 (cloud drafts) remain deferred by decision.
 > **Owner:** editor pillar · **Scope:** Tier 1 (A+B+C+D) from the persistence discussion.
 
 ## Goal
