@@ -48,5 +48,5 @@ class ProfileController extends StateNotifier<AsyncValue<UserProfile>> {
 }
 
 final profileProvider =
-    StateNotifierProvider.family<ProfileController, AsyncValue<UserProfile>, String>(
-        (ref, sqid) => ProfileController(ref, sqid));
+    StateNotifierProvider.autoDispose.family<ProfileController, AsyncValue<UserProfile>, String>(
+        (ref, sqid) => ProfileController(ref, sqid)); // [audit F-19]

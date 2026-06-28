@@ -7,7 +7,8 @@ import '../models/reactions.dart';
 import 'api_providers.dart';
 
 /// Full post by sqid; also fires a (debounced, server-side) view registration.
-final postDetailProvider = FutureProvider.family<Post, String>((ref, sqid) async {
+// autoDispose: one entry per opened post; released when the detail page closes. [audit F-19]
+final postDetailProvider = FutureProvider.autoDispose.family<Post, String>((ref, sqid) async {
   final api = ref.watch(postApiProvider);
   final post = await api.getBySqid(sqid);
   api.registerView(post.id, channel: 'artwork');
@@ -75,8 +76,8 @@ class ReactionsController extends StateNotifier<AsyncValue<ReactionTotals>> {
 }
 
 final reactionsProvider =
-    StateNotifierProvider.family<ReactionsController, AsyncValue<ReactionTotals>, int>(
-        (ref, postId) => ReactionsController(ref, postId));
+    StateNotifierProvider.autoDispose.family<ReactionsController, AsyncValue<ReactionTotals>, int>(
+        (ref, postId) => ReactionsController(ref, postId)); // [audit F-19]
 
 // ---- Grid "like" (👍) toggle ----
 //
@@ -183,5 +184,5 @@ class CommentsController extends StateNotifier<AsyncValue<List<Comment>>> {
 }
 
 final commentsProvider =
-    StateNotifierProvider.family<CommentsController, AsyncValue<List<Comment>>, int>(
-        (ref, postId) => CommentsController(ref, postId));
+    StateNotifierProvider.autoDispose.family<CommentsController, AsyncValue<List<Comment>>, int>(
+        (ref, postId) => CommentsController(ref, postId)); // [audit F-19]

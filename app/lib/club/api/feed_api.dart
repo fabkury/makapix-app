@@ -1,6 +1,3 @@
-import 'package:dio/dio.dart';
-
-import '../models/club_error.dart';
 import '../models/page.dart';
 import '../models/post.dart';
 import 'club_api_client.dart';
@@ -10,14 +7,12 @@ class FeedApi {
   final ClubApiClient client;
   FeedApi(this.client);
 
-  Future<Page<Post>> _posts(String path, Map<String, dynamic> query) async {
+  Future<Page<Post>> _posts(String path, Map<String, dynamic> query) {
     query.removeWhere((_, v) => v == null);
-    try {
+    return client.guard(() async {
       final resp = await client.dio.get(path, queryParameters: query);
       return Page<Post>.fromJson((resp.data as Map).cast<String, dynamic>(), Post.fromJson);
-    } on DioException catch (e) {
-      throw ClubError.fromDio(e);
-    }
+    });
   }
 
   Future<Page<Post>> recent({String? cursor, int limit = 30}) =>

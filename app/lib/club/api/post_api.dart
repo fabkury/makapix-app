@@ -1,6 +1,5 @@
 import 'package:dio/dio.dart';
 
-import '../models/club_error.dart';
 import '../models/comment.dart';
 import '../models/page.dart';
 import '../models/post.dart';
@@ -12,16 +11,13 @@ class PostApi {
   final ClubApiClient client;
   PostApi(this.client);
 
-  Future<Post> getBySqid(String sqid) async {
-    try {
-      final resp = await client.dio.get('/p/${Uri.encodeComponent(sqid)}');
-      return Post.fromJson((resp.data as Map).cast<String, dynamic>());
-    } on DioException catch (e) {
-      throw ClubError.fromDio(e);
-    }
-  }
+  Future<Post> getBySqid(String sqid) => client.guard(() async {
+        final resp = await client.dio.get('/p/${Uri.encodeComponent(sqid)}');
+        return Post.fromJson((resp.data as Map).cast<String, dynamic>());
+      });
 
-  /// Fire-and-forget view registration (server-throttled to 1/3 s). Never surfaces.
+  /// Fire-and-forget view registration (server-throttled to 1/3 s). Never surfaces — so it keeps
+  /// its own swallowing catch rather than going through `guard` (which would rethrow).
   Future<void> registerView(int postId, {String? channel, String? channelContext}) async {
     try {
       final body = <String, dynamic>{};
@@ -33,55 +29,38 @@ class PostApi {
     }
   }
 
-  Future<ReactionTotals> reactions(int postId) async {
-    try {
-      final resp = await client.dio.get('/post/$postId/reactions');
-      return ReactionTotals.fromJson((resp.data as Map).cast<String, dynamic>());
-    } on DioException catch (e) {
-      throw ClubError.fromDio(e);
-    }
-  }
+  Future<ReactionTotals> reactions(int postId) => client.guard(() async {
+        final resp = await client.dio.get('/post/$postId/reactions');
+        return ReactionTotals.fromJson((resp.data as Map).cast<String, dynamic>());
+      });
 
-  Future<void> addReaction(int postId, String emoji) =>
-      _ed(() => client.dio.put('/post/$postId/reactions/${Uri.encodeComponent(emoji)}'));
+  Future<void> addReaction(int postId, String emoji) => client
+      .guard(() => client.dio.put('/post/$postId/reactions/${Uri.encodeComponent(emoji)}'));
 
-  Future<void> removeReaction(int postId, String emoji) =>
-      _ed(() => client.dio.delete('/post/$postId/reactions/${Uri.encodeComponent(emoji)}'));
+  Future<void> removeReaction(int postId, String emoji) => client
+      .guard(() => client.dio.delete('/post/$postId/reactions/${Uri.encodeComponent(emoji)}'));
 
   /// Comments as a depth-≤2 tree (fetched flat, assembled client-side).
-  Future<List<Comment>> comments(int postId) async {
-    try {
-      final resp = await client.dio
-          .get('/post/$postId/comments', queryParameters: {'view': 'flat', 'limit': 200});
-      final page = Page<Comment>.fromJson(
-          (resp.data as Map).cast<String, dynamic>(), Comment.fromJson);
-      return Comment.assembleTree(page.items);
-    } on DioException catch (e) {
-      throw ClubError.fromDio(e);
-    }
-  }
+  Future<List<Comment>> comments(int postId) => client.guard(() async {
+        final resp = await client.dio
+            .get('/post/$postId/comments', queryParameters: {'view': 'flat', 'limit': 200});
+        final page = Page<Comment>.fromJson(
+            (resp.data as Map).cast<String, dynamic>(), Comment.fromJson);
+        return Comment.assembleTree(page.items);
+      });
 
-  Future<void> addComment(int postId, String body, {String? parentId}) => _ed(() => client.dio
-      .post('/post/$postId/comments', data: {'body': body, 'parent_id': ?parentId}));
+  Future<void> addComment(int postId, String body, {String? parentId}) => client.guard(() => client
+      .dio.post('/post/$postId/comments', data: {'body': body, 'parent_id': ?parentId}));
 
-  Future<void> editComment(String commentId, String body) =>
-      _ed(() => client.dio.patch('/post/comments/${Uri.encodeComponent(commentId)}', data: {'body': body}));
+  Future<void> editComment(String commentId, String body) => client.guard(
+      () => client.dio.patch('/post/comments/${Uri.encodeComponent(commentId)}', data: {'body': body}));
 
   Future<void> deleteComment(String commentId) =>
-      _ed(() => client.dio.delete('/post/comments/${Uri.encodeComponent(commentId)}'));
+      client.guard(() => client.dio.delete('/post/comments/${Uri.encodeComponent(commentId)}'));
 
   Future<void> likeComment(String commentId) =>
-      _ed(() => client.dio.put('/post/comments/${Uri.encodeComponent(commentId)}/like'));
+      client.guard(() => client.dio.put('/post/comments/${Uri.encodeComponent(commentId)}/like'));
 
   Future<void> unlikeComment(String commentId) =>
-      _ed(() => client.dio.delete('/post/comments/${Uri.encodeComponent(commentId)}/like'));
-
-  /// Run a mutating call, mapping dio errors to [ClubError].
-  Future<void> _ed(Future<Response> Function() call) async {
-    try {
-      await call();
-    } on DioException catch (e) {
-      throw ClubError.fromDio(e);
-    }
-  }
+      client.guard(() => client.dio.delete('/post/comments/${Uri.encodeComponent(commentId)}/like'));
 }

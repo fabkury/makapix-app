@@ -48,13 +48,19 @@ class ClubApiClient {
     ));
   }
 
-  /// `GET /auth/me` as raw JSON (caller maps to [ClubMe]).
-  Future<Map<String, dynamic>> me() async {
+  /// Run a Dio call and normalize any [DioException] to a [ClubError] — the single place that
+  /// mapping lives, instead of the same try/catch repeated in every API method. [audit F-22]
+  Future<T> guard<T>(Future<T> Function() call) async {
     try {
-      final resp = await dio.get('/auth/me');
-      return (resp.data as Map).cast<String, dynamic>();
+      return await call();
     } on DioException catch (e) {
       throw ClubError.fromDio(e);
     }
   }
+
+  /// `GET /auth/me` as raw JSON (caller maps to [ClubMe]).
+  Future<Map<String, dynamic>> me() => guard(() async {
+        final resp = await dio.get('/auth/me');
+        return (resp.data as Map).cast<String, dynamic>();
+      });
 }

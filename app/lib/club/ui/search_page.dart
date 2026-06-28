@@ -9,12 +9,14 @@ import 'hashtag_feed_page.dart';
 import 'profile_page.dart';
 import 'widgets/common.dart';
 
+// autoDispose: these are keyed by the raw query string — without it, every query ever typed would
+// be cached for the app's lifetime. [audit F-19]
 final _artworkSearchProvider =
-    FutureProvider.family<List<Post>, String>((ref, q) => ref.read(searchApiProvider).searchPosts(q));
+    FutureProvider.autoDispose.family<List<Post>, String>((ref, q) => ref.read(searchApiProvider).searchPosts(q));
 final _userSearchProvider =
-    FutureProvider.family<List<PostOwner>, String>((ref, q) => ref.read(searchApiProvider).browseUsers(q));
+    FutureProvider.autoDispose.family<List<PostOwner>, String>((ref, q) => ref.read(searchApiProvider).browseUsers(q));
 final _hashtagSearchProvider =
-    FutureProvider.family<List<HashtagStat>, String>((ref, q) => ref.read(searchApiProvider).hashtagStats(q));
+    FutureProvider.autoDispose.family<List<HashtagStat>, String>((ref, q) => ref.read(searchApiProvider).hashtagStats(q));
 
 class SearchPage extends ConsumerStatefulWidget {
   const SearchPage({super.key});

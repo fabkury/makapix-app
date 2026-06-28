@@ -11,8 +11,9 @@ import 'auth_controller.dart' show clubApiClientProvider;
 final configApiProvider = Provider<ConfigApi>((ref) => ConfigApi(ref.watch(clubApiClientProvider)));
 final uploadApiProvider = Provider<UploadApi>((ref) => UploadApi(ref.watch(clubApiClientProvider)));
 
-/// Server config (cached); falls back to the baked-in copy on failure.
-final serverConfigProvider = FutureProvider<ClubServerConfig>((ref) async {
+/// Server config; falls back to the baked-in copy on failure. autoDispose so a transient failure
+/// isn't cached for the whole session — it retries on next entry to the publish flow. [audit F-19/F-30]
+final serverConfigProvider = FutureProvider.autoDispose<ClubServerConfig>((ref) async {
   try {
     return await ref.read(configApiProvider).fetch();
   } catch (_) {
@@ -20,7 +21,8 @@ final serverConfigProvider = FutureProvider<ClubServerConfig>((ref) async {
   }
 });
 
-final licensesProvider = FutureProvider<List<LicenseOption>>((ref) async {
+// autoDispose so a transient failure (→ empty license list) isn't cached for the session. [F-19/F-30]
+final licensesProvider = FutureProvider.autoDispose<List<LicenseOption>>((ref) async {
   try {
     return await ref.read(uploadApiProvider).licenses();
   } catch (_) {

@@ -6,7 +6,9 @@ import 'paged.dart';
 
 enum FeedKind { recent, promoted, following }
 
-/// The three home feeds, each an auto-loading paged list of posts.
+/// The three home feeds, each an auto-loading paged list of posts. Deliberately NOT autoDispose:
+/// there are exactly three keys and we keep their loaded items + scroll position warm across
+/// navigation. (The unbounded keyed feeds below — hashtag/owner — do autoDispose.) [audit F-19]
 final feedProvider =
     StateNotifierProvider.family<PagedNotifier<Post>, PagedState<Post>, FeedKind>((ref, kind) {
   final api = ref.watch(feedApiProvider);
@@ -21,7 +23,7 @@ final feedProvider =
 
 /// Posts for a hashtag.
 final hashtagFeedProvider =
-    StateNotifierProvider.family<PagedNotifier<Post>, PagedState<Post>, String>((ref, tag) {
+    StateNotifierProvider.autoDispose.family<PagedNotifier<Post>, PagedState<Post>, String>((ref, tag) {
   final api = ref.watch(feedApiProvider);
   final n = PagedNotifier<Post>((cursor) => api.hashtag(tag, cursor: cursor));
   n.loadInitial();
@@ -30,7 +32,7 @@ final hashtagFeedProvider =
 
 /// A user's gallery, keyed by the owner's `user_key` (UUID).
 final ownerFeedProvider =
-    StateNotifierProvider.family<PagedNotifier<Post>, PagedState<Post>, String>((ref, userKey) {
+    StateNotifierProvider.autoDispose.family<PagedNotifier<Post>, PagedState<Post>, String>((ref, userKey) {
   final api = ref.watch(feedApiProvider);
   final n = PagedNotifier<Post>((cursor) => api.byOwner(userKey, cursor: cursor));
   n.loadInitial();
