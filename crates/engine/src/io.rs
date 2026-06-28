@@ -290,14 +290,10 @@ pub fn load_from_bytes(data: &[u8]) -> Result<Document, IoError> {
         return Err(IoError::Corrupt("no frames"));
     }
 
-    let mut frame_ids = IdGen::default();
-    let mut layer_ids = IdGen::default();
-    for _ in 0..=max_frame_id {
-        frame_ids.alloc();
-    }
-    for _ in 0..=max_layer_id {
-        layer_ids.alloc();
-    }
+    // Seed the id generators just past the highest persisted id — directly, never by looping up to
+    // it: a crafted id like 0xFFFFFFFF would otherwise hang the loader for billions of allocs. [F-2]
+    let frame_ids = IdGen::starting_at(max_frame_id.saturating_add(1));
+    let layer_ids = IdGen::starting_at(max_layer_id.saturating_add(1));
 
     Ok(Document {
         size,

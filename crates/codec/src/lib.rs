@@ -3,7 +3,7 @@
 //! encodes documents to PNG (per-frame / sprite-sheet) and animated GIF.
 
 use image::codecs::gif::{GifDecoder, GifEncoder};
-use image::{AnimationDecoder, Delay, Frame as ImgFrame, ImageFormat, RgbaImage};
+use image::{AnimationDecoder, Delay, Frame as ImgFrame, ImageDecoder, ImageFormat, RgbaImage};
 use makapix_engine::import::DecodedFrame;
 use std::io::Cursor;
 
@@ -25,25 +25,45 @@ impl std::fmt::Display for CodecError {
 }
 
 const MAX_DIM: u32 = 4096;
+/// Hard cap on decoded animation frames — mirrors the engine's `MAX_FRAMES`. Untrusted GIF/APNG
+/// frame counts are bounded *before* materializing them so a tiny file can't expand to gigabytes.
+const MAX_DECODE_FRAMES: usize = makapix_engine::document::MAX_FRAMES;
+
+/// Decode limits applied to every decoder so over-size input fails *during* decode, before a huge
+/// allocation happens (the dimension check used to run only after the full decode). [audit F-3]
+fn limits() -> image::Limits {
+    let mut l = image::Limits::default();
+    l.max_image_width = Some(MAX_DIM);
+    l.max_image_height = Some(MAX_DIM);
+    l.max_alloc = Some(512 * 1024 * 1024); // ≈ MAX_DIM² RGBA with generous headroom
+    l
+}
 
 /// Decode an image file (by content) into one or more `DecodedFrame`s.
 pub fn decode(bytes: &[u8]) -> Result<Vec<DecodedFrame>, CodecError> {
     let format = image::guess_format(bytes).map_err(|e| CodecError::Decode(e.to_string()))?;
     match format {
-        ImageFormat::Gif => decode_animated(GifDecoder::new(Cursor::new(bytes)).map_err(de)?),
+        ImageFormat::Gif => {
+            let mut dec = GifDecoder::new(Cursor::new(bytes)).map_err(de)?;
+            dec.set_limits(limits()).map_err(de)?;
+            decode_animated(dec)
+        }
         ImageFormat::WebP => {
             // Try animated; fall back to static.
             match image::codecs::webp::WebPDecoder::new(Cursor::new(bytes)) {
-                Ok(dec) if dec.has_animation() => decode_animated(dec),
+                Ok(mut dec) if dec.has_animation() => {
+                    dec.set_limits(limits()).map_err(de)?;
+                    decode_animated(dec)
+                }
                 _ => decode_static(bytes),
             }
         }
         ImageFormat::Png => {
-            // APNG → animated; else static.
-            let dec = image::codecs::png::PngDecoder::new(Cursor::new(bytes)).map_err(de)?;
+            // APNG → animated; else static. Limits set before `apng()` so they carry into frames.
+            let mut dec = image::codecs::png::PngDecoder::new(Cursor::new(bytes)).map_err(de)?;
+            dec.set_limits(limits()).map_err(de)?;
             if dec.is_apng().map_err(de)? {
-                let apng = dec.apng().map_err(de)?;
-                decode_animated(apng)
+                decode_animated(dec.apng().map_err(de)?)
             } else {
                 decode_static(bytes)
             }
@@ -57,7 +77,13 @@ fn de(e: image::ImageError) -> CodecError {
 }
 
 fn decode_static(bytes: &[u8]) -> Result<Vec<DecodedFrame>, CodecError> {
-    let img = image::load_from_memory(bytes).map_err(de)?;
+    // Decode through an ImageReader carrying `limits()` so dimensions/allocation are bounded
+    // *during* decode rather than checked after a full materialization. [audit F-3]
+    let mut reader = image::ImageReader::new(Cursor::new(bytes))
+        .with_guessed_format()
+        .map_err(|e| CodecError::Decode(e.to_string()))?;
+    reader.limits(limits());
+    let img = reader.decode().map_err(de)?;
     let rgba = img.to_rgba8();
     let (w, h) = (rgba.width(), rgba.height());
     if w > MAX_DIM || h > MAX_DIM {
@@ -67,9 +93,14 @@ fn decode_static(bytes: &[u8]) -> Result<Vec<DecodedFrame>, CodecError> {
 }
 
 fn decode_animated<'a>(decoder: impl AnimationDecoder<'a>) -> Result<Vec<DecodedFrame>, CodecError> {
-    let frames = decoder.into_frames().collect_frames().map_err(de)?;
+    // Decode frames lazily, one at a time, capping the count BEFORE materializing more — never
+    // `collect_frames()`, which would eagerly decode every frame of a bomb into memory. [F-3]
     let mut out = Vec::new();
-    for fr in frames {
+    for (i, frame) in decoder.into_frames().enumerate() {
+        if i >= MAX_DECODE_FRAMES {
+            return Err(CodecError::Decode("too many frames".into()));
+        }
+        let fr = frame.map_err(de)?;
         let (num, den) = fr.delay().numer_denom_ms();
         let dur_ms = if den == 0 { 100 } else { num / den.max(1) };
         let buf: RgbaImage = fr.into_buffer();

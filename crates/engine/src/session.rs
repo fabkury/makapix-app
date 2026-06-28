@@ -16,9 +16,22 @@ use crate::util::{hash_hex, Hash, SeededRng, VirtualClock};
 mod parse;
 pub use parse::Action;
 
+/// A captured pre-edit pixel snapshot of one layer's tiles.
+type TileSnapshot = Vec<Option<std::sync::Arc<crate::buffer::Tile>>>;
+
+/// A pre-edit snapshot pinned to the exact (frame id, layer id) it was taken from. The matching
+/// commit/cancel resolves that target *by id* rather than acting on "whatever is active now", so a
+/// DSL that changes the active frame/layer mid-stroke can no longer record (or restore) a patch
+/// against the wrong layer. [audit F-29]
+struct EditScope {
+    fid: u32,
+    lid: u32,
+    before: TileSnapshot,
+}
+
 /// In-progress gesture state.
 struct Stroke {
-    before: Vec<Option<std::sync::Arc<crate::buffer::Tile>>>,
+    before: EditScope,
     start: Point,
     last: Point,
     path: Vec<Point>,
@@ -72,7 +85,7 @@ pub struct Session {
     pub layer_sel: Vec<usize>,
     /// Precision-pencil reticle position + active pen stroke (draw-by-button, off-finger).
     cursor: Point,
-    precision_before: Option<Vec<Option<std::sync::Arc<crate::buffer::Tile>>>>,
+    precision_before: Option<EditScope>,
     clipboard: Option<(RgbaBuffer, Point)>,
     rng: SeededRng,
     clock: VirtualClock,
@@ -371,12 +384,31 @@ impl Session {
         n
     }
 
+    /// Bounds-safe pixel read for FFI/CLI probes: clamps a stale frame/layer index (and
+    /// `RgbaBuffer::get` already returns transparent out of bounds), so a bad index can never panic
+    /// across the boundary. [audit F-28]
     pub fn pixel(&self, f: usize, l: usize, x: i32, y: i32) -> Rgba8 {
-        self.doc.frames[f].layers[l].pixels.get(x, y)
+        let frame = match self.doc.frames.get(f.min(self.doc.frames.len().saturating_sub(1))) {
+            Some(fr) => fr,
+            None => return Rgba8::TRANSPARENT,
+        };
+        match frame.layers.get(l.min(frame.layers.len().saturating_sub(1))) {
+            Some(layer) => layer.pixels.get(x, y),
+            None => Rgba8::TRANSPARENT,
+        }
     }
 
+    /// Bounds-safe layer content hash (clamps stale indices) — safe to call across the FFI. [F-28]
     pub fn layer_hash(&self, f: usize, l: usize) -> Hash {
-        self.doc.frames[f].layers[l].pixels.content_hash()
+        let fi = f.min(self.doc.frames.len().saturating_sub(1));
+        let frame = match self.doc.frames.get(fi) {
+            Some(fr) => fr,
+            None => return 0,
+        };
+        match frame.layers.get(l.min(frame.layers.len().saturating_sub(1))) {
+            Some(layer) => layer.pixels.content_hash(),
+            None => 0,
+        }
     }
 
     pub fn state_json(&self) -> String {
@@ -412,17 +444,35 @@ impl Session {
 
     // ---- undo-recording helpers ----
 
-    fn begin_edit(&self) -> Vec<Option<std::sync::Arc<crate::buffer::Tile>>> {
-        self.doc.active_frame().active_layer().pixels.snapshot()
+    fn begin_edit(&self) -> EditScope {
+        let f = self.doc.active_frame();
+        let l = f.active_layer();
+        EditScope { fid: f.id, lid: l.id, before: l.pixels.snapshot() }
     }
 
-    fn commit_edit(&mut self, before: Vec<Option<std::sync::Arc<crate::buffer::Tile>>>) {
-        let (fid, lid, patch) = {
-            let f = self.doc.active_frame();
-            let l = f.active_layer();
-            (f.id, l.id, l.pixels.diff_from(&before))
+    fn commit_edit(&mut self, scope: EditScope) {
+        // Resolve the snapshot's OWN frame/layer by id — not the current active one, which the DSL
+        // may have changed mid-stroke — so the recorded patch always matches `before`. [audit F-29]
+        let EditScope { fid, lid, before } = scope;
+        let patch = match self
+            .doc
+            .frame_index_by_id(fid)
+            .and_then(|fi| self.doc.frames[fi].layer_index_by_id(lid).map(|li| (fi, li)))
+        {
+            Some((fi, li)) => self.doc.frames[fi].layers[li].pixels.diff_from(&before),
+            None => return, // the target frame/layer was deleted mid-edit; nothing to record
         };
         self.doc.record_pixels(fid, lid, patch);
+    }
+
+    /// Restore a captured snapshot to the exact frame/layer it came from (mirrors `commit_edit`'s
+    /// id resolution), used when a stroke is cancelled. [audit F-29]
+    fn restore_edit(&mut self, scope: &EditScope) {
+        if let Some(fi) = self.doc.frame_index_by_id(scope.fid) {
+            if let Some(li) = self.doc.frames[fi].layer_index_by_id(scope.lid) {
+                self.doc.frames[fi].layers[li].pixels.restore_snapshot(&scope.before);
+            }
+        }
     }
 
     fn edit_frame<R>(&mut self, f: impl FnOnce(&mut Session) -> R) -> R {
@@ -458,7 +508,12 @@ impl Session {
         if self.stroke.is_some() {
             self.pointer_up();
         }
-        let p = Point::new(x, y);
+        // Likewise never leave a precision-pen line open beneath a new pointer stroke — two open
+        // edits would both diff the same layer and double-record the overlapping pixels. [F-29]
+        if self.precision_before.is_some() {
+            self.cursor_pen_up();
+        }
+        let p = self.clamp_pointer(Point::new(x, y)); // bound off-canvas input [F-6]
         // Tools that act once on press.
         match self.tool {
             ToolKind::Eyedropper => {
@@ -550,7 +605,7 @@ impl Session {
     }
 
     pub fn pointer_move(&mut self, x: i32, y: i32) {
-        let p = Point::new(x, y);
+        let p = self.clamp_pointer(Point::new(x, y)); // bound off-canvas input [F-6]
         let last = match &self.stroke {
             Some(s) => s.last,
             None => return,
@@ -745,21 +800,13 @@ impl Session {
             self.stroke = None;
             return;
         }
-        // Normal stroke: restore the active layer's pre-stroke pixels.
+        // Normal stroke: restore the pre-stroke pixels of the stroke's OWN layer (by id). [F-29]
         if let Some(stroke) = self.stroke.take() {
-            self.doc
-                .active_frame_mut()
-                .active_layer_mut()
-                .pixels
-                .restore_snapshot(&stroke.before);
+            self.restore_edit(&stroke.before);
         }
         // Precision pen line in progress.
-        if let Some(before) = self.precision_before.take() {
-            self.doc
-                .active_frame_mut()
-                .active_layer_mut()
-                .pixels
-                .restore_snapshot(&before);
+        if let Some(scope) = self.precision_before.take() {
+            self.restore_edit(&scope);
         }
     }
 
@@ -905,6 +952,16 @@ impl Session {
             p.x.clamp(0, self.doc.size.w as i32 - 1),
             p.y.clamp(0, self.doc.size.h as i32 - 1),
         )
+    }
+
+    /// Clamp an incoming pointer coordinate to a generous margin around the canvas. Off-canvas
+    /// input is legitimate (a freehand stroke can run past the edge and be clipped), so this is NOT
+    /// `clamp_cursor`'s canvas-tight clamp — but an unbounded coordinate from a malformed event would
+    /// make `spaced_points`/`raster::line` iterate billions of times (a multi-second hang / OOM).
+    /// One canvas span of margin preserves every real stroke while bounding the work. [audit F-6]
+    fn clamp_pointer(&self, p: Point) -> Point {
+        let (w, h) = (self.doc.size.w as i32, self.doc.size.h as i32);
+        Point::new(p.x.clamp(-w, 2 * w), p.y.clamp(-h, 2 * h))
     }
 
     /// Stamp (mode, color) for the active stamp-style paint tool, or `None` if the active tool

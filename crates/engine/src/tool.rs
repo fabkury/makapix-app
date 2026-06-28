@@ -71,7 +71,10 @@ pub struct Stop {
 }
 impl Stop {
     pub fn new(color: Rgba8, t: f32) -> Self {
-        Stop { color, t: t.clamp(0.0, 1.0) }
+        // Sanitize a non-finite `t` (NaN/inf) to a safe value, so gradient sorting and sampling can
+        // never observe a NaN — a NaN stop used to panic via `partial_cmp(..).unwrap()`. [audit F-1]
+        let t = if t.is_finite() { t.clamp(0.0, 1.0) } else { 0.0 };
+        Stop { color, t }
     }
 }
 
@@ -250,7 +253,7 @@ pub fn gradient_color_at(stops: &[Stop], t: f32) -> Rgba8 {
         return Rgba8::TRANSPARENT;
     }
     let mut s: Vec<Stop> = stops.to_vec();
-    s.sort_by(|a, b| a.t.partial_cmp(&b.t).unwrap());
+    s.sort_by(|a, b| a.t.total_cmp(&b.t)); // total order: never panics, even on a NaN stop [F-1]
     if t <= s[0].t {
         return s[0].color;
     }

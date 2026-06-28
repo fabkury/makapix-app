@@ -142,6 +142,12 @@ pub struct IdGen {
     next: u32,
 }
 impl IdGen {
+    /// Start allocating ids at `next`. Used when rehydrating a persisted document so freshly
+    /// allocated ids sit just past the highest stored id — without an O(max_id) warm-up loop (a
+    /// crafted file with id 0xFFFFFFFF would otherwise spin ~4.3 billion iterations). [audit F-2]
+    pub fn starting_at(next: u32) -> Self {
+        IdGen { next }
+    }
     pub fn alloc(&mut self) -> u32 {
         let id = self.next;
         self.next = self.next.wrapping_add(1);

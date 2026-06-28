@@ -285,6 +285,9 @@ fn parse_stops(inner: &str) -> Result<Vec<Stop>, String> {
         let (c, t) = tok.split_once('@').ok_or(format!("stop '{}' missing @t", tok))?;
         let color = Rgba8::from_hex(c.trim()).ok_or(format!("bad stop color '{}'", c))?;
         let t = t.trim().parse::<f32>().map_err(|_| format!("bad stop t '{}'", t))?;
+        if !t.is_finite() {
+            return Err(format!("non-finite stop t '{}'", t)); // reject NaN/inf at the boundary [F-1]
+        }
         stops.push(Stop::new(color, t));
     }
     if stops.len() < 2 {
@@ -297,6 +300,9 @@ fn parse_line(line: &str) -> Result<Action, String> {
     use Action::*;
     let open = line.find('(').ok_or("expected '('")?;
     let close = line.rfind(')').ok_or("expected ')'")?;
+    if close < open {
+        return Err("')' before '('".into()); // e.g. ")(" — avoids a backwards-range slice panic [F-4]
+    }
     let name = line[..open].trim();
     let inner = line[open + 1..close].trim();
 
@@ -325,7 +331,11 @@ fn parse_line(line: &str) -> Result<Action, String> {
         args.get(k).ok_or(format!("missing arg {}", k))?.parse().map_err(|_| format!("bad u64 {}", k))
     };
     let f32a = |k: usize| -> Result<f32, String> {
-        args.get(k).ok_or(format!("missing arg {}", k))?.parse().map_err(|_| format!("bad f32 {}", k))
+        let v: f32 = args.get(k).ok_or(format!("missing arg {}", k))?.parse().map_err(|_| format!("bad f32 {}", k))?;
+        if !v.is_finite() {
+            return Err(format!("non-finite f32 {}", k)); // reject NaN/inf (HSV, etc.) [F-1]
+        }
+        Ok(v)
     };
     let boola = |k: usize| -> Result<bool, String> {
         match args.get(k).copied().unwrap_or("") {
