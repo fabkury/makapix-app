@@ -233,10 +233,11 @@ extension _EditorControls on _EditorPageState {
         ),
       ));
       if (_lockRatio) {
-        _labeledSlider(children, 'Ratio', _ratio, 0.25, 4.0, (v) {
+        // Logarithmic 0.2..5 with 1.0 at the centre (each half spans an equal ratio range).
+        _labeledLogSlider(children, 'Ratio', _ratio, 0.2, 5.0, (v) {
           setState(() => _ratio = v);
           _reapplyRatio();
-        }, integer: false);
+        });
       }
     }
     if (_tool == 'Gradient') {

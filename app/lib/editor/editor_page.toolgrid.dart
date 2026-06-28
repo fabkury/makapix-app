@@ -193,6 +193,31 @@ extension _EditorToolgrid on _EditorPageState {
     children.add(_slider(value, min, max, onChanged));
   }
 
+  // Like _labeledSlider, but the slider position is LOGARITHMIC across [min,max], so the geometric
+  // midpoint (e.g. 1.0 for 0.2..5) sits at the centre and each half spans the same ratio. The label
+  // taps to type an exact value. `onChanged` receives the real value (not the slider position).
+  void _labeledLogSlider(List<Widget> children, String name, double value, double min, double max,
+      ValueChanged<double> onChanged) {
+    final v = value.clamp(min, max);
+    final lmin = math.log(min), lmax = math.log(max);
+    double posOf(double x) => (math.log(x) - lmin) / (lmax - lmin); // value → 0..1
+    double valOf(double t) => math.exp(lmin + t * (lmax - lmin)); // 0..1 → value
+    children.add(InkWell(
+      onTap: () => _editSliderValue(name, v, min, max, onChanged, integer: false),
+      borderRadius: BorderRadius.circular(4),
+      child: Padding(
+        padding: const EdgeInsets.only(left: 8, right: 4),
+        child: Text('$name ${v.toStringAsFixed(2)}',
+            style: const TextStyle(
+                fontSize: 11,
+                color: Colors.white60,
+                decoration: TextDecoration.underline,
+                decorationColor: Colors.white24)),
+      ),
+    ));
+    children.add(_slider(posOf(v), 0, 1, (t) => onChanged(valOf(t))));
+  }
+
   Future<void> _editSliderValue(String name, double value, double min, double max,
       ValueChanged<double> onChanged, {required bool integer}) async {
     String fmt(double d) => integer ? d.round().toString() : d.toStringAsFixed(1);
