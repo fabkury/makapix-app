@@ -263,13 +263,9 @@ extension _EditorEngine on _EditorPageState {
       _send('CursorPenUp()');
       _penDown = false;
     }
-    // A pending figure draft belongs to the tool it was started with; changing tools discards it.
-    if (_hasShapeDraft) {
-      _send('ShapeCancel()');
-      _shapeA = null;
-      _shapeB = null;
-      _shapeDrag = 0;
-    }
+    // Navigating away mid-draft (changing tools) cancels the pending figure and erases its preview
+    // — same as the row-1 Cancel button (this also redraws, so the outline doesn't linger).
+    if (_hasShapeDraft) _cancelShapeDraft();
     // The Ruler keeps its measurement across tool switches (its overlay just hides while another
     // tool is active and reappears on return); clear it with the Ruler's row-1 "Clear" button.
     _rulerDrag = 0;
