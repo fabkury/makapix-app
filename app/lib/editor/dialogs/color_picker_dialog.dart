@@ -11,7 +11,13 @@ class ColorPickerDialog extends StatefulWidget {
 
 class _ColorPickerDialogState extends State<ColorPickerDialog> {
   double h = 0, s = 0, v = 0, a = 255;
-  late final TextEditingController _hexCtrl, _rCtrl, _gCtrl, _bCtrl, _hCtrl, _sCtrl, _vCtrl;
+  late final TextEditingController _hexCtrl,
+      _rCtrl,
+      _gCtrl,
+      _bCtrl,
+      _hCtrl,
+      _sCtrl,
+      _vCtrl;
 
   @override
   void initState() {
@@ -33,7 +39,15 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
 
   @override
   void dispose() {
-    for (final c in [_hexCtrl, _rCtrl, _gCtrl, _bCtrl, _hCtrl, _sCtrl, _vCtrl]) {
+    for (final c in [
+      _hexCtrl,
+      _rCtrl,
+      _gCtrl,
+      _bCtrl,
+      _hCtrl,
+      _sCtrl,
+      _vCtrl,
+    ]) {
       c.dispose();
     }
     super.dispose();
@@ -69,9 +83,17 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
   void _applyRgb() {
     final cur = _color;
     int chan(TextEditingController ctrl, double curChannel) =>
-        (int.tryParse(ctrl.text.trim()) ?? (curChannel * 255).round()).clamp(0, 255).toInt();
+        (int.tryParse(ctrl.text.trim()) ?? (curChannel * 255).round())
+            .clamp(0, 255)
+            .toInt();
     final hsv = HSVColor.fromColor(
-        Color.fromARGB(255, chan(_rCtrl, cur.r), chan(_gCtrl, cur.g), chan(_bCtrl, cur.b)));
+      Color.fromARGB(
+        255,
+        chan(_rCtrl, cur.r),
+        chan(_gCtrl, cur.g),
+        chan(_bCtrl, cur.b),
+      ),
+    );
     setState(() {
       h = hsv.hue;
       s = hsv.saturation;
@@ -94,23 +116,30 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
   }
 
   // A compact integer field for the RGB / HSV rows.
-  Widget _numField(String label, TextEditingController ctrl, void Function() apply) => Expanded(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 3),
-          child: TextField(
-            controller: ctrl,
-            keyboardType: TextInputType.number,
-            textAlign: TextAlign.center,
-            decoration: InputDecoration(
-              labelText: label,
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-              border: const OutlineInputBorder(),
-            ),
-            onChanged: (_) => apply(),
+  Widget _numField(
+    String label,
+    TextEditingController ctrl,
+    void Function() apply,
+  ) => Expanded(
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 3),
+      child: TextField(
+        controller: ctrl,
+        keyboardType: TextInputType.number,
+        textAlign: TextAlign.center,
+        decoration: InputDecoration(
+          labelText: label,
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 4,
+            vertical: 8,
           ),
+          border: const OutlineInputBorder(),
         ),
-      );
+        onChanged: (_) => apply(),
+      ),
+    ),
+  );
 
   // Live update from a drag/tap on the saturation×value square.
   void _onSv(Offset local, Size size) {
@@ -148,88 +177,145 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
 
   @override
   Widget build(BuildContext context) {
-    const double sq = 200, hueW = 26;
+    // Square fills the 280-wide content beside the hue ramp (280 - 8 gap - hueW), no empty space.
+    const double hueW = 26, sq = 280 - 8 - hueW;
     return AlertDialog(
-      title: Row(children: [
-        const Text('Pick color'),
-        const Spacer(),
-        Container(
-          width: 40,
-          height: 24,
-          decoration: BoxDecoration(color: _color, border: Border.all(color: Colors.white24)),
-        ),
-      ]),
+      title: Row(
+        children: [
+          const Text('Pick color'),
+          const Spacer(),
+          Container(
+            width: 40,
+            height: 24,
+            decoration: BoxDecoration(
+              color: _color,
+              border: Border.all(color: Colors.white24),
+            ),
+          ),
+        ],
+      ),
       content: SizedBox(
         width: 280,
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Row(children: [
-            SizedBox(
-              width: sq,
-              height: sq,
-              child: GestureDetector(
-                onPanDown: (d) => _onSv(d.localPosition, const Size(sq, sq)),
-                onPanUpdate: (d) => _onSv(d.localPosition, const Size(sq, sq)),
-                child: CustomPaint(painter: _SvPainter(h, s, v), size: const Size(sq, sq)),
+        // Scrollable so the dialog still works when the on-screen keyboard shrinks the space.
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  SizedBox(
+                    width: sq,
+                    height: sq,
+                    child: GestureDetector(
+                      onPanDown: (d) =>
+                          _onSv(d.localPosition, const Size(sq, sq)),
+                      onPanUpdate: (d) =>
+                          _onSv(d.localPosition, const Size(sq, sq)),
+                      child: CustomPaint(
+                        painter: _SvPainter(h, s, v),
+                        size: const Size(sq, sq),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: hueW,
+                    height: sq,
+                    child: GestureDetector(
+                      onPanDown: (d) => _onHue(d.localPosition, sq),
+                      onPanUpdate: (d) => _onHue(d.localPosition, sq),
+                      child: CustomPaint(
+                        painter: _HuePainter(h),
+                        size: const Size(hueW, sq),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(width: 8),
-            SizedBox(
-              width: hueW,
-              height: sq,
-              child: GestureDetector(
-                onPanDown: (d) => _onHue(d.localPosition, sq),
-                onPanUpdate: (d) => _onHue(d.localPosition, sq),
-                child: CustomPaint(painter: _HuePainter(h), size: const Size(hueW, sq)),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const SizedBox(width: 16, child: Text('A')),
+                  Expanded(
+                    child: Slider(
+                      value: a.clamp(0, 255),
+                      max: 255,
+                      onChanged: (x) {
+                        setState(() => a = x);
+                        _syncFromColor();
+                      },
+                    ),
+                  ),
+                  SizedBox(
+                    width: 32,
+                    child: Text(
+                      a.round().toString(),
+                      textAlign: TextAlign.right,
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ]),
-          const SizedBox(height: 10),
-          Row(children: [
-            const SizedBox(width: 16, child: Text('A')),
-            Expanded(
-              child: Slider(
-                value: a.clamp(0, 255),
-                max: 255,
-                onChanged: (x) {
-                  setState(() => a = x);
-                  _syncFromColor();
-                },
+              Row(
+                children: [
+                  const Text('#'),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: TextField(
+                      controller: _hexCtrl,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      textCapitalization: TextCapitalization.characters,
+                      onSubmitted: _applyHex,
+                    ),
+                  ),
+                ],
               ),
-            ),
-            SizedBox(width: 32, child: Text(a.round().toString(), textAlign: TextAlign.right)),
-          ]),
-          Row(children: [
-            const Text('#'),
-            const SizedBox(width: 6),
-            Expanded(
-              child: TextField(
-                controller: _hexCtrl,
-                decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
-                textCapitalization: TextCapitalization.characters,
-                onSubmitted: _applyHex,
+              const SizedBox(height: 8),
+              // Type RGB (0–255) or HSV (H 0–360, S/V 0–100) directly; updates the colour live.
+              Row(
+                children: [
+                  const SizedBox(
+                    width: 30,
+                    child: Text(
+                      'RGB',
+                      style: TextStyle(fontSize: 12, color: Colors.white60),
+                    ),
+                  ),
+                  _numField('R', _rCtrl, _applyRgb),
+                  _numField('G', _gCtrl, _applyRgb),
+                  _numField('B', _bCtrl, _applyRgb),
+                ],
               ),
-            ),
-          ]),
-          const SizedBox(height: 8),
-          // Type RGB (0–255) or HSV (H 0–360, S/V 0–100) directly; updates the colour live.
-          Row(children: [
-            const SizedBox(width: 30, child: Text('RGB', style: TextStyle(fontSize: 12, color: Colors.white60))),
-            _numField('R', _rCtrl, _applyRgb),
-            _numField('G', _gCtrl, _applyRgb),
-            _numField('B', _bCtrl, _applyRgb),
-          ]),
-          const SizedBox(height: 8),
-          Row(children: [
-            const SizedBox(width: 30, child: Text('HSV', style: TextStyle(fontSize: 12, color: Colors.white60))),
-            _numField('H', _hCtrl, _applyHsv),
-            _numField('S', _sCtrl, _applyHsv),
-            _numField('V', _vCtrl, _applyHsv),
-          ]),
-        ]),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const SizedBox(
+                    width: 30,
+                    child: Text(
+                      'HSV',
+                      style: TextStyle(fontSize: 12, color: Colors.white60),
+                    ),
+                  ),
+                  _numField('H', _hCtrl, _applyHsv),
+                  _numField('S', _sCtrl, _applyHsv),
+                  _numField('V', _vCtrl, _applyHsv),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(context, _color), child: const Text('OK')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _color),
+          child: const Text('OK'),
+        ),
       ],
     );
   }
@@ -245,7 +331,13 @@ class _SvPainter extends CustomPainter {
     final rect = Offset.zero & size;
     final hue = HSVColor.fromAHSV(1, h, 1, 1).toColor();
     // white → full-saturation hue (left→right), then transparent → black (top→bottom)
-    canvas.drawRect(rect, Paint()..shader = LinearGradient(colors: [Colors.white, hue]).createShader(rect));
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = LinearGradient(
+          colors: [Colors.white, hue],
+        ).createShader(rect),
+    );
     canvas.drawRect(
       rect,
       Paint()
@@ -255,9 +347,26 @@ class _SvPainter extends CustomPainter {
           colors: [Colors.transparent, Colors.black],
         ).createShader(rect),
     );
-    final c = Offset((s * size.width).clamp(0, size.width).toDouble(), ((1 - v) * size.height).clamp(0, size.height).toDouble());
-    canvas.drawCircle(c, 7, Paint()..style = PaintingStyle.stroke..color = Colors.black..strokeWidth = 3);
-    canvas.drawCircle(c, 7, Paint()..style = PaintingStyle.stroke..color = Colors.white..strokeWidth = 1.5);
+    final c = Offset(
+      (s * size.width).clamp(0, size.width).toDouble(),
+      ((1 - v) * size.height).clamp(0, size.height).toDouble(),
+    );
+    canvas.drawCircle(
+      c,
+      7,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..color = Colors.black
+        ..strokeWidth = 3,
+    );
+    canvas.drawCircle(
+      c,
+      7,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..color = Colors.white
+        ..strokeWidth = 1.5,
+    );
   }
 
   @override
@@ -285,12 +394,19 @@ class _HuePainter extends CustomPainter {
     canvas.drawRect(
       rect,
       Paint()
-        ..shader = const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: _hues).createShader(rect),
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: _hues,
+        ).createShader(rect),
     );
     final y = (h / 360 * size.height).clamp(0, size.height).toDouble();
     canvas.drawRect(
       Rect.fromLTWH(-1, y - 2, size.width + 2, 4),
-      Paint()..style = PaintingStyle.stroke..color = Colors.white..strokeWidth = 2,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..color = Colors.white
+        ..strokeWidth = 2,
     );
   }
 
