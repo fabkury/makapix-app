@@ -970,8 +970,8 @@ impl Session {
     //
     // Precision is a per-tool *mode* (toggled in the shell), not a tool of its own. The reticle
     // path below honours whichever paint tool is active: Pencil replaces, Brush blends, Eraser
-    // clears, Airbrush sprays. `cursor_paint()` returns the stamp params for the stamp-style
-    // tools, or `None` for the Airbrush (which dabs instead of stamping a solid footprint).
+    // clears, Airbrush sprays, Dodge/Burn lighten/darken. `cursor_paint()` returns the stamp params
+    // for the stamp-style tools, or `None` for the others (Airbrush dabs; Dodge/Burn adjust value).
 
     fn clamp_cursor(&self, p: Point) -> Point {
         Point::new(
@@ -1020,6 +1020,10 @@ impl Session {
                 // Brush/Airbrush honour the spacing setting; Pencil/Eraser stay continuous.
                 ToolKind::Brush => self.brush_stroke_spaced(old, self.cursor, PaintMode::Over, self.settings.primary),
                 ToolKind::Airbrush => self.airbrush_stroke_spaced(old, self.cursor),
+                // Dodge/Burn lighten/darken a stamp at each reticle step (as on the pointer path).
+                ToolKind::Dodge | ToolKind::Burn => {
+                    self.dodge_burn_active(self.cursor, self.dodge_dv(self.tool == ToolKind::Dodge));
+                }
                 _ => match self.cursor_paint() {
                     Some((mode, color)) => self.stroke_active(old, self.cursor, mode, color),
                     None => {}
@@ -1039,6 +1043,9 @@ impl Session {
         match self.cursor_paint() {
             Some((mode, color)) => self.stamp_active(p, mode, color),
             None if self.tool == ToolKind::Airbrush => self.airbrush_active(p),
+            None if matches!(self.tool, ToolKind::Dodge | ToolKind::Burn) => {
+                self.dodge_burn_active(p, self.dodge_dv(self.tool == ToolKind::Dodge));
+            }
             None => {}
         }
     }
@@ -1837,6 +1844,24 @@ mod tests {
         assert_ne!(h, RgbaBuffer::new(16, 16).content_hash(), "airbrush should have painted something");
         assert!(s.doc.undo());
         assert!(!s.doc.undo(), "the whole precision spray is a single undo step");
+    }
+
+    #[test]
+    fn precision_dodge_lightens_through_reticle() {
+        let mut s = Session::new(8, 8);
+        s.settings.primary = Rgba8::rgb(100, 100, 100);
+        s.tool = ToolKind::Pencil;
+        s.tap(3, 3); // a mid-grey pixel to lighten
+        let before = s.pixel(0, 0, 3, 3);
+        // Dodge in precision mode: aim the reticle and DRAW (plot_cursor) one stamp.
+        s.tool = ToolKind::Dodge;
+        s.settings.intensity = 255;
+        s.set_cursor(3, 3);
+        s.plot_cursor();
+        let after = s.pixel(0, 0, 3, 3);
+        assert!(after.r > before.r, "dodge lightened the pixel ({} -> {})", before.r, after.r);
+        assert!(s.doc.undo()); // one undo step
+        assert_eq!(s.pixel(0, 0, 3, 3), before);
     }
 
     #[test]
