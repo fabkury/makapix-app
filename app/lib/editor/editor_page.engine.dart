@@ -211,12 +211,9 @@ extension _EditorEngine on _EditorPageState {
       _shapeB = null;
       _shapeDrag = 0;
     }
-    // Leaving the Ruler clears its measurement (it never touches the engine).
-    if (_hasRuler && t != 'Ruler') {
-      _rulerA = null;
-      _rulerB = null;
-      _rulerDrag = 0;
-    }
+    // The Ruler keeps its measurement across tool switches (its overlay just hides while another
+    // tool is active and reappears on return); clear it with the Ruler's row-1 "Clear" button.
+    _rulerDrag = 0;
     setState(() => _tool = t);
     if (_transformTools.contains(t)) return; // UI-only action group: no engine tool change
     if (t != 'Ruler') _send('SelectTool($t)'); // Ruler is a pure overlay; no engine draw tool

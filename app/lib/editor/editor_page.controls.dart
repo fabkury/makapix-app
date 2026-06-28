@@ -146,6 +146,16 @@ extension _EditorControls on _EditorPageState {
         ),
       ));
     }
+    if (_tool == 'Ruler') {
+      label('Ruler');
+      children.add(_miniBtn('Clear', () {
+        setState(() {
+          _rulerA = null;
+          _rulerB = null;
+          _rulerDrag = 0;
+        });
+      }));
+    }
     // Brush footprint SIZE: every tool whose mark is a stamp/spray of `brush_size` — i.e. the
     // pixel/paint tools, the airbrush spray radius, and dodge/burn. The figure tools (Line/Rect/
     // Ellipse) ignore brush_size (they use line_width + fill), so they're deliberately excluded.

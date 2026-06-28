@@ -59,7 +59,7 @@ const toolTips = <String, String>{
   'Line': 'Drag to preview a line, then drag the end handles to fine-tune. Press Commit to draw, Cancel to discard.',
   'Rectangle': 'Drag to preview a rectangle, then drag the corner handles to fine-tune. Toggle Fill / Outline (set Width for outlines). Commit to draw.',
   'Ellipse': 'Drag to preview an ellipse, then drag the handles to fine-tune. Toggle Fill / Outline (set Width for outlines). Commit to draw.',
-  'Ruler': 'Drag to measure — shows each end\'s X,Y and the length in pixels. Drag a reticle to fine-tune an end (tapping elsewhere does nothing). Nothing is drawn; it clears when you switch tools.',
+  'Ruler': 'Drag to measure — shows each end\'s X,Y and the length in pixels. Drag a reticle to fine-tune an end (tapping elsewhere does nothing). Nothing is drawn; the line stays (even across tools) until you tap Clear.',
   'Dodge': 'Drag over pixels to lighten them. Set intensity.',
   'Burn': 'Drag over pixels to darken them. Set intensity.',
   'Eyedropper': 'Tap a pixel to pick its colour as primary.',
