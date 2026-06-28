@@ -63,6 +63,41 @@ class OutlinePainter extends CustomPainter {
   bool shouldRepaint(OutlinePainter old) => true; // driven by the animation
 }
 
+/// The PRECISION-mode reticle footprint outline — deliberately distinct from the selection's
+/// black/white marching ants ([OutlinePainter]) so an off-finger draw target is never mistaken for
+/// a pixel selection. A continuous dark backing with amber dashes marching along it.
+class CursorOutlinePainter extends CustomPainter {
+  final List<List<int>> edges; // [x1,y1,x2,y2,t] in canvas-corner coords
+  final double scale;
+  final Offset off;
+  final Animation<double> anim;
+  CursorOutlinePainter(this.edges, this.scale, this.off, this.anim) : super(repaint: anim);
+
+  static const _amber = Color(0xFFFFC400);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (edges.isEmpty || scale <= 0) return;
+    final ox = off.dx, oy = off.dy;
+    final phase = (anim.value * 4).floor(); // 4-unit marching period
+    final back = <Offset>[]; // full dark backing (continuous outline, for contrast)
+    final dash = <Offset>[]; // amber dashes (the marching "on" segments)
+    for (final e in edges) {
+      final p1 = Offset(ox + e[0] * scale, oy + e[1] * scale);
+      final p2 = Offset(ox + e[2] * scale, oy + e[3] * scale);
+      back..add(p1)..add(p2);
+      if (((e[4] + phase) % 4) < 2) dash..add(p1)..add(p2);
+    }
+    canvas.drawPoints(
+        ui.PointMode.lines, back, Paint()..color = Colors.black..strokeWidth = 2.5..isAntiAlias = false);
+    canvas.drawPoints(
+        ui.PointMode.lines, dash, Paint()..color = _amber..strokeWidth = 1.6..isAntiAlias = false);
+  }
+
+  @override
+  bool shouldRepaint(CursorOutlinePainter old) => true; // driven by the animation
+}
+
 /// Draggable endpoint markers for an uncommitted figure (Line/Rect/Ellipse). Drawn in SCREEN
 /// space as a ringed target at each endpoint so it stays a constant on-screen size and frames the
 /// pixel without hiding it.

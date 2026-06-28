@@ -106,10 +106,11 @@ extension _EditorCanvas on _EditorPageState {
               builder: (_, _, _) => Stack(fit: StackFit.expand, children: [
                 CustomPaint(painter: OutlinePainter(_outlineEdges, vScale, vOff, _antCtrl), size: Size.infinite),
                 if (_isCursorTool)
-                  // marching ants around the EXACT pixels the actuate button would draw (the airbrush
-                  // shows its spray disc, an approximation, due to its randomized dabs)
+                  // Amber marching outline around the EXACT pixels the actuate button would draw —
+                  // a distinct visual from the selection's black/white ants (the airbrush shows its
+                  // spray disc, an approximation, due to its randomized dabs).
                   CustomPaint(
-                    painter: OutlinePainter(
+                    painter: CursorOutlinePainter(
                       _footprintEdges(_cursorX, _cursorY, airbrush: _tool == 'Airbrush'),
                       vScale,
                       vOff,
