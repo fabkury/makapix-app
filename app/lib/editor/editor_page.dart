@@ -82,6 +82,7 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
   // coords). Never drawn to the canvas; cleared when switching tools.
   Offset? _rulerA, _rulerB;
   int _rulerDrag = 0; // 0=none, 1=dragging A, 2=dragging B, 3=drawing a new measurement
+  int _canvasW = 0, _canvasH = 0; // last-seen canvas size; a change auto-clears the stale ruler
   bool _radial = false;
   int _intensity = 128;
   int _spacing = 25; // Brush/Airbrush stamp spacing, % of brush size (engine spacing)

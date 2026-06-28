@@ -173,6 +173,16 @@ extension _EditorEngine on _EditorPageState {
     if (!_engineReady) return;
     try {
       _state = json.decode(engine.stateJson()) as Map<String, dynamic>;
+      // The Ruler's endpoints are canvas pixels; if the canvas dimensions changed (New / resize /
+      // crop / open / import / a loaded Club artwork), the line is stale, so clear it.
+      final w = engine.width, h = engine.height;
+      if (_hasRuler && (w != _canvasW || h != _canvasH)) {
+        _rulerA = null;
+        _rulerB = null;
+        _rulerDrag = 0;
+      }
+      _canvasW = w;
+      _canvasH = h;
       final pal = (_state['palette'] as List?)?.cast<String>() ?? [];
       _palette = pal.map(_parseHex).toList();
       final pc = engine.primaryColor;
