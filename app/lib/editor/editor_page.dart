@@ -91,7 +91,9 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // tools. Each map holds a tool's last value; the getters fall back to the defaults.
   final Map<String, int> _sizeByTool = {};
   final Map<String, int> _spacingByTool = {};
-  int get _brushSize => _sizeByTool[_tool] ?? 1;
+  // Default size when the user hasn't chosen one: 8px for the Airbrush (a 1px airbrush is useless),
+  // 1px for everything else.
+  int get _brushSize => _sizeByTool[_tool] ?? (_tool == 'Airbrush' ? 8 : 1);
   set _brushSize(int v) => _sizeByTool[_tool] = v;
   bool _round = true;
   int _threshold = 16;
