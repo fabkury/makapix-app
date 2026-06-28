@@ -89,31 +89,40 @@ extension _EditorCanvas on _EditorPageState {
                 child: CustomPaint(painter: CanvasPainter(img, vScale, vOff), size: Size.infinite),
               ),
             ),
-            CustomPaint(painter: OutlinePainter(_outlineEdges, vScale, vOff, _antCtrl), size: Size.infinite),
-            if (_isCursorTool)
-              // marching ants around the EXACT pixels the actuate button would draw (the airbrush
-              // shows its spray disc, an approximation, due to its randomized dabs)
-              CustomPaint(
-                painter: OutlinePainter(
-                  _footprintEdges(_cursorX, _cursorY, airbrush: _tool == 'Airbrush'),
-                  vScale,
-                  vOff,
-                  _antCtrl,
-                ),
-                size: Size.infinite,
-              ),
-            if (_isShapeTool && _hasShapeDraft)
-              // draggable endpoint handles for the uncommitted figure
-              CustomPaint(
-                painter: HandlePainter([_shapeA!, _shapeB!], vScale, vOff),
-                size: Size.infinite,
-              ),
-            if (_isRuler && _hasRuler)
-              // measurement line + endpoint coords + length (never drawn to the canvas)
-              CustomPaint(
-                painter: RulerPainter(_rulerA!, _rulerB!, vScale, vOff),
-                size: Size.infinite,
-              ),
+            // Overlays repaint off _overlayVN so a freehand stroke can update them without a
+            // full-tree setState (which would rebuild the per-tile-FFI film-roll/layer strips on
+            // every pointer move). vScale/vOff are captured from the enclosing LayoutBuilder and are
+            // stable during a stroke (a pinch goes through setState). [audit F-9]
+            ValueListenableBuilder<int>(
+              valueListenable: _overlayVN,
+              builder: (_, _, _) => Stack(fit: StackFit.expand, children: [
+                CustomPaint(painter: OutlinePainter(_outlineEdges, vScale, vOff, _antCtrl), size: Size.infinite),
+                if (_isCursorTool)
+                  // marching ants around the EXACT pixels the actuate button would draw (the airbrush
+                  // shows its spray disc, an approximation, due to its randomized dabs)
+                  CustomPaint(
+                    painter: OutlinePainter(
+                      _footprintEdges(_cursorX, _cursorY, airbrush: _tool == 'Airbrush'),
+                      vScale,
+                      vOff,
+                      _antCtrl,
+                    ),
+                    size: Size.infinite,
+                  ),
+                if (_isShapeTool && _hasShapeDraft)
+                  // draggable endpoint handles for the uncommitted figure
+                  CustomPaint(
+                    painter: HandlePainter([_shapeA!, _shapeB!], vScale, vOff),
+                    size: Size.infinite,
+                  ),
+                if (_isRuler && _hasRuler)
+                  // measurement line + endpoint coords + length (never drawn to the canvas)
+                  CustomPaint(
+                    painter: RulerPainter(_rulerA!, _rulerB!, vScale, vOff),
+                    size: Size.infinite,
+                  ),
+              ]),
+            ),
           ]),
         ),
       );
@@ -161,7 +170,9 @@ extension _EditorCanvas on _EditorPageState {
       _eraserY = p.dy.toInt();
     }
     _send('PointerDown(${p.dx.toInt()},${p.dy.toInt()})');
-    _redraw();
+    // Overlay-only repaint; the strips refresh on stroke end. Selection tools/Move re-pull the
+    // marquee. [audit F-9/F-11]
+    _redraw(full: false, refetchSelection: _isSelectionTool || _tool == 'Move');
   }
 
   void _continueDraw(Offset pos, Size box) {
@@ -185,7 +196,7 @@ extension _EditorCanvas on _EditorPageState {
         _accX -= mx;
         _accY -= my;
         _moveCursor(mx, my);
-        _redraw();
+        _redraw(full: false, refetchSelection: false); // reticle moves; selection unchanged [F-9]
       }
       return;
     }
@@ -195,7 +206,10 @@ extension _EditorCanvas on _EditorPageState {
       _eraserY = p.dy.toInt();
     }
     _send('PointerMove(${p.dx.toInt()},${p.dy.toInt()})');
-    _redraw();
+    // The hot path: freehand drawing. Repaint the canvas + overlays only — the film-roll and layer
+    // strips (each doing per-tile FFI hashes) must NOT rebuild on every move. Only selection
+    // tools / Move re-pull the marquee; Eraser's footprint is recombined cheaply. [audit F-9/F-11]
+    _redraw(full: false, refetchSelection: _isSelectionTool || _tool == 'Move');
   }
 
   void _endDraw() {

@@ -59,8 +59,16 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
   // The composited canvas image. A ValueNotifier so playback can repaint just the canvas (30fps)
   // without a full-tree setState — that churn made the row-3 drag tiles' taps (e.g. Pause) flaky.
   final ValueNotifier<ui.Image?> _imageVN = ValueNotifier<ui.Image?>(null);
+  // Bumped to repaint ONLY the canvas overlays (selection ants, reticle, handles, ruler) during a
+  // freehand stroke, instead of a full-tree setState that would also rebuild the film-roll and
+  // layer strips (each doing per-tile FFI hash calls) on every pointer move. [audit F-9]
+  final ValueNotifier<int> _overlayVN = ValueNotifier<int>(0);
   late AnimationController _antCtrl; // marching-ants animation phase
   List<List<int>> _outlineEdges = const []; // each: [x1,y1,x2,y2,t] in canvas-corner coords
+  // Cached selection-marquee boundary segments, refreshed only when the selection may have changed
+  // (a selection tool acted) — NOT on every paint move; the live eraser footprint is recombined on
+  // top cheaply each move. [audit F-11]
+  List<List<int>> _selectionEdges = const [];
   String _tool = 'Pencil';
   Color _primary = const Color(0xFF000000);
   List<Color> _palette = [];
@@ -151,6 +159,10 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
   // (whose alpha→selection actions are triggered from row-1, not the canvas).
   bool get _isInertCanvasTool => _isTransformTool || _tool == 'SelectLayer';
 
+  // Freehand selection tools — their drag grows a live marquee preview, so the outline must be
+  // re-pulled on every move (unlike paint tools). Excludes the inert SelectLayer. [audit F-9/F-11]
+  bool get _isSelectionTool => _tool.startsWith('Select') && _tool != 'SelectLayer';
+
   // Off-finger "reticle" mode: dragging moves a cursor (drawn as a screen-space marching-ants
   // overlay) rather than the finger, and an action button effects one operation at a time. This
   // is exactly the active tool being in precision mode.
@@ -220,7 +232,9 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
       t.img.dispose();
     }
     _layerThumbs.clear();
+    _imageVN.value?.dispose(); // release the composited canvas image before the notifier [F-10]
     _imageVN.dispose();
+    _overlayVN.dispose();
     if (_engineReady) engine.dispose();
     super.dispose();
   }

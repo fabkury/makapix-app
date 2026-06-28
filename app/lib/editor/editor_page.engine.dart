@@ -56,6 +56,9 @@ extension _EditorEngine on _EditorPageState {
 
   // Pull the selection (or live drag-preview) mask and turn it into thin boundary segments
   // for the screen-space marching-ants overlay.
+  // Refetch the selection mask (FFI + O(w·h) scan) and cache its boundary segments. Call this only
+  // when the selection may have changed (a selection tool acted, or a discrete action ran) — NOT on
+  // every paint move; the cheap [_rebuildOutlineEdges] handles per-move footprint updates. [F-11]
   void _updateOutline() {
     if (!_engineReady) return;
     final w = engine.width, h = engine.height;
@@ -74,12 +77,20 @@ extension _EditorEngine on _EditorPageState {
         }
       }
     }
-    // While erasing, outline the eraser footprint at its current position so the user sees
-    // exactly which pixels are being erased.
+    _selectionEdges = edges;
+    _rebuildOutlineEdges();
+  }
+
+  // Recompose the overlay edge list from the cached selection marquee plus the live eraser
+  // footprint. Cheap (no FFI, no full-canvas scan): safe to call on every eraser move. [F-11]
+  void _rebuildOutlineEdges() {
     if (_eraserX != null && _eraserY != null) {
-      edges.addAll(_footprintEdges(_eraserX!, _eraserY!, airbrush: false));
+      // While erasing, outline the eraser footprint at its current position so the user sees
+      // exactly which pixels are being erased.
+      _outlineEdges = [..._selectionEdges, ..._footprintEdges(_eraserX!, _eraserY!, airbrush: false)];
+    } else {
+      _outlineEdges = _selectionEdges;
     }
-    _outlineEdges = edges;
   }
 
   // The exact set of canvas pixels a stamp/spray at (ex,ey) would cover with the current Size and
@@ -157,18 +168,38 @@ extension _EditorEngine on _EditorPageState {
     if (err != null) debugPrint('DSL error: $err  <- $dsl');
   }
 
-  Future<void> _redraw() async {
+  // Recomposite the canvas and refresh overlays.
+  //   full            — true: setState (rebuild the whole tree incl. film-roll/layer strips);
+  //                      false: bump _overlayVN only (repaint canvas + overlays, leave the strips).
+  //                      Freehand strokes use false so the per-tile-FFI strips don't rebuild on
+  //                      every pointer move; the strips refresh once on stroke end. [audit F-9]
+  //   refetchSelection — true: re-pull the selection mask (FFI + O(w·h) scan); false: just recombine
+  //                      the cached marquee with the live eraser footprint (cheap). [audit F-11]
+  Future<void> _redraw({bool full = true, bool refetchSelection = true}) async {
     if (!_engineReady) return;
-    _updateOutline();
+    if (refetchSelection) {
+      _updateOutline();
+    } else {
+      _rebuildOutlineEdges();
+    }
     final w = engine.width, h = engine.height;
     final frame = _playing ? engine.playFrame : engine.activeFrame;
     final bytes = _playing
         ? engine.compositeFrame(frame)
         : engine.display(onion: _onion, grid: _grid, checker: true);
     final img = await _decode(bytes, w, h);
-    if (!mounted) return;
+    if (!mounted) {
+      img.dispose(); // we navigated away mid-decode; don't leak the GPU image [audit F-10]
+      return;
+    }
+    final old = _imageVN.value;
     _imageVN.value = img;
-    setState(() {}); // rebuild the overlays (selection outline, reticle, handles, ruler)
+    old?.dispose(); // release the previous composited image (was leaked every redraw) [audit F-10]
+    if (full) {
+      setState(() {}); // rebuild the whole tree (overlays + strips + tool rows)
+    } else {
+      _overlayVN.value++; // repaint just the canvas overlays; leave the strips/rows alone [F-9]
+    }
   }
 
   // Playback frame advance: repaints ONLY the canvas (via the image notifier), with no full-tree
@@ -177,7 +208,13 @@ extension _EditorEngine on _EditorPageState {
     if (!_engineReady || !_playing) return;
     _send('AdvanceClock(33)');
     final img = await _decode(engine.compositeFrame(engine.playFrame), engine.width, engine.height);
-    if (mounted && _playing) _imageVN.value = img;
+    if (mounted && _playing) {
+      final old = _imageVN.value;
+      _imageVN.value = img;
+      old?.dispose(); // [audit F-10] — was orphaning ~30 GPU images/sec during playback
+    } else {
+      img.dispose(); // paused/unmounted during decode: dispose the unused frame [audit F-10]
+    }
   }
 
   void _refreshState() {

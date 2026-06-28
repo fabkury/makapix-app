@@ -2,6 +2,7 @@
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
@@ -237,6 +238,31 @@ class Engine {
   }
 
   void dispose() => _freeS(_s);
+
+  /// Encode `docBytes` (a `.mkpx` snapshot) to GIF/PNG **off the UI thread**: a background isolate
+  /// builds its own engine from the snapshot and runs the (potentially slow, multi-frame) encode,
+  /// so the editor stays responsive. Falls back to a synchronous encode if the isolate can't run —
+  /// worst case it's no slower than before. The opaque session pointer is never shared across
+  /// isolates; each builds its own from the bytes. [audit F-12]
+  static Future<Uint8List> encodeInBackground(Uint8List docBytes, {required bool gif, int frame = 0}) async {
+    try {
+      return await Isolate.run(() => _encodeFromBytes(docBytes, gif: gif, frame: frame));
+    } catch (_) {
+      // FFI/isolate unavailable (not expected on desktop/Android): encode synchronously so export
+      // still works rather than failing outright.
+      return _encodeFromBytes(docBytes, gif: gif, frame: frame);
+    }
+  }
+
+  static Uint8List _encodeFromBytes(Uint8List docBytes, {required bool gif, int frame = 0}) {
+    final e = Engine(8, 8);
+    try {
+      if (!e.load(docBytes)) return Uint8List(0);
+      return gif ? e.exportGif() : e.exportPng(frame);
+    } finally {
+      e.dispose();
+    }
+  }
 }
 
 List<int> utf8Encode(String s) => const Utf8Encoder().convert(s);
