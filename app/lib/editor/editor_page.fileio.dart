@@ -7,17 +7,28 @@ part of 'editor_page.dart';
 // Save/open .mkpx, image import, PNG/GIF export, Post-to-Club, edit/remix intake,
 // and the resize/duration dialogs + colour-picker entry point.
 extension _EditorFileIo on _EditorPageState {
+  // Export a portable .mkpx to a user-chosen location. (This is separate from the automatic library
+  // autosave, which keeps the working drawing safe regardless — see editor_page.persistence.dart.)
   Future<void> _save() async {
-    final path = await FilePicker.saveFile(
-      dialogTitle: 'Save .mkpx',
-      fileName: 'untitled.mkpx',
-      type: FileType.custom,
-      allowedExtensions: ['mkpx'],
-    );
-    if (path == null) return;
     final bytes = engine.save();
-    await File(path).writeAsBytes(bytes);
-    _toast('Saved ${bytes.length ~/ 1024} KiB → ${path.split(RegExp(r"[\\/]")).last}');
+    try {
+      final path = await FilePicker.saveFile(
+        dialogTitle: 'Save .mkpx',
+        fileName: 'untitled.mkpx',
+        type: FileType.custom,
+        allowedExtensions: ['mkpx'],
+        bytes: bytes, // required on Android/iOS — the picker writes the file itself there
+      );
+      if (path == null) return; // the user cancelled
+      // On desktop, saveFile returns a path WITHOUT writing, so write here. On mobile the picker
+      // already wrote the file (and `path` is a content URI that File() can't write to), so skip.
+      if (!Platform.isAndroid && !Platform.isIOS) {
+        await File(path).writeAsBytes(bytes);
+      }
+      if (mounted) _toast('Saved ${bytes.length ~/ 1024} KiB');
+    } catch (e) {
+      if (mounted) _toast('Could not save: $e');
+    }
   }
 
   Future<void> _open() async {
