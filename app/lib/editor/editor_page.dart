@@ -87,7 +87,12 @@ class _EditorPageState extends ConsumerState<EditorPage>
   String _tool = 'Pencil';
   Color _primary = const Color(0xFF000000);
   List<Color> _palette = [];
-  int _brushSize = 1;
+  // "Size" and "Spacing" are remembered PER TOOL (keyed by the active tool), not shared across
+  // tools. Each map holds a tool's last value; the getters fall back to the defaults.
+  final Map<String, int> _sizeByTool = {};
+  final Map<String, int> _spacingByTool = {};
+  int get _brushSize => _sizeByTool[_tool] ?? 1;
+  set _brushSize(int v) => _sizeByTool[_tool] = v;
   bool _round = true;
   int _threshold = 16;
   bool _contiguous = true;
@@ -116,7 +121,8 @@ class _EditorPageState extends ConsumerState<EditorPage>
   int _canvasW = 0, _canvasH = 0; // last-seen canvas size; a change auto-clears the stale ruler
   bool _radial = false;
   int _intensity = 128;
-  int _spacing = 25; // Brush/Airbrush stamp spacing, % of brush size (engine spacing)
+  int get _spacing => _spacingByTool[_tool] ?? 25; // Brush/Airbrush stamp spacing, % of brush size
+  set _spacing(int v) => _spacingByTool[_tool] = v;
   String _selMode = 'Replace';
   int _alphaCutoff = 0; // Sel Lyr: alpha cutoff (0..254); pixels with alpha > this (opaque) are "selected"
   Color _gradA = const Color(0xFF102040);
