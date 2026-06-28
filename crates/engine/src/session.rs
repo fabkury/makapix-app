@@ -283,11 +283,14 @@ impl Session {
             let cutoff = self.settings.alpha_cutoff;
             let overlay = Rgba8::new(0, 229, 255, 120); // semi-transparent cyan
             let layer = self.doc.active_frame().active_layer();
-            let (w, h) = (self.doc.size.w as i32, self.doc.size.h as i32);
-            for y in 0..h {
-                for x in 0..w {
-                    if layer.pixels.get(x, y).a > cutoff {
-                        buf.blend_over(x, y, overlay);
+            // Only pixels with alpha > cutoff (≥0) are tinted, and those are all opaque, so the
+            // opaque bounding box is an exact, much smaller scan window than the full canvas. [F-15]
+            if let Some(bb) = layer.pixels.opaque_bounds() {
+                for y in bb.y..bb.y + bb.h as i32 {
+                    for x in bb.x..bb.x + bb.w as i32 {
+                        if layer.pixels.get(x, y).a > cutoff {
+                            buf.blend_over(x, y, overlay);
+                        }
                     }
                 }
             }
@@ -315,14 +318,27 @@ impl Session {
             // outline using `outline_mask()` below.
             ToolKind::Gradient => {
                 let spec = &self.settings.gradient;
-                for y in 0..h as i32 {
-                    for x in 0..w as i32 {
+                // Sort stops once (not per pixel), and when a selection bounds the fill, scan only
+                // its bounding box instead of the whole canvas. [audit F-14 + F-15]
+                let mut stops = spec.stops.clone();
+                stops.sort_by(|a, b| a.t.total_cmp(&b.t));
+                let (x0, y0, x1, y1) = match self.selection.as_ref().and_then(|m| m.bounds()) {
+                    Some(bb) => (
+                        bb.x.max(0),
+                        bb.y.max(0),
+                        (bb.x + bb.w as i32).min(w as i32),
+                        (bb.y + bb.h as i32).min(h as i32),
+                    ),
+                    None => (0, 0, w as i32, h as i32),
+                };
+                for y in y0..y1 {
+                    for x in x0..x1 {
                         if let Some(m) = &self.selection {
                             if !m.get(x, y) {
                                 continue;
                             }
                         }
-                        buf.set(x, y, tool::gradient_eval(spec.kind, &spec.stops, a, b, x, y));
+                        buf.set(x, y, tool::gradient_eval_sorted(spec.kind, &stops, a, b, x, y));
                     }
                 }
             }

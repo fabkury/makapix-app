@@ -247,13 +247,12 @@ pub fn flood_fill(
     }
 }
 
-/// Sample a gradient's color at parameter `t∈[0,1]` over sorted stops.
-pub fn gradient_color_at(stops: &[Stop], t: f32) -> Rgba8 {
-    if stops.is_empty() {
+/// Sample a gradient's color at `t∈[0,1]` over stops **already sorted** ascending by `t`. The hot
+/// path: callers that fill many pixels sort once and call this per pixel (no per-pixel alloc). [F-14]
+pub fn gradient_color_at_sorted(s: &[Stop], t: f32) -> Rgba8 {
+    if s.is_empty() {
         return Rgba8::TRANSPARENT;
     }
-    let mut s: Vec<Stop> = stops.to_vec();
-    s.sort_by(|a, b| a.t.total_cmp(&b.t)); // total order: never panics, even on a NaN stop [F-1]
     if t <= s[0].t {
         return s[0].color;
     }
@@ -268,6 +267,14 @@ pub fn gradient_color_at(stops: &[Stop], t: f32) -> Rgba8 {
         }
     }
     s[s.len() - 1].color
+}
+
+/// Sample a gradient's color at `t∈[0,1]` over arbitrary-order stops (sorts a copy first). Use the
+/// `_sorted` variant in per-pixel loops. The sort is total-order so it never panics on a NaN. [F-1]
+pub fn gradient_color_at(stops: &[Stop], t: f32) -> Rgba8 {
+    let mut s: Vec<Stop> = stops.to_vec();
+    s.sort_by(|a, b| a.t.total_cmp(&b.t));
+    gradient_color_at_sorted(&s, t)
 }
 
 /// Parameter `t` for a pixel under a linear/radial gradient defined by p0→p1.
@@ -300,6 +307,11 @@ pub fn gradient_eval(kind: GradientKind, stops: &[Stop], p0: Point, p1: Point, x
     gradient_color_at(stops, gradient_t(kind, p0, p1, x, y))
 }
 
+/// Like `gradient_eval` but assumes `stops` are pre-sorted — for per-pixel fill/preview loops. [F-14]
+pub fn gradient_eval_sorted(kind: GradientKind, stops: &[Stop], p0: Point, p1: Point, x: i32, y: i32) -> Rgba8 {
+    gradient_color_at_sorted(stops, gradient_t(kind, p0, p1, x, y))
+}
+
 /// Fill a region with the gradient, clipped to selection (SPEC §11.3).
 pub fn apply_gradient(
     buf: &mut RgbaBuffer,
@@ -311,6 +323,10 @@ pub fn apply_gradient(
 ) {
     let w = buf.width() as i32;
     let h = buf.height() as i32;
+    // Sort the stops ONCE, not once per pixel — `gradient_color_at` used to clone+sort the whole
+    // stop vector for every pixel (65 536× on a 256² fill). [audit F-14]
+    let mut stops = spec.stops.clone();
+    stops.sort_by(|a, b| a.t.total_cmp(&b.t));
     for y in 0..h {
         for x in 0..w {
             if let Some(m) = sel {
@@ -324,7 +340,7 @@ pub fn apply_gradient(
                 let j = (rng.next_f32() - 0.5) * (1.0 / 255.0);
                 t = (t + j).clamp(0.0, 1.0);
             }
-            buf.set(x, y, gradient_color_at(&spec.stops, t));
+            buf.set(x, y, gradient_color_at_sorted(&stops, t));
         }
     }
 }

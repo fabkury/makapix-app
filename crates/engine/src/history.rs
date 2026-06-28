@@ -7,6 +7,7 @@
 use crate::buffer::TilePatch;
 use crate::document::{Document, Frame};
 use crate::geom::Size;
+use std::collections::HashMap;
 
 pub const PER_FRAME_CAP: usize = 128;
 pub const TOTAL_CAP: usize = 8192;
@@ -51,6 +52,9 @@ impl Edit {
 pub struct History {
     pub undo: Vec<Edit>,
     pub redo: Vec<Edit>,
+    /// Per-frame content-edit count within the `undo` stack, kept in sync incrementally so the
+    /// per-frame cap check is O(1) instead of rescanning the whole stack on every push. [audit F-16]
+    counts: HashMap<u32, usize>,
 }
 
 impl History {
@@ -65,20 +69,40 @@ impl History {
         !self.redo.is_empty()
     }
 
-    /// Count of content edits (pixels/frame) belonging to `frame_id` in the undo stack.
+    /// Count of content edits (pixels/frame) belonging to `frame_id` in the undo stack. O(1):
+    /// read from the maintained count map rather than rescanning the whole stack. [audit F-16]
     pub fn frame_depth(&self, frame_id: u32) -> usize {
-        self.undo.iter().filter(|e| e.frame_id() == Some(frame_id)).count()
+        self.counts.get(&frame_id).copied().unwrap_or(0)
+    }
+
+    fn inc(&mut self, edit: &Edit) {
+        if let Some(fid) = edit.frame_id() {
+            *self.counts.entry(fid).or_insert(0) += 1;
+        }
+    }
+
+    fn dec(&mut self, edit: &Edit) {
+        if let Some(fid) = edit.frame_id() {
+            if let Some(c) = self.counts.get_mut(&fid) {
+                *c -= 1;
+                if *c == 0 {
+                    self.counts.remove(&fid);
+                }
+            }
+        }
     }
 
     fn push(&mut self, edit: Edit) {
-        self.redo.clear();
+        self.redo.clear(); // redo edits are not counted (counts tracks only the undo stack)
         let fid = edit.frame_id();
+        self.inc(&edit);
         self.undo.push(edit);
         // Per-frame compaction: drop the oldest content edit for this frame past the cap.
         if let Some(fid) = fid {
-            while self.frame_depth(fid) > PER_FRAME_CAP {
+            while self.counts.get(&fid).copied().unwrap_or(0) > PER_FRAME_CAP {
                 if let Some(pos) = self.undo.iter().position(|e| e.frame_id() == Some(fid)) {
-                    self.undo.remove(pos);
+                    let removed = self.undo.remove(pos);
+                    self.dec(&removed);
                 } else {
                     break;
                 }
@@ -86,7 +110,8 @@ impl History {
         }
         // Global safety cap.
         while self.undo.len() > TOTAL_CAP {
-            self.undo.remove(0);
+            let removed = self.undo.remove(0);
+            self.dec(&removed);
         }
     }
 }
@@ -140,6 +165,7 @@ impl Document {
             Some(e) => e,
             None => return false,
         };
+        self.history.dec(&edit); // edit leaves the undo stack → moves to redo [audit F-16]
         self.apply(&edit, false);
         self.history.redo.push(edit);
         true
@@ -151,6 +177,7 @@ impl Document {
             None => return false,
         };
         self.apply(&edit, true);
+        self.history.inc(&edit); // edit returns to the undo stack [audit F-16]
         self.history.undo.push(edit);
         true
     }

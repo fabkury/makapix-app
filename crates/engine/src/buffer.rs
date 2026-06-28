@@ -76,6 +76,23 @@ impl RgbaBuffer {
         Size::new(self.w as u16, self.h as u16)
     }
 
+    pub fn tiles_x(&self) -> u32 {
+        self.tiles_x
+    }
+    pub fn tiles_y(&self) -> u32 {
+        self.tiles_y
+    }
+
+    /// Whether tile column `tx`, row `ty` is materialized (some pixel was written there). An absent
+    /// tile is fully transparent and contributes nothing, so compositors can skip it wholesale —
+    /// the common pixel-art case where most of a layer is empty. [audit F-13]
+    pub fn tile_present(&self, tx: u32, ty: u32) -> bool {
+        if tx >= self.tiles_x || ty >= self.tiles_y {
+            return false;
+        }
+        self.tiles[(ty * self.tiles_x + tx) as usize].is_some()
+    }
+
     #[inline]
     fn in_bounds(&self, x: i32, y: i32) -> bool {
         x >= 0 && y >= 0 && (x as u32) < self.w && (y as u32) < self.h

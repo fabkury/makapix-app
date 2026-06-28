@@ -2,10 +2,32 @@
 //! visible layers bottom→top with per-layer opacity via alpha-over in sRGB. Any GPU
 //! fast-path in the shell is golden-tested against this.
 
-use crate::buffer::RgbaBuffer;
+use crate::buffer::{RgbaBuffer, TILE};
 use crate::color::{self, Rgba8};
 use crate::document::{Document, Frame};
 use crate::geom::Point;
+
+/// Run `f(x, y)` over every pixel of the present (materialized) tiles of `src`, skipping absent
+/// (fully-transparent) tiles entirely. Each pixel is visited exactly once, so callers that compute
+/// a per-pixel result independent of visit order get identical output to a full row scan — at a
+/// fraction of the cost when most of `src` is empty (the typical pixel-art layer). [audit F-13]
+#[inline]
+fn for_present_pixels(src: &RgbaBuffer, w: u32, h: u32, mut f: impl FnMut(i32, i32)) {
+    for ty in 0..src.tiles_y() {
+        for tx in 0..src.tiles_x() {
+            if !src.tile_present(tx, ty) {
+                continue;
+            }
+            let (x0, y0) = (tx * TILE, ty * TILE);
+            let (x1, y1) = ((x0 + TILE).min(w), (y0 + TILE).min(h));
+            for y in y0..y1 {
+                for x in x0..x1 {
+                    f(x as i32, y as i32);
+                }
+            }
+        }
+    }
+}
 
 /// Flatten the visible layers of `frame` into a single straight-RGBA buffer.
 pub fn composite_frame(frame: &Frame, w: u32, h: u32) -> RgbaBuffer {
@@ -14,16 +36,15 @@ pub fn composite_frame(frame: &Frame, w: u32, h: u32) -> RgbaBuffer {
         if !layer.visible || layer.opacity == 0 {
             continue;
         }
-        for y in 0..h as i32 {
-            for x in 0..w as i32 {
-                let src = layer.pixels.get(x, y);
-                if src.a == 0 {
-                    continue;
-                }
-                let dst = out.get(x, y);
-                out.set(x, y, color::over_opacity(src, dst, layer.opacity));
+        let px = &layer.pixels;
+        for_present_pixels(px, w, h, |x, y| {
+            let src = px.get(x, y);
+            if src.a == 0 {
+                return;
             }
-        }
+            let dst = out.get(x, y);
+            out.set(x, y, color::over_opacity(src, dst, layer.opacity));
+        });
     }
     out
 }
@@ -71,14 +92,12 @@ pub fn render_display(doc: &Document, frame: &Frame, ov: &Overlays) -> RgbaBuffe
     }
 
     let flat = composite_frame(frame, w, h);
-    for y in 0..h as i32 {
-        for x in 0..w as i32 {
-            let c = flat.get(x, y);
-            if c.a != 0 {
-                out.blend_over(x, y, c);
-            }
+    for_present_pixels(&flat, w, h, |x, y| {
+        let c = flat.get(x, y);
+        if c.a != 0 {
+            out.blend_over(x, y, c);
         }
-    }
+    });
 
     if ov.grid && w <= 64 && h <= 64 {
         for y in 0..h as i32 {
@@ -118,13 +137,11 @@ fn draw_reticle(out: &mut RgbaBuffer, c: Point) {
 
 fn blit_onion(out: &mut RgbaBuffer, frame: &Frame, w: u32, h: u32, tint: Rgba8) {
     let flat = composite_frame(frame, w, h);
-    for y in 0..h as i32 {
-        for x in 0..w as i32 {
-            if flat.get(x, y).a != 0 {
-                out.blend_over(x, y, tint);
-            }
+    for_present_pixels(&flat, w, h, |x, y| {
+        if flat.get(x, y).a != 0 {
+            out.blend_over(x, y, tint);
         }
-    }
+    });
 }
 
 #[cfg(test)]
