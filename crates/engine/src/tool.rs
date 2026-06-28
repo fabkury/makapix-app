@@ -35,6 +35,41 @@ pub enum ToolKind {
     HsvShift,
 }
 
+impl ToolKind {
+    /// The stamp paint mode for the solid-footprint tools (Pencil/Brush/Eraser); `None` for tools
+    /// that don't stamp a footprint (Airbrush sprays, Bucket fills, shapes, selection, …). The one
+    /// place the Pencil→Replace / Brush→Over / Eraser→Erase mapping lives. [audit F-20]
+    pub fn paint_mode(self) -> Option<PaintMode> {
+        match self {
+            ToolKind::Pencil => Some(PaintMode::Replace),
+            ToolKind::Brush => Some(PaintMode::Over),
+            ToolKind::Eraser => Some(PaintMode::Erase),
+            _ => None,
+        }
+    }
+
+    /// Whether a completed stroke with this tool writes pixels and must commit one undo record.
+    /// Single source of truth — this was duplicated across two hand-synced lists in `pointer_up`,
+    /// so adding a pixel-writing tool meant remembering to edit both. [audit F-20]
+    pub fn commits_stroke(self) -> bool {
+        matches!(
+            self,
+            ToolKind::Pencil
+                | ToolKind::Brush
+                | ToolKind::Eraser
+                | ToolKind::Airbrush
+                | ToolKind::Bucket
+                | ToolKind::Dodge
+                | ToolKind::Burn
+                | ToolKind::Gradient
+                | ToolKind::Line
+                | ToolKind::Rectangle
+                | ToolKind::Ellipse
+                | ToolKind::Move
+        )
+    }
+}
+
 impl Default for ToolKind {
     fn default() -> Self {
         ToolKind::Pencil

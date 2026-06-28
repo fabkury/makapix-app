@@ -704,16 +704,6 @@ impl Session {
             return;
         }
         let (start, last) = (stroke.start, stroke.last);
-        let is_pixel_tool = matches!(
-            self.tool,
-            ToolKind::Pencil
-                | ToolKind::Brush
-                | ToolKind::Eraser
-                | ToolKind::Airbrush
-                | ToolKind::Bucket
-                | ToolKind::Dodge
-                | ToolKind::Burn
-        );
 
         if self.active_editable() {
             match self.tool {
@@ -795,10 +785,8 @@ impl Session {
             _ => {}
         }
 
-        // Commit pixel changes as one undo record.
-        if is_pixel_tool
-            || matches!(self.tool, ToolKind::Gradient | ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse | ToolKind::Move)
-        {
+        // Commit pixel changes as one undo record (single source of truth). [audit F-20]
+        if self.tool.commits_stroke() {
             self.commit_edit(stroke.before);
         }
     }
@@ -983,12 +971,11 @@ impl Session {
     /// Stamp (mode, color) for the active stamp-style paint tool, or `None` if the active tool
     /// sprays (Airbrush) or doesn't paint through the reticle path at all.
     fn cursor_paint(&self) -> Option<(PaintMode, Rgba8)> {
-        match self.tool {
-            ToolKind::Pencil => Some((PaintMode::Replace, self.settings.primary)),
-            ToolKind::Brush => Some((PaintMode::Over, self.settings.primary)),
-            ToolKind::Eraser => Some((PaintMode::Erase, Rgba8::TRANSPARENT)),
-            _ => None,
-        }
+        // Mode comes from the single ToolKind table; only the color is settings-dependent. [F-20]
+        self.tool.paint_mode().map(|mode| {
+            let color = if matches!(mode, PaintMode::Erase) { Rgba8::TRANSPARENT } else { self.settings.primary };
+            (mode, color)
+        })
     }
 
     pub fn cursor(&self) -> Point {
