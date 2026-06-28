@@ -402,7 +402,6 @@ extension _EditorControls on _EditorPageState {
               child: const Icon(Icons.edit, size: 13, color: Colors.white70),
             ),
           ),
-          IconButton(iconSize: 18, tooltip: 'Add current color', onPressed: () => _act('AddPaletteColor(${_hex(_primary)})'), icon: const Icon(Icons.add_circle_outline)),
           Expanded(
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
@@ -449,6 +448,7 @@ extension _EditorControls on _EditorPageState {
               onTap: () { Navigator.pop(ctx); _act('SetActivePalette($i)'); },
             ),
           const Divider(height: 1),
+          ListTile(leading: const Icon(Icons.add_circle_outline), title: const Text('Add current colour'), onTap: () { Navigator.pop(ctx); _act('AddPaletteColor(${_hex(_primary)})'); }),
           ListTile(leading: const Icon(Icons.add_box_outlined), title: const Text('New palette'), onTap: () { Navigator.pop(ctx); _newPalette(); }),
           ListTile(leading: const Icon(Icons.save_alt), title: const Text('Save palette'), onTap: () { Navigator.pop(ctx); _savePalette(); }),
           ListTile(leading: const Icon(Icons.file_download_outlined), title: const Text('Load palette (.json/.gpl)'), onTap: () { Navigator.pop(ctx); _loadPalette(); }),
