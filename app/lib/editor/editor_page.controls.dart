@@ -224,7 +224,8 @@ extension _EditorControls on _EditorPageState {
     }
     if (_tool == 'SelectLayer') {
       const accent = Color(0xFF00E5FF); // matches the cyan preview overlay
-      // Alpha cutoff: pixels with alpha ≤ threshold are "selected" (0 = only fully transparent).
+      // Alpha cutoff: pixels with alpha > threshold (the opaque pixels) are "selected"
+      // (0 = all non-transparent; raise to keep only more-opaque pixels).
       _labeledSlider(children, 'Threshold', _alphaCutoff.toDouble(), 0, 254, (v) {
         setState(() => _alphaCutoff = v.round());
         _send('SetAlphaCutoff($_alphaCutoff)');

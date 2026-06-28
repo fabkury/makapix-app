@@ -30,7 +30,7 @@ pub enum ToolKind {
     SelectPoly,
     SelectFree,
     SelectByColor,
-    /// Select Layer: turn the active layer's alpha channel into a selection (alpha ≤ cutoff).
+    /// Select Layer: turn the active layer's alpha channel into a selection (alpha > cutoff).
     SelectLayer,
     HsvShift,
 }
@@ -102,8 +102,8 @@ pub struct ToolSettings {
     /// every quarter-diameter). Higher = more separated stamps. 1..=1000.
     pub spacing: u16,
     pub threshold: u8,
-    /// Select-Layer alpha cutoff (0..=254): pixels with alpha ≤ this are "selected". Default 0
-    /// (only fully-transparent pixels).
+    /// Select-Layer alpha cutoff (0..=254): pixels with alpha > this (the opaque/drawn pixels) are
+    /// "selected". Default 0 (all non-transparent pixels).
     pub alpha_cutoff: u8,
     pub contiguous: bool,
     pub gradient: GradientSpec,

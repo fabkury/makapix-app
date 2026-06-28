@@ -264,8 +264,8 @@ impl Session {
 
     fn draw_tool_preview(&self, buf: &mut RgbaBuffer) {
         // Select-Layer: tint exactly the pixels the alpha cutoff would select (active layer's
-        // alpha ≤ cutoff), so the user sees pixel-perfectly what an action will use. Shown whenever
-        // the tool is active — no stroke needed.
+        // alpha > cutoff — the opaque/drawn pixels), so the user sees pixel-perfectly what an
+        // action will use. Shown whenever the tool is active — no stroke needed.
         if self.tool == ToolKind::SelectLayer {
             let cutoff = self.settings.alpha_cutoff;
             let overlay = Rgba8::new(0, 229, 255, 120); // semi-transparent cyan
@@ -273,7 +273,7 @@ impl Session {
             let (w, h) = (self.doc.size.w as i32, self.doc.size.h as i32);
             for y in 0..h {
                 for x in 0..w {
-                    if layer.pixels.get(x, y).a <= cutoff {
+                    if layer.pixels.get(x, y).a > cutoff {
                         buf.blend_over(x, y, overlay);
                     }
                 }
@@ -971,8 +971,9 @@ impl Session {
 
     // ---- selection / clipboard ops ----
 
-    /// Build a selection from the active layer's alpha (pixels with alpha ≤ the alpha cutoff) and
-    /// combine it with the current selection using `mode`. Selection is editor state — not undoable.
+    /// Build a selection from the active layer's alpha (pixels with alpha > the alpha cutoff — the
+    /// opaque/drawn pixels) and combine it with the current selection using `mode`. Selection is
+    /// editor state — not undoable.
     pub fn select_by_alpha(&mut self, mode: CombineMode) {
         let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
         let cutoff = self.settings.alpha_cutoff;
@@ -980,7 +981,7 @@ impl Session {
         let shape = Mask::from_plot(w, h, |plot| {
             for y in 0..h as i32 {
                 for x in 0..w as i32 {
-                    if buf.get(x, y).a <= cutoff {
+                    if buf.get(x, y).a > cutoff {
                         plot(x, y);
                     }
                 }
@@ -2152,25 +2153,25 @@ mod tests {
     }
 
     #[test]
-    fn select_by_alpha_uses_layer_alpha() {
+    fn select_by_alpha_selects_opaque_pixels() {
         let mut s = Session::new(8, 8);
         s.settings.primary = Rgba8::WHITE;
         s.tool = ToolKind::Pencil;
-        s.tap(0, 0); // one opaque pixel; the rest are fully transparent
-        // cutoff 0 → select the transparent pixels (everything except the opaque one)
+        s.tap(0, 0); // one opaque pixel (alpha 255); the rest are fully transparent
+        // cutoff 0 → select all non-transparent pixels (alpha > 0)
         s.settings.alpha_cutoff = 0;
         s.run_script("SelectByAlpha(Replace)").unwrap();
         let sel = s.selection.as_ref().expect("selection set");
-        assert!(!sel.get(0, 0), "the opaque pixel is NOT selected at cutoff 0");
-        assert!(sel.get(3, 3), "a transparent pixel IS selected");
-        // Intersect with a translucent test: raise cutoff to include alpha 128
+        assert!(sel.get(0, 0), "the opaque pixel IS selected at cutoff 0");
+        assert!(!sel.get(3, 3), "a transparent pixel is NOT selected");
+        // A translucent pixel (alpha 128) is selected only while the cutoff is below 128.
         s.settings.primary = Rgba8::new(255, 0, 0, 128);
-        s.tap(1, 1); // a translucent pixel (alpha 128)
+        s.tap(1, 1);
         s.settings.alpha_cutoff = 128;
         s.run_script("SelectByAlpha(Replace)").unwrap();
         let sel = s.selection.as_ref().unwrap();
-        assert!(sel.get(1, 1), "alpha 128 ≤ cutoff 128 → selected");
-        assert!(!sel.get(0, 0), "alpha 255 > cutoff 128 → not selected");
+        assert!(!sel.get(1, 1), "alpha 128 is not > cutoff 128 → not selected");
+        assert!(sel.get(0, 0), "alpha 255 > cutoff 128 → still selected");
     }
 
     #[test]
