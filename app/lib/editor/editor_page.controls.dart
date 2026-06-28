@@ -100,7 +100,8 @@ extension _EditorControls on _EditorPageState {
     if (_tool == 'Move') {
       // With a selection, Move moves the selected pixels; with none, it moves the layer/move-group.
       // The arrow pad nudges whichever (engine decides via NudgeMove); dragging on the canvas does
-      // the same live. Protect-pixels only applies to layer moves, so it's hidden when selecting.
+      // the same live. Off-canvas edge mode: Protect (layer moves only) / Wrap (both layer and
+      // pixel moves) / both off = Regular. Protect and Wrap are mutually exclusive.
       final hasSel = _outlineEdges.isNotEmpty;
       label(hasSel ? 'Move pixels' : 'Move layer');
       children.add(IconButton(iconSize: 20, tooltip: 'Nudge left', onPressed: () => _nudgeMove(-1, 0), icon: const Icon(Icons.chevron_left)));
@@ -109,10 +110,9 @@ extension _EditorControls on _EditorPageState {
         InkWell(onTap: () => _nudgeMove(0, 1), child: const Icon(Icons.keyboard_arrow_down, size: 18)),
       ]));
       children.add(IconButton(iconSize: 20, tooltip: 'Nudge right', onPressed: () => _nudgeMove(1, 0), icon: const Icon(Icons.chevron_right)));
+      children.add(const SizedBox(width: 6));
       if (!hasSel) {
-        // Edge mode for off-canvas pixels (Protect / Wrap / both off = Regular). The two are
-        // mutually exclusive — turning one on turns the other off.
-        children.add(const SizedBox(width: 6));
+        // Protect only applies to layer moves, so it's hidden while moving a selection.
         children.add(Padding(
           padding: const EdgeInsets.symmetric(horizontal: 3),
           child: FilterChip(
@@ -128,22 +128,23 @@ extension _EditorControls on _EditorPageState {
             },
           ),
         ));
-        children.add(Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 3),
-          child: FilterChip(
-            selected: _wrap,
-            label: Text(_wrap ? 'Wrap ✔' : 'Wrap'),
-            selectedColor: const Color(0xFF30A050),
-            onSelected: (v) {
-              setState(() {
-                _wrap = v;
-                if (v) _protectPixels = false;
-              });
-              _send('SetProtectPixels($_protectPixels); SetWrap($_wrap)');
-            },
-          ),
-        ));
       }
+      // Wrap applies to both layer and pixel moves.
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: FilterChip(
+          selected: _wrap,
+          label: Text(_wrap ? 'Wrap ✔' : 'Wrap'),
+          selectedColor: const Color(0xFF30A050),
+          onSelected: (v) {
+            setState(() {
+              _wrap = v;
+              if (v) _protectPixels = false;
+            });
+            _send('SetProtectPixels($_protectPixels); SetWrap($_wrap)');
+          },
+        ),
+      ));
     }
     // Brush footprint SIZE: every tool whose mark is a stamp/spray of `brush_size` — i.e. the
     // pixel/paint tools, the airbrush spray radius, and dodge/burn. The figure tools (Line/Rect/

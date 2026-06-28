@@ -317,7 +317,11 @@ impl Session {
                 if let (Some(float), Some(sel)) = (&stroke.floating, &self.selection) {
                     if let Some(bb) = sel.bounds() {
                         let (dx, dy) = (b.x - a.x, b.y - a.y);
-                        buf.blit_over(float, Point::new(bb.x + dx, bb.y + dy));
+                        if self.settings.wrap {
+                            buf.blit_wrapped(float, bb.x + dx, bb.y + dy);
+                        } else {
+                            buf.blit_over(float, Point::new(bb.x + dx, bb.y + dy));
+                        }
                     }
                 }
             }
@@ -664,6 +668,7 @@ impl Session {
                 ToolKind::Move => {
                     if let (Some(float), Some(sel)) = (stroke.floating, self.selection.clone()) {
                         let (dx, dy) = (last.x - start.x, last.y - start.y);
+                        let wrap = self.settings.wrap;
                         if let Some(bb) = sel.bounds() {
                             let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
                             // erase originals
@@ -674,9 +679,15 @@ impl Session {
                                     }
                                 }
                             }
-                            buf.blit_over(&float, Point::new(bb.x + dx, bb.y + dy));
+                            // Wrap: pixels leaving an edge re-enter the opposite one. Regular: clip.
+                            if wrap {
+                                buf.blit_wrapped(&float, bb.x + dx, bb.y + dy);
+                            } else {
+                                buf.blit_over(&float, Point::new(bb.x + dx, bb.y + dy));
+                            }
                         }
-                        self.selection = Some(sel.translated(dx, dy));
+                        self.selection =
+                            Some(if wrap { sel.translated_wrapped(dx, dy) } else { sel.translated(dx, dy) });
                     }
                 }
                 _ => {}
@@ -1367,6 +1378,7 @@ impl Session {
             Some(b) => b,
             None => return,
         };
+        let wrap = self.settings.wrap;
         let before = self.begin_edit();
         {
             let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
@@ -1379,10 +1391,14 @@ impl Session {
                     }
                 }
             }
-            buf.blit_over(&float, Point::new(bb.x + dx, bb.y + dy));
+            if wrap {
+                buf.blit_wrapped(&float, bb.x + dx, bb.y + dy);
+            } else {
+                buf.blit_over(&float, Point::new(bb.x + dx, bb.y + dy));
+            }
         }
         self.commit_edit(before);
-        self.selection = Some(sel.translated(dx, dy));
+        self.selection = Some(if wrap { sel.translated_wrapped(dx, dy) } else { sel.translated(dx, dy) });
     }
 
     /// Nudge whatever the Move tool would drag: the selected pixels if a selection exists, else the
@@ -2230,6 +2246,29 @@ mod tests {
         assert!(s.doc.undo());
         assert_eq!(s.pixel(0, 0, 1, 1), Rgba8::WHITE);
         assert_eq!(s.pixel(0, 0, 14, 14), Rgba8::TRANSPARENT);
+    }
+
+    #[test]
+    fn wrap_mode_wraps_selected_pixels_and_mask() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tool = ToolKind::Pencil;
+        s.tap(1, 1);
+        // select just that pixel
+        s.tool = ToolKind::SelectRect;
+        s.pointer_down(1, 1);
+        s.pointer_up();
+        // move the selection left-and-up by 3 with wrap → (1,1) → (14,14)
+        s.tool = ToolKind::Move;
+        s.settings.wrap = true;
+        s.pointer_down(8, 8);
+        s.pointer_move(5, 5);
+        s.pointer_up();
+        assert_eq!(s.pixel(0, 0, 14, 14), Rgba8::WHITE, "selected pixel wrapped");
+        assert_eq!(s.pixel(0, 0, 1, 1), Rgba8::TRANSPARENT, "origin cleared");
+        let sel = s.selection.as_ref().expect("selection kept");
+        assert!(sel.get(14, 14), "the selection followed the pixel");
+        assert!(!sel.get(1, 1));
     }
 
     #[test]

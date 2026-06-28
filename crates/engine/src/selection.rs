@@ -158,6 +158,24 @@ impl Mask {
         out
     }
 
+    /// Like [`translated`], but set bits leaving an edge re-enter the opposite edge (toroidal) —
+    /// so a wrapped pixel move's selection follows the pixels.
+    pub fn translated_wrapped(&self, dx: i32, dy: i32) -> Mask {
+        let mut out = Mask::new(self.w, self.h);
+        let (w, h) = (self.w as i32, self.h as i32);
+        if w <= 0 || h <= 0 {
+            return out;
+        }
+        for y in 0..h {
+            for x in 0..w {
+                if self.get(x, y) {
+                    out.set((x + dx).rem_euclid(w), (y + dy).rem_euclid(h), true);
+                }
+            }
+        }
+        out
+    }
+
     // ---- shape constructors (a temporary mask to combine) ----
 
     pub fn from_plot(w: u32, h: u32, f: impl FnOnce(&mut dyn FnMut(i32, i32))) -> Mask {
