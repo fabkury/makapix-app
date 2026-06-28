@@ -56,11 +56,37 @@ class AuthController extends StateNotifier<AuthState> {
   final GithubOAuth oauth;
 
   AuthController({required this.session, required this.api, required this.oauth})
-      : super(const AuthState.loading());
+      : super(const AuthState.loading()) {
+    // A background refresh failure clears tokens but can't drive our state directly; listen for it
+    // so we leave the signed-in UI instead of becoming a zombie session with no token. [audit F-4b]
+    session.onSessionInvalidated = _onSessionInvalidated;
+  }
+
+  void _onSessionInvalidated() {
+    if (mounted && state.status != AuthStatus.signedOut) {
+      state = const AuthState.signedOut();
+    }
+  }
+
+  @override
+  void dispose() {
+    session.onSessionInvalidated = null;
+    super.dispose();
+  }
 
   /// Load persisted tokens; if present, verify by fetching /auth/me.
   Future<void> init() async {
-    await session.load();
+    try {
+      await session.load();
+    } catch (_) {
+      // Secure storage can throw (e.g. an Android Keystore reset). Degrade to signed-out rather
+      // than hanging on the loading spinner forever; drop any corrupt entry. [audit F-5]
+      try {
+        await session.clear();
+      } catch (_) {/* best-effort */}
+      state = const AuthState.signedOut();
+      return;
+    }
     if (!session.isSignedIn) {
       state = const AuthState.signedOut();
       return;

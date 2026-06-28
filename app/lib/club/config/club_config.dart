@@ -9,8 +9,16 @@ class ClubConfig {
   final ClubEnvironment env;
   const ClubConfig(this.env);
 
-  /// Default while the social pillar is under development (staging server).
-  static const ClubConfig defaultConfig = ClubConfig(ClubEnvironment.dev);
+  /// Selected at build time via `--dart-define=CLUB_ENV=prod` (defaults to `dev` for local and
+  /// internal-testing builds) so a release can't silently ship pointing at the dev server. [F-8]
+  static const String _envName = String.fromEnvironment('CLUB_ENV', defaultValue: 'dev');
+  static const ClubConfig defaultConfig =
+      ClubConfig(_envName == 'prod' ? ClubEnvironment.prod : ClubEnvironment.dev);
+
+  /// Network timeouts applied to every Dio client. Without them a stalled connection (captive
+  /// portal, dead server) hangs the request — and the spinner — forever. [audit F-7]
+  static const Duration connectTimeout = Duration(seconds: 15);
+  static const Duration ioTimeout = Duration(seconds: 30);
 
   String get baseUrl => switch (env) {
         ClubEnvironment.dev => 'https://development.makapix.club',

@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../auth/club_session.dart';
+import '../config/club_config.dart';
 import '../models/club_error.dart';
 
 /// Authenticated Dio for all Club endpoints (`/auth/me` now; social endpoints in
@@ -14,6 +15,9 @@ class ClubApiClient {
     dio = Dio(BaseOptions(
       baseUrl: session.config.apiBase,
       contentType: 'application/json',
+      connectTimeout: ClubConfig.connectTimeout, // [audit F-7]
+      receiveTimeout: ClubConfig.ioTimeout,
+      sendTimeout: ClubConfig.ioTimeout,
     ));
     dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) {

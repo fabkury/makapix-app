@@ -21,11 +21,22 @@ class ClubSession {
   ClubSession({required this.config, SecureTokenStore? store, Dio? dio})
       : store = store ?? SecureTokenStore(),
         _dio = dio ??
-            Dio(BaseOptions(baseUrl: config.apiBase, contentType: 'application/json'));
+            Dio(BaseOptions(
+              baseUrl: config.apiBase,
+              contentType: 'application/json',
+              connectTimeout: ClubConfig.connectTimeout, // [audit F-7]
+              receiveTimeout: ClubConfig.ioTimeout,
+              sendTimeout: ClubConfig.ioTimeout,
+            ));
 
   AuthTokens? get tokens => _tokens;
   String? get accessToken => _tokens?.accessToken;
   bool get isSignedIn => _tokens != null;
+
+  /// Invoked when the session is invalidated involuntarily — a background refresh failed and the
+  /// tokens were cleared. The auth controller listens so the UI flips to signed-out instead of
+  /// rendering as signed-in with no token (a "zombie" session). [audit F-4b]
+  void Function()? onSessionInvalidated;
 
   /// Load persisted tokens into memory (call once at startup).
   Future<void> load() async {
@@ -71,6 +82,8 @@ class ClubSession {
       return true;
     } on ClubError {
       await clear();
+      // Tell the auth controller the session died under it (it can't observe `clear()`). [F-4b]
+      onSessionInvalidated?.call();
       return false;
     }
   }
