@@ -11,7 +11,7 @@ class ColorPickerDialog extends StatefulWidget {
 
 class _ColorPickerDialogState extends State<ColorPickerDialog> {
   double h = 0, s = 0, v = 0, a = 255;
-  late final TextEditingController _hexCtrl;
+  late final TextEditingController _hexCtrl, _rCtrl, _gCtrl, _bCtrl, _hCtrl, _sCtrl, _vCtrl;
 
   @override
   void initState() {
@@ -21,12 +21,21 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
     s = c.saturation;
     v = c.value;
     a = widget.initial.alpha.toDouble();
-    _hexCtrl = TextEditingController(text: _hex);
+    _hexCtrl = TextEditingController();
+    _rCtrl = TextEditingController();
+    _gCtrl = TextEditingController();
+    _bCtrl = TextEditingController();
+    _hCtrl = TextEditingController();
+    _sCtrl = TextEditingController();
+    _vCtrl = TextEditingController();
+    _syncFromColor();
   }
 
   @override
   void dispose() {
-    _hexCtrl.dispose();
+    for (final c in [_hexCtrl, _rCtrl, _gCtrl, _bCtrl, _hCtrl, _sCtrl, _vCtrl]) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -39,7 +48,69 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
     return (a.round() < 255 ? '$base${two(a.round())}' : base).toUpperCase();
   }
 
-  void _syncHex() => _hexCtrl.text = _hex;
+  // Push the current colour into every text field. `skipRgb`/`skipHsv` leave the group the user is
+  // actively typing in untouched, so the caret doesn't jump while editing it.
+  void _syncFromColor({bool skipRgb = false, bool skipHsv = false}) {
+    _hexCtrl.text = _hex;
+    if (!skipRgb) {
+      final c = _color;
+      _rCtrl.text = (c.r * 255).round().toString();
+      _gCtrl.text = (c.g * 255).round().toString();
+      _bCtrl.text = (c.b * 255).round().toString();
+    }
+    if (!skipHsv) {
+      _hCtrl.text = h.round().toString();
+      _sCtrl.text = (s * 100).round().toString();
+      _vCtrl.text = (v * 100).round().toString();
+    }
+  }
+
+  // Apply the R/G/B fields (0–255 each) as the colour. A blank/invalid field keeps its channel.
+  void _applyRgb() {
+    final cur = _color;
+    int chan(TextEditingController ctrl, double curChannel) =>
+        (int.tryParse(ctrl.text.trim()) ?? (curChannel * 255).round()).clamp(0, 255).toInt();
+    final hsv = HSVColor.fromColor(
+        Color.fromARGB(255, chan(_rCtrl, cur.r), chan(_gCtrl, cur.g), chan(_bCtrl, cur.b)));
+    setState(() {
+      h = hsv.hue;
+      s = hsv.saturation;
+      v = hsv.value;
+    });
+    _syncFromColor(skipRgb: true);
+  }
+
+  // Apply the H (0–360) / S (0–100) / V (0–100) fields as the colour.
+  void _applyHsv() {
+    final hh = double.tryParse(_hCtrl.text.trim());
+    final ss = double.tryParse(_sCtrl.text.trim());
+    final vv = double.tryParse(_vCtrl.text.trim());
+    setState(() {
+      if (hh != null) h = hh.clamp(0.0, 360.0).toDouble();
+      if (ss != null) s = (ss / 100).clamp(0.0, 1.0).toDouble();
+      if (vv != null) v = (vv / 100).clamp(0.0, 1.0).toDouble();
+    });
+    _syncFromColor(skipHsv: true);
+  }
+
+  // A compact integer field for the RGB / HSV rows.
+  Widget _numField(String label, TextEditingController ctrl, void Function() apply) => Expanded(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          child: TextField(
+            controller: ctrl,
+            keyboardType: TextInputType.number,
+            textAlign: TextAlign.center,
+            decoration: InputDecoration(
+              labelText: label,
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+              border: const OutlineInputBorder(),
+            ),
+            onChanged: (_) => apply(),
+          ),
+        ),
+      );
 
   // Live update from a drag/tap on the saturation×value square.
   void _onSv(Offset local, Size size) {
@@ -47,13 +118,13 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
       s = (local.dx / size.width).clamp(0.0, 1.0);
       v = 1 - (local.dy / size.height).clamp(0.0, 1.0);
     });
-    _syncHex();
+    _syncFromColor();
   }
 
   // Live update from a drag/tap on the hue ramp.
   void _onHue(Offset local, double height) {
     setState(() => h = (local.dy / height * 360).clamp(0.0, 359.999));
-    _syncHex();
+    _syncFromColor();
   }
 
   void _applyHex(String text) {
@@ -72,7 +143,7 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
         });
       }
     }
-    _syncHex();
+    _syncFromColor();
   }
 
   @override
@@ -121,7 +192,7 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
                 max: 255,
                 onChanged: (x) {
                   setState(() => a = x);
-                  _syncHex();
+                  _syncFromColor();
                 },
               ),
             ),
@@ -138,6 +209,21 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
                 onSubmitted: _applyHex,
               ),
             ),
+          ]),
+          const SizedBox(height: 8),
+          // Type RGB (0–255) or HSV (H 0–360, S/V 0–100) directly; updates the colour live.
+          Row(children: [
+            const SizedBox(width: 30, child: Text('RGB', style: TextStyle(fontSize: 12, color: Colors.white60))),
+            _numField('R', _rCtrl, _applyRgb),
+            _numField('G', _gCtrl, _applyRgb),
+            _numField('B', _bCtrl, _applyRgb),
+          ]),
+          const SizedBox(height: 8),
+          Row(children: [
+            const SizedBox(width: 30, child: Text('HSV', style: TextStyle(fontSize: 12, color: Colors.white60))),
+            _numField('H', _hCtrl, _applyHsv),
+            _numField('S', _sCtrl, _applyHsv),
+            _numField('V', _vCtrl, _applyHsv),
           ]),
         ]),
       ),
