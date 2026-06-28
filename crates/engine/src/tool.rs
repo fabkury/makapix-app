@@ -110,8 +110,11 @@ pub struct ToolSettings {
     pub hsv: (f32, f32, f32),
     pub shape_fill: bool,
     pub line_width: u16,
-    /// When true, the Move-Layer tool refuses to push any opaque pixel off-canvas (non-destructive).
+    /// When true, a layer Move refuses to push any opaque pixel off-canvas (non-destructive).
     pub protect_pixels: bool,
+    /// When true, a layer Move wraps pixels around the canvas edges (top↔bottom, left↔right)
+    /// instead of clipping them off. Mutually exclusive with `protect_pixels` (enforced by the UI).
+    pub wrap: bool,
 }
 impl Default for ToolSettings {
     fn default() -> Self {
@@ -130,6 +133,7 @@ impl Default for ToolSettings {
             shape_fill: true,
             line_width: 1,
             protect_pixels: false,
+            wrap: false,
         }
     }
 }

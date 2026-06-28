@@ -561,6 +561,7 @@ impl Session {
                 None => return,
             };
             let (mut dx, mut dy) = (p.x - start.x, p.y - start.y);
+            let wrap = self.settings.wrap;
             // Protect pixels: clamp the offset so opaque content never leaves the canvas — the
             // layer simply stops at the edge instead of being shown in an illegal position.
             if self.settings.protect_pixels {
@@ -577,7 +578,12 @@ impl Session {
                     let snap = &self.move_layers[idx].1;
                     let buf = &mut self.doc.frames[fi].layers[li].pixels;
                     buf.clear();
-                    buf.blit_over(snap, Point::new(dx, dy));
+                    // Wrap: pixels leaving one edge re-enter the opposite one. Regular: clip them.
+                    if wrap {
+                        buf.blit_wrapped(snap, dx, dy);
+                    } else {
+                        buf.blit_over(snap, Point::new(dx, dy));
+                    }
                 }
             }
             if let Some(s) = self.stroke.as_mut() {
@@ -1326,16 +1332,21 @@ impl Session {
         if dx == 0 && dy == 0 {
             return;
         }
+        let wrap = self.settings.wrap;
         self.edit_frame(|s| {
             for &li in &layers {
                 let src = s.doc.active_frame().layers[li].pixels.clone();
                 let buf = &mut s.doc.active_frame_mut().layers[li].pixels;
                 buf.clear();
-                for y in 0..src.height() as i32 {
-                    for x in 0..src.width() as i32 {
-                        let c = src.get(x, y);
-                        if c.a != 0 {
-                            buf.set(x + dx, y + dy, c);
+                if wrap {
+                    buf.blit_wrapped(&src, dx, dy);
+                } else {
+                    for y in 0..src.height() as i32 {
+                        for x in 0..src.width() as i32 {
+                            let c = src.get(x, y);
+                            if c.a != 0 {
+                                buf.set(x + dx, y + dy, c);
+                            }
                         }
                     }
                 }
@@ -2199,6 +2210,26 @@ mod tests {
         assert_eq!(s.pixel(0, 0, 6, 5), Rgba8::WHITE); // selected pixel moved
         assert_eq!(s.pixel(0, 0, 5, 5), Rgba8::TRANSPARENT); // its origin cleared
         assert_eq!(s.pixel(0, 0, 11, 11), Rgba8::WHITE); // the other pixel stayed
+    }
+
+    #[test]
+    fn wrap_mode_wraps_layer_pixels_around_edges() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(1, 1); // opaque pixel near the top-left
+        s.tool = ToolKind::Move; // no selection → layer move
+        s.set_active_layer(0);
+        s.settings.wrap = true;
+        // drag left-and-up by 3 → (1,1) would go to (-2,-2); with wrap it lands at (14,14)
+        s.pointer_down(8, 8);
+        s.pointer_move(5, 5);
+        s.pointer_up();
+        assert_eq!(s.pixel(0, 0, 14, 14), Rgba8::WHITE, "pixel wrapped to the far corner");
+        assert_eq!(s.pixel(0, 0, 1, 1), Rgba8::TRANSPARENT, "origin cleared");
+        // nothing was lost: undo restores the original
+        assert!(s.doc.undo());
+        assert_eq!(s.pixel(0, 0, 1, 1), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 0, 14, 14), Rgba8::TRANSPARENT);
     }
 
     #[test]

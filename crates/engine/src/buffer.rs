@@ -319,6 +319,24 @@ impl RgbaBuffer {
         }
     }
 
+    /// Blit `src` shifted by (dx,dy) with toroidal wrap-around: a source pixel at (x,y) lands at
+    /// ((x+dx) mod w, (y+dy) mod h), so nothing falls off the canvas (the Move tool's Wrap mode).
+    /// Only non-transparent source pixels are written, so clear `self` first.
+    pub fn blit_wrapped(&mut self, src: &RgbaBuffer, dx: i32, dy: i32) {
+        let (w, h) = (self.w as i32, self.h as i32);
+        if w <= 0 || h <= 0 {
+            return;
+        }
+        for j in 0..src.h as i32 {
+            for i in 0..src.w as i32 {
+                let c = src.get(i, j);
+                if c.a != 0 {
+                    self.set((i + dx).rem_euclid(w), (j + dy).rem_euclid(h), c);
+                }
+            }
+        }
+    }
+
     // ---- sparse tile serialization (for .mkpx; SPEC §17) ----
 
     pub fn num_tiles(&self) -> usize {
