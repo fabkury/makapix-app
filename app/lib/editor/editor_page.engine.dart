@@ -229,7 +229,7 @@ extension _EditorEngine on _EditorPageState {
     _send('SetThreshold($_threshold); SetContiguous($_contiguous); SetAlphaCutoff($_alphaCutoff)');
     _send('SetIntensity($_intensity); SetShapeFill($_shapeFill); SetLineWidth($_lineWidth)');
     _send('SetSpacing($_spacing)');
-    _send('SetSelectionMode($_selMode); SetProtectPixels($_protectPixels)');
+    _send('SetSelectionMode($_selMode); SetProtectPixels($_protectPixels); SetWrap($_wrap)');
     if (t == 'Gradient') {
       _send('SetGradientType(${_radial ? 'Radial' : 'Linear'})');
       _send('SetGradientStops([${_hex(_gradA)}@0, ${_hex(_gradB)}@1])');

@@ -91,7 +91,9 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
   Color _gradA = const Color(0xFF102040);
   Color _gradB = const Color(0xFFFFFFFF);
   double _hsvH = 60, _hsvS = 0, _hsvV = 0;
-  bool _protectPixels = false; // Move-Layer: keep opaque pixels on-canvas (non-destructive)
+  // Move tool layer-move edge modes (mutually exclusive; both off = Regular = pixels clip off):
+  bool _protectPixels = false; // keep opaque pixels on-canvas (non-destructive)
+  bool _wrap = false; // pixels leaving one edge re-enter the opposite edge
   bool _onion = false;
   bool _grid = false;
   bool _playing = false;

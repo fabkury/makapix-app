@@ -110,6 +110,8 @@ extension _EditorControls on _EditorPageState {
       ]));
       children.add(IconButton(iconSize: 20, tooltip: 'Nudge right', onPressed: () => _nudgeMove(1, 0), icon: const Icon(Icons.chevron_right)));
       if (!hasSel) {
+        // Edge mode for off-canvas pixels (Protect / Wrap / both off = Regular). The two are
+        // mutually exclusive — turning one on turns the other off.
         children.add(const SizedBox(width: 6));
         children.add(Padding(
           padding: const EdgeInsets.symmetric(horizontal: 3),
@@ -118,8 +120,26 @@ extension _EditorControls on _EditorPageState {
             label: Text(_protectPixels ? 'Protect ✔' : 'Protect pixels'),
             selectedColor: const Color(0xFF30A050),
             onSelected: (v) {
-              setState(() => _protectPixels = v);
-              _send('SetProtectPixels($v)');
+              setState(() {
+                _protectPixels = v;
+                if (v) _wrap = false;
+              });
+              _send('SetProtectPixels($_protectPixels); SetWrap($_wrap)');
+            },
+          ),
+        ));
+        children.add(Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          child: FilterChip(
+            selected: _wrap,
+            label: Text(_wrap ? 'Wrap ✔' : 'Wrap'),
+            selectedColor: const Color(0xFF30A050),
+            onSelected: (v) {
+              setState(() {
+                _wrap = v;
+                if (v) _protectPixels = false;
+              });
+              _send('SetProtectPixels($_protectPixels); SetWrap($_wrap)');
             },
           ),
         ));

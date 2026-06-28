@@ -63,7 +63,7 @@ const toolTips = <String, String>{
   'Dodge': 'Drag over pixels to lighten them. Set intensity.',
   'Burn': 'Drag over pixels to darken them. Set intensity.',
   'Eyedropper': 'Tap a pixel to pick its colour as primary.',
-  'Move': 'Drag to move: the selected pixels if there\'s a selection, otherwise the whole layer (or move-group). Arrows nudge 1px; group layers via a layer\'s long-press menu.',
+  'Move': 'Drag to move: the selected pixels if there\'s a selection, otherwise the whole layer (or move-group). Arrows nudge 1px. For layer moves: Protect keeps pixels on-canvas, Wrap wraps them around the edges, both off loses off-canvas pixels.',
   'SelectRect': 'Drag to select a rectangle. Use Add/Subtract/Intersect modes.',
   'SelectEllipse': 'Drag to select an ellipse. Combine with Add/Subtract modes.',
   'SelectCircle': 'Drag from centre outward to select a circle.',
