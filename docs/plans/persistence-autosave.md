@@ -161,7 +161,7 @@ is unconditional.
 - [x] Add deps: `path_provider`, `path`.
 - [x] `drawing_meta.dart` (+ test).
 - [x] `drawing_store.dart` with injected base dir + atomic write (+ tests).
-- [ ] `autosave_controller.dart` (+ tests).
+- [x] `autosave_controller.dart` (+ tests).
 - [ ] `editor_page.persistence.dart`: current-drawing load/save, lifecycle, dispose, activity.
 - [ ] Wire `_send`/pointer activity; rework New / Open / Club-edit / Import to switch drawings.
 - [ ] Remove `EditorSession.docSnapshot`; route pillar-switch restore through the store.
@@ -206,3 +206,7 @@ Refinements found re-reading the draft critically; folded into the design above:
 - **2026-06-28** — Chunk 1: deps (`path_provider`, `path`), `DrawingMeta`, `DrawingStore` (atomic
   tmp→bak→promote write, `.bak` recovery, list/create/delete/rename, thumb/meta). 13 unit tests
   green (`test/persistence_test.dart`).
+- **2026-06-28** — Chunk 2: `AutosaveController` — 5 s periodic + activity-gated FNV-1a change
+  detection, coalescing single-flight writer, `flushNow()` (sync-serialize then async-write for
+  background/leave), throttled thumbnails, non-fatal error reporting. 6 unit tests green
+  (`test/autosave_controller_test.dart`).
