@@ -839,8 +839,11 @@ impl Session {
     /// Set/replace the pending figure draft's endpoints (canvas pixels, clamped to the canvas).
     /// Creates a draft if none is pending.
     pub fn shape_set(&mut self, ax: i32, ay: i32, bx: i32, by: i32) {
-        let a = self.clamp_cursor(Point::new(ax, ay));
-        let b = self.clamp_cursor(Point::new(bx, by));
+        // Endpoints may sit OFF the canvas (so a shape/gradient can extend past an edge and be
+        // cropped, not capped). `clamp_pointer` allows one canvas-span of margin — enough to drag an
+        // end outside — while bounding rasterization work. The raster itself clips to the canvas.
+        let a = self.clamp_pointer(Point::new(ax, ay));
+        let b = self.clamp_pointer(Point::new(bx, by));
         self.shape_draft = Some((a, b));
     }
 
@@ -2062,6 +2065,23 @@ mod tests {
         for x in 0..16 {
             assert_eq!(s.pixel(0, 0, x, 0), Rgba8::WHITE, "x={}", x);
         }
+    }
+
+    #[test]
+    fn shape_draft_endpoints_may_leave_canvas_and_crop() {
+        let mut s = Session::new(8, 8);
+        s.settings.primary = Rgba8::rgb(0, 200, 0);
+        s.settings.shape_fill = true;
+        s.tool = ToolKind::Rectangle;
+        // A filled rect from (2,2) running off the right/bottom edges.
+        s.shape_set(2, 2, 20, 20);
+        let (_, b) = s.shape_draft().unwrap();
+        assert!(b.x > 7 && b.y > 7, "endpoint is kept off-canvas (not capped to the edge): {b:?}");
+        s.shape_commit();
+        // The on-canvas portion fills; the rest is cropped (no panic, no out-of-bounds writes).
+        assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::rgb(0, 200, 0));
+        assert_eq!(s.pixel(0, 0, 7, 7), Rgba8::rgb(0, 200, 0));
+        assert_eq!(s.pixel(0, 0, 1, 1), Rgba8::TRANSPARENT); // left of the rect's a=2
     }
 
     #[test]

@@ -353,19 +353,27 @@ extension _EditorCanvas on _EditorPageState {
     setState(() {});
   }
 
+  // Endpoints may leave the canvas (so a shape/gradient extends past an edge and is cropped, not
+  // capped) but are bounded to one canvas-span of margin so the handle matches the engine-stored
+  // endpoint (clamp_pointer) and rasterization stays cheap.
+  Offset _clampGenerous(Offset p) => Offset(
+        p.dx.clamp(-engine.width.toDouble(), 2.0 * engine.width),
+        p.dy.clamp(-engine.height.toDouble(), 2.0 * engine.height),
+      );
+
   // Constrain `moving` so that |moving - anchor| keeps the locked width:height ratio (Rect/Ellipse
-  // only). The box is sized to reach the finger in whichever axis is more extended. Clamped to the
-  // canvas so the handles match the engine-clamped preview.
+  // only). The box is sized to reach the finger in whichever axis is more extended. Bounded to the
+  // generous off-canvas margin so the handles match the engine preview.
   Offset _ratioed(Offset anchor, Offset moving) {
-    if (!_lockRatio || (_tool != 'Rectangle' && _tool != 'Ellipse')) return moving;
+    if (!_lockRatio || (_tool != 'Rectangle' && _tool != 'Ellipse')) return _clampGenerous(moving);
     final r = _ratio <= 0 ? 1.0 : _ratio;
     final dw = moving.dx - anchor.dx;
     final dh = moving.dy - anchor.dy;
     final h = (dh.abs() > dw.abs() / r) ? dh.abs() : dw.abs() / r;
     final w = h * r;
-    final bx = (anchor.dx + (dw < 0 ? -w : w)).roundToDouble().clamp(0, engine.width - 1).toDouble();
-    final by = (anchor.dy + (dh < 0 ? -h : h)).roundToDouble().clamp(0, engine.height - 1).toDouble();
-    return Offset(bx, by);
+    final bx = (anchor.dx + (dw < 0 ? -w : w)).roundToDouble();
+    final by = (anchor.dy + (dh < 0 ? -h : h)).roundToDouble();
+    return _clampGenerous(Offset(bx, by));
   }
 
   // Re-snap the pending draft to the current ratio (called when Lock Ratio or the ratio changes).
