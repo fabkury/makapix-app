@@ -320,7 +320,6 @@ extension _EditorControls on _EditorPageState {
       children.add(_miniBtn('All', () => _act('SelectAll()')));
       children.add(_miniBtn('None', () => _act('SelectNone()')));
       children.add(_miniBtn('Invert', () => _act('InvertSelection()')));
-      children.add(_miniBtn('Fill', () => _act('FillSelection()')));
       children.add(_miniBtn('Clear', () => _act('ClearSelection()')));
       children.add(_miniBtn('Copy', () => _act('Copy()')));
       children.add(_miniBtn('Cut', () => _act('Cut()')));
