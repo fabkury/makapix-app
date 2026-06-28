@@ -68,6 +68,7 @@ pub enum Action {
     CursorPenUp,
     PlotCursor,
     AirbrushCursor,
+    EyedropCursor,
     SelectAll,
     SelectNone,
     InvertSelection,
@@ -183,6 +184,7 @@ impl Session {
             CursorPenUp => self.cursor_pen_up(),
             PlotCursor => self.plot_cursor(),
             AirbrushCursor => self.airbrush_cursor(),
+            EyedropCursor => self.eyedrop_cursor(),
             SelectAll => self.select_all(),
             SelectNone => self.select_none(),
             InvertSelection => self.invert_selection(),
@@ -454,6 +456,7 @@ fn parse_line(line: &str) -> Result<Action, String> {
         "CursorPenUp" => CursorPenUp,
         "PlotCursor" => PlotCursor,
         "AirbrushCursor" => AirbrushCursor,
+        "EyedropCursor" => EyedropCursor,
         "Stroke" => {
             // Accept "[(x,y),(x,y),...]" or "x,y,x,y" — extract all integers robustly.
             let nums = extract_ints(inner);

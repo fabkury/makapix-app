@@ -1120,6 +1120,15 @@ impl Session {
         self.commit_edit(before);
     }
 
+    /// Pick the colour under the reticle (off-finger eyedropper, Pick button) and set it as the
+    /// primary colour. No-op on a transparent pixel (mirrors the pointer eyedropper). Not an edit.
+    pub fn eyedrop_cursor(&mut self) {
+        let c = render::composite_active(&self.doc).get(self.cursor.x, self.cursor.y);
+        if c.a != 0 {
+            self.settings.primary = c;
+        }
+    }
+
     // ---- selection / clipboard ops ----
 
     /// Build a selection from the active layer's alpha (pixels with alpha > the alpha cutoff — the
@@ -1999,6 +2008,23 @@ mod tests {
         assert!(after.r > before.r, "dodge lightened the pixel ({} -> {})", before.r, after.r);
         assert!(s.doc.undo()); // one undo step
         assert_eq!(s.pixel(0, 0, 3, 3), before);
+    }
+
+    #[test]
+    fn precision_eyedropper_picks_at_reticle() {
+        let mut s = Session::new(8, 8);
+        s.settings.primary = Rgba8::rgb(0, 200, 0);
+        s.tool = ToolKind::Pencil;
+        s.tap(5, 5); // a green pixel to sample
+        s.settings.primary = Rgba8::rgb(10, 10, 10);
+        s.tool = ToolKind::Eyedropper;
+        s.set_cursor(5, 5);
+        s.eyedrop_cursor();
+        assert_eq!(s.settings.primary, Rgba8::rgb(0, 200, 0));
+        // a transparent pixel is a no-op (keeps the current primary)
+        s.set_cursor(0, 0);
+        s.eyedrop_cursor();
+        assert_eq!(s.settings.primary, Rgba8::rgb(0, 200, 0));
     }
 
     #[test]

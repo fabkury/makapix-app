@@ -105,6 +105,10 @@ extension _EditorEngine on _EditorPageState {
       if (x < 0 || y < 0 || x >= w || y >= h) return;
       covered.add(y * w + x);
     }
+    if (_tool == 'Eyedropper') {
+      add(ex, ey); // samples exactly the reticle pixel (ignores brush size)
+      return covered;
+    }
     if (airbrush) {
       final r = size; // engine airbrush_dab sprays within radius == size
       for (var dy = -r; dy <= r; dy++) {

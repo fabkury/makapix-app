@@ -81,44 +81,58 @@ extension _EditorControls on _EditorPageState {
       ]));
       children.add(IconButton(iconSize: 20, tooltip: 'Nudge right', onPressed: () => _nudgeCursor(1, 0), icon: const Icon(Icons.chevron_right)));
       children.add(const SizedBox(width: 4));
-      if (_tool == 'Airbrush') {
-        // SPRAY (one airbrush dab at the reticle, off-finger)
+      if (_tool == 'Eyedropper') {
+        // PICK (one-time colour pick at the reticle, off-finger). The eyedropper has no continuous
+        // "Pen" mode — picking is a single operation.
         children.add(Padding(
           padding: const EdgeInsets.symmetric(horizontal: 3),
           child: ElevatedButton.icon(
             style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
-            onPressed: () { _send('AirbrushCursor()'); _refreshState(); _redraw(); setState(() {}); },
-            icon: const Icon(Icons.blur_on, size: 16),
-            label: const Text('Spray'),
+            onPressed: () { _send('EyedropCursor()'); _refreshState(); _redraw(); setState(() {}); },
+            icon: const Icon(Icons.colorize, size: 16),
+            label: const Text('Pick'),
           ),
         ));
       } else {
-        // DRAW (single stamp at the reticle)
+        if (_tool == 'Airbrush') {
+          // SPRAY (one airbrush dab at the reticle, off-finger)
+          children.add(Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 3),
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
+              onPressed: () { _send('AirbrushCursor()'); _refreshState(); _redraw(); setState(() {}); },
+              icon: const Icon(Icons.blur_on, size: 16),
+              label: const Text('Spray'),
+            ),
+          ));
+        } else {
+          // DRAW (single stamp at the reticle)
+          children.add(Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 3),
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
+              onPressed: () { _send('PlotCursor()'); _refreshState(); _redraw(); setState(() {}); },
+              icon: const Icon(Icons.brush, size: 16),
+              label: const Text('Draw'),
+            ),
+          ));
+        }
+        // PEN toggle (continuous stroke/spray while dragging the reticle)
         children.add(Padding(
           padding: const EdgeInsets.symmetric(horizontal: 3),
-          child: ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
-            onPressed: () { _send('PlotCursor()'); _refreshState(); _redraw(); setState(() {}); },
-            icon: const Icon(Icons.brush, size: 16),
-            label: const Text('Draw'),
+          child: FilterChip(
+            selected: _penDown,
+            label: Text(_penDown ? 'Pen ✔' : 'Pen'),
+            selectedColor: const Color(0xFF30A050),
+            onSelected: (v) {
+              setState(() => _penDown = v);
+              _send(v ? 'CursorPenDown()' : 'CursorPenUp()');
+              _refreshState();
+              _redraw();
+            },
           ),
         ));
       }
-      // PEN toggle (continuous stroke/spray while dragging the reticle)
-      children.add(Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: FilterChip(
-          selected: _penDown,
-          label: Text(_penDown ? 'Pen ✔' : 'Pen'),
-          selectedColor: const Color(0xFF30A050),
-          onSelected: (v) {
-            setState(() => _penDown = v);
-            _send(v ? 'CursorPenDown()' : 'CursorPenUp()');
-            _refreshState();
-            _redraw();
-          },
-        ),
-      ));
     }
     if (_tool == 'Move') {
       // With a selection, Move moves the selected pixels; with none, it moves the layer/move-group.
