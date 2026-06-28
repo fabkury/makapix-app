@@ -166,7 +166,18 @@ extension _EditorEngine on _EditorPageState {
         ? engine.compositeFrame(frame)
         : engine.display(onion: _onion, grid: _grid, checker: true);
     final img = await _decode(bytes, w, h);
-    if (mounted) setState(() => _image = img);
+    if (!mounted) return;
+    _imageVN.value = img;
+    setState(() {}); // rebuild the overlays (selection outline, reticle, handles, ruler)
+  }
+
+  // Playback frame advance: repaints ONLY the canvas (via the image notifier), with no full-tree
+  // setState — so the row-3 tiles stay stable and tappable (e.g. to Pause) during playback.
+  Future<void> _advancePlayFrame() async {
+    if (!_engineReady || !_playing) return;
+    _send('AdvanceClock(33)');
+    final img = await _decode(engine.compositeFrame(engine.playFrame), engine.width, engine.height);
+    if (mounted && _playing) _imageVN.value = img;
   }
 
   void _refreshState() {
@@ -210,6 +221,7 @@ extension _EditorEngine on _EditorPageState {
   }
 
   void _selectTool(String t) {
+    if (_playing) _pause(); // selecting another tool stops the animation preview
     if (_penDown) {
       _send('CursorPenUp()');
       _penDown = false;
@@ -375,10 +387,7 @@ extension _EditorEngine on _EditorPageState {
     setState(() => _playing = true);
     _send('Play()');
     _playTimer?.cancel();
-    _playTimer = Timer.periodic(const Duration(milliseconds: 33), (_) {
-      _send('AdvanceClock(33)');
-      _redraw();
-    });
+    _playTimer = Timer.periodic(const Duration(milliseconds: 33), (_) => _advancePlayFrame());
   }
 
   void _pause() {

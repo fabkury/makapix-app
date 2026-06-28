@@ -81,7 +81,14 @@ extension _EditorCanvas on _EditorPageState {
           onPointerUp: (e) => _endTouch(e.pointer, cancel: false),
           onPointerCancel: (e) => _endTouch(e.pointer, cancel: true),
           child: Stack(fit: StackFit.expand, children: [
-            CustomPaint(painter: CanvasPainter(_image, vScale, vOff), size: Size.infinite),
+            // The image repaints from the notifier (so playback updates it without rebuilding the
+            // rest of the tree); a RepaintBoundary keeps that repaint isolated to the canvas.
+            ValueListenableBuilder<ui.Image?>(
+              valueListenable: _imageVN,
+              builder: (_, img, _) => RepaintBoundary(
+                child: CustomPaint(painter: CanvasPainter(img, vScale, vOff), size: Size.infinite),
+              ),
+            ),
             CustomPaint(painter: OutlinePainter(_outlineEdges, vScale, vOff, _antCtrl), size: Size.infinite),
             if (_isCursorTool)
               // marching ants around the EXACT pixels the actuate button would draw (the airbrush

@@ -55,7 +55,9 @@ class EditorPage extends ConsumerStatefulWidget {
 
 class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProviderStateMixin {
   late Engine engine;
-  ui.Image? _image;
+  // The composited canvas image. A ValueNotifier so playback can repaint just the canvas (30fps)
+  // without a full-tree setState — that churn made the row-3 drag tiles' taps (e.g. Pause) flaky.
+  final ValueNotifier<ui.Image?> _imageVN = ValueNotifier<ui.Image?>(null);
   late AnimationController _antCtrl; // marching-ants animation phase
   List<List<int>> _outlineEdges = const []; // each: [x1,y1,x2,y2,t] in canvas-corner coords
   String _tool = 'Pencil';
@@ -217,6 +219,7 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
       t.img.dispose();
     }
     _layerThumbs.clear();
+    _imageVN.dispose();
     if (_engineReady) engine.dispose();
     super.dispose();
   }
