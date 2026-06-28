@@ -182,6 +182,16 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
     } catch (e) {
       _error = '$e';
     }
+    // The Club "Edit in Makapix" request is usually set BEFORE this page exists (the shell mounts
+    // one pillar at a time, so it switches to the editor and only then mounts it). The build-time
+    // ref.listen below can't catch a value set before it registered, so consume any already-pending
+    // request once the first frame is up (Navigator/canvas ready for the dialog + load).
+    final pending = ref.read(pendingClubEditProvider);
+    if (pending != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _consumeClubEdit(pending);
+      });
+    }
   }
 
   @override
