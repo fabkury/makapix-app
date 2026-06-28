@@ -166,6 +166,7 @@ extension _EditorEngine on _EditorPageState {
     if (!_engineReady) return;
     final err = engine.run(dsl);
     if (err != null) debugPrint('DSL error: $err  <- $dsl');
+    _autosave?.markActivity(); // every document mutation funnels through here (gates the autosave)
   }
 
   // Recomposite the canvas and refresh overlays.

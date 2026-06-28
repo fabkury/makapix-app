@@ -162,12 +162,12 @@ is unconditional.
 - [x] `drawing_meta.dart` (+ test).
 - [x] `drawing_store.dart` with injected base dir + atomic write (+ tests).
 - [x] `autosave_controller.dart` (+ tests).
-- [ ] `editor_page.persistence.dart`: current-drawing load/save, lifecycle, dispose, activity.
-- [ ] Wire `_send`/pointer activity; rework New / Open / Club-edit / Import to switch drawings.
-- [ ] Remove `EditorSession.docSnapshot`; route pillar-switch restore through the store.
-- [ ] `gallery_page.dart` + ☰-menu entry ("My Drawings").
-- [ ] `flutter analyze` + `flutter test` green; build APK; install if phone on USB.
-- [ ] Commit in logical chunks; keep this doc updated.
+- [x] `editor_page.persistence.dart`: current-drawing load/save, lifecycle, dispose, activity.
+- [x] Wire `_send` activity; rework New / Open / Club-edit to switch drawings (Import stays an edit).
+- [x] Remove `EditorSession.docSnapshot`; route pillar-switch restore through the store.
+- [x] `gallery_page.dart` + ☰-menu entry ("My Drawings").
+- [x] `flutter analyze` + `flutter test` green (53 tests); build APK; install if phone on USB.
+- [x] Commit in logical chunks; keep this doc updated.
 
 ## Review notes (fresh-eyes pass)
 
@@ -208,5 +208,12 @@ Refinements found re-reading the draft critically; folded into the design above:
   green (`test/persistence_test.dart`).
 - **2026-06-28** — Chunk 2: `AutosaveController` — 5 s periodic + activity-gated FNV-1a change
   detection, coalescing single-flight writer, `flushNow()` (sync-serialize then async-write for
-  background/leave), throttled thumbnails, non-fatal error reporting. 6 unit tests green
-  (`test/autosave_controller_test.dart`).
+  background/leave), non-fatal error reporting. 6 unit tests green. (Refined during integration:
+  metadata is now captured synchronously too, and thumbnails moved out of the hot path — the gallery
+  renders/serves them — so the async writer never touches a freed engine.)
+- **2026-06-28** — Chunk 3: editor integration. `editor_page.persistence.dart` (init/restore,
+  autosave wiring, drawing-identity transitions, gallery entry); `_EditorPageState` now a
+  `WidgetsBindingObserver` (background flush) with dispose-flush; `_send` marks activity; New / Open
+  (external) / Club-edit each open as their own library drawing (no clobber); `EditorSession`
+  removed (restore is now from disk). `GalleryPage` ("My Drawings") + ☰ menu entry. `flutter
+  analyze` clean (12 pre-existing infos), all 53 Dart tests green.

@@ -12,7 +12,8 @@
 // simultaneously (e.g. via IndexedStack) corrupts the Windows accessibility tree and
 // crashes the app on resize ("Failed to update ui::AXTree: Nodes left pending"). Club's
 // state survives remounts via its Riverpod providers; the editor preserves its in-progress
-// document across switches with an [EditorSession] snapshot (see editor_session.dart).
+// document across switches (and crashes) by autosaving it to the on-disk drawing library
+// (see editor_page.persistence.dart) and reloading it on re-entry.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 

@@ -111,6 +111,7 @@ extension _EditorTimeline on _EditorPageState {
         _menuRow('club', Icons.public, 'Club'),
         const PopupMenuDivider(),
         _menuRow('new', Icons.insert_drive_file_outlined, 'New'),
+        _menuRow('library', Icons.collections_bookmark_outlined, 'My Drawings'),
         _menuRow('open', Icons.folder_open, 'Open'),
         _menuRow('save', Icons.save, 'Save'),
         const PopupMenuDivider(),
@@ -132,6 +133,9 @@ extension _EditorTimeline on _EditorPageState {
         break;
       case 'new':
         _newDialog();
+        break;
+      case 'library':
+        _openGallery();
         break;
       case 'open':
         _open();

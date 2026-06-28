@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 
@@ -9,13 +8,15 @@ import 'drawing_store.dart';
 /// Drives autosave for ONE library drawing. Owns the periodic timer, change-detection, a coalescing
 /// single-flight writer, and the immediate "flush now" used on app-background / leaving the editor.
 ///
-/// Engine-agnostic: it pulls bytes through the injected [serialize] callback (sync — must run before
-/// the engine is freed) and metadata through [buildMeta]. This keeps it unit-testable with fakes.
+/// Engine-agnostic: it pulls bytes through the injected [serialize] callback and metadata through
+/// [buildMeta]. **Both are invoked synchronously** at request time (before any `await`), so they are
+/// safe to call right up to `engine.dispose()` and the async write never touches a freed engine.
+/// This also keeps the controller unit-testable with fakes.
 ///
 /// Cadence: every [interval] (default 5 s, comfortably under the 10 s loss budget), if there has
 /// been activity, it serializes and writes the doc **only if the bytes actually changed** (FNV-1a
-/// hash). Thumbnails (heavier) are regenerated on `flushNow` and at most once per [thumbThrottle]
-/// during continuous drawing.
+/// hash). Thumbnails are not handled here (the gallery generates/caches them) to keep all engine
+/// access on the synchronous path.
 class AutosaveController {
   final String id;
   final DrawingStore store;
@@ -24,37 +25,29 @@ class AutosaveController {
   /// controller then writes nothing (never clobbers a good file).
   final Uint8List Function() serialize;
 
-  /// Current metadata for this drawing (the caller stamps `updatedAt`).
+  /// Current metadata for this drawing (the caller stamps `updatedAt`). Invoked synchronously.
   final DrawingMeta Function() buildMeta;
-
-  /// Optional PNG thumbnail of the drawing (async: RGBA→image→PNG). Best-effort.
-  final Future<Uint8List?> Function()? buildThumbPng;
 
   /// Called (non-fatally) when a write fails — e.g. to show a throttled "couldn't autosave" toast.
   final void Function(Object error)? onError;
 
   final Duration interval;
-  final Duration thumbThrottle;
 
   AutosaveController({
     required this.id,
     required this.store,
     required this.serialize,
     required this.buildMeta,
-    this.buildThumbPng,
     this.onError,
     this.interval = const Duration(seconds: 5),
-    this.thumbThrottle = const Duration(seconds: 30),
   });
 
   Timer? _timer;
   bool _activity = false; // coarse "something happened" gate for the cheap serialize
   int _lastHash = 0;
   bool _hasSaved = false;
-  Uint8List? _pending; // latest bytes waiting to be written (latest-wins)
+  ({Uint8List bytes, DrawingMeta meta})? _pending; // latest write waiting (latest-wins)
   bool _draining = false;
-  bool _forceThumb = false;
-  DateTime _lastThumb = DateTime.fromMillisecondsSinceEpoch(0);
   bool _stopped = false;
 
   void start() {
@@ -74,60 +67,45 @@ class AutosaveController {
     if (_hasSaved && h == _lastHash) return; // nothing changed since last save
     _lastHash = h;
     _hasSaved = true;
-    await _enqueue(bytes);
+    await _enqueue(bytes, buildMeta());
   }
 
   /// Force the latest state to disk immediately (background / leave / switch / create). Serializes
-  /// synchronously (before any `await`), so it is safe to call right before `engine.dispose()`
-  /// without awaiting. Returns once the write completes (callers that can await — e.g. switching
-  /// drawings — should).
-  Future<void> flushNow({bool thumb = true}) {
+  /// AND builds metadata synchronously (before any `await`), so it is safe to call right before
+  /// `engine.dispose()` without awaiting. Returns once the write completes (callers that can await
+  /// — e.g. switching drawings — should).
+  Future<void> flushNow() {
     final bytes = serialize(); // sync: captured before the first await / engine free
     if (bytes.isEmpty) return Future<void>.value();
+    final meta = buildMeta(); // sync: also captured before any engine free
     _lastHash = _fnv1a(bytes);
     _hasSaved = true;
-    if (thumb) _forceThumb = true;
-    return _enqueue(bytes);
+    return _enqueue(bytes, meta);
   }
 
-  Future<void> _enqueue(Uint8List bytes) {
-    _pending = bytes;
+  Future<void> _enqueue(Uint8List bytes, DrawingMeta meta) {
+    _pending = (bytes: bytes, meta: meta);
     return _drain();
   }
 
-  // Single-flight, latest-wins: only one writer runs; bursts coalesce to the newest bytes.
+  // Single-flight, latest-wins: only one writer runs; bursts coalesce to the newest bytes. No engine
+  // access here — bytes and meta were captured synchronously by the caller.
   Future<void> _drain() async {
     if (_draining) return;
     _draining = true;
     try {
       while (_pending != null) {
-        final bytes = _pending!;
+        final job = _pending!;
         _pending = null;
         try {
-          await store.writeDoc(id, bytes);
-          await store.writeMeta(buildMeta());
-          await _maybeThumb();
+          await store.writeDoc(id, job.bytes);
+          await store.writeMeta(job.meta);
         } catch (e) {
           onError?.call(e);
         }
       }
     } finally {
       _draining = false;
-    }
-  }
-
-  Future<void> _maybeThumb() async {
-    final build = buildThumbPng;
-    if (build == null) return;
-    final now = DateTime.now();
-    if (!_forceThumb && now.difference(_lastThumb) < thumbThrottle) return;
-    _forceThumb = false;
-    _lastThumb = now;
-    try {
-      final png = await build();
-      if (png != null && png.isNotEmpty) await store.writeThumb(id, png);
-    } catch (e) {
-      onError?.call(e);
     }
   }
 

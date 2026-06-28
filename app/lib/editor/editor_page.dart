@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:makapix_club/club/edit/club_edit_request.dart';
@@ -20,7 +21,10 @@ import 'package:makapix_club/club/state/edit_bridge.dart';
 import 'package:makapix_club/club/ui/publish_page.dart';
 import 'package:makapix_club/engine_ffi.dart';
 
-import 'editor_session.dart';
+import 'gallery/gallery_page.dart';
+import 'persistence/autosave_controller.dart';
+import 'persistence/drawing_meta.dart';
+import 'persistence/drawing_store.dart';
 import 'tools.dart';
 import 'thumbnail.dart';
 import 'widgets/painters.dart';
@@ -36,9 +40,11 @@ part 'editor_page.canvas.dart';
 part 'editor_page.timeline.dart';
 part 'editor_page.controls.dart';
 part 'editor_page.toolgrid.dart';
+part 'editor_page.persistence.dart';
 
 const double _kMinZoom = 0.25, _kMaxZoom = 32.0;
 const _prefsKey = 'tool_order_v1';
+const _kCurrentDrawing = 'editor.currentDrawingId'; // last-open library drawing (silent restore)
 const _transformTools = {'Flip', 'Rotate', 'Invert', 'Resize'};
 // Row-3 "action" tools in the reorderable grid: tapping fires an action/toggle immediately rather
 // than selecting a draw tool (handled in _toolTile / _doToolAction). Undo/Redo are NOT here — they
@@ -54,8 +60,17 @@ class EditorPage extends ConsumerStatefulWidget {
   ConsumerState<EditorPage> createState() => _EditorPageState();
 }
 
-class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProviderStateMixin {
+class _EditorPageState extends ConsumerState<EditorPage>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late Engine engine;
+  // ---- Local persistence: the current library drawing + its autosave (see editor_page.persistence)
+  DrawingStore? _store;
+  SharedPreferences? _prefs;
+  AutosaveController? _autosave;
+  String? _drawingId;
+  String _drawingTitle = 'Untitled';
+  DateTime _drawingCreatedAt = DateTime.now();
+  DateTime? _lastAutosaveWarn; // throttles the "couldn't autosave" toast
   // The composited canvas image. A ValueNotifier so playback can repaint just the canvas (30fps)
   // without a full-tree setState — that churn made the row-3 drag tiles' taps (e.g. Pause) flaky.
   final ValueNotifier<ui.Image?> _imageVN = ValueNotifier<ui.Image?>(null);
@@ -196,25 +211,16 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
     try {
       engine = Engine(64, 64);
       _send('SelectTool(Pencil)');
-      // Restore the document the user was working on before they last left the editor
-      // (the shell mounts one pillar at a time, so EditorPage is recreated on re-entry).
-      final snap = EditorSession.docSnapshot;
-      if (snap != null && snap.isNotEmpty) engine.load(snap);
       _refreshState();
       _redraw();
     } catch (e) {
       _error = '$e';
     }
-    // The Club "Edit in Makapix" request is usually set BEFORE this page exists (the shell mounts
-    // one pillar at a time, so it switches to the editor and only then mounts it). The build-time
-    // ref.listen below can't catch a value set before it registered, so consume any already-pending
-    // request once the first frame is up (Navigator/canvas ready for the dialog + load).
-    final pending = ref.read(pendingClubEditProvider);
-    if (pending != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _consumeClubEdit(pending);
-      });
-    }
+    WidgetsBinding.instance.addObserver(this); // autosave-flush on app background (Android OS-kill)
+    // Resolve the local library, silently restore the last drawing (or start a fresh one), wire
+    // autosave, and consume any pending Club "Edit in Makapix" request. Async; the default 64×64
+    // doc shows until the restore swaps in. See editor_page.persistence.dart.
+    _initPersistence();
   }
 
   @override
@@ -222,14 +228,13 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
     // Leaving the editor (e.g. back to Club) lifts the portrait lock so the Club side can rotate.
     SystemChrome.setPreferredOrientations(const []);
     _playTimer?.cancel();
-    // Snapshot the in-progress document so it survives this unmount (e.g. switching to
-    // Club and back). Lossless .mkpx bytes; save before the engine is freed.
-    if (_engineReady) {
-      try {
-        final bytes = engine.save();
-        if (bytes.isNotEmpty) EditorSession.docSnapshot = bytes;
-      } catch (_) {/* keep the previous snapshot if saving fails */}
-    }
+    WidgetsBinding.instance.removeObserver(this);
+    // Flush the in-progress drawing to disk before the engine is freed so it survives this unmount
+    // (Club switch) AND any later crash. flushNow() serializes + builds metadata SYNCHRONOUSLY (so
+    // the async write below never touches the freed engine); stop() then cancels the timer and lets
+    // that write complete. Replaces the old in-memory EditorSession snapshot.
+    if (_engineReady) _autosave?.flushNow();
+    _autosave?.stop();
     _antCtrl.dispose();
     for (final t in _frameThumbs.values) {
       t.img.dispose();
@@ -244,6 +249,17 @@ class _EditorPageState extends ConsumerState<EditorPage> with SingleTickerProvid
     _overlayVN.dispose();
     if (_engineReady) engine.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Android can kill a backgrounded app with no further callback, so flush the moment we lose
+    // foreground. flushNow() serializes synchronously; the write finishes in the background.
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      _autosave?.flushNow();
+    }
   }
 
   @override
