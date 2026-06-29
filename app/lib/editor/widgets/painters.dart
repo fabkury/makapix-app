@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -133,6 +134,34 @@ class HandlePainter extends CustomPainter {
   @override
   bool shouldRepaint(HandlePainter old) =>
       old.points != points || old.scale != scale || old.off != off;
+}
+
+/// The Shape tool's rotate handle: a line from the box centre out to a draggable reticle, drawn in
+/// SCREEN space. The arm reaches just beyond the box corner so it never sits under the shape.
+class ShapeRotateHandlePainter extends CustomPainter {
+  final Offset center, corner; // canvas-pixel coords
+  final double rotation; // radians
+  final double scale;
+  final Offset off;
+  const ShapeRotateHandlePainter(this.center, this.corner, this.rotation, this.scale, this.off);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (scale <= 0) return;
+    Offset sc(Offset c) => Offset(off.dx + (c.dx + 0.5) * scale, off.dy + (c.dy + 0.5) * scale);
+    final cs = sc(center), bs = sc(corner);
+    final arm = (bs - cs).distance + 24.0;
+    final ret = cs + Offset(math.cos(rotation), math.sin(rotation)) * (arm < 56.0 ? 56.0 : arm);
+    canvas.drawLine(cs, ret, Paint()..color = Colors.black..strokeWidth = 4..isAntiAlias = true);
+    canvas.drawLine(cs, ret, Paint()..color = const Color(0xFF4DA3FF)..strokeWidth = 2..isAntiAlias = true);
+    canvas.drawCircle(ret, 11, Paint()..color = Colors.black..style = PaintingStyle.stroke..strokeWidth = 4..isAntiAlias = true);
+    canvas.drawCircle(ret, 11, Paint()..color = const Color(0xFF4DA3FF)..style = PaintingStyle.stroke..strokeWidth = 2.5..isAntiAlias = true);
+    canvas.drawCircle(ret, 2.5, Paint()..color = Colors.white);
+  }
+
+  @override
+  bool shouldRepaint(ShapeRotateHandlePainter o) =>
+      o.center != center || o.corner != corner || o.rotation != rotation || o.scale != scale || o.off != off;
 }
 
 /// Screen-space radius of the Ruler's endpoint reticles. Also the grab radius for dragging an end

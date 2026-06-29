@@ -170,6 +170,91 @@ pub fn triangle_outline(a: Point, b: Point, thickness: i32, mut plot: impl FnMut
     thick_line(v[2], v[0], thickness, &mut plot);
 }
 
+/// Draw a ROTATED shape (`kind`: 0=Rectangle, 1=Ellipse, 2=Triangle) by inverse-rotating every
+/// candidate pixel into the shape's local frame and testing the exact predicate there — so rotation
+/// is mathematically perfect, never a post-hoc rotation of already-drawn pixels. `a`,`b` are the two
+/// (already-rotated) opposite corners; `rot` is the box rotation in radians; `thickness` is the
+/// outline width when `!fill`.
+pub fn rotated_shape(
+    a: Point,
+    b: Point,
+    rot: f32,
+    kind: u8,
+    fill: bool,
+    thickness: i32,
+    mut plot: impl FnMut(i32, i32),
+) {
+    let cx = (a.x + b.x) as f32 / 2.0;
+    let cy = (a.y + b.y) as f32 / 2.0;
+    let (sn, cs) = rot.sin_cos();
+    // Local half-extents = the un-rotated vector from the centre to corner `b`.
+    let (vbx, vby) = (b.x as f32 - cx, b.y as f32 - cy);
+    let hw = (cs * vbx + sn * vby).abs().max(0.5);
+    let hh = (-sn * vbx + cs * vby).abs().max(0.5);
+    let lw = thickness.max(1) as f32;
+    // World AABB of the rotated box.
+    let ax = cs.abs() * hw + sn.abs() * hh;
+    let ay = sn.abs() * hw + cs.abs() * hh;
+    let (x0, x1) = ((cx - ax).floor() as i32, (cx + ax).ceil() as i32);
+    let (y0, y1) = ((cy - ay).floor() as i32, (cy + ay).ceil() as i32);
+    for y in y0..=y1 {
+        for x in x0..=x1 {
+            let (dx, dy) = (x as f32 - cx, y as f32 - cy);
+            let lx = cs * dx + sn * dy; // R(-rot)·(P - C)
+            let ly = -sn * dx + cs * dy;
+            let hit = match kind {
+                0 => rect_hit(lx, ly, hw, hh, fill, lw),
+                1 => ellipse_hit(lx, ly, hw, hh, fill, lw),
+                _ => triangle_hit(lx, ly, hw, hh, fill, lw),
+            };
+            if hit {
+                plot(x, y);
+            }
+        }
+    }
+}
+
+fn rect_hit(lx: f32, ly: f32, hw: f32, hh: f32, fill: bool, lw: f32) -> bool {
+    if lx.abs() > hw || ly.abs() > hh {
+        return false;
+    }
+    fill || (hw - lx.abs()) < lw || (hh - ly.abs()) < lw
+}
+
+fn ellipse_hit(lx: f32, ly: f32, hw: f32, hh: f32, fill: bool, lw: f32) -> bool {
+    if (lx / hw).powi(2) + (ly / hh).powi(2) > 1.0 {
+        return false;
+    }
+    if fill {
+        return true;
+    }
+    let (irx, iry) = (hw - lw, hh - lw);
+    if irx <= 0.0 || iry <= 0.0 {
+        return true;
+    }
+    (lx / irx).powi(2) + (ly / iry).powi(2) > 1.0 // outer but not inner = the ring
+}
+
+fn triangle_hit(lx: f32, ly: f32, hw: f32, hh: f32, fill: bool, lw: f32) -> bool {
+    // Local verts: apex top-centre, base along the bottom.
+    let v = [(0.0, -hh), (-hw, hh), (hw, hh)];
+    let cross = |i: usize, j: usize| (v[j].0 - v[i].0) * (ly - v[i].1) - (v[j].1 - v[i].1) * (lx - v[i].0);
+    let (e0, e1, e2) = (cross(0, 1), cross(1, 2), cross(2, 0));
+    let inside = (e0 >= 0.0 && e1 >= 0.0 && e2 >= 0.0) || (e0 <= 0.0 && e1 <= 0.0 && e2 <= 0.0);
+    if !inside {
+        return false;
+    }
+    if fill {
+        return true;
+    }
+    let dist = |i: usize, j: usize| {
+        let (ex, ey) = (v[j].0 - v[i].0, v[j].1 - v[i].1);
+        let len = (ex * ex + ey * ey).sqrt().max(1e-6);
+        (ex * (ly - v[i].1) - ey * (lx - v[i].0)).abs() / len
+    };
+    dist(0, 1).min(dist(1, 2)).min(dist(2, 0)) < lw
+}
+
 /// Circle inscribed centered at `center` with `radius` to `edge` point.
 pub fn circle_filled(center: Point, edge: Point, mut plot: impl FnMut(i32, i32)) {
     let r = (((edge.x - center.x).pow(2) + (edge.y - center.y).pow(2)) as f32).sqrt();

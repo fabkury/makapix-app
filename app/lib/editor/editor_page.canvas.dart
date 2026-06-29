@@ -124,6 +124,13 @@ extension _EditorCanvas on _EditorPageState {
                     painter: HandlePainter([_shapeA!, _shapeB!], vScale, vOff),
                     size: Size.infinite,
                   ),
+                if (_tool == 'Shape' && _hasShapeDraft)
+                  // rotate handle: drag the reticle to rotate the shape about its centre
+                  CustomPaint(
+                    painter: ShapeRotateHandlePainter(
+                        (_shapeA! + _shapeB!) / 2, _shapeB!, _shapeRot, vScale, vOff),
+                    size: Size.infinite,
+                  ),
                 if (_isRuler && _hasRuler)
                   // measurement line + endpoint coords + length (never drawn to the canvas)
                   CustomPaint(
@@ -346,6 +353,16 @@ extension _EditorCanvas on _EditorPageState {
     if (_hasShapeDraft) {
       final (s, off) = _view(box);
       Offset screenOf(Offset c) => Offset(off.dx + (c.dx + 0.5) * s, off.dy + (c.dy + 0.5) * s);
+      // Rotate handle (Shape tool only) wins if grabbed — it sits out beyond the box corner.
+      if (_tool == 'Shape' && (pos - _shapeRotReticle(box)).distance <= 32.0) {
+        _shapeDrag = 5;
+        _rotOrigA = _shapeA;
+        _rotOrigB = _shapeB;
+        _rotOrigAngle = _shapeRot;
+        _redraw();
+        setState(() {});
+        return;
+      }
       // A bit larger than the drawn reticle so the ends are easy to grab.
       final tol = (s * 1.1).clamp(30.0, 56.0);
       final dA = (pos - screenOf(_shapeA!)).distance;
@@ -369,6 +386,7 @@ extension _EditorCanvas on _EditorPageState {
       // No draft yet: materialize a degenerate figure so a tap drops a starting handle.
       _shapeDrag = 3;
       _newShapeStart = p;
+      _shapeRot = 0; // a fresh shape starts unrotated
       _shapeA = p;
       _shapeB = p;
       _pushShape();
@@ -379,6 +397,22 @@ extension _EditorCanvas on _EditorPageState {
 
   void _continueShape(Offset pos, Size box) {
     if (_shapeDrag == 0) return;
+    if (_shapeDrag == 5) {
+      // Rotate: the reticle's screen angle around the box centre sets the rotation; both endpoints
+      // rotate rigidly with it (the box keeps its size).
+      final (s, off) = _view(box);
+      final c = (_rotOrigA! + _rotOrigB!) / 2;
+      final cs = Offset(off.dx + (c.dx + 0.5) * s, off.dy + (c.dy + 0.5) * s);
+      final theta = math.atan2(pos.dy - cs.dy, pos.dx - cs.dx);
+      final d = theta - _rotOrigAngle;
+      _shapeA = _rotateAround(_rotOrigA!, c, d);
+      _shapeB = _rotateAround(_rotOrigB!, c, d);
+      _shapeRot = theta;
+      _pushShape();
+      _redraw();
+      setState(() {});
+      return;
+    }
     final p = _toCanvas(pos, box);
     if (_shapeDrag == 4) {
       _moveWholeDraft(p);
@@ -523,6 +557,23 @@ extension _EditorCanvas on _EditorPageState {
     if (!_hasShapeDraft) return;
     final a = _shapeA!, b = _shapeB!;
     _send('ShapeSet(${a.dx.toInt()},${a.dy.toInt()},${b.dx.toInt()},${b.dy.toInt()})');
+    _send('SetShapeRotation(${(_shapeRot * 1000).round()})'); // milliradians; ignored by Line/Gradient
+  }
+
+  // The Shape tool's rotate-handle reticle (screen px): out beyond the box corner, at angle _shapeRot.
+  Offset _shapeRotReticle(Size box) {
+    final (s, off) = _view(box);
+    Offset sc(Offset c) => Offset(off.dx + (c.dx + 0.5) * s, off.dy + (c.dy + 0.5) * s);
+    final c = (_shapeA! + _shapeB!) / 2;
+    final cs = sc(c), bs = sc(_shapeB!);
+    final arm = math.max(56.0, (bs - cs).distance + 24.0);
+    return cs + Offset(math.cos(_shapeRot), math.sin(_shapeRot)) * arm;
+  }
+
+  Offset _rotateAround(Offset p, Offset c, double ang) {
+    final dx = p.dx - c.dx, dy = p.dy - c.dy;
+    final cs = math.cos(ang), sn = math.sin(ang);
+    return Offset(c.dx + dx * cs - dy * sn, c.dy + dx * sn + dy * cs);
   }
 
   (int, int) _thumbSize() {

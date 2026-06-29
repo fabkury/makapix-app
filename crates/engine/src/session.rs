@@ -104,6 +104,9 @@ pub struct Session {
     /// defining endpoints in canvas pixels. The active tool decides how it renders. `None` when
     /// no draft is pending. Committed (rasterized) only on an explicit `shape_commit()`.
     shape_draft: Option<(Point, Point)>,
+    /// Rotation of the pending shape draft (radians, around the box centre). Only the figure shapes
+    /// (Rectangle/Ellipse/Triangle) honour it; Line/Gradient ignore it. Reset on commit/cancel.
+    shape_rotation: f32,
     last_gradient: Option<(GradientKind, Vec<Stop>, Point, Point, u32, u32)>,
     /// Move-layer drag state: pre-drag pixel snapshots of each moved layer, plus the pre-drag
     /// frame (and its id) for a single grouped undo. Set on pointer_down, cleared on pointer_up.
@@ -132,6 +135,7 @@ impl Session {
             stroke: None,
             paint_acc: 0.0,
             shape_draft: None,
+            shape_rotation: 0.0,
             last_gradient: None,
             move_layers: Vec::new(),
             move_before: None,
@@ -261,6 +265,27 @@ impl Session {
     /// fill/outline + line-width settings. Used both for the live preview and the draft preview.
     fn render_shape_preview(&self, buf: &mut RgbaBuffer, a: Point, b: Point) {
         let color = self.settings.primary;
+        // A rotated figure previews through the exact inverse-rotation rasteriser.
+        if self.shape_rotation.abs() > 1e-4 {
+            let k = match self.tool {
+                ToolKind::Rectangle => Some(0u8),
+                ToolKind::Ellipse => Some(1),
+                ToolKind::Triangle => Some(2),
+                _ => None,
+            };
+            if let Some(k) = k {
+                crate::raster::rotated_shape(
+                    a,
+                    b,
+                    self.shape_rotation,
+                    k,
+                    self.settings.shape_fill,
+                    self.settings.line_width.max(1) as i32,
+                    |x, y| buf.blend_over(x, y, color),
+                );
+                return;
+            }
+        }
         match self.tool {
             ToolKind::Line => crate::raster::thick_line(a, b, self.settings.line_width.max(1) as i32, |x, y| buf.blend_over(x, y, color)),
             ToolKind::Rectangle => {
@@ -782,7 +807,7 @@ impl Session {
                     let (fill, lw, kind) = (self.settings.shape_fill, self.settings.line_width, self.tool);
                     let sel = self.selection.clone();
                     let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-                    tool::draw_shape(buf, sel.as_ref(), kind, start, last, color, fill, lw, PaintMode::Over);
+                    tool::draw_shape(buf, sel.as_ref(), kind, start, last, 0.0, color, fill, lw, PaintMode::Over);
                 }
                 ToolKind::Move => {
                     if let (Some(float), Some(sel)) = (stroke.floating, self.selection.clone()) {
@@ -926,16 +951,24 @@ impl Session {
         } else {
             let color = self.settings.primary;
             let (fill, lw, kind) = (self.settings.shape_fill, self.settings.line_width, self.tool);
+            let rot = self.shape_rotation;
             let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-            tool::draw_shape(buf, sel.as_ref(), kind, a, b, color, fill, lw, PaintMode::Over);
+            tool::draw_shape(buf, sel.as_ref(), kind, a, b, rot, color, fill, lw, PaintMode::Over);
         }
         self.commit_edit(before);
         self.shape_draft = None;
+        self.shape_rotation = 0.0;
     }
 
     /// Discard the pending figure draft without drawing anything.
     pub fn shape_cancel(&mut self) {
         self.shape_draft = None;
+        self.shape_rotation = 0.0;
+    }
+
+    /// Set the pending shape draft's rotation (milliradians, around the box centre).
+    pub fn set_shape_rotation(&mut self, milliradians: i32) {
+        self.shape_rotation = milliradians as f32 / 1000.0;
     }
 
     pub fn tap(&mut self, x: i32, y: i32) {
@@ -2276,6 +2309,24 @@ mod tests {
         for x in 0..16 {
             assert_eq!(s.pixel(0, 0, x, 0), Rgba8::WHITE, "x={}", x);
         }
+    }
+
+    #[test]
+    fn shape_rotation_renders_a_rotated_figure() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.settings.shape_fill = true;
+        s.tool = ToolKind::Rectangle;
+        // An 8-wide × 2-tall rect rotated 90° → a 2-wide × 8-tall bar centred at (8,6). The corners
+        // passed are the already-rotated ones (as the shell sends them).
+        s.shape_set(9, 2, 7, 10);
+        s.set_shape_rotation(1571); // ≈ 90° (π/2) in milliradians
+        s.shape_commit();
+        assert_eq!(s.pixel(0, 0, 8, 6), Rgba8::WHITE); // centre
+        assert_eq!(s.pixel(0, 0, 8, 4), Rgba8::WHITE); // up the (now) long axis
+        assert_eq!(s.pixel(0, 0, 8, 8), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 0, 12, 6), Rgba8::TRANSPARENT); // off the narrow axis
+        assert!(s.doc.undo());
     }
 
     #[test]

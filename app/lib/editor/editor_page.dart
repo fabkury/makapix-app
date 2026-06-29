@@ -116,6 +116,10 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // Whole-draft reposition (drag off the handles): the canvas point where the move began and the
   // two endpoints at that moment, so each move is a rigid translation from the originals.
   Offset? _shapeMoveAnchor, _shapeMoveOrigA, _shapeMoveOrigB;
+  // Shape-tool rotation (radians, around the box centre) + the rotate-handle drag origin.
+  double _shapeRot = 0;
+  Offset? _rotOrigA, _rotOrigB;
+  double _rotOrigAngle = 0;
   // Ruler tool: a non-destructive measurement line (two draggable endpoints in canvas-pixel
   // coords). Never drawn to the canvas; cleared when switching tools.
   Offset? _rulerA, _rulerB;

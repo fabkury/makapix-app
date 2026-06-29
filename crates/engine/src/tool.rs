@@ -511,19 +511,38 @@ pub fn clear_region(buf: &mut RgbaBuffer, sel: Option<&Mask>) {
     }
 }
 
-/// Draw a shape (Line/Rectangle/Ellipse), outline or filled (SPEC §28.1).
+/// Map a figure ToolKind to the rotated-rasteriser code (None = doesn't rotate, e.g. Line).
+fn rotated_kind(kind: ToolKind) -> Option<u8> {
+    match kind {
+        ToolKind::Rectangle => Some(0),
+        ToolKind::Ellipse => Some(1),
+        ToolKind::Triangle => Some(2),
+        _ => None,
+    }
+}
+
+/// Draw a shape (Line/Rectangle/Ellipse/Triangle), outline or filled (SPEC §28.1), optionally
+/// rotated by `rot` radians (Rectangle/Ellipse/Triangle only).
 pub fn draw_shape(
     buf: &mut RgbaBuffer,
     sel: Option<&Mask>,
     kind: ToolKind,
     a: Point,
     b: Point,
+    rot: f32,
     color: Rgba8,
     fill: bool,
     line_width: u16,
     mode: PaintMode,
 ) {
     let mut f = |x: i32, y: i32| plot(buf, sel, x, y, color, mode);
+    // A rotated Rectangle/Ellipse/Triangle goes through the exact inverse-rotation rasteriser.
+    if rot.abs() > 1e-4 {
+        if let Some(k) = rotated_kind(kind) {
+            raster::rotated_shape(a, b, rot, k, fill, line_width.max(1) as i32, &mut f);
+            return;
+        }
+    }
     match kind {
         ToolKind::Line => raster::thick_line(a, b, line_width.max(1) as i32, &mut f),
         ToolKind::Rectangle => {

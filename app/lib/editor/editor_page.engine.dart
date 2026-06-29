@@ -329,6 +329,7 @@ extension _EditorEngine on _EditorPageState {
       _shapeA = null;
       _shapeB = null;
       _shapeDrag = 0;
+      _shapeRot = 0;
     });
     _refreshState();
     _redraw();
@@ -341,6 +342,7 @@ extension _EditorEngine on _EditorPageState {
       _shapeA = null;
       _shapeB = null;
       _shapeDrag = 0;
+      _shapeRot = 0;
     });
     _redraw();
   }
