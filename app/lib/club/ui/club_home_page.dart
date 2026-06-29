@@ -6,13 +6,18 @@ import '../state/auth_controller.dart';
 import '../state/edit_bridge.dart';
 import '../state/feed_providers.dart';
 import '../state/notifications_providers.dart';
+import '../state/player_providers.dart';
+import 'artist_dashboard_page.dart';
 import 'artwork_detail_page.dart';
 import 'club_account_page.dart';
 import 'club_welcome_page.dart';
 import 'notifications_page.dart';
+import 'post_management_page.dart';
 import 'profile_page.dart';
 import 'search_page.dart';
+import 'settings_page.dart';
 import 'widgets/feed_grid.dart';
+import 'widgets/send_target_binder.dart';
 
 /// The social hub. Top bar (left → right): the Makapix Club menu · my profile · notifications,
 /// then Contribute (opens the editor) · Recommended · Recent · Following · Search. The selected
@@ -46,10 +51,26 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
     _pages.animateToPage(i, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
   }
 
-  void _openPost(Post p) =>
-      Navigator.push(context, MaterialPageRoute(builder: (_) => ArtworkDetailPage(sqid: p.sqid)));
+  void _openPost(Post p) => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ArtworkDetailPage(
+            sqid: p.sqid,
+            feed: pagedArtworkSource(feedProvider(_feed), feedProvider(_feed).notifier),
+          ),
+        ),
+      );
 
   void _push(Widget page) => Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+
+  // What "Send to Player" targets per feed. Recent/Recommended map to player channels; the
+  // Following feed has no server channel, so sending is disabled there (until an artwork is opened).
+  PlayerSendTarget? _channelFor(FeedKind kind) => switch (kind) {
+        FeedKind.recent => const ChannelTarget(displayName: 'Recent', channelName: 'all'),
+        FeedKind.promoted =>
+          const ChannelTarget(displayName: 'Recommended', channelName: 'promoted'),
+        FeedKind.following => null,
+      };
 
   Widget _feedBody(FeedKind kind) {
     final state = ref.watch(feedProvider(kind));
@@ -87,6 +108,16 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
     switch (value) {
       case 'account':
         _push(const ClubAccountPage());
+        break;
+      case 'my-posts':
+        _push(const PostManagementPage());
+        break;
+      case 'dashboard':
+        final sqid = ref.read(authControllerProvider).me?.user.sub ?? '';
+        if (sqid.isNotEmpty) _push(ArtistDashboardPage(userKey: sqid));
+        break;
+      case 'settings':
+        _push(const SettingsPage());
         break;
       case 'about':
         showDialog<void>(
@@ -130,6 +161,9 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
             onSelected: _onMenu,
             itemBuilder: (_) => [
               _menuItem('account', Icons.account_circle_outlined, 'Account'),
+              _menuItem('my-posts', Icons.grid_view_outlined, 'My Posts'),
+              _menuItem('dashboard', Icons.insights_outlined, 'Artist Dashboard'),
+              _menuItem('settings', Icons.settings_outlined, 'Settings'),
               _menuItem('about', Icons.info_outline, 'About Makapix Club'),
               const PopupMenuDivider(),
               _menuItem('signout', Icons.logout, 'Sign out'),
@@ -152,10 +186,13 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
       ),
       // Swipe horizontally to move Recommended ↔ Recent ↔ Following; the top-bar buttons jump
       // to a page and stay in sync via onPageChanged.
-      body: PageView(
-        controller: _pages,
-        onPageChanged: (i) => setState(() => _feed = _feeds[i]),
-        children: [for (final kind in _feeds) _feedBody(kind)],
+      body: SendTargetBinder(
+        target: _channelFor(_feed),
+        child: PageView(
+          controller: _pages,
+          onPageChanged: (i) => setState(() => _feed = _feeds[i]),
+          children: [for (final kind in _feeds) _feedBody(kind)],
+        ),
       ),
     );
   }

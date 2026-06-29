@@ -58,6 +58,20 @@ class Comment {
         deleted: j['deleted'] == true || j['deleted_by_owner'] == true,
       );
 
+  /// A soft-deleted copy (keeps replies visible, as the server does). Used for optimistic deletes.
+  Comment markDeleted() => Comment(
+        id: id,
+        parentId: parentId,
+        depth: depth,
+        body: body,
+        createdAt: createdAt,
+        author: author,
+        likeCount: likeCount,
+        likedByMe: likedByMe,
+        deleted: true,
+        replies: replies,
+      );
+
   Comment withReplies(List<Comment> r) => Comment(
         id: id,
         parentId: parentId,

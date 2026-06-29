@@ -70,7 +70,13 @@ class ClubWelcomePage extends ConsumerWidget {
               onRefresh: n.refresh,
               emptyMessage: 'Sign in to explore the community.',
               onTap: (Post p) => Navigator.push(
-                  context, MaterialPageRoute(builder: (_) => ArtworkDetailPage(sqid: p.sqid))),
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => ArtworkDetailPage(
+                            sqid: p.sqid,
+                            feed: pagedArtworkSource(feedProvider(FeedKind.promoted),
+                                feedProvider(FeedKind.promoted).notifier),
+                          ))),
             ),
           ),
         ],

@@ -19,13 +19,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../club/edit/club_edit_request.dart';
 import '../club/state/edit_bridge.dart';
-import '../club/ui/club_home_page.dart';
+import '../club/ui/club_pillar.dart';
 import '../editor/editor_page.dart';
 
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({
     super.key,
-    this.clubPillar = const ClubHomePage(),
+    this.clubPillar = const ClubPillar(),
     this.editorPillar = const EditorPage(),
   });
 

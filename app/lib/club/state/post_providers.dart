@@ -5,6 +5,7 @@ import '../models/comment.dart';
 import '../models/post.dart';
 import '../models/reactions.dart';
 import 'api_providers.dart';
+import 'auth_controller.dart';
 
 /// Full post by sqid; also fires a (debounced, server-side) view registration.
 // autoDispose: one entry per opened post; released when the detail page closes. [audit F-19]
@@ -141,6 +142,18 @@ final gridLikesProvider =
 
 // ---- Comments ----
 
+/// Live comment count for a thread: non-deleted comments across all depths (top-level + replies).
+/// Mirrors what the server reports in `comment_count`, and tracks the optimistic add/delete edits
+/// the controller applies so the detail header and the "Comments (N)" label stay in step.
+int countComments(List<Comment> tree) {
+  var n = 0;
+  for (final c in tree) {
+    if (!c.deleted) n++;
+    n += countComments(c.replies);
+  }
+  return n;
+}
+
 class CommentsController extends StateNotifier<AsyncValue<List<Comment>>> {
   final Ref ref;
   final int postId;
@@ -158,23 +171,56 @@ class CommentsController extends StateNotifier<AsyncValue<List<Comment>>> {
   }
 
   Future<String?> add(String body, {String? parentId}) async {
+    // Optimistically show the new comment (and bump the count) before the round-trip; `load()`
+    // reconciles with the server copy afterwards.
+    final cur = state.value;
+    if (cur != null) {
+      final me = ref.read(authControllerProvider).me?.user;
+      final optimistic = Comment(
+        id: 'pending-${DateTime.now().microsecondsSinceEpoch}',
+        parentId: parentId,
+        depth: parentId == null ? 0 : 1,
+        body: body,
+        createdAt: DateTime.now(),
+        author: me == null ? null : CommentAuthor(handle: me.handle, sqid: me.sub, avatarUrl: me.avatarUrl),
+        likeCount: 0,
+        likedByMe: false,
+        deleted: false,
+      );
+      state = AsyncValue.data(_withAppended(cur, optimistic, parentId));
+    }
     try {
       await ref.read(postApiProvider).addComment(postId, body, parentId: parentId);
       await load();
       return null;
     } on ClubError catch (e) {
+      await load(); // drop the optimistic comment
       return e.message;
     } catch (_) {
+      await load();
       return 'Could not post comment.';
     }
   }
 
   Future<void> delete(String commentId) async {
+    // Optimistically mark it deleted so the count drops at once; reconcile on reload.
+    final cur = state.value;
+    if (cur != null) state = AsyncValue.data(_withDeleted(cur, commentId));
     try {
       await ref.read(postApiProvider).deleteComment(commentId);
       await load();
-    } catch (_) {}
+    } catch (_) {
+      await load();
+    }
   }
+
+  static List<Comment> _withAppended(List<Comment> tree, Comment c, String? parentId) {
+    if (parentId == null) return [...tree, c];
+    return [for (final t in tree) t.id == parentId ? t.withReplies([...t.replies, c]) : t];
+  }
+
+  static List<Comment> _withDeleted(List<Comment> tree, String id) =>
+      [for (final c in tree) c.id == id ? c.markDeleted() : c.withReplies(_withDeleted(c.replies, id))];
 
   Future<void> toggleLike(Comment c) async {
     try {

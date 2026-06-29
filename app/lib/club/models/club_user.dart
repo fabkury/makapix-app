@@ -1,17 +1,41 @@
 /// The signed-in user as returned by `GET /api/v1/auth/me` (the `user` block).
 class ClubUser {
   final String sub; // public_sqid (JWT `sub`)
+  final String userKey; // UUID — required by `PATCH /user/{user_key}` (resolves by UUID only)
   final String handle;
   final String? avatarUrl;
   final String? email;
 
-  ClubUser({required this.sub, required this.handle, this.avatarUrl, this.email});
+  /// Monitored hashtags the user has opted into seeing (content-filter set §21):
+  /// a subset of `politics/nsfw/explicit/13plus/violence`. Empty = all hidden.
+  final List<String> approvedHashtags;
+
+  ClubUser({
+    required this.sub,
+    required this.userKey,
+    required this.handle,
+    this.avatarUrl,
+    this.email,
+    this.approvedHashtags = const [],
+  });
 
   factory ClubUser.fromJson(Map<String, dynamic> j) => ClubUser(
         sub: (j['public_sqid'] ?? j['sub'] ?? j['id'] ?? '').toString(),
+        userKey: (j['user_key'] ?? '').toString(),
         handle: (j['handle'] ?? 'unknown').toString(),
         avatarUrl: j['avatar_url'] as String?,
         email: j['email'] as String?,
+        approvedHashtags:
+            (j['approved_hashtags'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+      );
+
+  ClubUser copyWith({List<String>? approvedHashtags}) => ClubUser(
+        sub: sub,
+        userKey: userKey,
+        handle: handle,
+        avatarUrl: avatarUrl,
+        email: email,
+        approvedHashtags: approvedHashtags ?? this.approvedHashtags,
       );
 }
 
@@ -46,4 +70,12 @@ class ClubMe {
   }
 
   bool get canModerate => roles.contains('moderator') || roles.contains('owner');
+
+  ClubMe copyWith({ClubUser? user}) => ClubMe(
+        user: user ?? this.user,
+        roles: roles,
+        capabilities: capabilities,
+        quotas: quotas,
+        needsWelcome: needsWelcome,
+      );
 }
