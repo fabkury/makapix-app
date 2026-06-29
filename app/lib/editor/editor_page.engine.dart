@@ -365,9 +365,14 @@ extension _EditorEngine on _EditorPageState {
   void _setPrimary(Color c) {
     setState(() => _primary = c);
     _send('SetPrimaryColor(${_hex(c)})');
-    // The gradient's first colour IS the primary, so a primary change re-pushes the stops (and
-    // refreshes any pending gradient draft).
-    if (_tool == 'Gradient') _sendGradientStops();
+    if (_tool == 'Gradient') {
+      // The gradient's first colour IS the primary, so re-push the stops (refreshes a draft too).
+      _sendGradientStops();
+    } else if (_hasShapeDraft) {
+      // A pending figure draft (Line/Rect/Ellipse) is drawn in the primary colour — refresh its
+      // preview now instead of waiting for the next drag.
+      _redraw();
+    }
   }
 
   // The gradient's colours: the primary first, then the independent extras, evenly spaced 0..1.
