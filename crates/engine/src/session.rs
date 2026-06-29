@@ -969,7 +969,7 @@ impl Session {
                     let (fi, li) = (self.doc.active_frame, self.doc.active_frame().active_layer);
                     {
                         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-                        tool::apply_gradient(buf, sel.as_ref(), &spec, start, last, &mut self.rng);
+                        tool::apply_gradient(buf, sel.as_ref(), &spec, start, last);
                     }
                     let (fid, lid) = (self.doc.frames[fi].id, self.doc.frames[fi].layers[li].id);
                     self.last_gradient =
@@ -1118,7 +1118,7 @@ impl Session {
             let (fi, li) = (self.doc.active_frame, self.doc.active_frame().active_layer);
             {
                 let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-                tool::apply_gradient(buf, sel.as_ref(), &spec, a, b, &mut self.rng);
+                tool::apply_gradient(buf, sel.as_ref(), &spec, a, b);
             }
             let (fid, lid) = (self.doc.frames[fi].id, self.doc.frames[fi].layers[li].id);
             self.last_gradient = Some((spec.kind, spec.stops.clone(), a, b, spec.smoothstep, fid, lid));
@@ -2773,7 +2773,6 @@ mod tests {
         s.settings.gradient = tool::GradientSpec {
             kind: GradientKind::Linear,
             stops: vec![Stop::new(Rgba8::rgb(255, 0, 0), 0.0), Stop::new(Rgba8::rgb(0, 0, 255), 1.0)],
-            dither: false,
             smoothstep: false,
         };
         s.shape_set(0, 0, 15, 0); // horizontal red→blue gradient, drafted but not committed

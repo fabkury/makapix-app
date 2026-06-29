@@ -351,21 +351,6 @@ extension _EditorControls on _EditorPageState {
           },
         ),
       ));
-      // Dither: jitter each pixel's position by ±½ of an 8-bit step to break the flat bands a long,
-      // shallow gradient otherwise quantises into (seeded, so renders stay reproducible).
-      children.add(Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: FilterChip(
-          selected: _gradDither,
-          label: Text(_gradDither ? 'Dither ✔' : 'Dither'),
-          selectedColor: const Color(0xFF30A050),
-          onSelected: (v) {
-            setState(() => _gradDither = v);
-            _send('SetGradientDither($_gradDither)');
-            if (_hasShapeDraft) _redraw();
-          },
-        ),
-      ));
       // Number of evenly-spaced colours in the gradient (2 / 3 / 4); the swatch count follows.
       children.add(_toggle(['2', '3', '4'], _gradCount - 2, (i) {
         setState(() => _gradCount = i + 2);

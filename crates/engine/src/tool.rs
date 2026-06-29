@@ -122,7 +122,6 @@ impl Stop {
 pub struct GradientSpec {
     pub kind: GradientKind,
     pub stops: Vec<Stop>,
-    pub dither: bool,
     /// Ease each colour transition with the smoothstep curve instead of a linear ramp.
     pub smoothstep: bool,
 }
@@ -131,7 +130,6 @@ impl Default for GradientSpec {
         GradientSpec {
             kind: GradientKind::Linear,
             stops: vec![Stop::new(Rgba8::BLACK, 0.0), Stop::new(Rgba8::WHITE, 1.0)],
-            dither: false,
             smoothstep: false,
         }
     }
@@ -381,15 +379,8 @@ pub fn gradient_eval_sorted(kind: GradientKind, stops: &[Stop], p0: Point, p1: P
     gradient_color_at_sorted(stops, gradient_t(kind, p0, p1, x, y), smooth)
 }
 
-/// Fill a region with the gradient, clipped to selection (SPEC §11.3).
-pub fn apply_gradient(
-    buf: &mut RgbaBuffer,
-    sel: Option<&Mask>,
-    spec: &GradientSpec,
-    p0: Point,
-    p1: Point,
-    rng: &mut SeededRng,
-) {
+/// Fill a region with the gradient, clipped to selection (SPEC §11.3). Deterministic per pixel.
+pub fn apply_gradient(buf: &mut RgbaBuffer, sel: Option<&Mask>, spec: &GradientSpec, p0: Point, p1: Point) {
     let w = buf.width() as i32;
     let h = buf.height() as i32;
     // Sort the stops ONCE, not once per pixel — `gradient_color_at` used to clone+sort the whole
@@ -403,12 +394,7 @@ pub fn apply_gradient(
                     continue;
                 }
             }
-            let mut t = gradient_t(spec.kind, p0, p1, x, y);
-            if spec.dither {
-                // small seeded ordered jitter to break 8-bit banding
-                let j = (rng.next_f32() - 0.5) * (1.0 / 255.0);
-                t = (t + j).clamp(0.0, 1.0);
-            }
+            let t = gradient_t(spec.kind, p0, p1, x, y);
             buf.set(x, y, gradient_color_at_sorted(&stops, t, spec.smoothstep));
         }
     }
@@ -636,11 +622,9 @@ mod tests {
         let spec = GradientSpec {
             kind: GradientKind::Linear,
             stops: vec![Stop::new(Rgba8::rgb(255, 0, 0), 0.0), Stop::new(Rgba8::rgb(0, 0, 255), 1.0)],
-            dither: false,
             smoothstep: false,
         };
-        let mut rng = SeededRng::new(0);
-        apply_gradient(&mut b, None, &spec, Point::new(0, 0), Point::new(15, 0), &mut rng);
+        apply_gradient(&mut b, None, &spec, Point::new(0, 0), Point::new(15, 0));
         assert_eq!(b.get(0, 0), Rgba8::rgb(255, 0, 0));
         assert_eq!(b.get(15, 0), Rgba8::rgb(0, 0, 255));
     }
@@ -669,12 +653,10 @@ mod tests {
                 Stop::new(Rgba8::WHITE, 0.5),
                 Stop::new(Rgba8::rgb(0, 0, 255), 1.0),
             ],
-            dither: false,
             smoothstep: false,
         };
         let (p0, p1) = (Point::new(16, 16), Point::new(16, 0));
-        let mut rng = SeededRng::new(0);
-        apply_gradient(&mut b, None, &spec, p0, p1, &mut rng);
+        apply_gradient(&mut b, None, &spec, p0, p1);
         for y in 0..32 {
             for x in 0..32 {
                 let expected = gradient_eval(spec.kind, &spec.stops, p0, p1, x, y, spec.smoothstep);

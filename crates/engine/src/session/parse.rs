@@ -48,7 +48,6 @@ pub enum Action {
     SetFillAllLayers(bool),
     SetGradientType(GradientKind),
     SetGradientStops(Vec<Stop>),
-    SetGradientDither(bool),
     SetGradientSmoothstep(bool),
     SetHsvShift(f32, f32, f32),
     SetSelectionMode(CombineMode),
@@ -173,7 +172,6 @@ impl Session {
             SetFillAllLayers(b) => self.settings.fill_all_layers = b,
             SetGradientType(k) => self.settings.gradient.kind = k,
             SetGradientStops(s) => self.settings.gradient.stops = s,
-            SetGradientDither(b) => self.settings.gradient.dither = b,
             SetGradientSmoothstep(b) => self.settings.gradient.smoothstep = b,
             SetHsvShift(dh, ds, dv) => self.settings.hsv = (dh, ds, dv),
             SetSelectionMode(m) => self.selection_mode = m,
@@ -450,7 +448,6 @@ fn parse_line(line: &str) -> Result<Action, String> {
             "Radial" => GradientKind::Radial,
             o => return Err(format!("bad gradient '{}'", o)),
         }),
-        "SetGradientDither" => SetGradientDither(boola(0)?),
         "SetGradientSmoothstep" => SetGradientSmoothstep(boola(0)?),
         "SetHsvShift" => SetHsvShift(f32a(0)?, f32a(1)?, f32a(2)?),
         "SetSelectionMode" => SetSelectionMode(match args.first().copied().unwrap_or("") {
