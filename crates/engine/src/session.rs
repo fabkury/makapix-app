@@ -426,8 +426,9 @@ impl Session {
 
     fn draw_tool_preview(&self, buf: &mut RgbaBuffer) {
         // A pending move draft: the moved pixels are already in the layer (crash-safe), so just wash
-        // them with a soft semi-transparent tint to mark "pending until Commit".
-        if let Some(d) = &self.move_draft {
+        // them with a soft semi-transparent tint to mark "pending until Commit". Only wash when the
+        // draft's own frame is the one being displayed (the user may have switched frames).
+        if let Some(d) = self.move_draft.as_ref().filter(|d| d.fid == self.doc.active_frame().id) {
             let wash = Rgba8::new(0, 200, 255, 60); // soft cyan "draft" wash (matches the paste hue)
             let (w, h) = (self.doc.size.w as i32, self.doc.size.h as i32);
             for f in &d.floats {
