@@ -44,7 +44,12 @@ extension _EditorTimeline on _EditorPageState {
         _editorMenuButton(), // ☰ — the former top-bar items (file/import/export/grid/fit), left of the strip
         Container(width: 1, color: Colors.black26),
         Expanded(
-          child: ListView.builder(
+          // Long-press the empty area near the frames → "Add animation frame" (the thumbnails keep
+          // their own long-press menu, which wins as the deeper gesture).
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onLongPress: _addFrameMenu,
+            child: ListView.builder(
             scrollDirection: Axis.horizontal,
             itemCount: count,
             padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -81,11 +86,32 @@ extension _EditorTimeline on _EditorPageState {
                 ),
               );
             },
+            ),
           ),
         ),
         Container(width: 1, color: Colors.black26),
         IconButton(iconSize: 20, tooltip: 'Add frame', onPressed: () => _act('AddFrame()'), icon: const Icon(Icons.add_box)),
       ]),
+    );
+  }
+
+  // Long-pressing the empty film-strip area surfaces the "Add animation frame" option (same action
+  // as the + button at the end of the strip).
+  void _addFrameMenu() {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: const Icon(Icons.add_box_outlined),
+            title: const Text('Add animation frame'),
+            onTap: () {
+              Navigator.pop(ctx);
+              _act('AddFrame()');
+            },
+          ),
+        ]),
+      ),
     );
   }
 
