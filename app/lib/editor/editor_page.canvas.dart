@@ -131,6 +131,9 @@ extension _EditorCanvas on _EditorPageState {
                         (_shapeA! + _shapeB!) / 2, _shapeB!, _shapeRot, vScale, vOff),
                     size: Size.infinite,
                   ),
+                if (_hasTipHandle)
+                  // Triangle apex-skew handle: a diamond that slides along the top edge
+                  _tipHandlePaint(vScale, vOff),
                 if (_isRuler && _hasRuler)
                   // measurement line + endpoint coords + length (never drawn to the canvas)
                   CustomPaint(
@@ -363,6 +366,15 @@ extension _EditorCanvas on _EditorPageState {
         setState(() {});
         return;
       }
+      // Triangle apex-skew handle wins next (it rides the top edge; default top-centre is clear of
+      // the corner handles). Grabbing it lets the tip slide horizontally even when it overlaps a
+      // base corner at the extremes.
+      if (_hasTipHandle && (pos - screenOf(_triApex())).distance <= 28.0) {
+        _shapeDrag = 6;
+        _redraw();
+        setState(() {});
+        return;
+      }
       // A bit larger than the drawn reticle so the ends are easy to grab.
       final tol = (s * 1.1).clamp(30.0, 56.0);
       final dA = (pos - screenOf(_shapeA!)).distance;
@@ -387,6 +399,7 @@ extension _EditorCanvas on _EditorPageState {
       _shapeDrag = 3;
       _newShapeStart = p;
       _shapeRot = 0; // a fresh shape starts unrotated
+      _triTip = 0; // …and a fresh triangle starts as a centred isosceles
       _shapeA = p;
       _shapeB = p;
       _pushShape();
@@ -408,6 +421,20 @@ extension _EditorCanvas on _EditorPageState {
       _shapeA = _rotateAround(_rotOrigA!, c, d);
       _shapeB = _rotateAround(_rotOrigB!, c, d);
       _shapeRot = theta;
+      _pushShape();
+      _redraw();
+      setState(() {});
+      return;
+    }
+    if (_shapeDrag == 6) {
+      // Apex skew: project the finger onto the triangle's (rotated) top-edge axis and map it to
+      // tip ∈ [-1, 1]. The height is fixed (set by the size handles); only x along the edge moves.
+      final raw = _toCanvasRaw(pos, box);
+      final c = (_shapeA! + _shapeB!) / 2;
+      final cs = math.cos(_shapeRot), sn = math.sin(_shapeRot);
+      final lx = cs * (raw.dx - c.dx) + sn * (raw.dy - c.dy);
+      final (hw, _) = _triHalfExtents();
+      _triTip = hw <= 0 ? 0 : (lx / hw).clamp(-1.0, 1.0);
       _pushShape();
       _redraw();
       setState(() {});
@@ -558,6 +585,40 @@ extension _EditorCanvas on _EditorPageState {
     final a = _shapeA!, b = _shapeB!;
     _send('ShapeSet(${a.dx.toInt()},${a.dy.toInt()},${b.dx.toInt()},${b.dy.toInt()})');
     _send('SetShapeRotation(${(_shapeRot * 1000).round()})'); // milliradians; ignored by Line/Gradient
+    _send('SetTriangleTip(${(_triTip * 1000).round()})'); // thousandths; Triangle-only
+  }
+
+  // True when the apex-skew handle should be live: the Shape tool, a pending Triangle draft.
+  bool get _hasTipHandle => _tool == 'Shape' && _shapeKind == 'Triangle' && _hasShapeDraft;
+
+  // The triangle's local half-extents (hw,hh) in canvas pixels, matching the engine geometry.
+  (double, double) _triHalfExtents() {
+    final c = (_shapeA! + _shapeB!) / 2;
+    final cs = math.cos(_shapeRot), sn = math.sin(_shapeRot);
+    final vbx = _shapeB!.dx - c.dx, vby = _shapeB!.dy - c.dy;
+    return ((cs * vbx + sn * vby).abs(), (-sn * vbx + cs * vby).abs());
+  }
+
+  // Canvas-pixel position of the triangle's apex (top edge, skewed by _triTip), matching the engine.
+  Offset _triApex() {
+    final c = (_shapeA! + _shapeB!) / 2;
+    final cs = math.cos(_shapeRot), sn = math.sin(_shapeRot);
+    final (hw, hh) = _triHalfExtents();
+    return Offset(c.dx + cs * _triTip * hw + sn * hh, c.dy + sn * _triTip * hw - cs * hh);
+  }
+
+  // The two ends of the apex's travel rail (the top edge's left/right corners), in canvas pixels.
+  (Offset, Offset) _triTopEdge() {
+    final c = (_shapeA! + _shapeB!) / 2;
+    final cs = math.cos(_shapeRot), sn = math.sin(_shapeRot);
+    final (hw, hh) = _triHalfExtents();
+    Offset corner(double lx) => Offset(c.dx + cs * lx + sn * hh, c.dy + sn * lx - cs * hh);
+    return (corner(-hw), corner(hw)); // top-left, top-right
+  }
+
+  Widget _tipHandlePaint(double s, Offset o) {
+    final (ta, tb) = _triTopEdge();
+    return CustomPaint(painter: TriangleTipHandlePainter(_triApex(), ta, tb, s, o), size: Size.infinite);
   }
 
   // The Shape tool's rotate-handle reticle (screen px): out beyond the box corner, at angle _shapeRot.

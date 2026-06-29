@@ -330,6 +330,7 @@ extension _EditorEngine on _EditorPageState {
       _shapeB = null;
       _shapeDrag = 0;
       _shapeRot = 0;
+      _triTip = 0;
     });
     _refreshState();
     _redraw();
@@ -343,6 +344,7 @@ extension _EditorEngine on _EditorPageState {
       _shapeB = null;
       _shapeDrag = 0;
       _shapeRot = 0;
+      _triTip = 0;
     });
     _redraw();
   }
@@ -437,6 +439,12 @@ extension _EditorEngine on _EditorPageState {
   Offset _toCanvas(Offset local, Size box) {
     final (s, off) = _view(box);
     return Offset(((local.dx - off.dx) / s).floorToDouble(), ((local.dy - off.dy) / s).floorToDouble());
+  }
+
+  // Like _toCanvas but un-floored (sub-pixel canvas coords) — for smooth handle projection.
+  Offset _toCanvasRaw(Offset local, Size box) {
+    final (s, off) = _view(box);
+    return Offset((local.dx - off.dx) / s, (local.dy - off.dy) / s);
   }
 
   void _fitView() => setState(() {

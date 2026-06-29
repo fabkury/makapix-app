@@ -188,6 +188,41 @@ class ShapeRotateHandlePainter extends CustomPainter {
       o.center != center || o.corner != corner || o.rotation != rotation || o.scale != scale || o.off != off;
 }
 
+/// The Triangle's apex-skew handle: a faint rail along the (rotated) top edge with a diamond reticle
+/// at the apex. Dragging the diamond slides the tip horizontally between the two base corners. Drawn
+/// in SCREEN space. A distinct amber colour so it never reads as a size or rotate handle.
+class TriangleTipHandlePainter extends CustomPainter {
+  final Offset apex, railA, railB; // canvas-pixel coords (cell top-left)
+  final double scale;
+  final Offset off;
+  const TriangleTipHandlePainter(this.apex, this.railA, this.railB, this.scale, this.off);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (scale <= 0) return;
+    Offset sc(Offset c) => Offset(off.dx + (c.dx + 0.5) * scale, off.dy + (c.dy + 0.5) * scale);
+    final a = sc(railA), b = sc(railB), ap = sc(apex);
+    // The travel rail: the tip can only slide along here (parallel to the base).
+    canvas.drawLine(a, b, Paint()..color = const Color(0x66000000)..strokeWidth = 4..isAntiAlias = true);
+    canvas.drawLine(a, b, Paint()..color = const Color(0x99FFB300)..strokeWidth = 2..isAntiAlias = true);
+    // A diamond reticle at the apex.
+    const r = 9.0;
+    final dia = Path()
+      ..moveTo(ap.dx, ap.dy - r)
+      ..lineTo(ap.dx + r, ap.dy)
+      ..lineTo(ap.dx, ap.dy + r)
+      ..lineTo(ap.dx - r, ap.dy)
+      ..close();
+    canvas.drawPath(dia, Paint()..color = Colors.black..style = PaintingStyle.stroke..strokeWidth = 4..isAntiAlias = true);
+    canvas.drawPath(dia, Paint()..color = const Color(0xFFFFB300)..isAntiAlias = true);
+    canvas.drawCircle(ap, 2.0, Paint()..color = Colors.white);
+  }
+
+  @override
+  bool shouldRepaint(TriangleTipHandlePainter o) =>
+      o.apex != apex || o.railA != railA || o.railB != railB || o.scale != scale || o.off != off;
+}
+
 /// Screen-space radius of the Ruler's endpoint reticles. Also the grab radius for dragging an end
 /// (shared with the gesture code), so "tap within the reticle to move that coordinate".
 const double kRulerReticleRadius = 36.0;

@@ -70,8 +70,8 @@ fn stroke_polyline(pts: &[Point], thickness: i32, mut plot: impl FnMut(i32, i32)
     }
 }
 
-/// Outline of a shape (`kind`: 0=Rectangle, 1=Ellipse, 2=Triangle), axis-aligned or rotated by
-/// `rot` radians, drawn with **Approach A**: trace the exact boundary in the shape's local frame,
+/// Outline of a Rectangle (`kind` 0) or Ellipse (`kind` 1), axis-aligned or rotated by `rot`
+/// radians, drawn with **Approach A**: trace the exact boundary in the shape's local frame,
 /// rotate the boundary points into place, then stroke the connected polyline. `a`,`b` are the two
 /// (already-rotated) opposite corners of the box; `thickness` is the outline width. Because the
 /// curve is rasterised as Bresenham segments — not by testing each pixel's distance to the boundary
@@ -98,11 +98,6 @@ pub fn shape_outline(a: Point, b: Point, rot: f32, kind: u8, thickness: i32, plo
             pts.push(to_world(hw, -hh));
             pts.push(to_world(hw, hh));
             pts.push(to_world(-hw, hh));
-        }
-        2 => {
-            pts.push(to_world(0.0, -hh)); // apex (top centre)
-            pts.push(to_world(-hw, hh)); // bottom-left
-            pts.push(to_world(hw, hh)); // bottom-right
         }
         _ => {
             // Sample the parametric ellipse densely enough (~1px between samples) that the Bresenham
@@ -244,33 +239,47 @@ pub fn ellipse_outline(a: Point, b: Point, thickness: i32, plot: impl FnMut(i32,
     shape_outline(a, b, 0.0, 1, thickness, plot);
 }
 
-/// The three vertices of the triangle inscribed in the box of `a`,`b`: apex at top-centre, base
-/// along the bottom edge (an upward-pointing isosceles triangle).
-fn triangle_verts(a: Point, b: Point) -> [Point; 3] {
-    let (x0, x1) = (a.x.min(b.x), a.x.max(b.x));
-    let (y0, y1) = (a.y.min(b.y), a.y.max(b.y));
+/// The three world-space vertices of the triangle inscribed in the box of `a`,`b`, rotated by `rot`
+/// radians and with its apex skewed horizontally by `tip` ∈ [-1, 1] along the top edge (0 = centred
+/// isosceles; ±1 = apex over a base corner = a right triangle). Base runs along the bottom edge.
+fn triangle_vertices(a: Point, b: Point, rot: f32, tip: f32) -> [Point; 3] {
+    let cx = (a.x + b.x) as f32 / 2.0;
+    let cy = (a.y + b.y) as f32 / 2.0;
+    let (sn, cs) = rot.sin_cos();
+    // Local half-extents = the un-rotated vector from the centre to corner `b`.
+    let (vbx, vby) = (b.x as f32 - cx, b.y as f32 - cy);
+    let hw = (cs * vbx + sn * vby).abs().max(0.5);
+    let hh = (-sn * vbx + cs * vby).abs().max(0.5);
+    let to_world = |lx: f32, ly: f32| {
+        Point::new(
+            (cx + cs * lx - sn * ly).round() as i32,
+            (cy + sn * lx + cs * ly).round() as i32,
+        )
+    };
+    let t = tip.clamp(-1.0, 1.0);
     [
-        Point::new((x0 + x1) / 2, y0), // apex (top centre)
-        Point::new(x0, y1),            // bottom-left
-        Point::new(x1, y1),            // bottom-right
+        to_world(t * hw, -hh), // apex (skewable along the top edge)
+        to_world(-hw, hh),     // bottom-left
+        to_world(hw, hh),      // bottom-right
     ]
 }
 
-/// Filled triangle inscribed in the bounding box of the two corner points.
-pub fn triangle_filled(a: Point, b: Point, plot: impl FnMut(i32, i32)) {
-    polygon_filled(&triangle_verts(a, b), plot);
+/// Filled triangle (rotated by `rot`, apex skewed by `tip`).
+pub fn triangle_filled(a: Point, b: Point, rot: f32, tip: f32, plot: impl FnMut(i32, i32)) {
+    polygon_filled(&triangle_vertices(a, b, rot, tip), plot);
 }
 
-/// Triangle outline (Approach A: its three edges stroked as a closed polyline).
-pub fn triangle_outline(a: Point, b: Point, thickness: i32, plot: impl FnMut(i32, i32)) {
-    shape_outline(a, b, 0.0, 2, thickness, plot);
+/// Triangle outline (its three edges stroked as a closed polyline; rotated by `rot`, apex skewed by
+/// `tip`).
+pub fn triangle_outline(a: Point, b: Point, rot: f32, tip: f32, thickness: i32, plot: impl FnMut(i32, i32)) {
+    stroke_polyline(&triangle_vertices(a, b, rot, tip), thickness, plot);
 }
 
-/// Draw a ROTATED shape (`kind`: 0=Rectangle, 1=Ellipse, 2=Triangle), `a`,`b` being the two
-/// (already-rotated) opposite corners and `rot` the box rotation in radians. Outlines are traced as
-/// a Bresenham polyline (`shape_outline`, Approach A); a fill inverse-rotates every candidate pixel
-/// into the shape's local frame and tests the exact inside predicate there — so rotation is
-/// mathematically perfect, never a post-hoc rotation of already-drawn pixels.
+/// Draw a ROTATED Rectangle (`kind` 0) or Ellipse (`kind` 1), `a`,`b` being the two (already-rotated)
+/// opposite corners and `rot` the box rotation in radians (Triangle has its own rot+tip path). An
+/// outline is traced as a Bresenham polyline (`shape_outline`, Approach A); a fill inverse-rotates
+/// every candidate pixel into the shape's local frame and tests the exact inside predicate there — so
+/// rotation is mathematically perfect, never a post-hoc rotation of already-drawn pixels.
 pub fn rotated_shape(
     a: Point,
     b: Point,
@@ -303,22 +312,13 @@ pub fn rotated_shape(
             let ly = -sn * dx + cs * dy;
             let inside = match kind {
                 0 => lx.abs() <= hw && ly.abs() <= hh,
-                1 => (lx / hw).powi(2) + (ly / hh).powi(2) <= 1.0,
-                _ => triangle_inside(lx, ly, hw, hh),
+                _ => (lx / hw).powi(2) + (ly / hh).powi(2) <= 1.0,
             };
             if inside {
                 plot(x, y);
             }
         }
     }
-}
-
-fn triangle_inside(lx: f32, ly: f32, hw: f32, hh: f32) -> bool {
-    // Local verts: apex top-centre, base along the bottom.
-    let v = [(0.0, -hh), (-hw, hh), (hw, hh)];
-    let cross = |i: usize, j: usize| (v[j].0 - v[i].0) * (ly - v[i].1) - (v[j].1 - v[i].1) * (lx - v[i].0);
-    let (e0, e1, e2) = (cross(0, 1), cross(1, 2), cross(2, 0));
-    (e0 >= 0.0 && e1 >= 0.0 && e2 >= 0.0) || (e0 <= 0.0 && e1 <= 0.0 && e2 <= 0.0)
 }
 
 /// Circle inscribed centered at `center` with `radius` to `edge` point.

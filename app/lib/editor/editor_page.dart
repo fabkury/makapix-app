@@ -107,7 +107,8 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // no uncommitted figure. While set, a live preview + draggable handles show and row-1 gets
   // Commit/Cancel; nothing is written to the layer until Commit.
   Offset? _shapeA, _shapeB;
-  // active gesture: 0=none, 1=dragging A, 2=dragging B, 3=drawing a new figure, 4=moving the whole draft
+  // active gesture: 0=none, 1=dragging A, 2=dragging B, 3=drawing a new figure, 4=moving the whole
+  // draft, 5=rotating, 6=dragging the Triangle's apex (horizontal tip position)
   int _shapeDrag = 0;
   // Start point of a not-yet-materialized new figure: when a press lands off the handles over an
   // existing draft, we defer replacing it until the finger actually moves, so a pinch-zoom or a
@@ -120,6 +121,8 @@ class _EditorPageState extends ConsumerState<EditorPage>
   double _shapeRot = 0;
   Offset? _rotOrigA, _rotOrigB;
   double _rotOrigAngle = 0;
+  // Triangle apex skew along its top edge, in [-1, 1] (0 = centred isosceles; ±1 = right triangle).
+  double _triTip = 0;
   // Ruler tool: a non-destructive measurement line (two draggable endpoints in canvas-pixel
   // coords). Never drawn to the canvas; cleared when switching tools.
   Offset? _rulerA, _rulerB;

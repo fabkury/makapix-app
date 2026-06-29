@@ -511,18 +511,20 @@ pub fn clear_region(buf: &mut RgbaBuffer, sel: Option<&Mask>) {
     }
 }
 
-/// Map a figure ToolKind to the rotated-rasteriser code (None = doesn't rotate, e.g. Line).
+/// Map a Rectangle/Ellipse ToolKind to the rotated-rasteriser code (None = handled elsewhere:
+/// Line never rotates, Triangle has its own rot+tip path).
 fn rotated_kind(kind: ToolKind) -> Option<u8> {
     match kind {
         ToolKind::Rectangle => Some(0),
         ToolKind::Ellipse => Some(1),
-        ToolKind::Triangle => Some(2),
         _ => None,
     }
 }
 
 /// Draw a shape (Line/Rectangle/Ellipse/Triangle), outline or filled (SPEC §28.1), optionally
-/// rotated by `rot` radians (Rectangle/Ellipse/Triangle only).
+/// rotated by `rot` radians (Rectangle/Ellipse/Triangle). `tip` ∈ [-1, 1] skews a Triangle's apex
+/// horizontally along its top edge (ignored by the other shapes).
+#[allow(clippy::too_many_arguments)]
 pub fn draw_shape(
     buf: &mut RgbaBuffer,
     sel: Option<&Mask>,
@@ -530,40 +532,44 @@ pub fn draw_shape(
     a: Point,
     b: Point,
     rot: f32,
+    tip: f32,
     color: Rgba8,
     fill: bool,
     line_width: u16,
     mode: PaintMode,
 ) {
+    let lw = line_width.max(1) as i32;
     let mut f = |x: i32, y: i32| plot(buf, sel, x, y, color, mode);
-    // A rotated Rectangle/Ellipse/Triangle goes through the exact inverse-rotation rasteriser.
+    // The Triangle carries its own rotation + apex skew through one path.
+    if kind == ToolKind::Triangle {
+        if fill {
+            raster::triangle_filled(a, b, rot, tip, &mut f);
+        } else {
+            raster::triangle_outline(a, b, rot, tip, lw, &mut f);
+        }
+        return;
+    }
+    // A rotated Rectangle/Ellipse goes through the exact inverse-rotation rasteriser.
     if rot.abs() > 1e-4 {
         if let Some(k) = rotated_kind(kind) {
-            raster::rotated_shape(a, b, rot, k, fill, line_width.max(1) as i32, &mut f);
+            raster::rotated_shape(a, b, rot, k, fill, lw, &mut f);
             return;
         }
     }
     match kind {
-        ToolKind::Line => raster::thick_line(a, b, line_width.max(1) as i32, &mut f),
+        ToolKind::Line => raster::thick_line(a, b, lw, &mut f),
         ToolKind::Rectangle => {
             if fill {
                 raster::rect_filled(a, b, &mut f)
             } else {
-                raster::rect_outline(a, b, line_width.max(1) as i32, &mut f)
+                raster::rect_outline(a, b, lw, &mut f)
             }
         }
         ToolKind::Ellipse => {
             if fill {
                 raster::ellipse_filled(a, b, &mut f)
             } else {
-                raster::ellipse_outline(a, b, line_width.max(1) as i32, &mut f)
-            }
-        }
-        ToolKind::Triangle => {
-            if fill {
-                raster::triangle_filled(a, b, &mut f)
-            } else {
-                raster::triangle_outline(a, b, line_width.max(1) as i32, &mut f)
+                raster::ellipse_outline(a, b, lw, &mut f)
             }
         }
         _ => {}

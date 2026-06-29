@@ -107,6 +107,10 @@ pub struct Session {
     /// Rotation of the pending shape draft (radians, around the box centre). Only the figure shapes
     /// (Rectangle/Ellipse/Triangle) honour it; Line/Gradient ignore it. Reset on commit/cancel.
     shape_rotation: f32,
+    /// Horizontal skew of the pending Triangle draft's apex along its top edge, in [-1, 1] (0 = a
+    /// centred isosceles triangle; ±1 = apex over a base corner = a right triangle). Triangle-only;
+    /// reset on commit/cancel.
+    triangle_tip: f32,
     last_gradient: Option<(GradientKind, Vec<Stop>, Point, Point, u32, u32)>,
     /// Move-layer drag state: pre-drag pixel snapshots of each moved layer, plus the pre-drag
     /// frame (and its id) for a single grouped undo. Set on pointer_down, cleared on pointer_up.
@@ -136,6 +140,7 @@ impl Session {
             paint_acc: 0.0,
             shape_draft: None,
             shape_rotation: 0.0,
+            triangle_tip: 0.0,
             last_gradient: None,
             move_layers: Vec::new(),
             move_before: None,
@@ -265,48 +270,44 @@ impl Session {
     /// fill/outline + line-width settings. Used both for the live preview and the draft preview.
     fn render_shape_preview(&self, buf: &mut RgbaBuffer, a: Point, b: Point) {
         let color = self.settings.primary;
-        // A rotated figure previews through the exact inverse-rotation rasteriser.
-        if self.shape_rotation.abs() > 1e-4 {
+        let lw = self.settings.line_width.max(1) as i32;
+        let fill = self.settings.shape_fill;
+        let rot = self.shape_rotation;
+        // The Triangle carries its own rotation + apex skew through one path.
+        if self.tool == ToolKind::Triangle {
+            if fill {
+                crate::raster::triangle_filled(a, b, rot, self.triangle_tip, |x, y| buf.blend_over(x, y, color));
+            } else {
+                crate::raster::triangle_outline(a, b, rot, self.triangle_tip, lw, |x, y| buf.blend_over(x, y, color));
+            }
+            return;
+        }
+        // A rotated Rectangle/Ellipse previews through the exact inverse-rotation rasteriser.
+        if rot.abs() > 1e-4 {
             let k = match self.tool {
                 ToolKind::Rectangle => Some(0u8),
                 ToolKind::Ellipse => Some(1),
-                ToolKind::Triangle => Some(2),
                 _ => None,
             };
             if let Some(k) = k {
-                crate::raster::rotated_shape(
-                    a,
-                    b,
-                    self.shape_rotation,
-                    k,
-                    self.settings.shape_fill,
-                    self.settings.line_width.max(1) as i32,
-                    |x, y| buf.blend_over(x, y, color),
-                );
+                crate::raster::rotated_shape(a, b, rot, k, fill, lw, |x, y| buf.blend_over(x, y, color));
                 return;
             }
         }
         match self.tool {
-            ToolKind::Line => crate::raster::thick_line(a, b, self.settings.line_width.max(1) as i32, |x, y| buf.blend_over(x, y, color)),
+            ToolKind::Line => crate::raster::thick_line(a, b, lw, |x, y| buf.blend_over(x, y, color)),
             ToolKind::Rectangle => {
-                if self.settings.shape_fill {
+                if fill {
                     crate::raster::rect_filled(a, b, |x, y| buf.blend_over(x, y, color));
                 } else {
-                    crate::raster::rect_outline(a, b, self.settings.line_width.max(1) as i32, |x, y| buf.blend_over(x, y, color));
+                    crate::raster::rect_outline(a, b, lw, |x, y| buf.blend_over(x, y, color));
                 }
             }
             ToolKind::Ellipse => {
-                if self.settings.shape_fill {
+                if fill {
                     crate::raster::ellipse_filled(a, b, |x, y| buf.blend_over(x, y, color));
                 } else {
-                    crate::raster::ellipse_outline(a, b, self.settings.line_width.max(1) as i32, |x, y| buf.blend_over(x, y, color));
-                }
-            }
-            ToolKind::Triangle => {
-                if self.settings.shape_fill {
-                    crate::raster::triangle_filled(a, b, |x, y| buf.blend_over(x, y, color));
-                } else {
-                    crate::raster::triangle_outline(a, b, self.settings.line_width.max(1) as i32, |x, y| buf.blend_over(x, y, color));
+                    crate::raster::ellipse_outline(a, b, lw, |x, y| buf.blend_over(x, y, color));
                 }
             }
             _ => {}
@@ -807,7 +808,7 @@ impl Session {
                     let (fill, lw, kind) = (self.settings.shape_fill, self.settings.line_width, self.tool);
                     let sel = self.selection.clone();
                     let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-                    tool::draw_shape(buf, sel.as_ref(), kind, start, last, 0.0, color, fill, lw, PaintMode::Over);
+                    tool::draw_shape(buf, sel.as_ref(), kind, start, last, 0.0, 0.0, color, fill, lw, PaintMode::Over);
                 }
                 ToolKind::Move => {
                     if let (Some(float), Some(sel)) = (stroke.floating, self.selection.clone()) {
@@ -951,24 +952,31 @@ impl Session {
         } else {
             let color = self.settings.primary;
             let (fill, lw, kind) = (self.settings.shape_fill, self.settings.line_width, self.tool);
-            let rot = self.shape_rotation;
+            let (rot, tip) = (self.shape_rotation, self.triangle_tip);
             let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-            tool::draw_shape(buf, sel.as_ref(), kind, a, b, rot, color, fill, lw, PaintMode::Over);
+            tool::draw_shape(buf, sel.as_ref(), kind, a, b, rot, tip, color, fill, lw, PaintMode::Over);
         }
         self.commit_edit(before);
         self.shape_draft = None;
         self.shape_rotation = 0.0;
+        self.triangle_tip = 0.0;
     }
 
     /// Discard the pending figure draft without drawing anything.
     pub fn shape_cancel(&mut self) {
         self.shape_draft = None;
         self.shape_rotation = 0.0;
+        self.triangle_tip = 0.0;
     }
 
     /// Set the pending shape draft's rotation (milliradians, around the box centre).
     pub fn set_shape_rotation(&mut self, milliradians: i32) {
         self.shape_rotation = milliradians as f32 / 1000.0;
+    }
+
+    /// Set the pending Triangle draft's apex skew (thousandths; -1000..=1000 maps to -1.0..=1.0).
+    pub fn set_triangle_tip(&mut self, thousandths: i32) {
+        self.triangle_tip = (thousandths as f32 / 1000.0).clamp(-1.0, 1.0);
     }
 
     pub fn tap(&mut self, x: i32, y: i32) {
@@ -2326,6 +2334,27 @@ mod tests {
         assert_eq!(s.pixel(0, 0, 8, 4), Rgba8::WHITE); // up the (now) long axis
         assert_eq!(s.pixel(0, 0, 8, 8), Rgba8::WHITE);
         assert_eq!(s.pixel(0, 0, 12, 6), Rgba8::TRANSPARENT); // off the narrow axis
+        assert!(s.doc.undo());
+    }
+
+    #[test]
+    fn triangle_tip_skews_the_apex_to_a_right_triangle() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.settings.shape_fill = false;
+        s.settings.line_width = 1;
+        s.tool = ToolKind::Triangle;
+        // Box corners (2,2)-(12,12): apex at top edge (y=2). tip=+1 → apex over the right base
+        // corner (x≈12), forming a right triangle whose right edge is the vertical line x=12.
+        s.shape_set(2, 2, 12, 12);
+        s.set_triangle_tip(1000);
+        s.shape_commit();
+        // The vertical right edge is drawn down the right side…
+        assert_eq!(s.pixel(0, 0, 12, 2), Rgba8::WHITE, "apex at top-right");
+        assert_eq!(s.pixel(0, 0, 12, 7), Rgba8::WHITE, "right edge is vertical");
+        assert_eq!(s.pixel(0, 0, 12, 12), Rgba8::WHITE, "bottom-right corner");
+        // …and the top edge is NOT centred above the base any more (top-left has no apex).
+        assert_eq!(s.pixel(0, 0, 7, 2), Rgba8::TRANSPARENT, "no centred apex");
         assert!(s.doc.undo());
     }
 
