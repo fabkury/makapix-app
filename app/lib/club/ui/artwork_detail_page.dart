@@ -59,15 +59,19 @@ class _DetailBody extends ConsumerWidget {
     return ListView(
       children: [
         // Artwork on a dark stage: stretched (aspect-ratio preserved) to 94% of the width,
-        // leaving only a thin 3% margin on each side.
+        // leaving only a thin 3% margin on each side, but never taller than 70% of the screen
+        // (tall/portrait pieces letterbox within that cap instead of dominating the page).
         Container(
           color: const Color(0xFF0E1012),
           alignment: Alignment.center,
           padding: EdgeInsets.symmetric(
               horizontal: MediaQuery.of(context).size.width * 0.03, vertical: 12),
-          child: AspectRatio(
-            aspectRatio: post.height > 0 ? post.width / post.height : 1,
-            child: PixelArtImage(url: post.artUrl),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.70),
+            child: AspectRatio(
+              aspectRatio: post.height > 0 ? post.width / post.height : 1,
+              child: PixelArtImage(url: post.artUrl),
+            ),
           ),
         ),
         Padding(
