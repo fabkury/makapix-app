@@ -135,6 +135,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   Offset? _rulerMoveAnchor, _rulerMoveOrigA, _rulerMoveOrigB;
   int _canvasW = 0, _canvasH = 0; // last-seen canvas size; a change auto-clears the stale ruler
   bool _radial = false;
+  bool _gradSmooth = false; // Gradient: ease each colour transition with the smoothstep curve
   int _intensity = 128;
   int get _spacing => _spacingByTool[_tool] ?? 25; // Brush/Airbrush stamp spacing, % of brush size
   set _spacing(int v) => _spacingByTool[_tool] = v;

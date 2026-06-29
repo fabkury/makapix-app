@@ -311,6 +311,20 @@ extension _EditorControls on _EditorPageState {
         _send('SetGradientType(${_radial ? 'Radial' : 'Linear'})');
         if (_hasShapeDraft) _redraw();
       }));
+      // Smoothstep: ease each colour transition (S-curve) instead of a straight linear ramp.
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: FilterChip(
+          selected: _gradSmooth,
+          label: Text(_gradSmooth ? 'Smoothstep ✔' : 'Smoothstep'),
+          selectedColor: const Color(0xFF30A050),
+          onSelected: (v) {
+            setState(() => _gradSmooth = v);
+            _send('SetGradientSmoothstep($_gradSmooth)');
+            if (_hasShapeDraft) _redraw(); // the pending gradient preview reflects it live
+          },
+        ),
+      ));
       // Number of evenly-spaced colours in the gradient (2 / 3 / 4); the swatch count follows.
       children.add(_toggle(['2', '3', '4'], _gradCount - 2, (i) {
         setState(() => _gradCount = i + 2);

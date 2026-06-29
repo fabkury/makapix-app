@@ -208,13 +208,14 @@ pub fn gradient_oracle(
     stops: &[Stop],
     p0: Point,
     p1: Point,
+    smooth: bool,
     tol: u8,
 ) -> GradientOracle {
     let mut max_delta = 0u8;
     let mut worst = None;
     for y in 0..buf.height() as i32 {
         for x in 0..buf.width() as i32 {
-            let expected = gradient_eval(kind, stops, p0, p1, x, y);
+            let expected = gradient_eval(kind, stops, p0, p1, x, y, smooth);
             let actual = buf.get(x, y);
             let d = crate::color::max_channel_delta(expected, actual);
             if d > max_delta {

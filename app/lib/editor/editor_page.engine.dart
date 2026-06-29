@@ -316,6 +316,7 @@ extension _EditorEngine on _EditorPageState {
     _send('SetSelectionMode($_selMode); SetProtectPixels($_protectPixels); SetWrap($_wrap)');
     if (t == 'Gradient') {
       _send('SetGradientType(${_radial ? 'Radial' : 'Linear'})');
+      _send('SetGradientSmoothstep($_gradSmooth)');
       _send(_gradStopsDsl());
     }
     // Show Select Layer's overlay immediately on entry; clear it (redraw) when leaving it.

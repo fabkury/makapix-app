@@ -111,7 +111,7 @@ pub struct Session {
     /// centred isosceles triangle; ±1 = apex over a base corner = a right triangle). Triangle-only;
     /// reset on commit/cancel.
     triangle_tip: f32,
-    last_gradient: Option<(GradientKind, Vec<Stop>, Point, Point, u32, u32)>,
+    last_gradient: Option<(GradientKind, Vec<Stop>, Point, Point, bool, u32, u32)>,
     /// Move-layer drag state: pre-drag pixel snapshots of each moved layer, plus the pre-drag
     /// frame (and its id) for a single grouped undo. Set on pointer_down, cleared on pointer_up.
     move_layers: Vec<(usize, RgbaBuffer)>,
@@ -338,7 +338,7 @@ impl Session {
                         continue;
                     }
                 }
-                buf.set(x, y, tool::gradient_eval_sorted(spec.kind, &stops, a, b, x, y));
+                buf.set(x, y, tool::gradient_eval_sorted(spec.kind, &stops, a, b, x, y, spec.smoothstep));
             }
         }
     }
@@ -801,7 +801,7 @@ impl Session {
                     }
                     let (fid, lid) = (self.doc.frames[fi].id, self.doc.frames[fi].layers[li].id);
                     self.last_gradient =
-                        Some((spec.kind, spec.stops.clone(), start, last, fid, lid));
+                        Some((spec.kind, spec.stops.clone(), start, last, spec.smoothstep, fid, lid));
                 }
                 ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse | ToolKind::Triangle => {
                     let color = self.settings.primary;
@@ -948,7 +948,7 @@ impl Session {
                 tool::apply_gradient(buf, sel.as_ref(), &spec, a, b, &mut self.rng);
             }
             let (fid, lid) = (self.doc.frames[fi].id, self.doc.frames[fi].layers[li].id);
-            self.last_gradient = Some((spec.kind, spec.stops.clone(), a, b, fid, lid));
+            self.last_gradient = Some((spec.kind, spec.stops.clone(), a, b, spec.smoothstep, fid, lid));
         } else {
             let color = self.settings.primary;
             let (fill, lw, kind) = (self.settings.shape_fill, self.settings.line_width, self.tool);
@@ -1790,7 +1790,7 @@ impl Session {
     // ---- gradient oracle access ----
 
     pub fn assert_last_gradient(&self, tol: u8) -> Option<crate::probe::GradientOracle> {
-        let (kind, stops, p0, p1, fid, lid) = self.last_gradient.as_ref()?;
+        let (kind, stops, p0, p1, smooth, fid, lid) = self.last_gradient.as_ref()?;
         let fi = self.doc.frame_index_by_id(*fid)?;
         let li = self.doc.frames[fi].layer_index_by_id(*lid)?;
         Some(crate::probe::gradient_oracle(
@@ -1799,6 +1799,7 @@ impl Session {
             stops,
             *p0,
             *p1,
+            *smooth,
             tol,
         ))
     }
@@ -2383,6 +2384,7 @@ mod tests {
             kind: GradientKind::Linear,
             stops: vec![Stop::new(Rgba8::rgb(255, 0, 0), 0.0), Stop::new(Rgba8::rgb(0, 0, 255), 1.0)],
             dither: false,
+            smoothstep: false,
         };
         s.shape_set(0, 0, 15, 0); // horizontal red→blue gradient, drafted but not committed
 

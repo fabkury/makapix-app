@@ -123,6 +123,8 @@ pub struct GradientSpec {
     pub kind: GradientKind,
     pub stops: Vec<Stop>,
     pub dither: bool,
+    /// Ease each colour transition with the smoothstep curve instead of a linear ramp.
+    pub smoothstep: bool,
 }
 impl Default for GradientSpec {
     fn default() -> Self {
@@ -130,6 +132,7 @@ impl Default for GradientSpec {
             kind: GradientKind::Linear,
             stops: vec![Stop::new(Rgba8::BLACK, 0.0), Stop::new(Rgba8::WHITE, 1.0)],
             dither: false,
+            smoothstep: false,
         }
     }
 }
@@ -300,9 +303,19 @@ pub fn flood_fill(
     }
 }
 
+/// The smoothstep easing curve `3t²-2t³` (zero slope at both ends) — used to ease the interpolation
+/// between adjacent stops when the Gradient's "smoothstep" option is on, instead of a linear ramp.
+#[inline]
+pub fn smoothstep(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
 /// Sample a gradient's color at `t∈[0,1]` over stops **already sorted** ascending by `t`. The hot
 /// path: callers that fill many pixels sort once and call this per pixel (no per-pixel alloc). [F-14]
-pub fn gradient_color_at_sorted(s: &[Stop], t: f32) -> Rgba8 {
+/// When `smooth`, the local fraction between the two bounding stops is eased through `smoothstep`, so
+/// each colour transition eases in/out while the stop positions themselves stay put.
+pub fn gradient_color_at_sorted(s: &[Stop], t: f32, smooth: bool) -> Rgba8 {
     if s.is_empty() {
         return Rgba8::TRANSPARENT;
     }
@@ -315,7 +328,10 @@ pub fn gradient_color_at_sorted(s: &[Stop], t: f32) -> Rgba8 {
     for i in 0..s.len() - 1 {
         if t >= s[i].t && t <= s[i + 1].t {
             let span = (s[i + 1].t - s[i].t).max(1e-6);
-            let local = (t - s[i].t) / span;
+            let mut local = (t - s[i].t) / span;
+            if smooth {
+                local = smoothstep(local);
+            }
             return color::lerp_srgb(s[i].color, s[i + 1].color, local);
         }
     }
@@ -324,10 +340,10 @@ pub fn gradient_color_at_sorted(s: &[Stop], t: f32) -> Rgba8 {
 
 /// Sample a gradient's color at `t∈[0,1]` over arbitrary-order stops (sorts a copy first). Use the
 /// `_sorted` variant in per-pixel loops. The sort is total-order so it never panics on a NaN. [F-1]
-pub fn gradient_color_at(stops: &[Stop], t: f32) -> Rgba8 {
+pub fn gradient_color_at(stops: &[Stop], t: f32, smooth: bool) -> Rgba8 {
     let mut s: Vec<Stop> = stops.to_vec();
     s.sort_by(|a, b| a.t.total_cmp(&b.t));
-    gradient_color_at_sorted(&s, t)
+    gradient_color_at_sorted(&s, t, smooth)
 }
 
 /// Parameter `t` for a pixel under a linear/radial gradient defined by p0→p1.
@@ -356,13 +372,13 @@ pub fn gradient_t(kind: GradientKind, p0: Point, p1: Point, x: i32, y: i32) -> f
 }
 
 /// Evaluate the gradient color for a pixel (closed form; the oracle uses the same path).
-pub fn gradient_eval(kind: GradientKind, stops: &[Stop], p0: Point, p1: Point, x: i32, y: i32) -> Rgba8 {
-    gradient_color_at(stops, gradient_t(kind, p0, p1, x, y))
+pub fn gradient_eval(kind: GradientKind, stops: &[Stop], p0: Point, p1: Point, x: i32, y: i32, smooth: bool) -> Rgba8 {
+    gradient_color_at(stops, gradient_t(kind, p0, p1, x, y), smooth)
 }
 
 /// Like `gradient_eval` but assumes `stops` are pre-sorted — for per-pixel fill/preview loops. [F-14]
-pub fn gradient_eval_sorted(kind: GradientKind, stops: &[Stop], p0: Point, p1: Point, x: i32, y: i32) -> Rgba8 {
-    gradient_color_at_sorted(stops, gradient_t(kind, p0, p1, x, y))
+pub fn gradient_eval_sorted(kind: GradientKind, stops: &[Stop], p0: Point, p1: Point, x: i32, y: i32, smooth: bool) -> Rgba8 {
+    gradient_color_at_sorted(stops, gradient_t(kind, p0, p1, x, y), smooth)
 }
 
 /// Fill a region with the gradient, clipped to selection (SPEC §11.3).
@@ -393,7 +409,7 @@ pub fn apply_gradient(
                 let j = (rng.next_f32() - 0.5) * (1.0 / 255.0);
                 t = (t + j).clamp(0.0, 1.0);
             }
-            buf.set(x, y, gradient_color_at_sorted(&stops, t));
+            buf.set(x, y, gradient_color_at_sorted(&stops, t, spec.smoothstep));
         }
     }
 }
@@ -621,11 +637,26 @@ mod tests {
             kind: GradientKind::Linear,
             stops: vec![Stop::new(Rgba8::rgb(255, 0, 0), 0.0), Stop::new(Rgba8::rgb(0, 0, 255), 1.0)],
             dither: false,
+            smoothstep: false,
         };
         let mut rng = SeededRng::new(0);
         apply_gradient(&mut b, None, &spec, Point::new(0, 0), Point::new(15, 0), &mut rng);
         assert_eq!(b.get(0, 0), Rgba8::rgb(255, 0, 0));
         assert_eq!(b.get(15, 0), Rgba8::rgb(0, 0, 255));
+    }
+
+    #[test]
+    fn smoothstep_eases_the_ramp_but_keeps_endpoints() {
+        let stops = vec![Stop::new(Rgba8::BLACK, 0.0), Stop::new(Rgba8::WHITE, 1.0)];
+        // Endpoints and the midpoint are unchanged (smoothstep(0)=0, (.5)=.5, (1)=1)…
+        assert_eq!(gradient_color_at(&stops, 0.0, true), Rgba8::BLACK);
+        assert_eq!(gradient_color_at(&stops, 1.0, true), Rgba8::WHITE);
+        assert_eq!(gradient_color_at(&stops, 0.5, true), gradient_color_at(&stops, 0.5, false));
+        // …but a quarter of the way along, smoothstep is darker than the linear ramp (eased-in).
+        let lin = gradient_color_at(&stops, 0.25, false);
+        let smooth = gradient_color_at(&stops, 0.25, true);
+        assert!(smooth.r < lin.r, "smoothstep should sit below the linear ramp at t=0.25");
+        assert_eq!(smoothstep(0.25), 0.25 * 0.25 * (3.0 - 0.5));
     }
 
     #[test]
@@ -639,13 +670,14 @@ mod tests {
                 Stop::new(Rgba8::rgb(0, 0, 255), 1.0),
             ],
             dither: false,
+            smoothstep: false,
         };
         let (p0, p1) = (Point::new(16, 16), Point::new(16, 0));
         let mut rng = SeededRng::new(0);
         apply_gradient(&mut b, None, &spec, p0, p1, &mut rng);
         for y in 0..32 {
             for x in 0..32 {
-                let expected = gradient_eval(spec.kind, &spec.stops, p0, p1, x, y);
+                let expected = gradient_eval(spec.kind, &spec.stops, p0, p1, x, y, spec.smoothstep);
                 assert_eq!(b.get(x, y), expected);
             }
         }
