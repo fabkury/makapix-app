@@ -24,7 +24,27 @@ class ClubHomePage extends ConsumerStatefulWidget {
 }
 
 class _ClubHomePageState extends ConsumerState<ClubHomePage> {
-  FeedKind _feed = FeedKind.recent; // the website lands on Recent ("New artworks")
+  // Swipeable feed pages, left → right matching the top-bar order. The body lands on Recent
+  // ("New artworks", like the website), which sits in the middle so a swipe either way reaches
+  // a neighbouring feed.
+  static const List<FeedKind> _feeds = [FeedKind.promoted, FeedKind.recent, FeedKind.following];
+  static const int _initialPage = 1; // FeedKind.recent
+
+  late final PageController _pages = PageController(initialPage: _initialPage);
+  FeedKind _feed = _feeds[_initialPage];
+
+  @override
+  void dispose() {
+    _pages.dispose();
+    super.dispose();
+  }
+
+  // Jump to a feed by its top-bar button (animated; keeps the swipe pager in sync).
+  void _selectFeed(FeedKind kind) {
+    final i = _feeds.indexOf(kind);
+    if (i < 0 || i == _feeds.indexOf(_feed)) return;
+    _pages.animateToPage(i, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+  }
 
   void _openPost(Post p) =>
       Navigator.push(context, MaterialPageRoute(builder: (_) => ArtworkDetailPage(sqid: p.sqid)));
@@ -54,7 +74,7 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
   // A feed selector: tinted + filled-icon when its feed is the active one.
   Widget _feedIcon(IconData icon, IconData selectedIcon, String tip, FeedKind kind, ColorScheme cs) {
     final selected = _feed == kind;
-    return _navIcon(selected ? selectedIcon : icon, tip, () => setState(() => _feed = kind),
+    return _navIcon(selected ? selectedIcon : icon, tip, () => _selectFeed(kind),
         color: selected ? cs.primary : null);
   }
 
@@ -130,7 +150,13 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
           const SizedBox(width: 4),
         ],
       ),
-      body: _feedBody(_feed),
+      // Swipe horizontally to move Recommended ↔ Recent ↔ Following; the top-bar buttons jump
+      // to a page and stay in sync via onPageChanged.
+      body: PageView(
+        controller: _pages,
+        onPageChanged: (i) => setState(() => _feed = _feeds[i]),
+        children: [for (final kind in _feeds) _feedBody(kind)],
+      ),
     );
   }
 }
