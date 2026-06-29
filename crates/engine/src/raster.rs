@@ -209,9 +209,10 @@ pub fn rect_filled(a: Point, b: Point, mut plot: impl FnMut(i32, i32)) {
     }
 }
 
-/// Rectangle outline of the given thickness (Approach A: the four edges stroked as a polyline).
+/// Rectangle outline. 1px → Approach A (a clean traced 1px loop); thicker → an inward distance band
+/// (`rotated_shape`) so the frame grows inward instead of bulging out.
 pub fn rect_outline(a: Point, b: Point, thickness: i32, plot: impl FnMut(i32, i32)) {
-    shape_outline(a, b, 0.0, 0, thickness, plot);
+    rotated_shape(a, b, 0.0, 0, false, thickness, plot);
 }
 
 /// Filled ellipse inscribed in the bounding box of the two corner points.
@@ -233,10 +234,10 @@ pub fn ellipse_filled(a: Point, b: Point, mut plot: impl FnMut(i32, i32)) {
     }
 }
 
-/// Ellipse outline (Approach A: the parametric boundary traced and stroked as a polyline, so the
-/// line is continuous and uniform-width — no gaps at the high-curvature ends, no doubled pixels).
+/// Ellipse outline. 1px → Approach A (a clean traced 1px curve); thicker → an inward distance band
+/// (`rotated_shape`) so the ring follows the silhouette instead of bulging out.
 pub fn ellipse_outline(a: Point, b: Point, thickness: i32, plot: impl FnMut(i32, i32)) {
-    shape_outline(a, b, 0.0, 1, thickness, plot);
+    rotated_shape(a, b, 0.0, 1, false, thickness, plot);
 }
 
 /// The three world-space vertices of the triangle inscribed in the box of `a`,`b`, rotated by `rot`
@@ -269,17 +270,51 @@ pub fn triangle_filled(a: Point, b: Point, rot: f32, tip: f32, plot: impl FnMut(
     polygon_filled(&triangle_vertices(a, b, rot, tip), plot);
 }
 
-/// Triangle outline (its three edges stroked as a closed polyline; rotated by `rot`, apex skewed by
-/// `tip`).
-pub fn triangle_outline(a: Point, b: Point, rot: f32, tip: f32, thickness: i32, plot: impl FnMut(i32, i32)) {
-    stroke_polyline(&triangle_vertices(a, b, rot, tip), thickness, plot);
+/// Triangle outline (rotated by `rot`, apex skewed by `tip`). 1px → the three edges stroked as a
+/// clean Bresenham polyline; thicker → an **inward distance band**: pixels inside the triangle and
+/// within `thickness` of one of the three edges, so the ring follows the silhouette and grows inward
+/// (a fat-brushed centreline would instead bulge out and round the corners off into a blob).
+pub fn triangle_outline(a: Point, b: Point, rot: f32, tip: f32, thickness: i32, mut plot: impl FnMut(i32, i32)) {
+    let v = triangle_vertices(a, b, rot, tip);
+    if thickness <= 1 {
+        stroke_polyline(&v, thickness, plot);
+        return;
+    }
+    let lw = thickness.max(1) as f32;
+    let vf = [
+        (v[0].x as f32, v[0].y as f32),
+        (v[1].x as f32, v[1].y as f32),
+        (v[2].x as f32, v[2].y as f32),
+    ];
+    let len = |i: usize, j: usize| ((vf[j].0 - vf[i].0).powi(2) + (vf[j].1 - vf[i].1).powi(2)).sqrt().max(1e-6);
+    let (l01, l12, l20) = (len(0, 1), len(1, 2), len(2, 0));
+    let (x0, x1) = (v.iter().map(|p| p.x).min().unwrap(), v.iter().map(|p| p.x).max().unwrap());
+    let (y0, y1) = (v.iter().map(|p| p.y).min().unwrap(), v.iter().map(|p| p.y).max().unwrap());
+    for y in y0..=y1 {
+        for x in x0..=x1 {
+            let (px, py) = (x as f32, y as f32);
+            // Signed edge functions: |value| / edge_length = perpendicular distance to that edge.
+            let cross = |i: usize, j: usize| (vf[j].0 - vf[i].0) * (py - vf[i].1) - (vf[j].1 - vf[i].1) * (px - vf[i].0);
+            let (e0, e1, e2) = (cross(0, 1), cross(1, 2), cross(2, 0));
+            let inside = (e0 >= 0.0 && e1 >= 0.0 && e2 >= 0.0) || (e0 <= 0.0 && e1 <= 0.0 && e2 <= 0.0);
+            if inside && (e0.abs() / l01).min(e1.abs() / l12).min(e2.abs() / l20) < lw {
+                plot(x, y);
+            }
+        }
+    }
 }
 
-/// Draw a ROTATED Rectangle (`kind` 0) or Ellipse (`kind` 1), `a`,`b` being the two (already-rotated)
-/// opposite corners and `rot` the box rotation in radians (Triangle has its own rot+tip path). An
-/// outline is traced as a Bresenham polyline (`shape_outline`, Approach A); a fill inverse-rotates
-/// every candidate pixel into the shape's local frame and tests the exact inside predicate there — so
-/// rotation is mathematically perfect, never a post-hoc rotation of already-drawn pixels.
+/// Draw a Rectangle (`kind` 0) or Ellipse (`kind` 1), axis-aligned or rotated by `rot` (Triangle has
+/// its own rot+tip path). `a`,`b` are the two (already-rotated) opposite corners.
+///
+/// - **1px outline** (`!fill && thickness <= 1`): traced as a Bresenham polyline (`shape_outline`,
+///   Approach A) — a pixel-perfect, gap- and double-free 1px curve.
+/// - **fill** / **thick outline**: inverse-rotate every candidate pixel into the shape's local frame
+///   and test the exact predicate there (so rotation is mathematically perfect, never a post-hoc
+///   rotation of drawn pixels). A thick outline is the **inward distance band** — pixels inside the
+///   shape and within `thickness` of the boundary — so the ring follows the true silhouette, keeps a
+///   uniform width, grows inward, and degrades to a clean fill once `thickness` exceeds the inset
+///   (instead of a fat-brushed centreline bulging out into a blocky blob).
 pub fn rotated_shape(
     a: Point,
     b: Point,
@@ -289,7 +324,7 @@ pub fn rotated_shape(
     thickness: i32,
     mut plot: impl FnMut(i32, i32),
 ) {
-    if !fill {
+    if !fill && thickness <= 1 {
         shape_outline(a, b, rot, kind, thickness, plot);
         return;
     }
@@ -300,6 +335,7 @@ pub fn rotated_shape(
     let (vbx, vby) = (b.x as f32 - cx, b.y as f32 - cy);
     let hw = (cs * vbx + sn * vby).abs().max(0.5);
     let hh = (-sn * vbx + cs * vby).abs().max(0.5);
+    let lw = thickness.max(1) as f32;
     // World AABB of the rotated box.
     let ax = cs.abs() * hw + sn.abs() * hh;
     let ay = sn.abs() * hw + cs.abs() * hh;
@@ -310,11 +346,28 @@ pub fn rotated_shape(
             let (dx, dy) = (x as f32 - cx, y as f32 - cy);
             let lx = cs * dx + sn * dy; // R(-rot)·(P - C)
             let ly = -sn * dx + cs * dy;
-            let inside = match kind {
-                0 => lx.abs() <= hw && ly.abs() <= hh,
-                _ => (lx / hw).powi(2) + (ly / hh).powi(2) <= 1.0,
+            let hit = if kind == 0 {
+                let inside = lx.abs() <= hw && ly.abs() <= hh;
+                // Inward distance to the nearest box edge = min(hw-|lx|, hh-|ly|) — exact, uniform.
+                inside && (fill || (hw - lx.abs()).min(hh - ly.abs()) < lw)
+            } else {
+                let q = (lx / hw).powi(2) + (ly / hh).powi(2);
+                if q > 1.0 {
+                    false
+                } else if fill {
+                    true
+                } else {
+                    // Gradient-normalised distance to the ellipse boundary |f|/|∇f|, with f = q-1:
+                    // a near-uniform perpendicular inward distance, no closed form needed. |∇f| is
+                    // floored so the deep interior reports a finite distance (no centre pinhole at
+                    // huge thickness) while the near-boundary band — where the floor never binds —
+                    // stays uniform. Degrades to a clean fill once thickness exceeds the radius.
+                    let (gx, gy) = (lx / (hw * hw), ly / (hh * hh));
+                    let grad = (2.0 * (gx * gx + gy * gy).sqrt()).max(1.0 / hw.max(hh));
+                    (1.0 - q) / grad < lw
+                }
             };
-            if inside {
+            if hit {
                 plot(x, y);
             }
         }
@@ -439,6 +492,63 @@ mod tests {
         for &(x, y) in &set {
             let block = set.contains(&(x + 1, y)) && set.contains(&(x, y + 1)) && set.contains(&(x + 1, y + 1));
             assert!(!block, "doubled (2×2) pixels at ({x},{y})");
+        }
+    }
+
+    #[test]
+    fn thick_ellipse_outline_follows_silhouette() {
+        use std::collections::HashSet;
+        let (a, b) = (Point::new(0, 0), Point::new(30, 18));
+        let mut fill: HashSet<(i32, i32)> = HashSet::new();
+        ellipse_filled(a, b, |x, y| {
+            fill.insert((x, y));
+        });
+        let mut ring: HashSet<(i32, i32)> = HashSet::new();
+        ellipse_outline(a, b, 5, |x, y| {
+            ring.insert((x, y));
+        });
+        // No outline pixel bulges outside the silhouette, and the outer edge reaches it.
+        for p in &ring {
+            assert!(fill.contains(p), "thick outline pixel {p:?} bulged outside the ellipse");
+        }
+        assert!(ring.contains(&(0, 9)), "outer edge reaches the silhouette");
+        assert!(!ring.contains(&(15, 9)), "centre is hollow at moderate thickness");
+    }
+
+    #[test]
+    fn over_thick_ellipse_outline_becomes_a_clean_fill() {
+        use std::collections::HashSet;
+        let (a, b) = (Point::new(0, 0), Point::new(20, 12));
+        let mut fill: HashSet<(i32, i32)> = HashSet::new();
+        ellipse_filled(a, b, |x, y| {
+            fill.insert((x, y));
+        });
+        let mut ring: HashSet<(i32, i32)> = HashSet::new();
+        ellipse_outline(a, b, 99, |x, y| {
+            ring.insert((x, y));
+        });
+        assert_eq!(fill, ring, "a thickness past the radius fills the exact shape (no centre pinhole)");
+    }
+
+    #[test]
+    fn thick_triangle_outline_stays_inside() {
+        use std::collections::HashSet;
+        let (a, b) = (Point::new(0, 0), Point::new(24, 20));
+        let mut fill: HashSet<(i32, i32)> = HashSet::new();
+        triangle_filled(a, b, 0.0, 0.0, |x, y| {
+            fill.insert((x, y));
+        });
+        let mut ring: HashSet<(i32, i32)> = HashSet::new();
+        triangle_outline(a, b, 0.0, 0.0, 4, |x, y| {
+            ring.insert((x, y));
+        });
+        assert!(!ring.is_empty());
+        // Within 1px of the filled silhouette — tolerant of the boundary-rasterisation difference
+        // between polygon_filled and the cross-product test, but still catching a real outward bulge
+        // (the old square-stamp stroke pushed pixels t/2 ≈ 2px beyond the edge).
+        for &(x, y) in &ring {
+            let near = (-1..=1).any(|dy| (-1..=1).any(|dx| fill.contains(&(x + dx, y + dy))));
+            assert!(near, "thick triangle outline pixel ({x},{y}) bulged outside the triangle");
         }
     }
 
