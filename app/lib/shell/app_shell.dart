@@ -64,6 +64,18 @@ class _AppShellState extends ConsumerState<AppShell> {
 
     // No pillar-switching chrome — only the active pillar is mounted (each pillar owns its
     // own Scaffold). Keeping both Scaffolds mounted at once crashes the Windows AX bridge.
-    return _index == _club ? widget.clubPillar : widget.editorPillar;
+    //
+    // The Club is the app's base screen. When the editor pillar is active, intercept the
+    // Android system back so it returns to the Club instead of exiting the app. (Sub-routes
+    // pushed on top of the shell — dialogs, pickers, profile pages — pop normally first; this
+    // only fires once the editor is at its root with nothing else to pop.)
+    final inEditor = _index == _editor;
+    return PopScope(
+      canPop: !inEditor,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && inEditor) _select(_club);
+      },
+      child: inEditor ? widget.editorPillar : widget.clubPillar,
+    );
   }
 }
