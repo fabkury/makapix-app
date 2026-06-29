@@ -119,10 +119,13 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // Ruler tool: a non-destructive measurement line (two draggable endpoints in canvas-pixel
   // coords). Never drawn to the canvas; cleared when switching tools.
   Offset? _rulerA, _rulerB;
-  int _rulerDrag = 0; // 0=none, 1=dragging A, 2=dragging B, 3=drawing a new measurement
+  int _rulerDrag = 0; // 0=none, 1=dragging A, 2=dragging B, 3=new measurement, 4=moving both ends
   // Canvas-space offset from the finger to the grabbed endpoint, kept for the whole drag so the
   // endpoint stays visible beside the finger instead of snapping under it.
   Offset _rulerGrabOffset = Offset.zero;
+  // Whole-ruler drag (off both reticles): the finger anchor and both endpoints at the move start,
+  // so the move is a rigid translation clamped on-canvas.
+  Offset? _rulerMoveAnchor, _rulerMoveOrigA, _rulerMoveOrigB;
   int _canvasW = 0, _canvasH = 0; // last-seen canvas size; a change auto-clears the stale ruler
   bool _radial = false;
   int _intensity = 128;
