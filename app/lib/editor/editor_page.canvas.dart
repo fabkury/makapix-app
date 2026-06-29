@@ -183,6 +183,7 @@ extension _EditorCanvas on _EditorPageState {
     }
     if (_tool == 'Move' && _moveSelectionMode) {
       _moveSelDragLast = _toCanvas(pos, box); // a drag moves the selection mask, not the pixels
+      _send('MoveSelectionBegin()'); // coalesce the whole drag into ONE undo step
       return;
     }
     if (_isMoveDrafting) {
@@ -304,6 +305,8 @@ extension _EditorCanvas on _EditorPageState {
     }
     if (_tool == 'Move' && _moveSelectionMode) {
       _moveSelDragLast = null; // releasing leaves the selection where it was dragged
+      _send('MoveSelectionCommit()'); // finalise the drag as a single undo step
+      _refreshState(); // pick up the new undo/redo availability
       setState(() {});
       return;
     }
@@ -342,6 +345,8 @@ extension _EditorCanvas on _EditorPageState {
     }
     if (_tool == 'Move' && _moveSelectionMode) {
       _moveSelDragLast = null; // a second finger interrupted; keep the selection where it is
+      _send('MoveSelectionCommit()'); // finalise the partial drag as one undo step (close the session)
+      _refreshState();
       return;
     }
     if (_isMoveDrafting) {

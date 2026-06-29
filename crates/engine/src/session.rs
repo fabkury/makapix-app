@@ -209,6 +209,11 @@ pub struct Session {
     /// The pending move draft (relocatable, semi-transparently washed, committed on demand). The
     /// shell drives it via `MoveDraftBegin`/`MoveDraftMove`/`MoveDraftCommit`/`MoveDraftCancel`.
     move_draft: Option<MoveDraft>,
+    /// While a selection-mask drag is in progress (`MoveSelectionBegin`→`MoveSelectionCommit`), the
+    /// selection at drag start. Set ⇒ the per-step `MoveSelection`s update the mask in place without
+    /// recording, and the commit records a single undo step for the whole drag. `None` ⇒ a one-shot
+    /// `MoveSelection` (DSL/nudge) records its own step immediately.
+    move_sel_before: Option<Option<Arc<Mask>>>,
 }
 
 impl Session {
@@ -236,6 +241,7 @@ impl Session {
             move_before: None,
             move_bbox: None,
             move_draft: None,
+            move_sel_before: None,
         }
     }
 
@@ -1389,6 +1395,24 @@ impl Session {
     /// Translate the selection MASK (not the pixels) by (dx, dy), honouring the same off-canvas edge
     /// modes as a pixel move: Wrap (cells re-enter the opposite edge), Protect (clamp so the whole
     /// selection stays on-canvas), or Regular (clip cells that leave the canvas). One undo step.
+    /// Begin a coalesced selection-mask drag: snapshot the selection so the whole drag becomes one
+    /// undo step. No-op if already in a drag or there is no selection. [audit: one drag = one undo]
+    pub fn move_selection_begin(&mut self) {
+        if self.move_sel_before.is_none() && self.doc.selection.is_some() {
+            self.move_sel_before = Some(self.doc.selection.clone());
+        }
+    }
+
+    /// Finalise a coalesced selection-mask drag: record a single undo step (drag-start → final) iff
+    /// the mask actually moved. No-op when no drag is open. [audit: one drag = one undo]
+    pub fn move_selection_commit(&mut self) {
+        if let Some(before) = self.move_sel_before.take() {
+            if !sel_eq(&before, &self.doc.selection) {
+                self.doc.record_selection(before);
+            }
+        }
+    }
+
     pub fn move_selection(&mut self, dx: i32, dy: i32) {
         let m = match self.selection_clone() {
             Some(m) => m,
@@ -1409,7 +1433,13 @@ impl Session {
         } else {
             m.translated(dx, dy)
         };
-        self.set_selection(Some(moved));
+        if self.move_sel_before.is_some() {
+            // Inside a coalesced drag: update the mask in place; the single undo step is recorded by
+            // `move_selection_commit` on finger-up. (Without this, every drag step pushed a record.)
+            self.doc.selection = Some(Arc::new(moved));
+        } else {
+            self.set_selection(Some(moved)); // one-shot (DSL/nudge): records its own step
+        }
     }
 
     pub fn copy(&mut self) {
@@ -2147,6 +2177,7 @@ impl Session {
         self.clipboard = None;
         self.paste_draft = None;
         self.move_draft = None; // a stale draft would reference the previous document's frame [F-29]
+        self.move_sel_before = None; // drop any half-open selection-move drag
         Ok(())
     }
 
@@ -3074,6 +3105,38 @@ mod tests {
         assert_eq!(s.bounds_of_selection(), Some(IRect::new(2, 2, 2, 2)), "mask move undone");
         assert!(s.doc.redo());
         assert_eq!(s.bounds_of_selection(), Some(IRect::new(4, 4, 2, 2)));
+    }
+
+    #[test]
+    fn coalesced_selection_move_is_a_single_undo_step() {
+        // One drag (begin → many small moves → commit) must collapse to ONE undo step, not many.
+        let mut s = Session::new(16, 16);
+        s.run_script("SelectTool(SelectRect); Stroke([(2,2),(3,3)])").unwrap();
+        assert_eq!(s.bounds_of_selection(), Some(IRect::new(2, 2, 2, 2)));
+        s.move_selection_begin();
+        for _ in 0..5 {
+            s.move_selection(1, 0); // five 1px steps, as a finger drag would emit
+        }
+        s.move_selection_commit();
+        assert_eq!(s.bounds_of_selection(), Some(IRect::new(7, 2, 2, 2)), "moved +5 in x");
+        // A SINGLE undo returns the mask to where the drag began (not 5 undos).
+        assert!(s.doc.undo());
+        assert_eq!(s.bounds_of_selection(), Some(IRect::new(2, 2, 2, 2)), "one undo reverts the whole drag");
+        // That was the only move step beyond the marquee itself: the next undo removes the marquee.
+        assert!(s.doc.undo());
+        assert_eq!(s.bounds_of_selection(), None, "no leftover per-step move records");
+    }
+
+    #[test]
+    fn coalesced_selection_move_with_no_movement_records_nothing() {
+        let mut s = Session::new(16, 16);
+        s.run_script("SelectTool(SelectRect); Stroke([(2,2),(3,3)])").unwrap();
+        s.move_selection_begin();
+        s.move_selection_commit(); // a tap: began and ended with no net move
+        assert_eq!(s.bounds_of_selection(), Some(IRect::new(2, 2, 2, 2)));
+        assert!(s.doc.undo(), "only the marquee step exists");
+        assert_eq!(s.bounds_of_selection(), None);
+        assert!(!s.doc.undo(), "no spurious move step was recorded");
     }
 
     #[test]
