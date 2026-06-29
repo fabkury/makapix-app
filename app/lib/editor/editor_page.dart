@@ -317,7 +317,9 @@ class _EditorPageState extends ConsumerState<EditorPage>
         child: Column(
           children: [
             _buildFilmRoll(), // frame film-strip + ☰ menu — the topmost area
-            Expanded(child: _buildCanvas()),
+            // ClipRect so a zoomed canvas can't paint outside its region (the CustomPaint draws the
+            // scaled image past its box otherwise) — it stays behind the film-strip and bottom rows.
+            Expanded(child: ClipRect(child: _buildCanvas())),
             const Divider(height: 1),
             _buildLayers(layers), // layers film-strip, directly above the tool options
             _buildToolOptions(), // row-1
