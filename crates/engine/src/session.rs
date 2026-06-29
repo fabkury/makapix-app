@@ -598,6 +598,14 @@ impl Session {
             Some((fi, li)) => self.doc.frames[fi].layers[li].pixels.diff_from(&before),
             None => return, // the target frame/layer was deleted mid-edit; nothing to record
         };
+        if patch.is_empty() {
+            // No pixels changed, but the mask may have (e.g. a Move/nudge of a selection that covers
+            // only transparent pixels). Record the selection move alone so it's still undoable.
+            if !sel_eq(&sel_before, &self.doc.selection) {
+                self.doc.record_selection(sel_before);
+            }
+            return;
+        }
         self.doc.record_pixels(fid, lid, patch, sel_before);
     }
 
@@ -2822,6 +2830,24 @@ mod tests {
         s2.load_bytes(&bytes).unwrap();
         assert_eq!(s2.bounds_of_selection(), before, "the selection round-trips through .mkpx");
         assert_eq!(s2.doc.selection.as_deref(), s.doc.selection.as_deref());
+    }
+
+    #[test]
+    fn moving_a_selection_over_empty_pixels_is_still_undoable() {
+        // No pixels change (the region is transparent), but the mask moves — it must still be one
+        // undoable step, not silently dropped.
+        let mut s = Session::new(16, 16);
+        s.tool = ToolKind::SelectRect;
+        s.pointer_down(2, 2);
+        s.pointer_up(); // 1px selection at (2,2) over a transparent pixel
+        s.tool = ToolKind::Move;
+        s.pointer_down(2, 2);
+        s.pointer_move(7, 7);
+        s.pointer_up();
+        assert!(s.doc.selection.as_ref().unwrap().get(7, 7), "mask moved");
+        assert!(s.doc.undo());
+        assert!(s.doc.selection.as_ref().unwrap().get(2, 2), "mask move undone");
+        assert!(!s.doc.selection.as_ref().unwrap().get(7, 7));
     }
 
     #[test]
