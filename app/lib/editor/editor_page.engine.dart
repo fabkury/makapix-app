@@ -326,6 +326,7 @@ extension _EditorEngine on _EditorPageState {
     if (t == 'Gradient') {
       _send('SetGradientType(${_radial ? 'Radial' : 'Linear'})');
       _send('SetGradientSmoothstep($_gradSmooth)');
+      _send('SetGradientDither($_gradDither)');
       _send(_gradStopsDsl());
     }
     // Show Select Layer's overlay immediately on entry; clear it (redraw) when leaving it.
