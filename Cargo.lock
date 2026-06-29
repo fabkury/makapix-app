@@ -122,6 +122,7 @@ name = "makapix-codec"
 version = "0.1.0"
 dependencies = [
  "image",
+ "image-webp",
  "makapix-engine",
 ]
 
