@@ -20,8 +20,9 @@ Decisions locked with the user:
 - **Selection fate:** after rotating selected pixels (quarter-turn or Angle commit), **the selection
   mask rotates with the pixels** (the marquee follows the rotated content).
 
-Out of scope (note as possible follow-ups): making **Flip** selection-aware (today it is layer-scoped
-but whole-layer); per-frame / all-frames rotation variants.
+Follow-up done: **Flip** is now selection-aware too (mirrors the selected pixels within their bbox,
+the mask mirroring with them) — `flip_layer(horizontal)` in `session/canvas.rs`, 3 tests, scope label
++ tip in the shell. Still out of scope: per-frame / all-frames rotation variants.
 
 ## Current state (as found)
 

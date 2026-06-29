@@ -55,8 +55,8 @@ Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending)
 | Select multiple layers, move together | ✅ | layer "move group" toggle + nudge pad → `NudgeLayers` (one undoable edit) |
 | Import GIF/WebP/PNG/APNG/JPEG/BMP (crop/scale, start-frame, as-layer) | ✅ | all formats; import options dialog; **interactive crop-rectangle** (drag a region over the source preview) |
 | Export PNG / sprite-sheet / GIF | ✅ | PNG + animated GIF wired in UI; sprite-sheet in codec |
-| Canvas ops: flip H/V, invert, resize, crop-to-selection, **rotate canvas 90/180/270** | ✅ | all in UI; rotate-canvas now in the timeline ☰ menu; resize/crop/rotate undoable (canvas size travels with the edit) |
-| **Rotate tool: layer/selection-scoped + free Angle** | ✅ | the Rotate tool rotates the active layer (or the selected pixels, mask included) — 90/180/270 instant, plus an "Angle" draft with an on-canvas handle (semitransparent preview, Commit = one undo); rotate-about-centre, clip to canvas |
+| Canvas ops: invert, resize, crop-to-selection, **rotate canvas 90/180/270** | ✅ | all in UI; rotate-canvas now in the timeline ☰ menu; resize/crop/rotate undoable (canvas size travels with the edit) |
+| **Flip & Rotate tools: layer/selection-scoped** | ✅ | Flip H/V and Rotate act on the active layer, or just the selected pixels (the selection mask transforms with them); Rotate adds 90/180/270 instant + an "Angle" draft with an on-canvas handle (semitransparent preview, Commit = one undo), rotate-about-centre, clip to canvas |
 | `.mkpx` compression | ✅ | per-tile RLE (v2 format, v1 still readable) — a 10k-layer project shrank **48 MB → 1.2 MB** |
 | Drag-and-drop reorder (frames & layers) | ✅ | long-press to drag in the timeline / layer strip (button reorder also kept) |
 

@@ -12,31 +12,68 @@ use std::sync::Arc;
 
 impl Session {
     pub fn flip_horizontal(&mut self) {
-        if !self.active_editable() {
-            return;
-        }
-        let before = self.begin_edit();
-        let w = self.doc.size.w as i32;
-        let h = self.doc.size.h as i32;
-        let src = self.doc.active_frame().active_layer().pixels.clone();
-        let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-        buf.clear();
-        for y in 0..h {
-            for x in 0..w {
-                let c = src.get(w - 1 - x, y);
-                if c.a != 0 {
-                    buf.set(x, y, c);
-                }
-            }
-        }
-        self.commit_edit(before);
+        self.flip_layer(true);
     }
 
     pub fn flip_vertical(&mut self) {
+        self.flip_layer(false);
+    }
+
+    /// Mirror the active layer (or, when pixels are selected, just the selected pixels of the active
+    /// layer) along the X axis (`horizontal`) or Y axis. With a selection the pixels mirror within
+    /// the selection's bounding box and the selection mask mirrors with them (consistent with the
+    /// Rotate tool); with none, the whole layer flips across the canvas. One undo step.
+    fn flip_layer(&mut self, horizontal: bool) {
         if !self.active_editable() {
             return;
         }
         let before = self.begin_edit();
+
+        // Selection present (and non-empty) → mirror only the masked pixels inside their bbox.
+        if let Some(sel) = self.selection_clone() {
+            if let Some(bb) = sel.bounds() {
+                let (bw, bh) = (bb.w as i32, bb.h as i32);
+                // Lift the masked pixels (remembering which bbox cells were masked) and clear them.
+                let mut src = RgbaBuffer::new(bb.w, bb.h);
+                let mut cell_masked = vec![false; (bw * bh) as usize];
+                {
+                    let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
+                    for j in 0..bh {
+                        for i in 0..bw {
+                            if sel.get(bb.x + i, bb.y + j) {
+                                cell_masked[(j * bw + i) as usize] = true;
+                                src.set(i, j, buf.get(bb.x + i, bb.y + j));
+                                buf.set(bb.x + i, bb.y + j, Rgba8::TRANSPARENT);
+                            }
+                        }
+                    }
+                }
+                // Place the mirrored pixels and build the mirrored selection mask. The reflection is
+                // a bijection within the bbox, so nothing leaves the canvas.
+                let mut new_mask = Mask::new(self.doc.size.w as u32, self.doc.size.h as u32);
+                {
+                    let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
+                    for j in 0..bh {
+                        for i in 0..bw {
+                            if !cell_masked[(j * bw + i) as usize] {
+                                continue;
+                            }
+                            let (fi, fj) = if horizontal { (bw - 1 - i, j) } else { (i, bh - 1 - j) };
+                            let c = src.get(i, j);
+                            if c.a != 0 {
+                                buf.blend_over(bb.x + fi, bb.y + fj, c);
+                            }
+                            new_mask.set(bb.x + fi, bb.y + fj, true);
+                        }
+                    }
+                }
+                self.doc.selection = Some(Arc::new(new_mask)); // the marquee mirrors with the pixels
+                self.commit_edit(before);
+                return;
+            }
+        }
+
+        // No selection → flip the whole active layer across the canvas dimensions.
         let w = self.doc.size.w as i32;
         let h = self.doc.size.h as i32;
         let src = self.doc.active_frame().active_layer().pixels.clone();
@@ -44,7 +81,7 @@ impl Session {
         buf.clear();
         for y in 0..h {
             for x in 0..w {
-                let c = src.get(x, h - 1 - y);
+                let c = if horizontal { src.get(w - 1 - x, y) } else { src.get(x, h - 1 - y) };
                 if c.a != 0 {
                     buf.set(x, y, c);
                 }

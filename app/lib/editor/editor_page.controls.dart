@@ -411,6 +411,7 @@ extension _EditorControls on _EditorPageState {
       }));
     }
     if (_tool == 'Flip') {
+      label(_outlineEdges.isNotEmpty ? 'Flip selection' : 'Flip layer');
       children.add(_miniBtn('Flip H', () => _act('FlipH()')));
       children.add(_miniBtn('Flip V', () => _act('FlipV()')));
     }

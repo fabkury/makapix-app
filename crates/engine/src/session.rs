@@ -2788,6 +2788,47 @@ mod tests {
     }
 
     #[test]
+    fn flip_horizontal_whole_layer() {
+        let mut s = Session::new(8, 8);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(1, 2);
+        s.flip_horizontal();
+        assert_eq!(s.pixel(0, 0, 6, 2), Rgba8::WHITE); // x → w-1-x
+        assert_eq!(s.pixel(0, 0, 1, 2), Rgba8::TRANSPARENT);
+    }
+
+    #[test]
+    fn flip_selection_mirrors_pixels_within_bbox_only() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(4, 4); // inside the selection
+        s.tap(1, 1); // outside the selection
+        s.tool = ToolKind::SelectRect;
+        s.stroke_path(&[(4, 4), (7, 7)]); // 4×4 selection, bbox x∈[4,7]
+        let h_before = s.doc.content_hash();
+        s.flip_horizontal(); // mirror within the bbox: local i=0 → x=7
+        assert_eq!(s.pixel(0, 0, 7, 4), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 0, 4, 4), Rgba8::TRANSPARENT);
+        assert_eq!(s.pixel(0, 0, 1, 1), Rgba8::WHITE, "pixels outside the selection are untouched");
+        assert!(s.doc.undo(), "the flip is one undo step");
+        assert_eq!(s.doc.content_hash(), h_before);
+    }
+
+    #[test]
+    fn flip_selection_mirrors_an_asymmetric_mask() {
+        let mut s = Session::new(16, 16);
+        s.tool = ToolKind::SelectRect;
+        s.stroke_path(&[(2, 4), (3, 5)]); // a 2×2 block at the left
+        s.selection_mode = CombineMode::Add;
+        s.stroke_path(&[(6, 4), (6, 4)]); // add a lone cell at the right → bbox x∈[2,6] (w=5)
+        s.flip_horizontal(); // within the bbox each local i maps to (4 - i)
+        let sel = s.doc.selection.as_ref().expect("selection survives the flip");
+        assert!(sel.get(6, 4) && sel.get(5, 4) && sel.get(2, 4), "left/right cells mirrored");
+        assert!(sel.get(6, 5) && sel.get(5, 5), "the second row mirrored too");
+        assert!(!sel.get(3, 4), "the original asymmetric cell is cleared by the mirror");
+    }
+
+    #[test]
     fn multi_layer_nudge_moves_together() {
         let mut s = Session::new(16, 16);
         // layer 0: pixel at (3,3); layer 1: pixel at (5,5)
