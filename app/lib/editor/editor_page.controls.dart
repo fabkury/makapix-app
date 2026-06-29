@@ -135,12 +135,15 @@ extension _EditorControls on _EditorPageState {
       }
     }
     if (_tool == 'Move') {
-      // With a selection, Move moves the selected pixels; with none, it moves the layer/move-group.
-      // The arrow pad nudges whichever (engine decides via NudgeMove); dragging on the canvas does
-      // the same live. Off-canvas edge mode: Protect (layer moves only) / Wrap (both layer and
-      // pixel moves) / both off = Regular. Protect and Wrap are mutually exclusive.
+      // Mode: move the layer/pixels (default) or ONLY the selection mask (the marquee, not the
+      // pixels). In "layer/pixels", a selection moves the selected pixels and none moves the
+      // layer/move-group. Edge mode: Protect (clamp on-canvas) / Wrap (re-enter the opposite edge) /
+      // both off = Regular — applies to layer, pixel AND selection-mask moves (Protect/Wrap exclusive).
       final hasSel = _outlineEdges.isNotEmpty;
-      label(hasSel ? 'Move pixels' : 'Move layer');
+      children.add(_toggle(['Move layer/pixels', 'Move selection'], _moveSelectionMode ? 1 : 0, (i) {
+        setState(() => _moveSelectionMode = i == 1);
+      }));
+      label(_moveSelectionMode ? 'Move selection' : (hasSel ? 'Move pixels' : 'Move layer'));
       children.add(IconButton(iconSize: 20, tooltip: 'Nudge left', onPressed: () => _nudgeMove(-1, 0), icon: const Icon(Icons.chevron_left)));
       children.add(Column(mainAxisAlignment: MainAxisAlignment.center, children: [
         InkWell(onTap: () => _nudgeMove(0, -1), child: const Icon(Icons.keyboard_arrow_up, size: 18)),
@@ -148,8 +151,9 @@ extension _EditorControls on _EditorPageState {
       ]));
       children.add(IconButton(iconSize: 20, tooltip: 'Nudge right', onPressed: () => _nudgeMove(1, 0), icon: const Icon(Icons.chevron_right)));
       children.add(const SizedBox(width: 6));
-      if (!hasSel) {
-        // Protect only applies to layer moves, so it's hidden while moving a selection.
+      if (_moveSelectionMode || !hasSel) {
+        // Protect applies to layer moves and selection-mask moves (not pixel moves), so it's hidden
+        // only when moving the selected pixels.
         children.add(Padding(
           padding: const EdgeInsets.symmetric(horizontal: 3),
           child: FilterChip(

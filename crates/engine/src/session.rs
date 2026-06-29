@@ -1161,10 +1161,30 @@ impl Session {
         let m = self.selection.get_or_insert_with(|| Mask::new(w, h));
         m.invert();
     }
+    /// Translate the selection MASK (not the pixels) by (dx, dy), honouring the same off-canvas edge
+    /// modes as a pixel move: Wrap (cells re-enter the opposite edge), Protect (clamp so the whole
+    /// selection stays on-canvas), or Regular (clip cells that leave the canvas).
     pub fn move_selection(&mut self, dx: i32, dy: i32) {
-        if let Some(m) = &self.selection {
-            self.selection = Some(m.translated(dx, dy));
-        }
+        let m = match &self.selection {
+            Some(m) => m.clone(),
+            None => return,
+        };
+        let moved = if self.settings.wrap {
+            m.translated_wrapped(dx, dy)
+        } else if self.settings.protect_pixels {
+            match m.bounds() {
+                Some(bb) => {
+                    let (w, h) = (self.doc.size.w as i32, self.doc.size.h as i32);
+                    let cdx = dx.clamp(-bb.x, w - (bb.x + bb.w as i32));
+                    let cdy = dy.clamp(-bb.y, h - (bb.y + bb.h as i32));
+                    m.translated(cdx, cdy)
+                }
+                None => m,
+            }
+        } else {
+            m.translated(dx, dy)
+        };
+        self.selection = Some(moved);
     }
 
     pub fn copy(&mut self) {
@@ -1870,6 +1890,36 @@ mod tests {
         s.paste_cancel();
         assert!(s.paste_draft_rect().is_none());
         assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::WHITE); // cancel drew nothing
+    }
+
+    #[test]
+    fn move_selection_mask_honours_edge_modes() {
+        fn sel_2x2(s: &mut Session, x: i32, y: i32) {
+            s.tool = ToolKind::SelectRect;
+            s.stroke_path(&[(x, y), (x + 1, y + 1)]);
+        }
+        // Regular: translate the mask, clipping cells that leave the canvas.
+        let mut s = Session::new(8, 8);
+        sel_2x2(&mut s, 2, 2);
+        s.move_selection(2, 2);
+        assert!(s.selection.as_ref().unwrap().get(4, 4));
+        assert!(!s.selection.as_ref().unwrap().get(2, 2)); // pixels never moved, only the mask
+
+        // Wrap: cells leaving an edge re-enter the opposite one.
+        let mut s = Session::new(8, 8);
+        s.settings.wrap = true;
+        sel_2x2(&mut s, 6, 6);
+        s.move_selection(2, 2); // (6,6) -> (8,8) wraps to (0,0)
+        assert!(s.selection.as_ref().unwrap().get(0, 0));
+
+        // Protect: clamp so the whole selection stays on-canvas.
+        let mut s = Session::new(8, 8);
+        s.settings.protect_pixels = true;
+        sel_2x2(&mut s, 6, 6);
+        s.move_selection(5, 5); // would push off the right/bottom → clamped to no move
+        assert!(s.selection.as_ref().unwrap().get(6, 6));
+        s.move_selection(-3, -3); // moves freely the other way
+        assert!(s.selection.as_ref().unwrap().get(3, 3));
     }
 
     #[test]

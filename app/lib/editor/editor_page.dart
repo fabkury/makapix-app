@@ -133,6 +133,9 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // Move tool layer-move edge modes (mutually exclusive; both off = Regular = pixels clip off):
   bool _protectPixels = false; // keep opaque pixels on-canvas (non-destructive)
   bool _wrap = false; // pixels leaving one edge re-enter the opposite edge
+  // Move tool mode: false = move the layer/pixels (default); true = move only the selection mask.
+  bool _moveSelectionMode = false;
+  Offset? _moveSelDragLast; // last canvas position while dragging the selection mask
   bool _onion = false;
   bool _grid = false;
   bool _playing = false;

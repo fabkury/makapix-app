@@ -214,6 +214,10 @@ extension _EditorTimeline on _EditorPageState {
   // Nudge whatever the Move tool would drag: the selected pixels if there's a selection, else the
   // active layer / move-group (the engine decides via NudgeMove).
   void _nudgeMove(int dx, int dy) {
+    if (_moveSelectionMode) {
+      _act('MoveSelection($dx,$dy)'); // move only the selection mask
+      return;
+    }
     _syncLayerSel();
     _act('NudgeMove($dx,$dy)');
   }

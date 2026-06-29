@@ -171,6 +171,10 @@ extension _EditorCanvas on _EditorPageState {
       _pasteDragLast = _toCanvas(pos, box); // a drag moves the floating paste draft (if any)
       return;
     }
+    if (_tool == 'Move' && _moveSelectionMode) {
+      _moveSelDragLast = _toCanvas(pos, box); // a drag moves the selection mask, not the pixels
+      return;
+    }
     if (_isCursorTool) {
       _lastTouch = pos;
       _accX = 0;
@@ -206,6 +210,19 @@ extension _EditorCanvas on _EditorPageState {
           _send('PasteMove($dx, $dy)');
           _pasteDragLast = p;
           _redraw(full: false, refetchSelection: false); // paste preview is in the composited image
+        }
+      }
+      return;
+    }
+    if (_tool == 'Move' && _moveSelectionMode) {
+      if (_moveSelDragLast != null) {
+        final p = _toCanvas(pos, box);
+        final dx = (p.dx - _moveSelDragLast!.dx).round();
+        final dy = (p.dy - _moveSelDragLast!.dy).round();
+        if (dx != 0 || dy != 0) {
+          _send('MoveSelection($dx, $dy)');
+          _moveSelDragLast = p;
+          _redraw(full: false, refetchSelection: true); // the marquee moved
         }
       }
       return;
@@ -252,6 +269,11 @@ extension _EditorCanvas on _EditorPageState {
       _pasteDragLast = null; // releasing leaves the paste where it was dragged
       return;
     }
+    if (_tool == 'Move' && _moveSelectionMode) {
+      _moveSelDragLast = null; // releasing leaves the selection where it was dragged
+      setState(() {});
+      return;
+    }
     if (_isCursorTool) {
       _lastTouch = null;
       if (_penDown) _refreshState();
@@ -277,6 +299,10 @@ extension _EditorCanvas on _EditorPageState {
     }
     if (_isCopyPaste) {
       _pasteDragLast = null; // a second finger interrupted; keep the paste where it is
+      return;
+    }
+    if (_tool == 'Move' && _moveSelectionMode) {
+      _moveSelDragLast = null; // a second finger interrupted; keep the selection where it is
       return;
     }
     if (_isDraftTool) {
