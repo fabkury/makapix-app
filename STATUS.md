@@ -1,10 +1,12 @@
-# Makapix Club app — Implementation Status (2026-06-27)
+# Makapix Club app — Implementation Status (2026-06-29)
 
 Honest coverage of **both** of the app's co-equal pillars. The **Makapix Editor** (editor engine + Flutter
 shell) is built and runnable on this workstation. The **Makapix Club** social layer (see
 [`SPEC-CLUB.md`](SPEC-CLUB.md)) is **code-complete through phases C0–C3** (auth · read & discover · create &
-publish · edit & remix) against the live server contract; **C4–C6** (curate/manage · real-time & players ·
-moderation & extras) are **not yet** started. The two pillars sit under a neutral app shell
+publish · edit & remix) against the live server contract; **C4** (curate/manage) is **in progress** — the
+artist dashboard, settings (monitored hashtags), and post management + ZIP data export are done; playlists,
+highlights, categories and reporting remain. **C5–C6** (real-time & players · moderation & extras) are **not
+yet** started. The two pillars sit under a neutral app shell
 (`lib/shell/app_shell.dart`): the app **opens on the Club pillar** (signed-out users get Club's welcome/sign-in
 funnel) and the editor is a co-equal feature reachable **without login** via the centre ⊕ Create button.
 Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending) · **○ stubbed / not yet**.
@@ -69,7 +71,10 @@ Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending)
 | **C1** Notifications + unread badge | ✅ | `ui/notifications_page.dart`; badge in the hub |
 | **C2** Publish (editor → Club) | ✅ | export bytes → conformance → metadata/license/visibility → upload; auth-gated (`ui/publish_page.dart` shows a sign-in prompt when signed out) |
 | **C3** Edit / remix (Club → editor) | ✅ | a Club post opens in the editor via `pendingClubEditProvider`; `ClubEditSource` provenance enables **Replace original** vs **Post as new** |
-| **C4–C6** curate/manage · real-time & players · moderation | ○ | not yet started |
+| **C4** Settings — monitored hashtags | ✅ | `ui/settings_page.dart`; content-filter opt-in via `PATCH /user/{key}{approved_hashtags}` (§21); feeds re-filter server-side on save |
+| **C4** Artist dashboard (aggregate) | ✅ | `ui/artist_dashboard_page.dart`; totals + country/device/emoji breakdowns + per-post table + authenticated-only toggle (§19). Per-post `/post/{id}/stats` drill-in deferred |
+| **C4** Post management + ZIP export | ✅ | `ui/post_management_page.dart`; bulk hide/unhide/delete + license + async ZIP data export (§20) via the unversioned `/api/pmd/*` (`ClubApiClient.dioRoot`) |
+| **C4 (rest)** playlists · highlights · categories · reporting · **C5–C6** | ○ | not yet started |
 
 ## App shell
 | Feature | Status | Notes |

@@ -90,9 +90,13 @@ Legend: ✅ done · ◑ in progress · ○ not started
 - ✅ Feature A — Settings (api · state · ui · nav) — `flutter analyze` clean
 - ✅ Feature B — Artist dashboard (models · api · state · ui · nav) — `flutter analyze` clean
 - ✅ Feature C — PMD (models · api · state · ui · nav · ZIP save) — `flutter analyze` clean
-- ○ Dart unit tests
-- ○ `flutter analyze` clean (full)
-- ○ STATUS.md + SPEC-CLUB §29 parity matrix updated
+- ✅ Dart unit tests — `test/club_c4_test.dart` (14 tests); full suite green (79 tests)
+- ✅ `flutter analyze` clean (full — only pre-existing editor info-lints remain, none in `lib/club`)
+- ✅ STATUS.md + SPEC-CLUB §29 parity matrix updated
+
+**Status: code-complete.** All three features build, analyze clean, and the unit tests pass.
+Remaining is real-device/manual verification (`./build.ps1 -Run` against development.makapix.club),
+which needs the running app + a signed-in account.
 
 ### Notes / deviations
 - Settings form state lives in the page (`ConsumerStatefulWidget`) with widget-local dirty

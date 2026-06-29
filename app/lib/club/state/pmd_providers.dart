@@ -9,7 +9,9 @@ import 'api_providers.dart';
 const int kPmdBatchMax = 128;
 const int kPmdDeleteMax = 32;
 
-List<List<int>> _chunk(List<int> ids, int size) {
+/// Split `ids` into batches of at most `size` (the server's per-request cap).
+/// Public for testing.
+List<List<int>> pmdChunk(List<int> ids, int size) {
   final out = <List<int>>[];
   for (var i = 0; i < ids.length; i += size) {
     out.add(ids.sublist(i, i + size > ids.length ? ids.length : i + size));
@@ -126,7 +128,7 @@ class PmdController extends StateNotifier<PmdState> {
     if (ids.isEmpty) return null;
     state = state.copyWith(busy: true);
     try {
-      for (final c in _chunk(ids, kPmdBatchMax)) {
+      for (final c in pmdChunk(ids, kPmdBatchMax)) {
         await ref.read(pmdApiProvider).batchAction(action, c);
       }
       final sel = state.selected;
@@ -153,7 +155,7 @@ class PmdController extends StateNotifier<PmdState> {
     if (ids.isEmpty) return null;
     state = state.copyWith(busy: true);
     try {
-      for (final c in _chunk(ids, kPmdBatchMax)) {
+      for (final c in pmdChunk(ids, kPmdBatchMax)) {
         await ref.read(pmdApiProvider).batchLicense(c, licenseId);
       }
       final sel = state.selected;
