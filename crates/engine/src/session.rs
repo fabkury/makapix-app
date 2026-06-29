@@ -277,6 +277,13 @@ impl Session {
                     crate::raster::ellipse_outline(a, b, self.settings.line_width.max(1) as i32, |x, y| buf.blend_over(x, y, color));
                 }
             }
+            ToolKind::Triangle => {
+                if self.settings.shape_fill {
+                    crate::raster::triangle_filled(a, b, |x, y| buf.blend_over(x, y, color));
+                } else {
+                    crate::raster::triangle_outline(a, b, self.settings.line_width.max(1) as i32, |x, y| buf.blend_over(x, y, color));
+                }
+            }
             _ => {}
         }
     }
@@ -357,7 +364,7 @@ impl Session {
         // independent of any pointer stroke. Shared by the figure tools and the gradient.
         if let Some((a, b)) = self.shape_draft {
             match self.tool {
-                ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse => {
+                ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse | ToolKind::Triangle => {
                     self.render_shape_preview(buf, a, b);
                     return;
                 }
@@ -376,7 +383,7 @@ impl Session {
         match self.tool {
             // Legacy immediate-draw previews (CLI / DSL pointer drags); the shell uses the draft
             // path above. Selection-tool outlines are not baked in (the shell draws marching ants).
-            ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse => self.render_shape_preview(buf, a, b),
+            ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse | ToolKind::Triangle => self.render_shape_preview(buf, a, b),
             ToolKind::Gradient => self.render_gradient_preview(buf, a, b),
             ToolKind::Move => {
                 if let (Some(float), Some(sel)) = (&stroke.floating, &self.selection) {
@@ -770,7 +777,7 @@ impl Session {
                     self.last_gradient =
                         Some((spec.kind, spec.stops.clone(), start, last, fid, lid));
                 }
-                ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse => {
+                ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse | ToolKind::Triangle => {
                     let color = self.settings.primary;
                     let (fill, lw, kind) = (self.settings.shape_fill, self.settings.line_width, self.tool);
                     let sel = self.selection.clone();
@@ -894,7 +901,7 @@ impl Session {
     pub fn shape_commit(&mut self) {
         if !matches!(
             self.tool,
-            ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse | ToolKind::Gradient
+            ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse | ToolKind::Triangle | ToolKind::Gradient
         ) {
             return;
         }

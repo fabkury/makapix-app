@@ -268,7 +268,14 @@ extension _EditorControls on _EditorPageState {
     if (_tool == 'Line') {
       addWidth();
     }
-    if (_tool == 'Rectangle' || _tool == 'Ellipse') {
+    if (_tool == 'Shape') {
+      // Which shape to draw. Switching the kind keeps any pending draft (re-previews it live).
+      const kinds = ['Ellipse', 'Triangle', 'Rectangle'];
+      children.add(_toggle(['Ellipse', 'Triangle', 'Rect'], kinds.indexOf(_shapeKind), (i) {
+        setState(() => _shapeKind = kinds[i]);
+        _send('SelectTool($_shapeKind)'); // the engine draws by ToolKind; the shell groups them
+        if (_hasShapeDraft) _redraw();
+      }));
       children.add(_toggle(['Fill', 'Outline'], _shapeFill ? 0 : 1, (i) {
         setState(() => _shapeFill = i == 0);
         _send('SetShapeFill($_shapeFill)');

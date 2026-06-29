@@ -145,6 +145,31 @@ pub fn ellipse_outline(a: Point, b: Point, thickness: i32, mut plot: impl FnMut(
     }
 }
 
+/// The three vertices of the triangle inscribed in the box of `a`,`b`: apex at top-centre, base
+/// along the bottom edge (an upward-pointing isosceles triangle).
+fn triangle_verts(a: Point, b: Point) -> [Point; 3] {
+    let (x0, x1) = (a.x.min(b.x), a.x.max(b.x));
+    let (y0, y1) = (a.y.min(b.y), a.y.max(b.y));
+    [
+        Point::new((x0 + x1) / 2, y0), // apex (top centre)
+        Point::new(x0, y1),            // bottom-left
+        Point::new(x1, y1),            // bottom-right
+    ]
+}
+
+/// Filled triangle inscribed in the bounding box of the two corner points.
+pub fn triangle_filled(a: Point, b: Point, plot: impl FnMut(i32, i32)) {
+    polygon_filled(&triangle_verts(a, b), plot);
+}
+
+/// Triangle outline (its three edges drawn as thick lines).
+pub fn triangle_outline(a: Point, b: Point, thickness: i32, mut plot: impl FnMut(i32, i32)) {
+    let v = triangle_verts(a, b);
+    thick_line(v[0], v[1], thickness, &mut plot);
+    thick_line(v[1], v[2], thickness, &mut plot);
+    thick_line(v[2], v[0], thickness, &mut plot);
+}
+
 /// Circle inscribed centered at `center` with `radius` to `edge` point.
 pub fn circle_filled(center: Point, edge: Point, mut plot: impl FnMut(i32, i32)) {
     let r = (((edge.x - center.x).pow(2) + (edge.y - center.y).pow(2)) as f32).sqrt();

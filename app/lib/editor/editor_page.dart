@@ -212,8 +212,9 @@ class _EditorPageState extends ConsumerState<EditorPage>
 
   // Draft tools use the draft flow (drag → adjust the two endpoint handles → commit), not
   // immediate-on-release: the figures (Line/Rect/Ellipse) and the Gradient.
-  bool get _isDraftTool =>
-      _tool == 'Line' || _tool == 'Rectangle' || _tool == 'Ellipse' || _tool == 'Gradient';
+  bool get _isDraftTool => _tool == 'Line' || _tool == 'Shape' || _tool == 'Gradient';
+  // Which shape the unified "Shape" tool draws (Ellipse/Triangle/Rectangle); maps to a ToolKind.
+  String _shapeKind = 'Rectangle';
   bool get _hasShapeDraft => _shapeA != null && _shapeB != null;
 
   // The Ruler is a pure measurement overlay (no engine tool, no drawing).

@@ -297,7 +297,9 @@ extension _EditorEngine on _EditorPageState {
       }
       return;
     }
-    if (t != 'Ruler') {
+    if (t == 'Shape') {
+      _send('SelectTool($_shapeKind)'); // 'Shape' is a shell grouping; engine draws by ToolKind
+    } else if (t != 'Ruler') {
       _send('SelectTool($t)'); // Ruler is a pure overlay; no engine draw tool
     } else if (leavingSelectLayer) {
       _send('SelectTool(Move)'); // Ruler sends no draw tool — clear the Select Layer overlay

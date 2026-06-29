@@ -24,6 +24,7 @@ pub enum ToolKind {
     Line,
     Rectangle,
     Ellipse,
+    Triangle,
     SelectRect,
     SelectEllipse,
     SelectCircle,
@@ -68,6 +69,7 @@ impl ToolKind {
                 | ToolKind::Line
                 | ToolKind::Rectangle
                 | ToolKind::Ellipse
+                | ToolKind::Triangle
                 | ToolKind::Move
         )
     }
@@ -536,6 +538,13 @@ pub fn draw_shape(
                 raster::ellipse_filled(a, b, &mut f)
             } else {
                 raster::ellipse_outline(a, b, line_width.max(1) as i32, &mut f)
+            }
+        }
+        ToolKind::Triangle => {
+            if fill {
+                raster::triangle_filled(a, b, &mut f)
+            } else {
+                raster::triangle_outline(a, b, line_width.max(1) as i32, &mut f)
             }
         }
         _ => {}

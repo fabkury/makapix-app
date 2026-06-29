@@ -425,7 +425,7 @@ extension _EditorCanvas on _EditorPageState {
   // only). The box is sized to reach the finger in whichever axis is more extended. Bounded to the
   // generous off-canvas margin so the handles match the engine preview.
   Offset _ratioed(Offset anchor, Offset moving) {
-    if (!_lockRatio || (_tool != 'Rectangle' && _tool != 'Ellipse')) return _clampGenerous(moving);
+    if (!_lockRatio || _tool != 'Shape') return _clampGenerous(moving);
     final r = _ratio <= 0 ? 1.0 : _ratio;
     final dw = moving.dx - anchor.dx;
     final dh = moving.dy - anchor.dy;

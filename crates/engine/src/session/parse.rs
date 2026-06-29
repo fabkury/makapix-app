@@ -274,6 +274,7 @@ fn parse_tool(s: &str) -> Result<ToolKind, String> {
         "Line" => Line,
         "Rectangle" => Rectangle,
         "Ellipse" => Ellipse,
+        "Triangle" => Triangle,
         "SelectRect" => SelectRect,
         "SelectEllipse" => SelectEllipse,
         "SelectCircle" => SelectCircle,
