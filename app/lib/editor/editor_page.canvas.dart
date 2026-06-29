@@ -451,7 +451,7 @@ extension _EditorCanvas on _EditorPageState {
       Offset(p.dx.clamp(0, engine.width - 1).toDouble(), p.dy.clamp(0, engine.height - 1).toDouble());
 
   void _beginRuler(Offset pos, Size box) {
-    final p = _clampToCanvas(_toCanvas(pos, box));
+    final raw = _toCanvas(pos, box); // unclamped finger position (canvas pixels)
     if (_hasRuler) {
       // Grab the nearer endpoint if the press lands within its reticle; a press anywhere else does
       // nothing (so the measurement is only changed by dragging its reticles — fine adjustments).
@@ -462,16 +462,19 @@ extension _EditorCanvas on _EditorPageState {
       final dB = (pos - screenOf(_rulerB!)).distance;
       if (dA <= tol && dA <= dB) {
         _rulerDrag = 1;
-        _rulerA = p;
+        // Keep the endpoint where it is; remember the finger→endpoint offset for the drag.
+        _rulerGrabOffset = _rulerA! - raw;
       } else if (dB <= tol) {
         _rulerDrag = 2;
-        _rulerB = p;
+        _rulerGrabOffset = _rulerB! - raw;
       } else {
         _rulerDrag = 0; // outside both reticles → do nothing, keep the measurement as-is
       }
     } else {
-      // No measurement yet: a fresh drag lays one down (A fixed at the press, B follows).
+      // No measurement yet: a fresh drag lays one down (A fixed at the press, B follows the finger).
       _rulerDrag = 3;
+      _rulerGrabOffset = Offset.zero;
+      final p = _clampToCanvas(raw);
       _rulerA = p;
       _rulerB = p;
     }
@@ -480,7 +483,9 @@ extension _EditorCanvas on _EditorPageState {
 
   void _continueRuler(Offset pos, Size box) {
     if (_rulerDrag == 0) return;
-    final p = _clampToCanvas(_toCanvas(pos, box));
+    // The endpoint tracks the finger PLUS the grab offset, so it stays beside the finger (visible)
+    // rather than snapping under it. (For a fresh measurement the offset is zero, so B = finger.)
+    final p = _clampToCanvas(_toCanvas(pos, box) + _rulerGrabOffset);
     if (_rulerDrag == 1) {
       _rulerA = p;
     } else {

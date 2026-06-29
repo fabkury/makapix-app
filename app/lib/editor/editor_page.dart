@@ -120,6 +120,9 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // coords). Never drawn to the canvas; cleared when switching tools.
   Offset? _rulerA, _rulerB;
   int _rulerDrag = 0; // 0=none, 1=dragging A, 2=dragging B, 3=drawing a new measurement
+  // Canvas-space offset from the finger to the grabbed endpoint, kept for the whole drag so the
+  // endpoint stays visible beside the finger instead of snapping under it.
+  Offset _rulerGrabOffset = Offset.zero;
   int _canvasW = 0, _canvasH = 0; // last-seen canvas size; a change auto-clears the stale ruler
   bool _radial = false;
   int _intensity = 128;

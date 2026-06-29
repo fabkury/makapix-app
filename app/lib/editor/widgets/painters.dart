@@ -137,7 +137,7 @@ class HandlePainter extends CustomPainter {
 
 /// Screen-space radius of the Ruler's endpoint reticles. Also the grab radius for dragging an end
 /// (shared with the gesture code), so "tap within the reticle to move that coordinate".
-const double kRulerReticleRadius = 28.0;
+const double kRulerReticleRadius = 36.0;
 
 /// The Ruler tool's overlay: a measurement line between two canvas points, a large draggable
 /// reticle targeting each end, each end's X,Y, and the straight-line length in pixels. Drawn in
