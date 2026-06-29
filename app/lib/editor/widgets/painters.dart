@@ -157,6 +157,30 @@ class ShapeRotateHandlePainter extends CustomPainter {
     canvas.drawCircle(ret, 11, Paint()..color = Colors.black..style = PaintingStyle.stroke..strokeWidth = 4..isAntiAlias = true);
     canvas.drawCircle(ret, 11, Paint()..color = const Color(0xFF4DA3FF)..style = PaintingStyle.stroke..strokeWidth = 2.5..isAntiAlias = true);
     canvas.drawCircle(ret, 2.5, Paint()..color = Colors.white);
+    // A tiny live degree readout, centred just above the connecting arm.
+    final mid = Offset((cs.dx + ret.dx) / 2, (cs.dy + ret.dy) / 2);
+    var perp = Offset(-(ret.dy - cs.dy), ret.dx - cs.dx);
+    if (perp.distance > 0) perp = perp / perp.distance;
+    if (perp.dy > 0) perp = -perp; // keep the label on the upper side of the line
+    _degLabel(canvas, '${_degrees(rotation)}°', mid + perp * 13);
+  }
+
+  // Normalise radians to a signed whole degree in (-180, 180].
+  int _degrees(double rad) {
+    var d = (rad * 180 / math.pi) % 360;
+    if (d > 180) d -= 360;
+    return d.round();
+  }
+
+  void _degLabel(Canvas canvas, String text, Offset at) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: ' $text ',
+        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.white, backgroundColor: Color(0xCC000000)),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(canvas, at - Offset(tp.width / 2, tp.height / 2));
   }
 
   @override
