@@ -99,7 +99,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   int _threshold = 16;
   bool _contiguous = true;
   bool _fillAllLayers = false; // Bucket: decide the fill region from the composited image
-  bool _shapeFill = true;
+  bool _shapeFill = false; // shapes default to Outline (the engine is told on tool select)
   int _lineWidth = 1; // stroke thickness for Line and outline Rectangle/Ellipse (engine line_width)
   bool _lockRatio = false; // Rect/Ellipse: constrain width:height to _ratio (1 = square/circle)
   double _ratio = 1.0; // locked aspect ratio (width / height)
