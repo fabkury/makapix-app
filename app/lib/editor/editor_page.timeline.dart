@@ -148,6 +148,12 @@ extension _EditorTimeline on _EditorPageState {
         const PopupMenuDivider(),
         CheckedPopupMenuItem<String>(value: 'grid', checked: _grid, child: const Text('Grid')),
         _menuRow('fit', Icons.fit_screen, 'Fit to screen'),
+        const PopupMenuDivider(),
+        // Whole-canvas rotation (all frames + layers, resizing on a quarter turn). The Rotate *tool*
+        // rotates only the active layer / selection; this is the document-wide transform.
+        _menuRow('rotate_canvas_cw', Icons.rotate_right, 'Rotate canvas 90° CW'),
+        _menuRow('rotate_canvas_ccw', Icons.rotate_left, 'Rotate canvas 90° CCW'),
+        _menuRow('rotate_canvas_180', Icons.sync, 'Rotate canvas 180°'),
       ],
     );
   }
@@ -187,6 +193,15 @@ extension _EditorTimeline on _EditorPageState {
         break;
       case 'fit':
         _fitView();
+        break;
+      case 'rotate_canvas_cw':
+        _act('Rotate(1)');
+        break;
+      case 'rotate_canvas_ccw':
+        _act('Rotate(3)');
+        break;
+      case 'rotate_canvas_180':
+        _act('Rotate(2)');
         break;
     }
   }

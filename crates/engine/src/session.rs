@@ -6,7 +6,7 @@
 use crate::buffer::RgbaBuffer;
 use crate::color::Rgba8;
 use crate::document::{Document, Frame, LoopMode};
-use crate::geom::{IRect, Point};
+use crate::geom::{IRect, Point, PointF};
 use crate::io;
 use crate::render;
 use crate::selection::{CombineMode, Mask};
@@ -64,6 +64,27 @@ struct MoveDraft {
     is_selection: bool,
     bbox: Option<crate::geom::IRect>, // union opaque bbox at offset 0 (Protect-clamp + draft rect)
     offset: Point,
+}
+
+/// An in-progress free-angle rotation of the active layer (or the selected pixels within it) — the
+/// Rotate tool's "Angle" mode. Like [`MoveDraft`] it is **non-destructive**: the document is never
+/// touched while the draft is open (the rotation shows only as a *display-time* preview, nearest-
+/// neighbour resampled about `pivot`); only `rotate_draft_commit` materializes it as one undo step.
+/// The lifted source (`src`) is captured at begin so the preview, the commit, and the instant
+/// quarter-turn buttons all rotate the exact same pixels. See `session/canvas.rs`.
+struct RotateDraft {
+    fid: u32,
+    lid: u32,
+    is_selection: bool,
+    /// Selection at begin: drives clearing the origin pixels on commit and the undo `sel_before`.
+    sel_before: Option<Arc<Mask>>,
+    src: RgbaBuffer, // lifted source pixels: a bbox-sized lift (selection) or the whole layer
+    sw: i32,
+    sh: i32,
+    src_origin: Point, // where src(0,0) sits in canvas coords: bbox top-left, or (0,0) for a layer
+    src_mask: Option<Mask>, // bbox-sized mask of the lifted pixels (selection only; None = whole layer)
+    pivot: PointF, // continuous canvas coords to rotate about: bbox centre, or canvas centre
+    angle: f32,    // radians, clockwise (matches the Shape rotate handle's convention)
 }
 
 /// Stamp positions along `a`→`b`, one every `step` px of arc length. `acc` is the distance already
@@ -209,6 +230,10 @@ pub struct Session {
     /// The pending move draft (relocatable, semi-transparently washed, committed on demand). The
     /// shell drives it via `MoveDraftBegin`/`MoveDraftMove`/`MoveDraftCommit`/`MoveDraftCancel`.
     move_draft: Option<MoveDraft>,
+    /// The pending free-angle rotation draft (Rotate tool's "Angle" mode). Non-destructive, washed
+    /// like a move draft, committed on demand. Driven via `RotateDraftBegin`/`RotateDraftSetAngle`/
+    /// `RotateDraftCommit`/`RotateDraftCancel`; see `session/canvas.rs`.
+    rotate_draft: Option<RotateDraft>,
     /// While a selection-mask drag is in progress (`MoveSelectionBegin`→`MoveSelectionCommit`), the
     /// selection at drag start. Set ⇒ the per-step `MoveSelection`s update the mask in place without
     /// recording, and the commit records a single undo step for the whole drag. `None` ⇒ a one-shot
@@ -241,6 +266,7 @@ impl Session {
             move_before: None,
             move_bbox: None,
             move_draft: None,
+            rotate_draft: None,
             move_sel_before: None,
         }
     }
@@ -377,9 +403,9 @@ impl Session {
             // (not baked into canvas pixels), so the engine no longer renders it.
             cursor: None,
         };
-        // A move draft renders as a display-only preview: composite a draft-applied clone of the
-        // active frame (the document itself is untouched until Commit).
-        let preview = self.move_draft_preview_frame();
+        // A move or rotate draft renders as a display-only preview: composite a draft-applied clone
+        // of the active frame (the document itself is untouched until Commit).
+        let preview = self.move_draft_preview_frame().or_else(|| self.rotate_draft_preview_frame());
         let frame = preview.as_ref().unwrap_or_else(|| self.doc.active_frame());
         let mut buf = render::render_display(&self.doc, frame, &ov);
         self.draw_tool_preview(&mut buf);
@@ -483,6 +509,12 @@ impl Session {
     }
 
     fn draw_tool_preview(&self, buf: &mut RgbaBuffer) {
+        // A pending rotate draft: the preview frame already shows the rotated pixels, so just wash
+        // their footprint with the soft "draft" tint so they read as not-yet-committed.
+        if self.rotate_draft.as_ref().filter(|d| d.fid == self.doc.active_frame().id).is_some() {
+            self.rotate_draft_wash_into(buf);
+            return;
+        }
         // A pending move draft: the moved pixels are already in the layer (crash-safe), so just wash
         // them with a soft semi-transparent tint to mark "pending until Commit". Only wash when the
         // draft's own frame is the one being displayed (the user may have switched frames).
@@ -576,6 +608,11 @@ impl Session {
     /// selection tool is being dragged — a live preview of (current selection ∘ drag shape).
     pub fn outline_mask(&self) -> Option<Mask> {
         let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
+        // While a selection rotate draft is open the marquee follows the (preview) rotated mask,
+        // even though the document's selection isn't touched until Commit.
+        if let Some(m) = self.rotate_draft_outline() {
+            return Some(m);
+        }
         // While a selection move draft is open the marquee follows the (preview) move, even though
         // the document's selection isn't touched until Commit.
         if let Some(d) = self.move_draft.as_ref().filter(|d| d.is_selection) {
@@ -660,11 +697,25 @@ impl Session {
             Some(r) => format!("[{},{},{},{}]", r.x, r.y, r.w, r.h),
             None => "null".to_string(),
         };
+        // The rotate draft carries its pre-rotation region bbox + the live angle so the shell can
+        // place the rotate handle (centre = bbox centre, arm reaches a corner) and show the angle.
+        let rotate_draft = match self.rotate_draft_rect() {
+            Some(r) => format!(
+                "{{\"x\":{},\"y\":{},\"w\":{},\"h\":{},\"angle_mrad\":{}}}",
+                r.x,
+                r.y,
+                r.w,
+                r.h,
+                self.rotate_draft_angle_mrad().unwrap_or(0)
+            ),
+            None => "null".to_string(),
+        };
         let extra = format!(
-            ",\"has_clipboard\":{},\"paste\":{},\"move_draft\":{}",
+            ",\"has_clipboard\":{},\"paste\":{},\"move_draft\":{},\"rotate_draft\":{}",
             self.clipboard.is_some(),
             rect(self.paste_draft_rect()),
             rect(self.move_draft_rect()),
+            rotate_draft,
         );
         s.insert_str(s.len() - 1, &extra); // before the final '}'
         s
@@ -2602,6 +2653,138 @@ mod tests {
         assert!(s.doc.undo());
         assert_eq!(s.size(), (16, 16));
         assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::WHITE);
+    }
+
+    // ---- Rotate tool: layer/selection-scoped rotation + free-angle draft (session/canvas.rs) ----
+
+    #[test]
+    fn rotate_layer_90_square_lossless_and_4x_identity() {
+        let mut s = Session::new(12, 12);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(2, 5);
+        let h = s.doc.content_hash();
+        s.rotate_layer(1); // 90° CW about the canvas centre — NO resize (unlike `rotate`)
+        assert_eq!(s.size(), (12, 12));
+        assert_eq!(s.pixel(0, 0, 6, 2), Rgba8::WHITE); // (2,5) → (n-1-y, x) = (6,2)
+        assert_eq!(s.pixel(0, 0, 2, 5), Rgba8::TRANSPARENT);
+        for _ in 0..3 {
+            s.rotate_layer(1);
+        }
+        assert_eq!(s.size(), (12, 12));
+        assert_eq!(s.doc.content_hash(), h, "four 90° layer rotations are the identity on a square canvas");
+    }
+
+    #[test]
+    fn rotate_layer_touches_active_layer_only() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(1, 1); // layer 0 (the default active layer)
+        s.add_layer(); // appended and made active (index 1)
+        s.tap(3, 3); // layer 1
+        s.rotate_layer(2); // 180° about the canvas centre
+        assert_eq!(s.size(), (16, 16), "a layer rotation never resizes the canvas");
+        assert_eq!(s.pixel(0, 0, 1, 1), Rgba8::WHITE, "the inactive layer is untouched");
+        assert_eq!(s.pixel(0, 1, 12, 12), Rgba8::WHITE, "(3,3) → (15-3,15-3)");
+        assert_eq!(s.pixel(0, 1, 3, 3), Rgba8::TRANSPARENT);
+    }
+
+    #[test]
+    fn rotate_layer_selection_rotates_pixels_and_mask_about_bbox_center() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(2, 4); // left end of a wide bar
+        s.tool = ToolKind::SelectRect;
+        s.stroke_path(&[(2, 4), (7, 5)]); // a 6×2 selection, bbox centre (5,5)
+        s.rotate_layer(1); // 90° CW about the bbox centre
+
+        // The pixel rotates with the selection (wide bar → tall bar).
+        assert_eq!(s.pixel(0, 0, 5, 2), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 0, 2, 4), Rgba8::TRANSPARENT);
+
+        // The mask rotated too: the 6×2 region became a 2×6 region (x∈[4,6), y∈[2,8)).
+        let sel = s.doc.selection.as_ref().expect("selection survives the rotation");
+        assert!(sel.get(5, 2) && sel.get(4, 7), "rotated tall-bar cells are selected");
+        assert!(!sel.get(2, 4) && !sel.get(7, 4), "original wide-bar-only cells are deselected");
+    }
+
+    #[test]
+    fn rotate_layer_90_nonsquare_clips_to_canvas() {
+        let mut s = Session::new(32, 16); // non-square
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(16, 8); // near the centre — stays on-canvas
+        s.tap(31, 8); // far edge — rotates off the (now taller-than-wide) footprint
+        s.rotate_layer(1);
+        assert_eq!(s.size(), (32, 16), "rotate about centre + clip never resizes a non-square canvas");
+        assert_eq!(s.pixel(0, 0, 15, 8), Rgba8::WHITE, "the central pixel lands back on-canvas");
+        assert_eq!(s.pixel(0, 0, 31, 8), Rgba8::TRANSPARENT, "the edge pixel rotated off-canvas (clipped)");
+    }
+
+    #[test]
+    fn rotate_draft_begin_set_commit_single_undo_rotated_pixels() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(2, 8);
+        let h0 = s.doc.content_hash();
+        s.rotate_draft_begin();
+        assert_eq!(s.doc.content_hash(), h0, "the draft is non-destructive while open");
+        s.rotate_draft_set_angle((std::f32::consts::FRAC_PI_2 * 1000.0) as i32); // 90° CW
+        s.rotate_draft_commit();
+        assert_eq!(s.pixel(0, 0, 7, 2), Rgba8::WHITE); // (2,8) about (8,8) → (7,2)
+        assert!(s.doc.undo(), "the commit is one undo step");
+        assert_eq!(s.doc.content_hash(), h0, "a single undo restores the pre-rotation document");
+    }
+
+    #[test]
+    fn rotate_draft_pi_matches_rotate_layer_2() {
+        let build = || {
+            let mut s = Session::new(20, 12);
+            s.settings.primary = Rgba8::WHITE;
+            s.tap(3, 4);
+            s.tap(15, 9);
+            s
+        };
+        let mut quarter = build();
+        quarter.rotate_layer(2);
+        let mut draft = build();
+        draft.rotate_draft_begin();
+        draft.rotate_draft_set_angle((std::f32::consts::PI * 1000.0) as i32);
+        draft.rotate_draft_commit();
+        assert_eq!(quarter.doc.content_hash(), draft.doc.content_hash(), "180° draft == quarter-turn ×2");
+    }
+
+    #[test]
+    fn rotate_draft_cancel_is_nondestructive() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(4, 4);
+        let h0 = s.doc.content_hash();
+        s.rotate_draft_begin();
+        s.rotate_draft_set_angle((std::f32::consts::FRAC_PI_4 * 1000.0) as i32); // 45°
+        s.rotate_draft_cancel();
+        assert_eq!(s.doc.content_hash(), h0, "cancel leaves the document exactly as it was");
+        assert!(s.rotate_draft_rect().is_none(), "no draft remains after cancel");
+    }
+
+    #[test]
+    fn rotate_draft_selection_outline_follows_then_commit_rotates_mask() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(2, 4);
+        s.tool = ToolKind::SelectRect;
+        s.stroke_path(&[(2, 4), (7, 5)]); // 6×2 selection, bbox centre (5,5)
+        s.rotate_draft_begin();
+        s.rotate_draft_set_angle((std::f32::consts::FRAC_PI_2 * 1000.0) as i32); // 90° CW
+
+        // While the draft is open the marquee (outline) follows the rotated mask, but the committed
+        // document selection is still the original.
+        let outline = s.outline_mask().expect("an open selection rotate draft outlines the rotated mask");
+        assert!(outline.get(4, 2), "the outline shows the rotated tall bar");
+        assert!(!outline.get(2, 4), "the outline no longer shows the original wide bar");
+        assert!(s.doc.selection.as_ref().unwrap().get(2, 4), "the document selection is untouched until commit");
+
+        s.rotate_draft_commit();
+        let sel = s.doc.selection.as_ref().unwrap();
+        assert!(sel.get(4, 2) && !sel.get(2, 4), "commit rotates the selection mask with the pixels");
     }
 
     #[test]

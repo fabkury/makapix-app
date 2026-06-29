@@ -244,6 +244,21 @@ class _EditorPageState extends ConsumerState<EditorPage>
   Offset? _moveDragLast; // last canvas position while dragging the move draft
   bool _moveDraftStarted = false; // whether this drag has begun the draft yet (begin on first move)
 
+  // Rotate tool: 90°/180° act on the active layer (or the selected pixels). The "Angle" mode opens a
+  // free-angle draft — the involved pixels show a semitransparent preview with a drag handle until
+  // Commit. `_hasRotateDraft`/`_rotDraftRect`/`_rotDraftAngle` come from the engine state JSON
+  // ("rotate_draft"). The whole-canvas rotation lives in the timeline ☰ menu instead.
+  bool _hasRotateDraft = false;
+  Rect? _rotDraftRect; // involved-region bbox in canvas pixels (pre-rotation)
+  double _rotDraftAngle = 0; // current draft angle (radians, clockwise)
+  bool _rotateDragging = false; // a finger is currently dragging the rotate handle
+  bool get _isRotateHandleActive => _tool == 'Rotate' && _hasRotateDraft;
+  // Handle geometry in the painter's cell-index space (sc() adds +0.5 to reach the cell centre, so
+  // the geometric bbox centre is bbox-centre − 0.5; the arm reaches the far corner cell).
+  Offset get _rotDraftCenter =>
+      Offset(_rotDraftRect!.left + _rotDraftRect!.width / 2 - 0.5, _rotDraftRect!.top + _rotDraftRect!.height / 2 - 0.5);
+  Offset get _rotDraftCorner => Offset(_rotDraftRect!.right - 1, _rotDraftRect!.bottom - 1);
+
   bool get _engineReady => _error == null;
 
   @override

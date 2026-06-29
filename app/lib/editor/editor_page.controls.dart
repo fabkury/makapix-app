@@ -415,9 +415,36 @@ extension _EditorControls on _EditorPageState {
       children.add(_miniBtn('Flip V', () => _act('FlipV()')));
     }
     if (_tool == 'Rotate') {
-      children.add(IconButton(iconSize: 18, tooltip: 'Rotate 90° CW', onPressed: () => _act('Rotate(1)'), icon: const Icon(Icons.rotate_right)));
-      children.add(IconButton(iconSize: 18, tooltip: 'Rotate 90° CCW', onPressed: () => _act('Rotate(3)'), icon: const Icon(Icons.rotate_left)));
-      children.add(_miniBtn('Rotate 180', () => _act('Rotate(2)')));
+      if (_hasRotateDraft) {
+        // Free-angle "Angle" mode: Commit bakes the rotation as one undo step; Cancel discards it.
+        // Drag the on-canvas handle to set the angle first.
+        children.add(Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          child: ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF30A050)),
+            onPressed: _commitRotateDraft,
+            icon: const Icon(Icons.check, size: 16),
+            label: const Text('Commit'),
+          ),
+        ));
+        children.add(Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          child: OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(minimumSize: const Size(0, 34), foregroundColor: const Color(0xFFE06060)),
+            onPressed: _cancelRotateDraft,
+            icon: const Icon(Icons.close, size: 16),
+            label: const Text('Cancel'),
+          ),
+        ));
+      } else {
+        // 90°/180° act on the active layer, or the selected pixels when there's a selection.
+        label(_outlineEdges.isNotEmpty ? 'Rotate selection' : 'Rotate layer');
+        children.add(IconButton(iconSize: 18, tooltip: 'Rotate 90° CW', onPressed: () => _act('RotateLayer(1)'), icon: const Icon(Icons.rotate_right)));
+        children.add(IconButton(iconSize: 18, tooltip: 'Rotate 90° CCW', onPressed: () => _act('RotateLayer(3)'), icon: const Icon(Icons.rotate_left)));
+        children.add(_miniBtn('180°', () => _act('RotateLayer(2)')));
+        children.add(const SizedBox(width: 6));
+        children.add(_miniBtn('Angle', _beginRotateDraft));
+      }
     }
     if (_tool == 'Invert') {
       children.add(_miniBtn('Invert colours', () => _act('Invert()')));

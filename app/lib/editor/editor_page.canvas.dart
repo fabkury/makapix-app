@@ -62,8 +62,9 @@ extension _EditorCanvas on _EditorPageState {
                 _startPinch();
               }
             } else {
-              // first finger → draw (unless this tool doesn't draw on the canvas)
-              if (!_isInertCanvasTool) {
+              // first finger → draw (unless this tool doesn't draw on the canvas). The Rotate tool
+              // is otherwise inert, but accepts the handle drag while an Angle draft is open.
+              if (!_isInertCanvasTool || _isRotateHandleActive) {
                 _drawPointer = e.pointer;
                 _beginDraw(e.localPosition, box);
               }
@@ -134,6 +135,14 @@ extension _EditorCanvas on _EditorPageState {
                 if (_hasTipHandle)
                   // Triangle apex-skew handle: a diamond that slides along the top edge
                   _tipHandlePaint(vScale, vOff),
+                if (_isRotateHandleActive && _rotDraftRect != null)
+                  // Rotate "Angle" handle: drag the reticle to rotate the involved pixels (the
+                  // semitransparent draft preview lives in the composited image). Reuses the Shape
+                  // tool's rotate-handle painter for a consistent look + live degree readout.
+                  CustomPaint(
+                    painter: ShapeRotateHandlePainter(_rotDraftCenter, _rotDraftCorner, _rotDraftAngle, vScale, vOff),
+                    size: Size.infinite,
+                  ),
                 if (_isRuler && _hasRuler)
                   // measurement line + endpoint coords + length (never drawn to the canvas)
                   CustomPaint(
@@ -169,6 +178,10 @@ extension _EditorCanvas on _EditorPageState {
   // ---- single-pointer draw helpers (driven by the multi-touch state machine above) ----
 
   void _beginDraw(Offset pos, Size box) {
+    if (_isRotateHandleActive) {
+      _beginRotateHandle(pos, box);
+      return;
+    }
     if (_isRuler) {
       _beginRuler(pos, box);
       return;
@@ -210,6 +223,10 @@ extension _EditorCanvas on _EditorPageState {
   }
 
   void _continueDraw(Offset pos, Size box) {
+    if (_isRotateHandleActive) {
+      _continueRotateHandle(pos, box);
+      return;
+    }
     if (_isRuler) {
       _continueRuler(pos, box);
       return;
@@ -290,6 +307,10 @@ extension _EditorCanvas on _EditorPageState {
   }
 
   void _endDraw() {
+    if (_isRotateHandleActive) {
+      _rotateDragging = false; // releasing leaves the angle where it was dragged (awaiting Commit)
+      return;
+    }
     if (_isRuler) {
       _rulerDrag = 0;
       setState(() {});
@@ -334,6 +355,10 @@ extension _EditorCanvas on _EditorPageState {
   // Abort an in-progress draw, discarding its marks without an undo step (used when a second finger
   // interrupts a nascent stroke to begin pan/zoom).
   void _cancelDraw() {
+    if (_isRotateHandleActive) {
+      _rotateDragging = false; // a second finger interrupted; keep the angle where it is
+      return;
+    }
     if (_isRuler) {
       _rulerDrag = 0; // a second finger interrupted; keep the measurement as-is
       setState(() {});
@@ -659,6 +684,59 @@ extension _EditorCanvas on _EditorPageState {
   Widget _tipHandlePaint(double s, Offset o) {
     final (ta, tb) = _triTopEdge();
     return CustomPaint(painter: TriangleTipHandlePainter(_triApex(), ta, tb, s, o), size: Size.infinite);
+  }
+
+  // ---- Rotate tool "Angle" draft: open/commit/cancel + the on-canvas handle drag ----
+
+  void _beginRotateDraft() {
+    _send('RotateDraftBegin()');
+    _refreshState();
+    _redraw();
+    setState(() {});
+  }
+
+  void _commitRotateDraft() {
+    _send('RotateDraftCommit()');
+    _rotateDragging = false;
+    _refreshState();
+    _redraw();
+    setState(() {});
+  }
+
+  void _cancelRotateDraft() {
+    _send('RotateDraftCancel()');
+    _rotateDragging = false;
+    _refreshState();
+    _redraw();
+    setState(() {});
+  }
+
+  // The Rotate handle's reticle (screen px): mirrors `_shapeRotReticle` but for the draft's bbox.
+  Offset _rotDraftReticle(Size box) {
+    final (s, off) = _view(box);
+    Offset sc(Offset cc) => Offset(off.dx + (cc.dx + 0.5) * s, off.dy + (cc.dy + 0.5) * s);
+    final cs = sc(_rotDraftCenter), bs = sc(_rotDraftCorner);
+    final arm = math.max(56.0, (bs - cs).distance + 24.0);
+    return cs + Offset(math.cos(_rotDraftAngle), math.sin(_rotDraftAngle)) * arm;
+  }
+
+  // Engage the handle only when the press lands near its reticle (the rest of the canvas is inert
+  // for the Rotate tool), so a stray tap on the draft pixels doesn't snap the angle.
+  void _beginRotateHandle(Offset pos, Size box) {
+    _rotateDragging = (pos - _rotDraftReticle(box)).distance <= 40.0;
+  }
+
+  // Drag → set the angle to the finger's bearing around the bbox centre, live (the engine re-renders
+  // the rotated preview + marquee). Mirrors the Shape rotate handle's atan2 math.
+  void _continueRotateHandle(Offset pos, Size box) {
+    if (!_rotateDragging) return;
+    final (s, off) = _view(box);
+    final c = _rotDraftCenter;
+    final cs = Offset(off.dx + (c.dx + 0.5) * s, off.dy + (c.dy + 0.5) * s);
+    final theta = math.atan2(pos.dy - cs.dy, pos.dx - cs.dx);
+    _rotDraftAngle = theta;
+    _send('RotateDraftSetAngle(${(theta * 1000).round()})');
+    _redraw(full: false, refetchSelection: true); // a selection rotation moves the marquee too
   }
 
   // The Shape tool's rotate-handle reticle (screen px): out beyond the box corner, at angle _shapeRot.

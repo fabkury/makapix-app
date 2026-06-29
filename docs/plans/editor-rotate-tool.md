@@ -130,15 +130,15 @@ involved-region bbox + angle), `null` when none — enough for the shell to plac
 
 ## Tests
 
-Rust (`crates/engine/src/session/canvas.rs` `#[cfg(test)]` + `crates/engine/tests/scenarios.rs`):
-- `[ ]` `rotate_layer_90_square_lossless_and_4x_identity`
-- `[ ]` `rotate_layer_touches_active_layer_only` (other layers/frames untouched; no canvas resize)
-- `[ ]` `rotate_layer_selection_rotates_pixels_and_mask_about_bbox_center`
-- `[ ]` `rotate_layer_90_nonsquare_clips_to_canvas` (no panic; centered + clipped)
-- `[ ]` `rotate_draft_begin_set_commit_single_undo_rotated_pixels`
-- `[ ]` `rotate_draft_pi_matches_rotate_layer_2` (angle π ≈ quarter-turn 180)
-- `[ ]` `rotate_draft_cancel_is_nondestructive`
-- `[ ]` `rotate_draft_selection_commit_rotates_mask`
+Rust (`crates/engine/src/session.rs` `#[cfg(test)]`, alongside the existing rotate/crop tests):
+- `[x]` `rotate_layer_90_square_lossless_and_4x_identity`
+- `[x]` `rotate_layer_touches_active_layer_only` (other layers untouched; no canvas resize)
+- `[x]` `rotate_layer_selection_rotates_pixels_and_mask_about_bbox_center`
+- `[x]` `rotate_layer_90_nonsquare_clips_to_canvas` (clipped; no resize)
+- `[x]` `rotate_draft_begin_set_commit_single_undo_rotated_pixels`
+- `[x]` `rotate_draft_pi_matches_rotate_layer_2` (angle π ≈ quarter-turn 180)
+- `[x]` `rotate_draft_cancel_is_nondestructive`
+- `[x]` `rotate_draft_selection_outline_follows_then_commit_rotates_mask`
 
 Docs:
 - `[ ]` SPEC.md §28.1: clarify Flip/Rotate are layer/selection-scoped tools w/ an Angle draft; whole-
@@ -150,14 +150,15 @@ Manual smoke: `./build.ps1 -Run`.
 
 ## Task checklist
 
-- `[ ]` Engine: `rotate_layer(q)` (selection-aware, center pivot, clip) + integer-rotate helpers
-- `[ ]` Engine: NN inverse-map resampler (pixels + mask) shared by draft & angle commit
-- `[ ]` Engine: `RotateDraft` + begin/set_angle/commit/cancel + preview frame + `outline_mask` branch
-- `[ ]` FFI/DSL: `RotateLayer` + `RotateDraft*` actions (variants, parse, dispatch)
-- `[ ]` State JSON: `rotate_draft` field
-- `[ ]` Shell: controls (quarter buttons → RotateLayer, Angle button, Commit/Cancel)
-- `[ ]` Shell: canvas handle overlay + drag gesture; `_refreshState`/`_selectTool` wiring
-- `[ ]` Shell: ☰ menu → Rotate canvas (doc-wide `Rotate`)
-- `[ ]` Rust tests
-- `[ ]` SPEC.md / STATUS.md updates
-- `[ ]` Build gates green (cargo test, clippy, flutter analyze) + manual smoke
+- `[x]` Engine: `rotate_layer(q)` (selection-aware, center pivot, clip) — routed through the draft
+- `[x]` Engine: NN inverse-map resampler (pixels + region mask) shared by draft & quarter turns
+- `[x]` Engine: `RotateDraft` + begin/set_angle/commit/cancel + preview frame + `outline_mask` branch
+- `[x]` DSL: `RotateLayer` + `RotateDraft*` actions (variants, parse, dispatch) — no new FFI needed
+- `[x]` State JSON: `rotate_draft` field (bbox + angle_mrad)
+- `[x]` Shell: controls (quarter buttons → RotateLayer, Angle button, Commit/Cancel + scope label)
+- `[x]` Shell: canvas handle overlay + drag gesture (engage near reticle); `_refreshState`/`_selectTool` wiring
+- `[x]` Shell: ☰ menu → Rotate canvas 90° CW/CCW/180 (doc-wide `Rotate`)
+- `[x]` Rust tests (8 new, all green)
+- `[x]` SPEC.md §28.1 / STATUS.md updates
+- `[~]` Build gates: cargo test + clippy + FFI DLL green; flutter analyze clean (no new issues);
+  `flutter test` 94 green. Manual GUI smoke (`./build.ps1 -Run`) left to the user.

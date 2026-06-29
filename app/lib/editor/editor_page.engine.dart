@@ -240,6 +240,22 @@ extension _EditorEngine on _EditorPageState {
       _canvasH = h;
       _hasPasteDraft = _state['paste'] != null; // [x,y,w,h] when a paste draft is floating, else null
       _hasMoveDraft = _state['move_draft'] != null; // [x,y,w,h] when a move draft is pending, else null
+      // {x,y,w,h,angle_mrad} while a Rotate "Angle" draft is open, else null.
+      final rd = _state['rotate_draft'];
+      if (rd is Map) {
+        _hasRotateDraft = true;
+        _rotDraftRect = Rect.fromLTWH(
+          (rd['x'] as num).toDouble(),
+          (rd['y'] as num).toDouble(),
+          (rd['w'] as num).toDouble(),
+          (rd['h'] as num).toDouble(),
+        );
+        _rotDraftAngle = ((rd['angle_mrad'] as num?)?.toDouble() ?? 0) / 1000.0;
+      } else {
+        _hasRotateDraft = false;
+        _rotDraftRect = null;
+        _rotateDragging = false;
+      }
       final pal = (_state['palette'] as List?)?.cast<String>() ?? [];
       _palette = pal.map(_parseHex).toList();
       final pc = engine.primaryColor;
@@ -291,6 +307,13 @@ extension _EditorEngine on _EditorPageState {
       _hasMoveDraft = false;
       _moveDragLast = null;
       _moveDraftStarted = false;
+      _redraw();
+    }
+    // A pending rotate (Angle) draft is likewise discarded when leaving the Rotate tool.
+    if (_hasRotateDraft) {
+      _send('RotateDraftCancel()');
+      _hasRotateDraft = false;
+      _rotateDragging = false;
       _redraw();
     }
     // The Ruler keeps its measurement across tool switches (its overlay just hides while another
