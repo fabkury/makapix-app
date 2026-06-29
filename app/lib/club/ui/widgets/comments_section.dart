@@ -51,9 +51,12 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
     final auth = ref.watch(authControllerProvider);
     final mySub = auth.me?.user.sub;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Padding(
-          padding: EdgeInsets.symmetric(vertical: 8),
-          child: Text('Comments', style: TextStyle(fontWeight: FontWeight.bold))),
+      Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Text(
+              async.maybeWhen(
+                  data: (tree) => 'Comments (${countComments(tree)})', orElse: () => 'Comments'),
+              style: const TextStyle(fontWeight: FontWeight.bold))),
       async.when(
         loading: () => const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
         error: (e, _) => const Padding(

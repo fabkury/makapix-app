@@ -6,11 +6,13 @@ import '../models/post.dart';
 import '../models/user_profile.dart';
 import '../state/auth_controller.dart';
 import '../state/feed_providers.dart';
+import '../state/player_providers.dart';
 import '../state/profile_providers.dart';
 import 'artwork_detail_page.dart';
 import 'club_account_page.dart';
 import 'widgets/common.dart';
 import 'widgets/feed_grid.dart';
+import 'widgets/send_target_binder.dart';
 
 /// A user's profile: header + stats + follow + gallery.
 class ProfilePage extends ConsumerWidget {
@@ -43,7 +45,13 @@ class _Body extends ConsumerWidget {
     final gallery = ref.watch(ownerFeedProvider(profile.userKey));
     final gn = ref.read(ownerFeedProvider(profile.userKey).notifier);
     final signedIn = ref.watch(authControllerProvider).isSignedIn;
-    return Column(children: [
+    return SendTargetBinder(
+      target: ChannelTarget(
+        displayName: profile.handle,
+        userSqid: profile.sqid,
+        userHandle: profile.handle,
+      ),
+      child: Column(children: [
       _header(context, ref, signedIn),
       const Divider(height: 1),
       Expanded(
@@ -52,11 +60,18 @@ class _Body extends ConsumerWidget {
           onLoadMore: gn.loadMore,
           onRefresh: gn.refresh,
           emptyMessage: 'No posts yet.',
-          onTap: (Post p) =>
-              Navigator.push(context, MaterialPageRoute(builder: (_) => ArtworkDetailPage(sqid: p.sqid))),
+          onTap: (Post p) => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => ArtworkDetailPage(
+                        sqid: p.sqid,
+                        feed: pagedArtworkSource(ownerFeedProvider(profile.userKey),
+                            ownerFeedProvider(profile.userKey).notifier),
+                      ))),
         ),
       ),
-    ]);
+    ]),
+    );
   }
 
   Widget _header(BuildContext context, WidgetRef ref, bool signedIn) {

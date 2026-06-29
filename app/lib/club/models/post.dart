@@ -20,6 +20,7 @@ class Post {
   final PostOwner owner;
   final int reactionCount;
   final int commentCount;
+  final int viewCount;
   final bool userHasLiked;
   final List<PostFile> files;
   final License? license;
@@ -45,6 +46,7 @@ class Post {
     required this.owner,
     required this.reactionCount,
     required this.commentCount,
+    this.viewCount = 0,
     required this.userHasLiked,
     required this.files,
     required this.license,
@@ -74,6 +76,7 @@ class Post {
         owner: PostOwner.fromJson(((j['owner'] as Map?) ?? const {}).cast<String, dynamic>()),
         reactionCount: (j['reaction_count'] as num?)?.toInt() ?? 0,
         commentCount: (j['comment_count'] as num?)?.toInt() ?? 0,
+        viewCount: (j['view_count'] as num?)?.toInt() ?? 0,
         userHasLiked: j['user_has_liked'] == true,
         files: (j['files'] as List?)
                 ?.map((e) => PostFile.fromJson((e as Map).cast<String, dynamic>()))

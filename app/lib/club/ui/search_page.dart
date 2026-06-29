@@ -86,7 +86,12 @@ class _ArtworksTab extends ConsumerWidget {
                   itemCount: posts.length,
                   itemBuilder: (ctx, i) => GestureDetector(
                     onTap: () => Navigator.push(
-                        ctx, MaterialPageRoute(builder: (_) => ArtworkDetailPage(sqid: posts[i].sqid))),
+                        ctx,
+                        MaterialPageRoute(
+                            builder: (_) => ArtworkDetailPage(
+                                  sqid: posts[i].sqid,
+                                  feed: ArtworkFeedSource.fixed(posts),
+                                ))),
                     child: ClipRRect(
                         borderRadius: BorderRadius.circular(4),
                         child: PixelArtImage(url: posts[i].artUrl)),
