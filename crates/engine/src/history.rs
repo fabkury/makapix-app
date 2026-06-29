@@ -1,13 +1,16 @@
 //! Undo/redo as a single global timeline with per-frame compaction (SPEC §10).
 //!
-//! Each `Edit` stores **absolute** before/after content, so any old edit can be dropped
-//! during compaction without invalidating the others. The per-frame 128-state requirement
-//! is enforced by counting content edits per frame and dropping the oldest for that frame.
+//! Each [`Record`] stores **absolute** before/after content — both the document mutation (`Edit`)
+//! and the selection-mask transition that accompanied it — so any old record can be dropped during
+//! compaction without invalidating the others. The per-frame 128-state requirement is enforced by
+//! counting content edits per frame and dropping the oldest for that frame.
 
 use crate::buffer::TilePatch;
 use crate::document::{Document, Frame};
 use crate::geom::Size;
+use crate::selection::Mask;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 pub const PER_FRAME_CAP: usize = 128;
 pub const TOTAL_CAP: usize = 8192;
@@ -29,6 +32,10 @@ pub enum Edit {
         before_size: Size,
         after_size: Size,
     },
+    /// A pure selection change (marquee/invert/select-all/none/…) with no pixel or structural
+    /// payload. The mask transition lives on the enclosing [`Record`]; this variant only marks the
+    /// record so it occupies exactly one undo step.
+    Selection,
 }
 
 impl Edit {
@@ -36,7 +43,7 @@ impl Edit {
         match self {
             Edit::Pixels { frame_id, .. } => Some(*frame_id),
             Edit::FrameContent { frame_id, .. } => Some(*frame_id),
-            Edit::DocStructure { .. } => None,
+            Edit::DocStructure { .. } | Edit::Selection => None,
         }
     }
     pub fn label(&self) -> &str {
@@ -44,14 +51,27 @@ impl Edit {
             Edit::Pixels { .. } => "pixels",
             Edit::FrameContent { .. } => "frame",
             Edit::DocStructure { label, .. } => label,
+            Edit::Selection => "selection",
         }
     }
 }
 
+/// One undo step: a document mutation (`edit`) plus the selection-mask transition that accompanied
+/// it. The masks are absolute COW snapshots (`Arc` clones): a pixel-only edit shares one `Arc` for
+/// `before` and `after` (so it's a free pointer copy), and only a genuine selection change allocates
+/// a new mask. Storing absolute (not relative) masks keeps the "any record is droppable during
+/// compaction" invariant intact.
+#[derive(Clone)]
+pub struct Record {
+    pub edit: Edit,
+    pub sel_before: Option<Arc<Mask>>,
+    pub sel_after: Option<Arc<Mask>>,
+}
+
 #[derive(Default)]
 pub struct History {
-    pub undo: Vec<Edit>,
-    pub redo: Vec<Edit>,
+    pub undo: Vec<Record>,
+    pub redo: Vec<Record>,
     /// Per-frame content-edit count within the `undo` stack, kept in sync incrementally so the
     /// per-frame cap check is O(1) instead of rescanning the whole stack on every push. [audit F-16]
     counts: HashMap<u32, usize>,
@@ -75,14 +95,14 @@ impl History {
         self.counts.get(&frame_id).copied().unwrap_or(0)
     }
 
-    fn inc(&mut self, edit: &Edit) {
-        if let Some(fid) = edit.frame_id() {
+    fn inc(&mut self, rec: &Record) {
+        if let Some(fid) = rec.edit.frame_id() {
             *self.counts.entry(fid).or_insert(0) += 1;
         }
     }
 
-    fn dec(&mut self, edit: &Edit) {
-        if let Some(fid) = edit.frame_id() {
+    fn dec(&mut self, rec: &Record) {
+        if let Some(fid) = rec.edit.frame_id() {
             if let Some(c) = self.counts.get_mut(&fid) {
                 *c -= 1;
                 if *c == 0 {
@@ -92,15 +112,15 @@ impl History {
         }
     }
 
-    fn push(&mut self, edit: Edit) {
-        self.redo.clear(); // redo edits are not counted (counts tracks only the undo stack)
-        let fid = edit.frame_id();
-        self.inc(&edit);
-        self.undo.push(edit);
+    fn push(&mut self, rec: Record) {
+        self.redo.clear(); // redo records are not counted (counts tracks only the undo stack)
+        let fid = rec.edit.frame_id();
+        self.inc(&rec);
+        self.undo.push(rec);
         // Per-frame compaction: drop the oldest content edit for this frame past the cap.
         if let Some(fid) = fid {
             while self.counts.get(&fid).copied().unwrap_or(0) > PER_FRAME_CAP {
-                if let Some(pos) = self.undo.iter().position(|e| e.frame_id() == Some(fid)) {
+                if let Some(pos) = self.undo.iter().position(|r| r.edit.frame_id() == Some(fid)) {
                     let removed = self.undo.remove(pos);
                     self.dec(&removed);
                 } else {
@@ -117,18 +137,43 @@ impl History {
 }
 
 impl Document {
-    /// Record a pixel edit produced by diffing a layer buffer against an earlier snapshot.
-    pub fn record_pixels(&mut self, frame_id: u32, layer_id: u32, patch: TilePatch) {
+    /// The current selection as a cheap COW snapshot for a record's "after" side.
+    fn sel_now(&self) -> Option<Arc<Mask>> {
+        self.selection.clone()
+    }
+
+    /// Record a pixel edit produced by diffing a layer buffer against an earlier snapshot, together
+    /// with the selection transition (`sel_before` → the current selection) so a move that carried
+    /// the mask is undone/redone as one step.
+    pub fn record_pixels(
+        &mut self,
+        frame_id: u32,
+        layer_id: u32,
+        patch: TilePatch,
+        sel_before: Option<Arc<Mask>>,
+    ) {
         if patch.is_empty() {
             return;
         }
-        self.history.push(Edit::Pixels { frame_id, layer_id, patch });
+        let sel_after = self.sel_now();
+        self.history
+            .push(Record { edit: Edit::Pixels { frame_id, layer_id, patch }, sel_before, sel_after });
     }
 
     /// Record a within-frame content change given before/after frame snapshots.
-    pub fn record_frame_content(&mut self, frame_id: u32, before: Frame, after: Frame) {
-        self.history
-            .push(Edit::FrameContent { frame_id, before: Box::new(before), after: Box::new(after) });
+    pub fn record_frame_content(
+        &mut self,
+        frame_id: u32,
+        before: Frame,
+        after: Frame,
+        sel_before: Option<Arc<Mask>>,
+    ) {
+        let sel_after = self.sel_now();
+        self.history.push(Record {
+            edit: Edit::FrameContent { frame_id, before: Box::new(before), after: Box::new(after) },
+            sel_before,
+            sel_after,
+        });
     }
 
     /// Record a document-structure change given before/after frame-vector snapshots.
@@ -138,19 +183,31 @@ impl Document {
         before: Vec<Frame>,
         before_active: usize,
         before_size: Size,
+        sel_before: Option<Arc<Mask>>,
     ) {
         let after = self.frames.clone();
         let after_active = self.active_frame;
         let after_size = self.size;
-        self.history.push(Edit::DocStructure {
-            label: label.into(),
-            before,
-            after,
-            before_active,
-            after_active,
-            before_size,
-            after_size,
+        let sel_after = self.sel_now();
+        self.history.push(Record {
+            edit: Edit::DocStructure {
+                label: label.into(),
+                before,
+                after,
+                before_active,
+                after_active,
+                before_size,
+                after_size,
+            },
+            sel_before,
+            sel_after,
         });
+    }
+
+    /// Record a pure selection transition (`sel_before` → the current selection) as one undo step.
+    pub fn record_selection(&mut self, sel_before: Option<Arc<Mask>>) {
+        let sel_after = self.sel_now();
+        self.history.push(Record { edit: Edit::Selection, sel_before, sel_after });
     }
 
     pub fn can_undo(&self) -> bool {
@@ -161,28 +218,32 @@ impl Document {
     }
 
     pub fn undo(&mut self) -> bool {
-        let edit = match self.history.undo.pop() {
-            Some(e) => e,
+        let rec = match self.history.undo.pop() {
+            Some(r) => r,
             None => return false,
         };
-        self.history.dec(&edit); // edit leaves the undo stack → moves to redo [audit F-16]
-        self.apply(&edit, false);
-        self.history.redo.push(edit);
+        self.history.dec(&rec); // record leaves the undo stack → moves to redo [audit F-16]
+        self.apply(&rec.edit, false);
+        self.selection = rec.sel_before.clone(); // restore the mask that accompanied this step
+        self.history.redo.push(rec);
         true
     }
 
     pub fn redo(&mut self) -> bool {
-        let edit = match self.history.redo.pop() {
-            Some(e) => e,
+        let rec = match self.history.redo.pop() {
+            Some(r) => r,
             None => return false,
         };
-        self.apply(&edit, true);
-        self.history.inc(&edit); // edit returns to the undo stack [audit F-16]
-        self.history.undo.push(edit);
+        self.apply(&rec.edit, true);
+        self.selection = rec.sel_after.clone();
+        self.history.inc(&rec); // record returns to the undo stack [audit F-16]
+        self.history.undo.push(rec);
         true
     }
 
-    /// Apply an edit forward (`forward=true` → after) or backward (`forward=false` → before).
+    /// Apply an edit forward (`forward=true` → after) or backward (`forward=false` → before). The
+    /// selection transition is applied by [`undo`]/[`redo`] around this call, so a pure
+    /// `Edit::Selection` is a no-op here.
     fn apply(&mut self, edit: &Edit, forward: bool) {
         match edit {
             Edit::Pixels { frame_id, layer_id, patch } => {
@@ -216,6 +277,8 @@ impl Document {
                 }
                 self.active_frame = self.active_frame.min(self.frames.len().saturating_sub(1));
             }
+            // Selection-only step: the mask is restored by undo()/redo(); nothing else to do.
+            Edit::Selection => {}
         }
     }
 }

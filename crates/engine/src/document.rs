@@ -6,7 +6,9 @@ use crate::buffer::RgbaBuffer;
 use crate::color::Rgba8;
 use crate::geom::Size;
 use crate::history::History;
+use crate::selection::Mask;
 use crate::util::{Hash, Hasher, IdGen};
+use std::sync::Arc;
 
 pub const MAX_FRAMES: usize = 1024;
 pub const MAX_LAYERS: usize = 64;
@@ -130,6 +132,13 @@ pub struct Document {
     pub history: History,
     pub frame_ids: IdGen,
     pub layer_ids: IdGen,
+    /// The current selection mask, document-sized (its `w/h` always match `size`). `None` means
+    /// "no selection" (ops act on the whole layer). Promoted from editor state into the document so
+    /// it participates in undo/redo (each [`History`] record carries the mask transition) and in
+    /// `.mkpx` serialization (crash safety). COW-shared via `Arc`: a pixel-only edit reuses the same
+    /// `Arc` for its before/after snapshot, so recording it costs only a pointer clone. The combine
+    /// *mode* (Replace/Add/…) stays on `Session` as a transient tool setting — not persisted/undone.
+    pub selection: Option<Arc<Mask>>,
 }
 
 impl Document {
@@ -154,6 +163,7 @@ impl Document {
             history: History::new(),
             frame_ids,
             layer_ids,
+            selection: None,
         }
     }
 

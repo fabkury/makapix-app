@@ -145,6 +145,7 @@ impl Session {
         let before = self.doc.frames.clone();
         let before_active = self.doc.active_frame;
         let before_size = self.doc.size;
+        let sel_before = self.doc.selection.clone();
 
         for (i, df) in frames.iter().enumerate() {
             let target = cfg.start_frame + i;
@@ -175,7 +176,7 @@ impl Session {
             }
         }
         self.doc.active_frame = cfg.start_frame.min(self.doc.frames.len() - 1);
-        self.doc.record_doc_structure("import", before, before_active, before_size);
+        self.doc.record_doc_structure("import", before, before_active, before_size, sel_before);
     }
 }
 

@@ -82,8 +82,8 @@ impl Session {
                 }
             }
             s.doc.size = new_size;
+            s.doc.selection = None; // the old mask is wrong-sized now; clearing rides this undo step
         });
-        self.selection = None;
     }
 
     /// Resize the canvas, placing existing content at top-left or centered (SPEC §28.1).
@@ -116,14 +116,14 @@ impl Session {
                 }
             }
             s.doc.size = new_size;
+            s.doc.selection = None; // the old mask is wrong-sized now; clearing rides this undo step
         });
-        self.selection = None;
     }
 
     /// Crop the canvas to the current selection's bounding box (SPEC §28.1). No-op without
     /// a selection.
     pub fn crop_to_selection(&mut self) {
-        let bounds = match self.selection.as_ref().and_then(|m| m.bounds()) {
+        let bounds = match self.doc.selection.as_ref().and_then(|m| m.bounds()) {
             Some(b) => b,
             None => return,
         };
@@ -148,7 +148,7 @@ impl Session {
                 }
             }
             s.doc.size = new_size;
+            s.doc.selection = None; // crop consumes the selection; clearing rides this undo step
         });
-        self.selection = None;
     }
 }

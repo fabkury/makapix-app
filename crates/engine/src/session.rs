@@ -12,6 +12,7 @@ use crate::render;
 use crate::selection::{CombineMode, Mask};
 use crate::tool::{self, GradientKind, PaintMode, Stop, ToolKind, ToolSettings};
 use crate::util::{hash_hex, Hash, SeededRng, VirtualClock};
+use std::sync::Arc;
 
 mod canvas; // flip/rotate/resize/crop — extracted impl Session block [audit F-17]
 mod parse;
@@ -28,6 +29,9 @@ struct EditScope {
     fid: u32,
     lid: u32,
     before: TileSnapshot,
+    /// Selection at the moment the edit began. Recorded as the "before" side so an op that moves
+    /// pixels *and* the mask together (Move drag) undoes/redoes both as one step. [F-29]
+    sel_before: Option<Arc<Mask>>,
 }
 
 /// In-progress gesture state.
@@ -67,6 +71,17 @@ fn spaced_points(a: Point, b: Point, step: f32, acc: &mut f32) -> Vec<Point> {
     out
 }
 
+/// Whether two COW selection snapshots represent the same selection. Fast path: identical `Arc`
+/// (the common case for a pixel-only edit, which reuses one snapshot for before+after) short-
+/// circuits before any bit comparison.
+fn sel_eq(a: &Option<Arc<Mask>>, b: &Option<Arc<Mask>>) -> bool {
+    match (a, b) {
+        (None, None) => true,
+        (Some(x), Some(y)) => Arc::ptr_eq(x, y) || x == y,
+        _ => false,
+    }
+}
+
 /// Smallest rectangle covering both `a` and `b`.
 fn union_irect(a: crate::geom::IRect, b: crate::geom::IRect) -> crate::geom::IRect {
     let x = a.x.min(b.x);
@@ -80,7 +95,9 @@ pub struct Session {
     pub doc: Document,
     pub tool: ToolKind,
     pub settings: ToolSettings,
-    pub selection: Option<Mask>,
+    /// How the next selection-tool gesture composes with the current selection (Replace/Add/…).
+    /// Transient tool setting — like brush size, it is neither undone nor persisted. The mask
+    /// itself now lives on [`Document`] (`doc.selection`) so it is undoable and serialized.
     pub selection_mode: CombineMode,
     /// Layers (within the active frame) selected to move/transform together (SPEC §15).
     pub layer_sel: Vec<usize>,
@@ -126,7 +143,6 @@ impl Session {
             doc: Document::new(w, h),
             tool: ToolKind::Pencil,
             settings: ToolSettings::default(),
-            selection: None,
             selection_mode: CombineMode::Replace,
             layer_sel: vec![0],
             cursor: Point::new(w as i32 / 2, h as i32 / 2),
@@ -152,11 +168,32 @@ impl Session {
         Session::new(64, 64)
     }
 
-    fn ensure_selection(&mut self) -> &mut Mask {
-        if self.selection.is_none() {
-            self.selection = Some(Mask::new(self.doc.size.w as u32, self.doc.size.h as u32));
+    /// Replace the selection and record the change as one undo step. Used by the *standalone*
+    /// selection ops (marquee, invert, select-all/none, move-mask, select-by-alpha). Records nothing
+    /// when the mask is unchanged. Changes that ride along with a pixel/structural edit (Move drag,
+    /// nudge, crop/resize/rotate clear) instead assign `self.doc.selection` directly and let that
+    /// edit's record capture the transition.
+    fn set_selection(&mut self, new: Option<Mask>) {
+        let before = self.doc.selection.clone();
+        self.doc.selection = new.map(Arc::new);
+        if !sel_eq(&before, &self.doc.selection) {
+            self.doc.record_selection(before);
         }
-        self.selection.as_mut().unwrap()
+    }
+
+    /// Current selection as an owned mask for read-only use (clip regions, bounds), cloning out of
+    /// the COW `Arc`. `None` when there is no selection.
+    fn selection_clone(&self) -> Option<Mask> {
+        self.doc.selection.as_deref().cloned()
+    }
+
+    /// Compose `shape` into the current selection per `mode` and record it as one undo step (the
+    /// shared body of the marquee tools and select-by-alpha).
+    fn combine_selection(&mut self, shape: &Mask, mode: CombineMode) {
+        let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
+        let mut m = self.selection_clone().unwrap_or_else(|| Mask::new(w, h));
+        m.combine(shape, mode);
+        self.set_selection(Some(m));
     }
 
     // ---- read API used by FFI / tests / probes ----
@@ -322,7 +359,7 @@ impl Session {
         // Sort stops once (not per pixel); a selection bounds the fill to its bbox. [audit F-14/F-15]
         let mut stops = spec.stops.clone();
         stops.sort_by(|p, q| p.t.total_cmp(&q.t));
-        let (x0, y0, x1, y1) = match self.selection.as_ref().and_then(|m| m.bounds()) {
+        let (x0, y0, x1, y1) = match self.doc.selection.as_ref().and_then(|m| m.bounds()) {
             Some(bb) => (
                 bb.x.max(0),
                 bb.y.max(0),
@@ -333,7 +370,7 @@ impl Session {
         };
         for y in y0..y1 {
             for x in x0..x1 {
-                if let Some(m) = &self.selection {
+                if let Some(m) = &self.doc.selection {
                     if !m.get(x, y) {
                         continue;
                     }
@@ -412,7 +449,7 @@ impl Session {
             ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse | ToolKind::Triangle => self.render_shape_preview(buf, a, b),
             ToolKind::Gradient => self.render_gradient_preview(buf, a, b),
             ToolKind::Move => {
-                if let (Some(float), Some(sel)) = (&stroke.floating, &self.selection) {
+                if let (Some(float), Some(sel)) = (&stroke.floating, &self.doc.selection) {
                     if let Some(bb) = sel.bounds() {
                         let (dx, dy) = (b.x - a.x, b.y - a.y);
                         if self.settings.wrap {
@@ -444,12 +481,12 @@ impl Session {
                 _ => None,
             };
             if let Some(shape) = shape {
-                let mut m = self.selection.clone().unwrap_or_else(|| Mask::new(w, h));
+                let mut m = self.selection_clone().unwrap_or_else(|| Mask::new(w, h));
                 m.combine(&shape, self.selection_mode);
                 return Some(m);
             }
         }
-        self.selection.clone()
+        self.selection_clone()
     }
 
     /// Fill `out` with 1-byte-per-pixel selection coverage (1=selected). Returns the number
@@ -541,13 +578,18 @@ impl Session {
     fn begin_edit(&self) -> EditScope {
         let f = self.doc.active_frame();
         let l = f.active_layer();
-        EditScope { fid: f.id, lid: l.id, before: l.pixels.snapshot() }
+        EditScope {
+            fid: f.id,
+            lid: l.id,
+            before: l.pixels.snapshot(),
+            sel_before: self.doc.selection.clone(),
+        }
     }
 
     fn commit_edit(&mut self, scope: EditScope) {
         // Resolve the snapshot's OWN frame/layer by id — not the current active one, which the DSL
         // may have changed mid-stroke — so the recorded patch always matches `before`. [audit F-29]
-        let EditScope { fid, lid, before } = scope;
+        let EditScope { fid, lid, before, sel_before } = scope;
         let patch = match self
             .doc
             .frame_index_by_id(fid)
@@ -556,7 +598,7 @@ impl Session {
             Some((fi, li)) => self.doc.frames[fi].layers[li].pixels.diff_from(&before),
             None => return, // the target frame/layer was deleted mid-edit; nothing to record
         };
-        self.doc.record_pixels(fid, lid, patch);
+        self.doc.record_pixels(fid, lid, patch, sel_before);
     }
 
     /// Restore a captured snapshot to the exact frame/layer it came from (mirrors `commit_edit`'s
@@ -573,9 +615,10 @@ impl Session {
         let fi = self.doc.active_frame;
         let before = self.doc.frames[fi].clone();
         let fid = self.doc.frames[fi].id;
+        let sel_before = self.doc.selection.clone();
         let r = f(self);
         let after = self.doc.frames[fi].clone();
-        self.doc.record_frame_content(fid, before, after);
+        self.doc.record_frame_content(fid, before, after, sel_before);
         r
     }
 
@@ -583,8 +626,9 @@ impl Session {
         let before = self.doc.frames.clone();
         let before_active = self.doc.active_frame;
         let before_size = self.doc.size;
+        let sel_before = self.doc.selection.clone();
         let r = f(self);
-        self.doc.record_doc_structure(label, before, before_active, before_size);
+        self.doc.record_doc_structure(label, before, before_active, before_size, sel_before);
         r
     }
 
@@ -623,7 +667,7 @@ impl Session {
         self.paint_acc = 0.0; // fresh stroke → reset Brush/Airbrush spacing
         let mut floating = None;
         // The single Move tool moves the selected pixels when there's a selection, else the layer.
-        let has_sel = self.selection.as_ref().and_then(|s| s.bounds()).is_some();
+        let has_sel = self.doc.selection.as_ref().and_then(|s| s.bounds()).is_some();
         // Paint-immediately tools.
         if self.active_editable() {
             match self.tool {
@@ -636,7 +680,7 @@ impl Session {
                 ToolKind::Bucket => {
                     let color = self.settings.primary;
                     let (th, cont) = (self.settings.threshold, self.settings.contiguous);
-                    let sel = self.selection.clone();
+                    let sel = self.selection_clone();
                     // "All layers": decide the region from the composited frame (computed before the
                     // mutable layer borrow), while the fill still lands in the active layer only.
                     let reference = self
@@ -648,7 +692,7 @@ impl Session {
                 }
                 ToolKind::Move => {
                     // lift selected pixels into a floating buffer
-                    if let Some(sel) = self.selection.clone() {
+                    if let Some(sel) = self.selection_clone() {
                         if let Some(bb) = sel.bounds() {
                             let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
                             let mut float = RgbaBuffer::new(bb.w, bb.h);
@@ -780,7 +824,9 @@ impl Session {
                 if stroke.start != stroke.last {
                     let fi = self.doc.active_frame;
                     let after = self.doc.frames[fi].clone();
-                    self.doc.record_frame_content(fid, before, after);
+                    // A layer move leaves the selection untouched, so before == after (free record).
+                    let sel_before = self.doc.selection.clone();
+                    self.doc.record_frame_content(fid, before, after, sel_before);
                 }
             }
             self.move_layers.clear();
@@ -793,7 +839,7 @@ impl Session {
             match self.tool {
                 ToolKind::Gradient => {
                     let spec = self.settings.gradient.clone();
-                    let sel = self.selection.clone();
+                    let sel = self.selection_clone();
                     let (fi, li) = (self.doc.active_frame, self.doc.active_frame().active_layer);
                     {
                         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
@@ -806,12 +852,12 @@ impl Session {
                 ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse | ToolKind::Triangle => {
                     let color = self.settings.primary;
                     let (fill, lw, kind) = (self.settings.shape_fill, self.settings.line_width, self.tool);
-                    let sel = self.selection.clone();
+                    let sel = self.selection_clone();
                     let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
                     tool::draw_shape(buf, sel.as_ref(), kind, start, last, 0.0, 0.0, color, fill, lw, PaintMode::Over);
                 }
                 ToolKind::Move => {
-                    if let (Some(float), Some(sel)) = (stroke.floating, self.selection.clone()) {
+                    if let (Some(float), Some(sel)) = (stroke.floating, self.selection_clone()) {
                         let (dx, dy) = (last.x - start.x, last.y - start.y);
                         let wrap = self.settings.wrap;
                         if let Some(bb) = sel.bounds() {
@@ -831,15 +877,19 @@ impl Session {
                                 buf.blit_over(&float, Point::new(bb.x + dx, bb.y + dy));
                             }
                         }
-                        self.selection =
-                            Some(if wrap { sel.translated_wrapped(dx, dy) } else { sel.translated(dx, dy) });
+                        // Assign directly (no separate record): the mask transition is captured by
+                        // the commit_edit() below, so the pixel move and its mask move undo as one.
+                        self.doc.selection = Some(Arc::new(
+                            if wrap { sel.translated_wrapped(dx, dy) } else { sel.translated(dx, dy) },
+                        ));
                     }
                 }
                 _ => {}
             }
         }
 
-        // Selection tools: build the shape mask and combine (no undo — selection is editor state).
+        // Selection tools: build the shape mask and combine it into the selection as one undo step
+        // (selection changes are now undoable + serialized; see Document::selection).
         match self.tool {
             ToolKind::SelectRect | ToolKind::SelectEllipse | ToolKind::SelectCircle => {
                 let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
@@ -849,22 +899,19 @@ impl Session {
                     ToolKind::SelectEllipse => crate::raster::ellipse_filled(start, last, plot),
                     _ => crate::raster::circle_filled(start, last, plot),
                 });
-                let mode = self.selection_mode;
-                self.ensure_selection().combine(&shape, mode);
+                self.combine_selection(&shape, self.selection_mode);
             }
             ToolKind::SelectPoly | ToolKind::SelectFree => {
                 let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
                 let path = stroke.path.clone();
                 let shape = Mask::from_plot(w, h, |plot| crate::raster::polygon_filled(&path, plot));
-                let mode = self.selection_mode;
-                self.ensure_selection().combine(&shape, mode);
+                self.combine_selection(&shape, self.selection_mode);
             }
             ToolKind::SelectByColor => {
                 let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
                 let buf = self.doc.active_frame().active_layer().pixels.clone();
                 let shape = Mask::from_color(w, h, &buf, start, self.settings.threshold, self.settings.contiguous);
-                let mode = self.selection_mode;
-                self.ensure_selection().combine(&shape, mode);
+                self.combine_selection(&shape, self.selection_mode);
             }
             _ => {}
         }
@@ -939,7 +986,7 @@ impl Session {
             None => return,
         };
         let before = self.begin_edit();
-        let sel = self.selection.clone();
+        let sel = self.selection_clone();
         if self.tool == ToolKind::Gradient {
             let spec = self.settings.gradient.clone();
             let (fi, li) = (self.doc.active_frame, self.doc.active_frame().active_layer);
@@ -998,19 +1045,19 @@ impl Session {
 
     fn stamp_active(&mut self, p: Point, mode: PaintMode, color: Rgba8) {
         let (size, shape) = (self.settings.brush_size, self.settings.brush_shape);
-        let sel = self.selection.clone();
+        let sel = self.selection_clone();
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
         tool::stamp(buf, sel.as_ref(), p, size, shape, color, mode);
     }
     fn stroke_active(&mut self, a: Point, b: Point, mode: PaintMode, color: Rgba8) {
         let (size, shape) = (self.settings.brush_size, self.settings.brush_shape);
-        let sel = self.selection.clone();
+        let sel = self.selection_clone();
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
         tool::stroke_segment(buf, sel.as_ref(), a, b, size, shape, color, mode);
     }
     fn airbrush_active(&mut self, p: Point) {
         let (size, intensity, color) = (self.settings.brush_size, self.settings.intensity, self.settings.primary);
-        let sel = self.selection.clone();
+        let sel = self.selection_clone();
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
         tool::airbrush_dab(buf, sel.as_ref(), p, size, intensity, color, &mut self.rng);
     }
@@ -1029,7 +1076,7 @@ impl Session {
             return;
         }
         let (size, shape) = (self.settings.brush_size, self.settings.brush_shape);
-        let sel = self.selection.clone();
+        let sel = self.selection_clone();
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
         for p in pts {
             tool::stamp(buf, sel.as_ref(), p, size, shape, color, mode);
@@ -1054,7 +1101,7 @@ impl Session {
     }
     fn dodge_burn_active(&mut self, p: Point, dv: f32) {
         let (size, shape) = (self.settings.brush_size, self.settings.brush_shape);
-        let sel = self.selection.clone();
+        let sel = self.selection_clone();
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
         tool::dodge_burn_stamp(buf, sel.as_ref(), p, size, shape, dv);
     }
@@ -1180,8 +1227,8 @@ impl Session {
     // ---- selection / clipboard ops ----
 
     /// Build a selection from the active layer's alpha (pixels with alpha > the alpha cutoff — the
-    /// opaque/drawn pixels) and combine it with the current selection using `mode`. Selection is
-    /// editor state — not undoable.
+    /// opaque/drawn pixels) and combine it with the current selection using `mode`. Undoable +
+    /// serialized (one undo step).
     pub fn select_by_alpha(&mut self, mode: CombineMode) {
         let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
         let cutoff = self.settings.alpha_cutoff;
@@ -1195,26 +1242,30 @@ impl Session {
                 }
             }
         });
-        self.ensure_selection().combine(&shape, mode);
+        self.combine_selection(&shape, mode);
     }
 
     pub fn select_all(&mut self) {
-        self.ensure_selection().select_all();
+        let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
+        let mut m = Mask::new(w, h);
+        m.select_all();
+        self.set_selection(Some(m));
     }
     pub fn select_none(&mut self) {
-        self.selection = None;
+        self.set_selection(None);
     }
     pub fn invert_selection(&mut self) {
         let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
-        let m = self.selection.get_or_insert_with(|| Mask::new(w, h));
+        let mut m = self.selection_clone().unwrap_or_else(|| Mask::new(w, h));
         m.invert();
+        self.set_selection(Some(m));
     }
     /// Translate the selection MASK (not the pixels) by (dx, dy), honouring the same off-canvas edge
     /// modes as a pixel move: Wrap (cells re-enter the opposite edge), Protect (clamp so the whole
-    /// selection stays on-canvas), or Regular (clip cells that leave the canvas).
+    /// selection stays on-canvas), or Regular (clip cells that leave the canvas). One undo step.
     pub fn move_selection(&mut self, dx: i32, dy: i32) {
-        let m = match &self.selection {
-            Some(m) => m.clone(),
+        let m = match self.selection_clone() {
+            Some(m) => m,
             None => return,
         };
         let moved = if self.settings.wrap {
@@ -1232,11 +1283,11 @@ impl Session {
         } else {
             m.translated(dx, dy)
         };
-        self.selection = Some(moved);
+        self.set_selection(Some(moved));
     }
 
     pub fn copy(&mut self) {
-        if let Some(sel) = &self.selection {
+        if let Some(sel) = &self.doc.selection {
             if let Some(bb) = sel.bounds() {
                 let buf = &self.doc.active_frame().active_layer().pixels;
                 let mut clip = RgbaBuffer::new(bb.w, bb.h);
@@ -1258,7 +1309,7 @@ impl Session {
             return;
         }
         let before = self.begin_edit();
-        if let Some(sel) = self.selection.clone() {
+        if let Some(sel) = self.selection_clone() {
             let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
             for y in 0..buf.height() as i32 {
                 for x in 0..buf.width() as i32 {
@@ -1350,7 +1401,7 @@ impl Session {
         }
         let before = self.begin_edit();
         let color = self.settings.primary;
-        let sel = self.selection.clone();
+        let sel = self.selection_clone();
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
         tool::fill_region(buf, sel.as_ref(), color);
         self.commit_edit(before);
@@ -1358,11 +1409,11 @@ impl Session {
 
     pub fn clear_selection_pixels(&mut self) {
         // No selection → no-op (clearing "the selection" must not wipe the whole layer).
-        if self.selection.is_none() || !self.active_editable() {
+        if self.doc.selection.is_none() || !self.active_editable() {
             return;
         }
         let before = self.begin_edit();
-        let sel = self.selection.clone();
+        let sel = self.selection_clone();
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
         tool::clear_region(buf, sel.as_ref());
         self.commit_edit(before);
@@ -1374,7 +1425,7 @@ impl Session {
         }
         let before = self.begin_edit();
         let (dh, ds, dv) = self.settings.hsv;
-        let sel = self.selection.clone();
+        let sel = self.selection_clone();
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
         tool::hsv_shift_region(buf, sel.as_ref(), dh, ds, dv);
         self.commit_edit(before);
@@ -1385,7 +1436,7 @@ impl Session {
             return;
         }
         let before = self.begin_edit();
-        let sel = self.selection.clone();
+        let sel = self.selection_clone();
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
         tool::map_region(buf, sel.as_ref(), f);
         self.commit_edit(before);
@@ -1630,7 +1681,7 @@ impl Session {
         if (dx == 0 && dy == 0) || !self.active_editable() {
             return;
         }
-        let sel = match self.selection.clone() {
+        let sel = match self.selection_clone() {
             Some(s) => s,
             None => return,
         };
@@ -1657,14 +1708,19 @@ impl Session {
                 buf.blit_over(&float, Point::new(bb.x + dx, bb.y + dy));
             }
         }
+        // Move the mask BEFORE committing so the pixel record captures the translated mask as its
+        // "after": undo restores both the pixels and the mask to their pre-nudge positions, redo
+        // re-applies both. (Assign directly — not via set_selection — so it isn't a separate step.)
+        self.doc.selection = Some(Arc::new(
+            if wrap { sel.translated_wrapped(dx, dy) } else { sel.translated(dx, dy) },
+        ));
         self.commit_edit(before);
-        self.selection = Some(if wrap { sel.translated_wrapped(dx, dy) } else { sel.translated(dx, dy) });
     }
 
     /// Nudge whatever the Move tool would drag: the selected pixels if a selection exists, else the
     /// active layer / move-group.
     pub fn nudge_move(&mut self, dx: i32, dy: i32) {
-        if self.selection.as_ref().and_then(|s| s.bounds()).is_some() {
+        if self.doc.selection.as_ref().and_then(|s| s.bounds()).is_some() {
             self.nudge_selection(dx, dy);
         } else {
             self.nudge_layers(dx, dy);
@@ -1780,8 +1836,10 @@ impl Session {
         io::save_to_bytes(&self.doc)
     }
     pub fn load_bytes(&mut self, data: &[u8]) -> Result<(), io::IoError> {
+        // The selection now travels inside the document (deserialized by `io`), so it is NOT cleared
+        // here — a crash-recovery load restores the user's selection. The clipboard / paste draft are
+        // genuine session state and are reset.
         self.doc = io::load_from_bytes(data)?;
-        self.selection = None;
         self.clipboard = None;
         self.paste_draft = None;
         Ok(())
@@ -1824,7 +1882,7 @@ impl Session {
     }
 
     pub fn bounds_of_selection(&self) -> Option<IRect> {
-        self.selection.as_ref().and_then(|m| m.bounds())
+        self.doc.selection.as_ref().and_then(|m| m.bounds())
     }
 }
 
@@ -1951,24 +2009,24 @@ mod tests {
         let mut s = Session::new(8, 8);
         sel_2x2(&mut s, 2, 2);
         s.move_selection(2, 2);
-        assert!(s.selection.as_ref().unwrap().get(4, 4));
-        assert!(!s.selection.as_ref().unwrap().get(2, 2)); // pixels never moved, only the mask
+        assert!(s.doc.selection.as_ref().unwrap().get(4, 4));
+        assert!(!s.doc.selection.as_ref().unwrap().get(2, 2)); // pixels never moved, only the mask
 
         // Wrap: cells leaving an edge re-enter the opposite one.
         let mut s = Session::new(8, 8);
         s.settings.wrap = true;
         sel_2x2(&mut s, 6, 6);
         s.move_selection(2, 2); // (6,6) -> (8,8) wraps to (0,0)
-        assert!(s.selection.as_ref().unwrap().get(0, 0));
+        assert!(s.doc.selection.as_ref().unwrap().get(0, 0));
 
         // Protect: clamp so the whole selection stays on-canvas.
         let mut s = Session::new(8, 8);
         s.settings.protect_pixels = true;
         sel_2x2(&mut s, 6, 6);
         s.move_selection(5, 5); // would push off the right/bottom → clamped to no move
-        assert!(s.selection.as_ref().unwrap().get(6, 6));
+        assert!(s.doc.selection.as_ref().unwrap().get(6, 6));
         s.move_selection(-3, -3); // moves freely the other way
-        assert!(s.selection.as_ref().unwrap().get(3, 3));
+        assert!(s.doc.selection.as_ref().unwrap().get(3, 3));
     }
 
     #[test]
@@ -2524,7 +2582,7 @@ mod tests {
         // cutoff 0 → select all non-transparent pixels (alpha > 0)
         s.settings.alpha_cutoff = 0;
         s.run_script("SelectByAlpha(Replace)").unwrap();
-        let sel = s.selection.as_ref().expect("selection set");
+        let sel = s.doc.selection.as_ref().expect("selection set");
         assert!(sel.get(0, 0), "the opaque pixel IS selected at cutoff 0");
         assert!(!sel.get(3, 3), "a transparent pixel is NOT selected");
         // A translucent pixel (alpha 128) is selected only while the cutoff is below 128.
@@ -2532,7 +2590,7 @@ mod tests {
         s.tap(1, 1);
         s.settings.alpha_cutoff = 128;
         s.run_script("SelectByAlpha(Replace)").unwrap();
-        let sel = s.selection.as_ref().unwrap();
+        let sel = s.doc.selection.as_ref().unwrap();
         assert!(!sel.get(1, 1), "alpha 128 is not > cutoff 128 → not selected");
         assert!(sel.get(0, 0), "alpha 255 > cutoff 128 → still selected");
     }
@@ -2602,7 +2660,7 @@ mod tests {
         s.pointer_up();
         assert_eq!(s.pixel(0, 0, 14, 14), Rgba8::WHITE, "selected pixel wrapped");
         assert_eq!(s.pixel(0, 0, 1, 1), Rgba8::TRANSPARENT, "origin cleared");
-        let sel = s.selection.as_ref().expect("selection kept");
+        let sel = s.doc.selection.as_ref().expect("selection kept");
         assert!(sel.get(14, 14), "the selection followed the pixel");
         assert!(!sel.get(1, 1));
     }
@@ -2650,5 +2708,130 @@ mod tests {
         let mut s2 = Session::new(8, 8);
         s2.load_bytes(&bytes).unwrap();
         assert_eq!(s2.doc.content_hash(), s.doc.content_hash());
+    }
+
+    // ---- selection: undoable + serialized (SPEC §12) ----
+
+    #[test]
+    fn marquee_selection_is_undoable() {
+        let mut s = Session::new(16, 16);
+        s.run_script("SelectTool(SelectRect); Stroke([(2,2),(5,5)])").unwrap();
+        assert_eq!(s.bounds_of_selection(), Some(IRect::new(2, 2, 4, 4)));
+        assert!(s.doc.can_undo(), "a marquee is now its own undo step");
+        assert!(s.doc.undo());
+        assert_eq!(s.bounds_of_selection(), None, "undo clears the selection back to none");
+        assert!(s.doc.redo());
+        assert_eq!(s.bounds_of_selection(), Some(IRect::new(2, 2, 4, 4)));
+    }
+
+    #[test]
+    fn select_none_is_undoable() {
+        let mut s = Session::new(16, 16);
+        s.run_script("SelectTool(SelectRect); Stroke([(2,2),(5,5)]); SelectNone()").unwrap();
+        assert_eq!(s.bounds_of_selection(), None);
+        assert!(s.doc.undo(), "undo the SelectNone");
+        assert_eq!(s.bounds_of_selection(), Some(IRect::new(2, 2, 4, 4)), "the lost selection comes back");
+    }
+
+    #[test]
+    fn move_selection_mask_is_undoable() {
+        let mut s = Session::new(16, 16);
+        s.run_script("SelectTool(SelectRect); Stroke([(2,2),(3,3)])").unwrap();
+        s.move_selection(2, 2);
+        assert_eq!(s.bounds_of_selection(), Some(IRect::new(4, 4, 2, 2)));
+        assert!(s.doc.undo());
+        assert_eq!(s.bounds_of_selection(), Some(IRect::new(2, 2, 2, 2)), "mask move undone");
+        assert!(s.doc.redo());
+        assert_eq!(s.bounds_of_selection(), Some(IRect::new(4, 4, 2, 2)));
+    }
+
+    #[test]
+    fn move_tool_undo_restores_pixels_and_mask_together() {
+        // The bug this work fixes: undoing a Move must move BOTH the pixels and the selection back.
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tool = ToolKind::Pencil;
+        s.tap(2, 2);
+        // select just that pixel
+        s.tool = ToolKind::SelectRect;
+        s.pointer_down(2, 2);
+        s.pointer_up();
+        // drag the selected pixel by (+3,+3)
+        s.tool = ToolKind::Move;
+        s.pointer_down(2, 2);
+        s.pointer_move(5, 5);
+        s.pointer_up();
+        assert_eq!(s.pixel(0, 0, 5, 5), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::TRANSPARENT);
+        assert!(s.doc.selection.as_ref().unwrap().get(5, 5), "mask followed the pixel");
+        // ONE undo restores both the pixel AND the selection mask to the origin.
+        assert!(s.doc.undo());
+        assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::WHITE, "pixel moved back");
+        assert_eq!(s.pixel(0, 0, 5, 5), Rgba8::TRANSPARENT);
+        let sel = s.doc.selection.as_ref().expect("selection restored");
+        assert!(sel.get(2, 2), "the mask moved back with the pixel");
+        assert!(!sel.get(5, 5), "the mask is no longer at the moved position");
+        // redo re-applies both
+        assert!(s.doc.redo());
+        assert_eq!(s.pixel(0, 0, 5, 5), Rgba8::WHITE);
+        assert!(s.doc.selection.as_ref().unwrap().get(5, 5));
+    }
+
+    #[test]
+    fn nudge_selection_undo_restores_pixels_and_mask() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tool = ToolKind::Pencil;
+        s.tap(3, 3);
+        s.tool = ToolKind::SelectRect;
+        s.pointer_down(3, 3);
+        s.pointer_up();
+        s.nudge_selection(1, 0); // arrow-key move of the selected pixel
+        assert_eq!(s.pixel(0, 0, 4, 3), Rgba8::WHITE);
+        assert!(s.doc.selection.as_ref().unwrap().get(4, 3));
+        assert!(s.doc.undo());
+        assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::WHITE, "pixel back");
+        assert!(s.doc.selection.as_ref().unwrap().get(3, 3), "mask back");
+        assert!(!s.doc.selection.as_ref().unwrap().get(4, 3));
+    }
+
+    #[test]
+    fn crop_undo_restores_the_selection() {
+        let mut s = Session::new(32, 32);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(10, 10);
+        s.tool = ToolKind::SelectRect;
+        s.stroke_path(&[(8, 8), (15, 15)]);
+        s.crop_to_selection();
+        assert_eq!(s.size(), (8, 8));
+        assert_eq!(s.bounds_of_selection(), None, "crop consumes the selection");
+        // undoing the crop restores BOTH the canvas size and the pre-crop selection (correct dims).
+        assert!(s.doc.undo());
+        assert_eq!(s.size(), (32, 32));
+        assert_eq!(s.bounds_of_selection(), Some(IRect::new(8, 8, 8, 8)));
+    }
+
+    #[test]
+    fn selection_survives_save_load_for_crash_safety() {
+        let mut s = Session::new(24, 24);
+        s.run_script("SelectTool(SelectRect); Stroke([(3,4),(9,12)])").unwrap();
+        let before = s.bounds_of_selection();
+        assert!(before.is_some());
+        let bytes = s.save_bytes();
+        let mut s2 = Session::new(8, 8);
+        s2.load_bytes(&bytes).unwrap();
+        assert_eq!(s2.bounds_of_selection(), before, "the selection round-trips through .mkpx");
+        assert_eq!(s2.doc.selection.as_deref(), s.doc.selection.as_deref());
+    }
+
+    #[test]
+    fn no_selection_survives_save_load_as_none() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(1, 1);
+        let bytes = s.save_bytes();
+        let mut s2 = Session::new(8, 8);
+        s2.load_bytes(&bytes).unwrap();
+        assert!(s2.doc.selection.is_none());
     }
 }

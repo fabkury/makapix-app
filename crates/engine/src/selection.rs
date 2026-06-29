@@ -14,11 +14,23 @@ pub enum CombineMode {
     Intersect,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Mask {
     w: u32,
     h: u32,
     bits: Vec<u64>, // packed, 1 bit per pixel, row-major
+}
+
+impl std::fmt::Debug for Mask {
+    // Compact: dims + set-bit count + bounds — never dump the whole bitset (huge on a failure).
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Mask")
+            .field("w", &self.w)
+            .field("h", &self.h)
+            .field("count", &self.count())
+            .field("bounds", &self.bounds())
+            .finish()
+    }
 }
 
 impl Mask {
@@ -32,6 +44,24 @@ impl Mask {
     }
     pub fn height(&self) -> u32 {
         self.h
+    }
+
+    /// Packed bit words (row-major, 1 bit/pixel), for serialization (`io`). The slice length is
+    /// always `(w*h).div_ceil(64)`.
+    pub fn as_words(&self) -> &[u64] {
+        &self.bits
+    }
+
+    /// Rebuild a mask from serialized `w`×`h` dimensions and its packed bit words. Returns `None`
+    /// when the word count doesn't match the dimensions (corrupt input), so the loader can reject
+    /// or drop a bad selection rather than trust mismatched data.
+    pub fn from_words(w: u32, h: u32, words: Vec<u64>) -> Option<Mask> {
+        if words.len() != ((w as usize) * (h as usize)).div_ceil(64) {
+            return None;
+        }
+        let mut m = Mask { w, h, bits: words };
+        m.trim_tail(); // defensively clear any out-of-range tail bits a crafted file might set
+        Some(m)
     }
 
     #[inline]
@@ -260,6 +290,17 @@ mod tests {
         let mut sub = a.clone();
         sub.combine(&b, CombineMode::Subtract);
         assert_eq!(sub.count(), 64 - 16);
+    }
+
+    #[test]
+    fn words_roundtrip_and_reject_bad_length() {
+        let mut m = Mask::from_plot(20, 12, |p| raster::rect_filled(Point::new(2, 1), Point::new(9, 7), p));
+        m.set(0, 0, true);
+        let words = m.as_words().to_vec();
+        let back = Mask::from_words(20, 12, words).expect("valid word count round-trips");
+        assert_eq!(back, m);
+        // A word count that doesn't match the dimensions is rejected (corrupt input).
+        assert!(Mask::from_words(20, 12, vec![0u64; 1]).is_none());
     }
 
     #[test]

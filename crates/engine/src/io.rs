@@ -4,13 +4,19 @@
 use crate::buffer::RgbaBuffer;
 use crate::document::{AnimSettings, BlendMode, Document, Frame, Layer, LoopMode, Palette};
 use crate::geom::Size;
+use crate::selection::Mask;
 use crate::util::IdGen;
+use std::sync::Arc;
 
 pub const MAGIC: &[u8; 4] = b"MKPX";
-/// v1 = raw tiles; v2 = per-tile RLE-compressed tiles (SPEC §17.1, §28.8). We write v2 and
-/// still read v1 for forward/backward compatibility.
-pub const FORMAT_VERSION: u16 = 2;
+/// v1 = raw tiles; v2 = per-tile RLE-compressed tiles (SPEC §17.1, §28.8); v3 adds a trailing
+/// selection chunk (the document-sized 1-bit mask, for crash-safety; SPEC §12). We write v3 and
+/// still read v1/v2 (which simply carry no selection) for backward compatibility.
+pub const FORMAT_VERSION: u16 = 3;
 const TILE_BYTES: usize = 32 * 32 * 4;
+/// Largest legal selection word count: a 256×256 canvas is 65536 bits = 1024 `u64` words. A larger
+/// count in a file is corruption (bounds the loader's allocation against a crafted value).
+const MAX_SEL_WORDS: usize = (256 * 256) / 64;
 
 /// RLE-encode one 4096-byte tile as `(run:u16, pixel:[u8;4])*` over its 1024 pixels.
 fn rle_encode_tile(bytes: &[u8]) -> Vec<u8> {
@@ -65,6 +71,9 @@ impl Writer {
     fn u32(&mut self, v: u32) {
         self.buf.extend_from_slice(&v.to_le_bytes());
     }
+    fn u64(&mut self, v: u64) {
+        self.buf.extend_from_slice(&v.to_le_bytes());
+    }
     fn bytes(&mut self, b: &[u8]) {
         self.buf.extend_from_slice(b);
     }
@@ -97,6 +106,11 @@ impl<'a> Reader<'a> {
         let s = self.buf.get(self.pos..self.pos + 4).ok_or(IoError::Truncated)?;
         self.pos += 4;
         Ok(u32::from_le_bytes([s[0], s[1], s[2], s[3]]))
+    }
+    fn u64(&mut self) -> Result<u64, IoError> {
+        let s = self.buf.get(self.pos..self.pos + 8).ok_or(IoError::Truncated)?;
+        self.pos += 8;
+        Ok(u64::from_le_bytes([s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7]]))
     }
     fn take(&mut self, n: usize) -> Result<&'a [u8], IoError> {
         let s = self.buf.get(self.pos..self.pos + n).ok_or(IoError::Truncated)?;
@@ -191,10 +205,50 @@ pub fn save_to_bytes(doc: &Document) -> Vec<u8> {
         }
     }
 
+    // selection chunk (v3+): present flag, then the document-sized 1-bit mask as dims + packed bit
+    // words. `None` writes just the zero flag. The mask is editor state but is persisted for crash
+    // safety (SPEC §12); the combine *mode* is not persisted. Not folded into `content_hash` — the
+    // artwork hash stays selection-free so thumbnail caches/goldens don't churn on a selection change.
+    match &doc.selection {
+        None => w.u8(0),
+        Some(mask) => {
+            w.u8(1);
+            w.u16(mask.width() as u16);
+            w.u16(mask.height() as u16);
+            let words = mask.as_words();
+            w.u32(words.len() as u32);
+            for &word in words {
+                w.u64(word);
+            }
+        }
+    }
+
     // footer: content hash for integrity
     let h = doc.content_hash();
     w.bytes(&h.to_le_bytes());
     w.buf
+}
+
+/// Read the v3 selection chunk. A mask whose dimensions don't match this document (a stale chunk) is
+/// dropped rather than applied, since every `get()` against a mismatched mask would be out of range.
+fn read_selection(r: &mut Reader, size: Size) -> Result<Option<Arc<Mask>>, IoError> {
+    if r.u8()? == 0 {
+        return Ok(None);
+    }
+    let w = r.u16()? as u32;
+    let h = r.u16()? as u32;
+    let nwords = r.u32()? as usize;
+    if nwords > MAX_SEL_WORDS {
+        return Err(IoError::Corrupt("selection too large"));
+    }
+    let mut words = Vec::with_capacity(nwords);
+    for _ in 0..nwords {
+        words.push(r.u64()?);
+    }
+    if w != size.w as u32 || h != size.h as u32 {
+        return Ok(None); // stale dimensions → drop the selection, keep the document
+    }
+    Ok(Mask::from_words(w, h, words).map(Arc::new)) // None if the word count is inconsistent (corrupt)
 }
 
 pub fn load_from_bytes(data: &[u8]) -> Result<Document, IoError> {
@@ -203,7 +257,7 @@ pub fn load_from_bytes(data: &[u8]) -> Result<Document, IoError> {
         return Err(IoError::BadMagic);
     }
     let version = r.u16()?;
-    if version != 1 && version != 2 {
+    if !(1..=FORMAT_VERSION).contains(&version) {
         return Err(IoError::UnsupportedVersion(version));
     }
     let _flags = r.u16()?;
@@ -290,6 +344,9 @@ pub fn load_from_bytes(data: &[u8]) -> Result<Document, IoError> {
         return Err(IoError::Corrupt("no frames"));
     }
 
+    // selection chunk (v3+); v1/v2 carry none.
+    let selection = if version >= 3 { read_selection(&mut r, size)? } else { None };
+
     // Seed the id generators just past the highest persisted id — directly, never by looping up to
     // it: a crafted id like 0xFFFFFFFF would otherwise hang the loader for billions of allocs. [F-2]
     let frame_ids = IdGen::starting_at(max_frame_id.saturating_add(1));
@@ -305,6 +362,7 @@ pub fn load_from_bytes(data: &[u8]) -> Result<Document, IoError> {
         history: crate::history::History::new(),
         frame_ids,
         layer_ids,
+        selection,
     })
 }
 
@@ -350,6 +408,41 @@ mod tests {
     #[test]
     fn rejects_bad_magic() {
         assert!(matches!(load_from_bytes(b"XXXX...."), Err(IoError::BadMagic)));
+    }
+
+    #[test]
+    fn roundtrips_a_selection() {
+        let mut doc = Document::new(40, 24);
+        let shape = Mask::from_plot(40, 24, |p| {
+            crate::raster::rect_filled(crate::geom::Point::new(3, 4), crate::geom::Point::new(20, 18), p)
+        });
+        doc.selection = Some(Arc::new(shape));
+        let back = load_from_bytes(&save_to_bytes(&doc)).unwrap();
+        assert_eq!(back.selection.as_deref(), doc.selection.as_deref(), "mask survives round-trip");
+        // and the artwork hash is unaffected by the selection (kept selection-free by design)
+        assert_eq!(back.content_hash(), doc.content_hash());
+    }
+
+    #[test]
+    fn roundtrips_no_selection_as_none() {
+        let doc = Document::new(32, 24); // selection defaults to None
+        let back = load_from_bytes(&save_to_bytes(&doc)).unwrap();
+        assert!(back.selection.is_none());
+    }
+
+    #[test]
+    fn drops_a_selection_whose_dims_mismatch_the_canvas() {
+        // A 16×16 document carrying a 32×32 selection chunk: the stale-size mask is dropped on load
+        // (every get() against it would be out of range), but the document itself still loads.
+        let mut doc = Document::new(16, 16);
+        doc.selection = Some(Arc::new({
+            let mut m = Mask::new(32, 32);
+            m.select_all();
+            m
+        }));
+        let back = load_from_bytes(&save_to_bytes(&doc)).unwrap();
+        assert_eq!(back.size, Size::new(16, 16));
+        assert!(back.selection.is_none(), "mismatched-size selection is dropped, not applied");
     }
 
     #[test]
