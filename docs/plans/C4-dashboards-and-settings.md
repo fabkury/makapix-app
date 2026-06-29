@@ -89,7 +89,7 @@ Legend: ✅ done · ◑ in progress · ○ not started
 - ✅ Groundwork: `ClubUser`/`ClubMe` fields, `dioRoot`, `apiRoot`, monitored-hashtag constant
 - ✅ Feature A — Settings (api · state · ui · nav) — `flutter analyze` clean
 - ✅ Feature B — Artist dashboard (models · api · state · ui · nav) — `flutter analyze` clean
-- ○ Feature C — PMD (models · api · state · ui · nav · ZIP save)
+- ✅ Feature C — PMD (models · api · state · ui · nav · ZIP save) — `flutter analyze` clean
 - ○ Dart unit tests
 - ○ `flutter analyze` clean (full)
 - ○ STATUS.md + SPEC-CLUB §29 parity matrix updated

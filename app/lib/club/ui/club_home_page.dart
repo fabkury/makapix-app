@@ -12,6 +12,7 @@ import 'artwork_detail_page.dart';
 import 'club_account_page.dart';
 import 'club_welcome_page.dart';
 import 'notifications_page.dart';
+import 'post_management_page.dart';
 import 'profile_page.dart';
 import 'search_page.dart';
 import 'settings_page.dart';
@@ -108,6 +109,9 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
       case 'account':
         _push(const ClubAccountPage());
         break;
+      case 'my-posts':
+        _push(const PostManagementPage());
+        break;
       case 'dashboard':
         final sqid = ref.read(authControllerProvider).me?.user.sub ?? '';
         if (sqid.isNotEmpty) _push(ArtistDashboardPage(userKey: sqid));
@@ -157,6 +161,7 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
             onSelected: _onMenu,
             itemBuilder: (_) => [
               _menuItem('account', Icons.account_circle_outlined, 'Account'),
+              _menuItem('my-posts', Icons.grid_view_outlined, 'My Posts'),
               _menuItem('dashboard', Icons.insights_outlined, 'Artist Dashboard'),
               _menuItem('settings', Icons.settings_outlined, 'Settings'),
               _menuItem('about', Icons.info_outline, 'About Makapix Club'),
