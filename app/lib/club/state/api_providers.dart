@@ -8,6 +8,7 @@ import '../api/post_api.dart';
 import '../api/profile_api.dart';
 import '../api/search_api.dart';
 import '../api/settings_api.dart';
+import '../api/stats_api.dart';
 import 'auth_controller.dart' show clubApiClientProvider;
 
 final feedApiProvider = Provider<FeedApi>((ref) => FeedApi(ref.watch(clubApiClientProvider)));
@@ -20,3 +21,5 @@ final playerApiProvider = Provider<PlayerApi>((ref) => PlayerApi(ref.watch(clubA
 final editApiProvider = Provider<EditApi>((ref) => EditApi());
 final settingsApiProvider =
     Provider<SettingsApi>((ref) => SettingsApi(ref.watch(clubApiClientProvider)));
+final statsApiProvider =
+    Provider<StatsApi>((ref) => StatsApi(ref.watch(clubApiClientProvider)));
