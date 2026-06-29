@@ -406,12 +406,18 @@ extension _EditorControls on _EditorPageState {
             ),
           ),
           Expanded(
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: cols,
-              itemBuilder: (_, col) => Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [_paletteSwatch(col * 2), _paletteSwatch(col * 2 + 1)],
+            // Long-press the empty area near the swatches → "Add current colour" (swatches keep
+            // their own long-press menu, which wins as the deeper gesture).
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onLongPress: _addColorMenu,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: cols,
+                itemBuilder: (_, col) => Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [_paletteSwatch(col * 2), _paletteSwatch(col * 2 + 1)],
+                ),
               ),
             ),
           ),
@@ -433,6 +439,26 @@ extension _EditorControls on _EditorPageState {
         height: 24,
         margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
         decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(3), border: Border.all(color: Colors.black26)),
+      ),
+    );
+  }
+
+  // Long-pressing the empty swatch area surfaces the single "Add current colour" option (same action
+  // as the palette controls menu).
+  void _addColorMenu() {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: const Icon(Icons.add_circle_outline),
+            title: const Text('Add current colour'),
+            onTap: () {
+              Navigator.pop(ctx);
+              _act('AddPaletteColor(${_hex(_primary)})');
+            },
+          ),
+        ]),
       ),
     );
   }
