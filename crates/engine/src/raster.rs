@@ -120,9 +120,62 @@ pub fn shape_outline(a: Point, b: Point, rot: f32, kind: u8, thickness: i32, plo
             if pts.len() > 1 && pts.first() == pts.last() {
                 pts.pop();
             }
+            // A 1px ellipse outline is the one case where sampling+Bresenham leaves staircase
+            // "doubles"; trace it as a single ordered loop and drop those redundant corners.
+            if thickness <= 1 {
+                stroke_thin_loop(&pts, plot);
+                return;
+            }
         }
     }
     stroke_polyline(&pts, thickness, plot);
+}
+
+/// Trace a closed 1px curve through the ordered boundary `samples` and remove "doubles". First build
+/// one ordered, de-duplicated, 8-connected pixel chain (a single Bresenham walk, not independent
+/// segments). Then drop any pixel whose two chain-neighbours are themselves 8-adjacent: the curve can
+/// step diagonally straight between them, so that pixel is a redundant orthogonal corner — exactly a
+/// pixel-art "double". Removing it keeps the loop connected (the neighbours were already adjacent) and
+/// leaves clean diagonal runs (whose neighbours are 2+ apart) untouched. Used for the 1px ellipse
+/// outline, where a rotated thin ring otherwise looks locally 2px-thick at every staircase corner.
+fn stroke_thin_loop(samples: &[Point], mut plot: impl FnMut(i32, i32)) {
+    let n = samples.len();
+    if n == 0 {
+        return;
+    }
+    let mut chain: Vec<Point> = Vec::new();
+    for i in 0..n {
+        line(samples[i], samples[(i + 1) % n], |x, y| {
+            let p = Point::new(x, y);
+            if chain.last() != Some(&p) {
+                chain.push(p);
+            }
+        });
+    }
+    if chain.len() > 1 && chain.first() == chain.last() {
+        chain.pop();
+    }
+    let adj = |a: &Point, b: &Point| (a.x - b.x).abs() <= 1 && (a.y - b.y).abs() <= 1;
+    // Iterate to convergence: removing one corner can expose the next along the loop.
+    let mut changed = true;
+    while changed && chain.len() >= 4 {
+        changed = false;
+        let mut i = 0;
+        while i < chain.len() && chain.len() >= 4 {
+            let len = chain.len();
+            let prev = chain[(i + len - 1) % len];
+            let next = chain[(i + 1) % len];
+            if adj(&prev, &next) {
+                chain.remove(i); // recheck the pixel that shifted into i (don't advance)
+                changed = true;
+            } else {
+                i += 1;
+            }
+        }
+    }
+    for p in &chain {
+        plot(p.x, p.y);
+    }
 }
 
 /// A filled disc of `radius` (in pixels) centered at `c` — the round brush/eraser stamp.
@@ -370,6 +423,22 @@ mod tests {
                 (-1..=1).any(|dx| (dx, dy) != (0, 0) && set.contains(&(x + dx, y + dy)))
             });
             assert!(connected, "outline pixel ({x},{y}) is isolated — a gap");
+        }
+    }
+
+    #[test]
+    fn rotated_1px_ellipse_outline_has_no_doubles() {
+        // A "double" = a fully-filled 2×2 block: the 1px ring is locally 2px-thick there. After the
+        // chain corner-removal pass, a rotated thin ellipse must contain no such block.
+        use std::collections::HashSet;
+        let mut set: HashSet<(i32, i32)> = HashSet::new();
+        shape_outline(Point::new(-18, -6), Point::new(18, 6), 0.5, 1, 1, |x, y| {
+            set.insert((x, y));
+        });
+        assert!(set.len() > 30);
+        for &(x, y) in &set {
+            let block = set.contains(&(x + 1, y)) && set.contains(&(x, y + 1)) && set.contains(&(x + 1, y + 1));
+            assert!(!block, "doubled (2×2) pixels at ({x},{y})");
         }
     }
 
