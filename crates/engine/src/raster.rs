@@ -30,18 +30,27 @@ pub fn line(a: Point, b: Point, mut plot: impl FnMut(i32, i32)) {
     }
 }
 
-/// A line of the given pixel `thickness`: a square stamp of side `thickness` swept along the
-/// Bresenham line (thickness 1 = a plain hairline). Used by the Line tool's Width.
+/// A line of the given pixel `thickness`: a `thickness × thickness` block swept along the Bresenham
+/// line (thickness 1 = a plain hairline). Used by the Line tool's Width and the outline stroker.
+/// The block is sized to the *exact* thickness so every unit adds one pixel of width — a centred
+/// odd-radius stamp (side `2r+1`) would instead collapse each even thickness onto the odd below it.
+/// Even widths bias half a pixel toward +x/+y, the closest the integer grid allows to centred.
 pub fn thick_line(a: Point, b: Point, thickness: i32, mut plot: impl FnMut(i32, i32)) {
-    let r = (thickness.max(1) - 1) / 2;
-    if r <= 0 {
+    let t = thickness.max(1);
+    if t == 1 {
         line(a, b, plot);
         return;
     }
+    let lo = -(t - 1) / 2;
+    let hi = t / 2;
     let mut pts = Vec::new();
     line(a, b, |x, y| pts.push(Point::new(x, y)));
     for p in pts {
-        square(p, r, &mut plot);
+        for dy in lo..=hi {
+            for dx in lo..=hi {
+                plot(p.x + dx, p.y + dy);
+            }
+        }
     }
 }
 
@@ -329,6 +338,20 @@ mod tests {
         let mut n = 0;
         rect_filled(Point::new(0, 0), Point::new(2, 1), |_, _| n += 1);
         assert_eq!(n, 6);
+    }
+
+    #[test]
+    fn thick_line_width_changes_every_unit() {
+        // A horizontal line: its pixel height must equal the requested thickness for every t, so
+        // widths 1,2,3,4,… are all distinct (the old centred-stamp made 2≡1, 4≡3, …).
+        for t in 1..=8 {
+            use std::collections::HashSet;
+            let mut ys: HashSet<i32> = HashSet::new();
+            thick_line(Point::new(0, 50), Point::new(10, 50), t, |_, y| {
+                ys.insert(y);
+            });
+            assert_eq!(ys.len() as i32, t, "thickness {t} produced height {}", ys.len());
+        }
     }
 
     #[test]
