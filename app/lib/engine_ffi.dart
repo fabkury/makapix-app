@@ -100,6 +100,8 @@ class Engine {
   late final _ImportD _import = _lib.lookupFunction<_ImportC, _ImportD>('mkpx_import');
   late final _ExportPngD _exportPng = _lib.lookupFunction<_ExportPngC, _ExportPngD>('mkpx_export_png');
   late final _ExportGifD _exportGif = _lib.lookupFunction<_ExportGifC, _ExportGifD>('mkpx_export_gif');
+  // Same C signature as export_gif (Session*, out_len) → bytes.
+  late final _ExportGifD _exportWebp = _lib.lookupFunction<_ExportGifC, _ExportGifD>('mkpx_export_webp');
 
   Engine(int w, int h) : _lib = _open() {
     _s = _new(w, h);
@@ -237,28 +239,43 @@ class Engine {
     return out;
   }
 
+  /// Lossless WebP (static for one frame, animated WebP for many) — the recommended Club format.
+  Uint8List exportWebp() {
+    final lenPtr = malloc<Uint64>();
+    final p = _exportWebp(_s, lenPtr);
+    final out = p == nullptr ? Uint8List(0) : Uint8List.fromList(p.asTypedList(lenPtr.value));
+    if (p != nullptr) _freeBytes(p, lenPtr.value);
+    malloc.free(lenPtr);
+    return out;
+  }
+
   void dispose() => _freeS(_s);
 
-  /// Encode `docBytes` (a `.mkpx` snapshot) to GIF/PNG **off the UI thread**: a background isolate
-  /// builds its own engine from the snapshot and runs the (potentially slow, multi-frame) encode,
-  /// so the editor stays responsive. Falls back to a synchronous encode if the isolate can't run —
-  /// worst case it's no slower than before. The opaque session pointer is never shared across
+  /// Encode `docBytes` (a `.mkpx` snapshot) to the given `format` ('webp' | 'gif' | 'png') **off the
+  /// UI thread**: a background isolate builds its own engine from the snapshot and runs the
+  /// (potentially slow, multi-frame) encode, so the editor stays responsive. Falls back to a
+  /// synchronous encode if the isolate can't run. The opaque session pointer is never shared across
   /// isolates; each builds its own from the bytes. [audit F-12]
-  static Future<Uint8List> encodeInBackground(Uint8List docBytes, {required bool gif, int frame = 0}) async {
+  static Future<Uint8List> encodeInBackground(Uint8List docBytes, {required String format, int frame = 0}) async {
     try {
-      return await Isolate.run(() => _encodeFromBytes(docBytes, gif: gif, frame: frame));
+      return await Isolate.run(() => _encodeFromBytes(docBytes, format: format, frame: frame));
     } catch (_) {
-      // FFI/isolate unavailable (not expected on desktop/Android): encode synchronously so export
-      // still works rather than failing outright.
-      return _encodeFromBytes(docBytes, gif: gif, frame: frame);
+      return _encodeFromBytes(docBytes, format: format, frame: frame);
     }
   }
 
-  static Uint8List _encodeFromBytes(Uint8List docBytes, {required bool gif, int frame = 0}) {
+  static Uint8List _encodeFromBytes(Uint8List docBytes, {required String format, int frame = 0}) {
     final e = Engine(8, 8);
     try {
       if (!e.load(docBytes)) return Uint8List(0);
-      return gif ? e.exportGif() : e.exportPng(frame);
+      switch (format) {
+        case 'webp':
+          return e.exportWebp();
+        case 'gif':
+          return e.exportGif();
+        default:
+          return e.exportPng(frame);
+      }
     } finally {
       e.dispose();
     }

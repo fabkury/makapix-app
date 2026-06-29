@@ -324,6 +324,28 @@ pub extern "C" fn mkpx_export_gif(ptr: *mut Session, out_len: *mut u64) -> *mut 
     }
 }
 
+/// Export the artwork as a LOSSLESS WebP (static for one frame, animated WebP for many) — the
+/// recommended format for Makapix Club submissions. Returns a malloc'd buffer; len via `out_len`.
+#[no_mangle]
+pub extern "C" fn mkpx_export_webp(ptr: *mut Session, out_len: *mut u64) -> *mut u8 {
+    let s = match session(ptr) {
+        Some(s) => s,
+        None => return std::ptr::null_mut(),
+    };
+    let (w, h) = s.size();
+    let frames: Vec<(Vec<u8>, u32)> = s
+        .doc
+        .frames
+        .iter()
+        .enumerate()
+        .map(|(i, f)| (s.composite_frame_bytes(i), f.duration_us))
+        .collect();
+    match makapix_codec::encode_animated_webp(w as u32, h as u32, &frames) {
+        Ok(v) => bytes_out(v, out_len),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
 fn bytes_out(v: Vec<u8>, out_len: *mut u64) -> *mut u8 {
     let boxed = v.into_boxed_slice();
     let len = boxed.len();

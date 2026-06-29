@@ -132,16 +132,16 @@ extension _EditorFileIo on _EditorPageState {
     setState(() {});
   }
 
-  // Post to Makapix Club: export the document (static→PNG, animated→GIF) and open
-  // the publish flow (lib/club). The engine stays here; lib/club gets only bytes.
+  // Post to Makapix Club: export the document as a LOSSLESS WebP (static for one frame, animated
+  // WebP for many) — the recommended Club format — and open the publish flow (lib/club). The engine
+  // stays here; lib/club gets only bytes.
   Future<void> _postToClub() async {
     if (!_engineReady) return;
-    final animated = engine.frameCount > 1;
-    final w = engine.width, h = engine.height, fc = engine.frameCount, af = engine.activeFrame;
-    // Encode off the UI thread so a multi-frame GIF doesn't jank/ANR. [audit F-12]
+    final w = engine.width, h = engine.height, fc = engine.frameCount;
+    // Encode off the UI thread so a multi-frame WebP doesn't jank/ANR. [audit F-12]
     final docBytes = engine.save();
-    _toast(animated ? 'Rendering GIF…' : 'Rendering…');
-    final bytes = await Engine.encodeInBackground(docBytes, gif: animated, frame: af);
+    _toast('Rendering WebP…');
+    final bytes = await Engine.encodeInBackground(docBytes, format: 'webp');
     if (!mounted) return;
     if (bytes.isEmpty) {
       _toast('Export failed');
@@ -149,8 +149,8 @@ extension _EditorFileIo on _EditorPageState {
     }
     final draft = PublishDraft(
       bytes: bytes,
-      format: animated ? 'gif' : 'png',
-      filename: animated ? 'art.gif' : 'art.png',
+      format: 'webp',
+      filename: 'art.webp',
       width: w,
       height: h,
       frameCount: fc,
@@ -207,7 +207,7 @@ extension _EditorFileIo on _EditorPageState {
     final path = await FilePicker.saveFile(fileName: 'frame_${engine.activeFrame + 1}.png', type: FileType.custom, allowedExtensions: ['png']);
     if (path == null) return;
     final docBytes = engine.save();
-    final bytes = await Engine.encodeInBackground(docBytes, gif: false, frame: engine.activeFrame); // [F-12]
+    final bytes = await Engine.encodeInBackground(docBytes, format: 'png', frame: engine.activeFrame); // [F-12]
     if (bytes.isEmpty) {
       _toast('Export failed');
       return;
@@ -222,7 +222,7 @@ extension _EditorFileIo on _EditorPageState {
     final fc = engine.frameCount;
     final docBytes = engine.save();
     _toast('Rendering GIF…');
-    final bytes = await Engine.encodeInBackground(docBytes, gif: true); // [F-12]
+    final bytes = await Engine.encodeInBackground(docBytes, format: 'gif'); // [F-12]
     if (bytes.isEmpty) {
       _toast('Export failed');
       return;

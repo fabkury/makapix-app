@@ -7,7 +7,7 @@ import '../edit/club_edit_request.dart';
 /// never the engine handle.
 class PublishDraft {
   final Uint8List bytes;
-  final String format; // "png" (static) | "gif" (animated)
+  final String format; // "webp" (lossless; recommended) | "png" | "gif"
   final String filename;
   final int width;
   final int height;

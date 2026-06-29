@@ -129,6 +129,101 @@ pub fn encode_png(w: u32, h: u32, rgba: &[u8]) -> Result<Vec<u8>, CodecError> {
     Ok(out.into_inner())
 }
 
+/// Encode a single frame's RGBA to a **lossless** WebP (image-webp, pure Rust). The recommended
+/// format for Makapix Club submissions.
+pub fn encode_webp(w: u32, h: u32, rgba: &[u8]) -> Result<Vec<u8>, CodecError> {
+    if rgba.len() != (w as usize) * (h as usize) * 4 {
+        return Err(CodecError::Unsupported);
+    }
+    let mut out = Vec::new();
+    image_webp::WebPEncoder::new(&mut out)
+        .encode(rgba, w, h, image_webp::ColorType::Rgba8)
+        .map_err(|e| CodecError::Encode(e.to_string()))?;
+    Ok(out)
+}
+
+/// Encode frames to an **animated lossless** WebP (durations in microseconds). Each frame is encoded
+/// to a lossless VP8L bitstream (image-webp) and the bitstreams are muxed into a VP8X/ANIM/ANMF
+/// container by hand — pure Rust, no libwebp. A single-frame input is just a static WebP.
+pub fn encode_animated_webp(w: u32, h: u32, frames: &[(Vec<u8>, u32)]) -> Result<Vec<u8>, CodecError> {
+    if frames.is_empty() {
+        return Err(CodecError::Unsupported);
+    }
+    if frames.len() == 1 {
+        return encode_webp(w, h, &frames[0].0);
+    }
+    // 1. Lossless-encode each frame and pull out its VP8L bitstream chunk.
+    let mut vp8l: Vec<(Vec<u8>, u32)> = Vec::with_capacity(frames.len());
+    for (rgba, dur_us) in frames {
+        let webp = encode_webp(w, h, rgba)?;
+        let chunk = extract_vp8l(&webp).ok_or_else(|| CodecError::Encode("missing VP8L chunk".into()))?;
+        vp8l.push((chunk, (*dur_us / 1000).max(1)));
+    }
+    // 2. Assemble the container body: VP8X, ANIM, then one ANMF per frame.
+    let mut body = Vec::new();
+    // VP8X: feature flags (Animation + Alpha) + reserved + canvas (w-1, h-1) as 24-bit LE.
+    let mut vp8x = Vec::with_capacity(10);
+    vp8x.push(0x12); // bit 1 = Animation, bit 4 = Alpha
+    vp8x.extend_from_slice(&[0, 0, 0]);
+    vp8x.extend_from_slice(&(w - 1).to_le_bytes()[0..3]);
+    vp8x.extend_from_slice(&(h - 1).to_le_bytes()[0..3]);
+    push_chunk(&mut body, b"VP8X", &vp8x);
+    // ANIM: transparent background (BGRA) + infinite loop.
+    let mut anim = Vec::with_capacity(6);
+    anim.extend_from_slice(&[0, 0, 0, 0]);
+    anim.extend_from_slice(&0u16.to_le_bytes()); // 0 = loop forever
+    push_chunk(&mut body, b"ANIM", &anim);
+    // ANMF per frame: full-canvas, overwrite (no blend), no dispose.
+    for (chunk, dur_ms) in &vp8l {
+        let mut anmf = Vec::new();
+        anmf.extend_from_slice(&[0, 0, 0, 0, 0, 0]); // frame x, y = 0
+        anmf.extend_from_slice(&(w - 1).to_le_bytes()[0..3]);
+        anmf.extend_from_slice(&(h - 1).to_le_bytes()[0..3]);
+        anmf.extend_from_slice(&dur_ms.to_le_bytes()[0..3]);
+        anmf.push(0x02); // B = 1 (do not blend / overwrite), D = 0 (no dispose)
+        push_chunk(&mut anmf, b"VP8L", chunk);
+        push_chunk(&mut body, b"ANMF", &anmf);
+    }
+    // 3. RIFF wrapper.
+    let mut out = Vec::with_capacity(body.len() + 12);
+    out.extend_from_slice(b"RIFF");
+    out.extend_from_slice(&((body.len() + 4) as u32).to_le_bytes()); // "WEBP" + body
+    out.extend_from_slice(b"WEBP");
+    out.extend_from_slice(&body);
+    Ok(out)
+}
+
+/// Pull the raw VP8L (lossless) chunk payload out of a simple WebP file.
+fn extract_vp8l(webp: &[u8]) -> Option<Vec<u8>> {
+    if webp.len() < 12 || &webp[0..4] != b"RIFF" || &webp[8..12] != b"WEBP" {
+        return None;
+    }
+    let mut pos = 12;
+    while pos + 8 <= webp.len() {
+        let size = u32::from_le_bytes([webp[pos + 4], webp[pos + 5], webp[pos + 6], webp[pos + 7]]) as usize;
+        let start = pos + 8;
+        let end = start.checked_add(size)?;
+        if end > webp.len() {
+            return None;
+        }
+        if &webp[pos..pos + 4] == b"VP8L" {
+            return Some(webp[start..end].to_vec());
+        }
+        pos = end + (size & 1); // chunks are padded to an even size
+    }
+    None
+}
+
+/// Append a RIFF chunk (fourcc + LE size + data, padded to an even length).
+fn push_chunk(buf: &mut Vec<u8>, fourcc: &[u8; 4], data: &[u8]) {
+    buf.extend_from_slice(fourcc);
+    buf.extend_from_slice(&(data.len() as u32).to_le_bytes());
+    buf.extend_from_slice(data);
+    if data.len() & 1 == 1 {
+        buf.push(0);
+    }
+}
+
 /// Encode frames to an animated GIF (durations in microseconds).
 pub fn encode_gif(w: u32, h: u32, frames: &[(Vec<u8>, u32)]) -> Result<Vec<u8>, CodecError> {
     let mut out = Vec::new();
@@ -198,5 +293,34 @@ mod tests {
         let frames = decode(&gif).unwrap();
         assert_eq!(frames.len(), 2);
         assert!(frames[0].duration_us >= 1000);
+    }
+
+    #[test]
+    fn webp_static_lossless_roundtrip() {
+        let (w, h) = (4u32, 4u32);
+        let mut rgba = vec![0u8; (w * h * 4) as usize];
+        rgba[0..4].copy_from_slice(&[255, 0, 0, 255]); // (0,0) red, opaque
+        rgba[20..24].copy_from_slice(&[0, 200, 0, 128]); // (1,1) green, half-alpha
+        let webp = encode_webp(w, h, &rgba).unwrap();
+        assert_eq!(&webp[0..4], b"RIFF");
+        assert_eq!(&webp[8..12], b"WEBP");
+        let frames = decode(&webp).unwrap();
+        assert_eq!(frames.len(), 1);
+        assert_eq!(frames[0].rgba, rgba, "lossless round-trip preserves every pixel incl. alpha");
+    }
+
+    #[test]
+    fn webp_animation_lossless_roundtrip() {
+        let (w, h) = (4u32, 4u32);
+        let red = vec![255u8, 0, 0, 255].repeat((w * h) as usize);
+        let blue = vec![0u8, 0, 255, 128].repeat((w * h) as usize); // semi-transparent blue
+        let webp = encode_animated_webp(w, h, &[(red.clone(), 80_000), (blue.clone(), 120_000)]).unwrap();
+        assert_eq!(&webp[0..4], b"RIFF");
+        assert_eq!(&webp[8..12], b"WEBP");
+        // The hand-built container must decode back to the exact frames (validates the mux).
+        let frames = decode(&webp).unwrap();
+        assert_eq!(frames.len(), 2, "two animated frames");
+        assert_eq!(frames[0].rgba, red, "frame 0 lossless");
+        assert_eq!(frames[1].rgba, blue, "frame 1 lossless incl. alpha");
     }
 }

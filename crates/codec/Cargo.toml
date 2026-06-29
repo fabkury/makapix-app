@@ -13,3 +13,8 @@ makapix-engine = { path = "../engine" }
 version = "0.25"
 default-features = false
 features = ["png", "gif", "bmp", "jpeg", "webp"]
+
+# Pure-Rust lossless WebP encoder (the `image` crate is decode-only for WebP). Used for Makapix Club
+# submissions, including muxing per-frame VP8L bitstreams into an animated WebP.
+[dependencies.image-webp]
+version = "0.2"
