@@ -314,7 +314,7 @@ extension _EditorEngine on _EditorPageState {
     _send('SetSelectionMode($_selMode); SetProtectPixels($_protectPixels); SetWrap($_wrap)');
     if (t == 'Gradient') {
       _send('SetGradientType(${_radial ? 'Radial' : 'Linear'})');
-      _send('SetGradientStops([${_hex(_gradA)}@0, ${_hex(_gradB)}@1])');
+      _send(_gradStopsDsl());
     }
     // Show Select Layer's overlay immediately on entry; clear it (redraw) when leaving it.
     if (t == 'SelectLayer' || leavingSelectLayer) _redraw();
@@ -365,6 +365,24 @@ extension _EditorEngine on _EditorPageState {
   void _setPrimary(Color c) {
     setState(() => _primary = c);
     _send('SetPrimaryColor(${_hex(c)})');
+    // The gradient's first colour IS the primary, so a primary change re-pushes the stops (and
+    // refreshes any pending gradient draft).
+    if (_tool == 'Gradient') _sendGradientStops();
+  }
+
+  // The gradient's colours: the primary first, then the independent extras, evenly spaced 0..1.
+  List<Color> _gradColors() => [_primary, ..._gradExtra.take(_gradCount - 1)];
+
+  String _gradStopsDsl() {
+    final colors = _gradColors();
+    final n = colors.length;
+    final parts = [for (var i = 0; i < n; i++) '${_hex(colors[i])}@${(i / (n - 1)).toStringAsFixed(4)}'];
+    return 'SetGradientStops([${parts.join(', ')}])';
+  }
+
+  void _sendGradientStops() {
+    _send(_gradStopsDsl());
+    if (_hasShapeDraft) _redraw(); // a pending gradient draft updates its preview live
   }
 
   // Place the reticle at an absolute canvas pixel, mirroring the engine's clamping.

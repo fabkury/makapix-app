@@ -298,25 +298,27 @@ extension _EditorControls on _EditorPageState {
       }
     }
     if (_tool == 'Gradient') {
-      // Changing the gradient (type or either colour) updates a pending draft's preview instantly.
-      void sendStops() {
-        _send('SetGradientStops([${_hex(_gradA)}@0, ${_hex(_gradB)}@1])');
-        if (_hasShapeDraft) _redraw();
-      }
-
+      // Changing the gradient (type, colour count or any colour) updates a pending draft instantly.
       children.add(_toggle(['Linear', 'Radial'], _radial ? 1 : 0, (i) {
         setState(() => _radial = i == 1);
         _send('SetGradientType(${_radial ? 'Radial' : 'Linear'})');
         if (_hasShapeDraft) _redraw();
       }));
-      children.add(_swatchButton(_gradA, () => _pickColor(initial: _gradA, onPick: (c) {
-            setState(() => _gradA = c);
-            sendStops();
-          })));
-      children.add(_swatchButton(_gradB, () => _pickColor(initial: _gradB, onPick: (c) {
-            setState(() => _gradB = c);
-            sendStops();
-          })));
+      // Number of evenly-spaced colours in the gradient (2 / 3 / 4); the swatch count follows.
+      children.add(_toggle(['2', '3', '4'], _gradCount - 2, (i) {
+        setState(() => _gradCount = i + 2);
+        _sendGradientStops();
+      }));
+      // First colour = the primary (same as the row-2 primary swatch); tapping it changes the
+      // primary colour. The rest are independent gradient colours.
+      children.add(_swatchButton(_primary, () => _pickColor(initial: _primary, onPick: _setPrimary)));
+      for (var i = 0; i < _gradCount - 1; i++) {
+        final idx = i;
+        children.add(_swatchButton(_gradExtra[idx], () => _pickColor(initial: _gradExtra[idx], onPick: (c) {
+              setState(() => _gradExtra[idx] = c);
+              _sendGradientStops();
+            })));
+      }
     }
     if (_tool == 'SelectLayer') {
       // Alpha cutoff: pixels with alpha > threshold (the opaque pixels) are "selected"

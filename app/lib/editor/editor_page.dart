@@ -127,8 +127,14 @@ class _EditorPageState extends ConsumerState<EditorPage>
   set _spacing(int v) => _spacingByTool[_tool] = v;
   String _selMode = 'Replace';
   int _alphaCutoff = 0; // Sel Lyr: alpha cutoff (0..254); pixels with alpha > this (opaque) are "selected"
-  Color _gradA = const Color(0xFF102040);
-  Color _gradB = const Color(0xFFFFFFFF);
+  // Gradient: the first colour is ALWAYS the primary colour; the remaining (count-1) colours are
+  // independent (_gradExtra). _gradCount is the total number of evenly-spaced colours (2/3/4).
+  int _gradCount = 2;
+  final List<Color> _gradExtra = [
+    const Color(0xFFFFFFFF),
+    const Color(0xFFFF8000),
+    const Color(0xFF0080FF),
+  ];
   double _hsvH = 60, _hsvS = 0, _hsvV = 0;
   // Move tool layer-move edge modes (mutually exclusive; both off = Regular = pixels clip off):
   bool _protectPixels = false; // keep opaque pixels on-canvas (non-destructive)
