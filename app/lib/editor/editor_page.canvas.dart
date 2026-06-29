@@ -446,9 +446,7 @@ extension _EditorCanvas on _EditorPageState {
   }
 
   // ---- ruler gestures (measure only — never draws to the canvas) ----
-
-  Offset _clampToCanvas(Offset p) =>
-      Offset(p.dx.clamp(0, engine.width - 1).toDouble(), p.dy.clamp(0, engine.height - 1).toDouble());
+  // Ruler endpoints are NOT clamped to the canvas: a measurement may legitimately run off the edges.
 
   void _beginRuler(Offset pos, Size box) {
     final raw = _toCanvas(pos, box); // unclamped finger position (canvas pixels)
@@ -479,9 +477,8 @@ extension _EditorCanvas on _EditorPageState {
       // No measurement yet: a fresh drag lays one down (A fixed at the press, B follows the finger).
       _rulerDrag = 3;
       _rulerGrabOffset = Offset.zero;
-      final p = _clampToCanvas(raw);
-      _rulerA = p;
-      _rulerB = p;
+      _rulerA = raw;
+      _rulerB = raw;
     }
     setState(() {});
   }
@@ -490,11 +487,12 @@ extension _EditorCanvas on _EditorPageState {
     if (_rulerDrag == 0) return;
     final raw = _toCanvas(pos, box);
     if (_rulerDrag == 4) {
-      _moveWholeRuler(raw); // translate both endpoints rigidly, clamped on-canvas
+      _moveWholeRuler(raw); // translate both endpoints rigidly (may run off-canvas)
     } else {
       // The endpoint tracks the finger PLUS the grab offset, so it stays beside the finger (visible)
       // rather than snapping under it. (For a fresh measurement the offset is zero, so B = finger.)
-      final p = _clampToCanvas(raw + _rulerGrabOffset);
+      // Not clamped — endpoints may sit off-canvas.
+      final p = raw + _rulerGrabOffset;
       if (_rulerDrag == 1) {
         _rulerA = p;
       } else {
@@ -504,14 +502,12 @@ extension _EditorCanvas on _EditorPageState {
     setState(() {});
   }
 
-  // Translate both ruler endpoints by the drag delta, clamped so the whole line stays on-canvas.
+  // Translate both ruler endpoints by the drag delta (rigid move). Not clamped — the line may run
+  // off-canvas.
   void _moveWholeRuler(Offset rawFinger) {
-    final origA = _rulerMoveOrigA!, origB = _rulerMoveOrigB!, anchor = _rulerMoveAnchor!;
-    final w = (engine.width - 1).toDouble(), h = (engine.height - 1).toDouble();
-    final dx = (rawFinger.dx - anchor.dx).clamp(-math.min(origA.dx, origB.dx), w - math.max(origA.dx, origB.dx));
-    final dy = (rawFinger.dy - anchor.dy).clamp(-math.min(origA.dy, origB.dy), h - math.max(origA.dy, origB.dy));
-    _rulerA = Offset(origA.dx + dx, origA.dy + dy);
-    _rulerB = Offset(origB.dx + dx, origB.dy + dy);
+    final d = rawFinger - _rulerMoveAnchor!;
+    _rulerA = _rulerMoveOrigA! + d;
+    _rulerB = _rulerMoveOrigB! + d;
   }
 
   // Releasing leaves the draft in place (preview + handles persist); commit is an explicit button.
