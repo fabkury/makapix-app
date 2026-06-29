@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../api/edit_api.dart';
 import '../api/feed_api.dart';
 import '../api/notifications_api.dart';
+import '../api/player_api.dart';
 import '../api/post_api.dart';
 import '../api/profile_api.dart';
 import '../api/search_api.dart';
@@ -14,4 +15,5 @@ final profileApiProvider = Provider<ProfileApi>((ref) => ProfileApi(ref.watch(cl
 final searchApiProvider = Provider<SearchApi>((ref) => SearchApi(ref.watch(clubApiClientProvider)));
 final notificationsApiProvider =
     Provider<NotificationsApi>((ref) => NotificationsApi(ref.watch(clubApiClientProvider)));
+final playerApiProvider = Provider<PlayerApi>((ref) => PlayerApi(ref.watch(clubApiClientProvider)));
 final editApiProvider = Provider<EditApi>((ref) => EditApi());
