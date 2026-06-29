@@ -397,12 +397,13 @@ extension _EditorControls on _EditorPageState {
     return Container(
       color: const Color(0xFF1C1F22),
       child: SizedBox(
-        height: 60,
+        // Taller row-2 so the 20%-larger swatches have room — bigger, easier-to-tap colour targets.
+        height: 72,
         child: Row(children: [
           GestureDetector(
             onTap: () => _pickColor(initial: _primary, onPick: _setPrimary),
             child: Container(
-              width: 32, height: 32, margin: const EdgeInsets.all(5),
+              width: 38, height: 38, margin: const EdgeInsets.all(6),
               decoration: BoxDecoration(color: _primary, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.white70, width: 2)),
               child: const Icon(Icons.edit, size: 13, color: Colors.white70),
             ),
@@ -431,14 +432,14 @@ extension _EditorControls on _EditorPageState {
   }
 
   Widget _paletteSwatch(int i) {
-    if (i >= _palette.length) return const SizedBox(width: 30); // keep the column width for an odd last swatch
+    if (i >= _palette.length) return const SizedBox(width: 35); // keep the column width for an odd last swatch
     final c = _palette[i];
     return GestureDetector(
       onTap: () => _setPrimary(c),
       onLongPress: () => _paletteSwatchMenu(i, c),
       child: Container(
-        width: 26,
-        height: 24,
+        width: 31,
+        height: 29,
         margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
         decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(3), border: Border.all(color: Colors.black26)),
       ),
