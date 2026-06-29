@@ -244,6 +244,14 @@ extension _EditorTimeline on _EditorPageState {
       _act('MoveSelection($dx,$dy)'); // move only the selection mask
       return;
     }
+    if (_hasMoveDraft) {
+      // Fine-adjust the pending move draft by one pixel (stays a draft until Commit).
+      _send('MoveDraftMove($dx,$dy)');
+      _refreshState();
+      _redraw();
+      setState(() {});
+      return;
+    }
     _syncLayerSel();
     _act('NudgeMove($dx,$dy)');
   }

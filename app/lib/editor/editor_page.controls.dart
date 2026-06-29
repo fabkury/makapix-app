@@ -134,6 +134,30 @@ extension _EditorControls on _EditorPageState {
         ));
       }
     }
+    if (_tool == 'Move' && _hasMoveDraft) {
+      // Commit / cancel the relocatable move draft. Drag anywhere on the canvas to reposition it
+      // first; the moved pixels show softly washed until committed.
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF30A050)),
+          onPressed: _commitMoveDraft,
+          icon: const Icon(Icons.check, size: 16),
+          label: const Text('Commit'),
+        ),
+      ));
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(minimumSize: const Size(0, 34), foregroundColor: const Color(0xFFE06060)),
+          onPressed: _cancelMoveDraft,
+          icon: const Icon(Icons.close, size: 16),
+          label: const Text('Cancel'),
+        ),
+      ));
+      children.add(const SizedBox(width: 8));
+    }
+
     if (_tool == 'Move') {
       // Mode: move the layer/pixels (default) or ONLY the selection mask (the marquee, not the
       // pixels). In "layer/pixels", a selection moves the selected pixels and none moves the
@@ -141,6 +165,8 @@ extension _EditorControls on _EditorPageState {
       // both off = Regular — applies to layer, pixel AND selection-mask moves (Protect/Wrap exclusive).
       final hasSel = _outlineEdges.isNotEmpty;
       children.add(_toggle(['Move layer/pixels', 'Move selection'], _moveSelectionMode ? 1 : 0, (i) {
+        // Switching the move mode mid-draft discards the pending draft first.
+        if (_hasMoveDraft) _cancelMoveDraft();
         setState(() => _moveSelectionMode = i == 1);
       }));
       label(_moveSelectionMode ? 'Move selection' : (hasSel ? 'Move pixels' : 'Move layer'));

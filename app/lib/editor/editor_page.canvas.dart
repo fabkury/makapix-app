@@ -185,6 +185,12 @@ extension _EditorCanvas on _EditorPageState {
       _moveSelDragLast = _toCanvas(pos, box); // a drag moves the selection mask, not the pixels
       return;
     }
+    if (_isMoveDrafting) {
+      // Move pixels / layer: the draft begins on the first actual MOVEMENT (see _continueDraw), so a
+      // tap leaves the selection untouched. Just record the anchor here.
+      _moveDragLast = _toCanvas(pos, box);
+      return;
+    }
     if (_isCursorTool) {
       _lastTouch = pos;
       _accX = 0;
@@ -237,6 +243,23 @@ extension _EditorCanvas on _EditorPageState {
       }
       return;
     }
+    if (_isMoveDrafting) {
+      if (_moveDragLast != null) {
+        final p = _toCanvas(pos, box);
+        final dx = (p.dx - _moveDragLast!.dx).round();
+        final dy = (p.dy - _moveDragLast!.dy).round();
+        if (dx != 0 || dy != 0) {
+          if (!_moveDraftStarted) {
+            _send('MoveDraftBegin()'); // first movement lifts the content into the draft
+            _moveDraftStarted = true;
+          }
+          _send('MoveDraftMove($dx, $dy)');
+          _moveDragLast = p;
+          _redraw(full: false, refetchSelection: true); // a selection draft moves the marquee too
+        }
+      }
+      return;
+    }
     if (_isCursorTool) {
       final last = _lastTouch ?? pos;
       final (scale, _) = _view(box);
@@ -284,6 +307,12 @@ extension _EditorCanvas on _EditorPageState {
       setState(() {});
       return;
     }
+    if (_isMoveDrafting) {
+      _moveDragLast = null; // releasing leaves the draft where it was dragged (awaiting Commit)
+      if (_moveDraftStarted) _refreshState(); // surface move_draft → show row-1 Commit/Cancel
+      setState(() {});
+      return;
+    }
     if (_isCursorTool) {
       _lastTouch = null;
       if (_penDown) _refreshState();
@@ -313,6 +342,12 @@ extension _EditorCanvas on _EditorPageState {
     }
     if (_tool == 'Move' && _moveSelectionMode) {
       _moveSelDragLast = null; // a second finger interrupted; keep the selection where it is
+      return;
+    }
+    if (_isMoveDrafting) {
+      // A second finger started pan/zoom; keep any established move draft where it is.
+      _moveDragLast = null;
+      if (_moveDraftStarted) _refreshState();
       return;
     }
     if (_isDraftTool) {

@@ -235,6 +235,15 @@ class _EditorPageState extends ConsumerState<EditorPage>
   bool _hasPasteDraft = false;
   Offset? _pasteDragLast; // last canvas position while dragging the paste draft
 
+  // Move tool draft: dragging the selected pixels (or the layer/move-group, with no selection) lifts
+  // them into a relocatable, semi-transparently washed draft, committed via row-1. The draft begins
+  // on the first drag MOVEMENT (a tap does nothing). `_hasMoveDraft` comes from the engine state JSON
+  // ("move_draft" rect). The mask-only sub-mode (`_moveSelectionMode`) stays immediate.
+  bool _hasMoveDraft = false;
+  bool get _isMoveDrafting => _tool == 'Move' && !_moveSelectionMode;
+  Offset? _moveDragLast; // last canvas position while dragging the move draft
+  bool _moveDraftStarted = false; // whether this drag has begun the draft yet (begin on first move)
+
   bool get _engineReady => _error == null;
 
   @override

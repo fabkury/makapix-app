@@ -239,6 +239,7 @@ extension _EditorEngine on _EditorPageState {
       _canvasW = w;
       _canvasH = h;
       _hasPasteDraft = _state['paste'] != null; // [x,y,w,h] when a paste draft is floating, else null
+      _hasMoveDraft = _state['move_draft'] != null; // [x,y,w,h] when a move draft is pending, else null
       final pal = (_state['palette'] as List?)?.cast<String>() ?? [];
       _palette = pal.map(_parseHex).toList();
       final pc = engine.primaryColor;
@@ -282,6 +283,14 @@ extension _EditorEngine on _EditorPageState {
       _send('PasteCancel()');
       _hasPasteDraft = false;
       _pasteDragLast = null;
+      _redraw();
+    }
+    // A pending move draft is discarded when navigating away (same as its row-1 Cancel button).
+    if (_hasMoveDraft) {
+      _send('MoveDraftCancel()');
+      _hasMoveDraft = false;
+      _moveDragLast = null;
+      _moveDraftStarted = false;
       _redraw();
     }
     // The Ruler keeps its measurement across tool switches (its overlay just hides while another
@@ -348,6 +357,26 @@ extension _EditorEngine on _EditorPageState {
       _triTip = 0;
     });
     _redraw();
+  }
+
+  // Finalize the pending move draft as one undo step (drops the "pending" wash).
+  void _commitMoveDraft() {
+    _send('MoveDraftCommit()');
+    _moveDragLast = null;
+    _moveDraftStarted = false;
+    _refreshState(); // clears _hasMoveDraft (move_draft → null)
+    _redraw();
+    setState(() {});
+  }
+
+  // Discard the pending move draft, restoring the pixels (and marquee) to where they were.
+  void _cancelMoveDraft() {
+    _send('MoveDraftCancel()');
+    _moveDragLast = null;
+    _moveDraftStarted = false;
+    _refreshState();
+    _redraw();
+    setState(() {});
   }
 
   // Toggle the active paint tool's precision (off-finger reticle) mode. Remembered per tool.

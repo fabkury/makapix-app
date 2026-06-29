@@ -2093,6 +2093,7 @@ impl Session {
         self.doc = io::load_from_bytes(data)?;
         self.clipboard = None;
         self.paste_draft = None;
+        self.move_draft = None; // a stale draft would reference the previous document's frame [F-29]
         Ok(())
     }
 
