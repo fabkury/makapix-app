@@ -25,8 +25,13 @@ class ClubConfig {
         ClubEnvironment.prod => 'https://makapix.club',
       };
 
-  /// Versioned REST base — all routers live under `/api/v1`.
+  /// Versioned REST base — most routers live under `/api/v1`.
   String get apiBase => '$baseUrl/api/v1';
+
+  /// Unversioned API root (`/api`). A few routers are mounted outside `/v1` —
+  /// notably the Post Management Dashboard (`/api/pmd/*`), which the server groups
+  /// with hardware/web-infra surfaces as a separate, unversioned contract.
+  String get apiRoot => '$baseUrl/api';
 
   /// MQTT-over-WebSocket endpoint (used by a later phase for live notifications).
   String get realtimeUrl => switch (env) {

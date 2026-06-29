@@ -140,6 +140,15 @@ class AuthController extends StateNotifier<AuthState> {
     state = const AuthState.signedOut();
   }
 
+  /// Reflect a settings change to the monitored-hashtag filter in the in-memory
+  /// session, so the UI sees it without a full `/auth/me` round-trip. (Feeds are
+  /// filtered server-side, so callers also re-fetch them after this.)
+  void updateApprovedHashtags(List<String> tags) {
+    final me = state.me;
+    if (me == null) return;
+    state = AuthState.signedIn(me.copyWith(user: me.user.copyWith(approvedHashtags: tags)));
+  }
+
   /// Dismiss an error back to the sign-in form.
   void reset() => state = const AuthState.signedOut();
 }

@@ -13,6 +13,7 @@ import 'club_welcome_page.dart';
 import 'notifications_page.dart';
 import 'profile_page.dart';
 import 'search_page.dart';
+import 'settings_page.dart';
 import 'widgets/feed_grid.dart';
 import 'widgets/send_target_binder.dart';
 
@@ -106,6 +107,9 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
       case 'account':
         _push(const ClubAccountPage());
         break;
+      case 'settings':
+        _push(const SettingsPage());
+        break;
       case 'about':
         showDialog<void>(
           context: context,
@@ -148,6 +152,7 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
             onSelected: _onMenu,
             itemBuilder: (_) => [
               _menuItem('account', Icons.account_circle_outlined, 'Account'),
+              _menuItem('settings', Icons.settings_outlined, 'Settings'),
               _menuItem('about', Icons.info_outline, 'About Makapix Club'),
               const PopupMenuDivider(),
               _menuItem('signout', Icons.logout, 'Sign out'),

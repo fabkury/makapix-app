@@ -4,22 +4,32 @@ import '../auth/club_session.dart';
 import '../config/club_config.dart';
 import '../models/club_error.dart';
 
-/// Authenticated Dio for all Club endpoints (`/auth/me` now; social endpoints in
-/// C1+). Attaches the bearer token and, on 401, performs a single-flight refresh
-/// (via [ClubSession]) and retries the original request once.
+/// Authenticated Dio for all Club endpoints. Attaches the bearer token and, on
+/// 401, performs a single-flight refresh (via [ClubSession]) and retries the
+/// original request once.
+///
+/// Two clients share that behaviour: [dio] (the versioned `/api/v1` base, used by
+/// almost everything) and [dioRoot] (the unversioned `/api` base, used by the Post
+/// Management Dashboard `/pmd/*`, which the server mounts outside `/v1`).
 class ClubApiClient {
   final ClubSession session;
   late final Dio dio;
+  late final Dio dioRoot;
 
   ClubApiClient(this.session) {
-    dio = Dio(BaseOptions(
-      baseUrl: session.config.apiBase,
+    dio = _build(session.config.apiBase);
+    dioRoot = _build(session.config.apiRoot);
+  }
+
+  Dio _build(String baseUrl) {
+    final client = Dio(BaseOptions(
+      baseUrl: baseUrl,
       contentType: 'application/json',
       connectTimeout: ClubConfig.connectTimeout, // [audit F-7]
       receiveTimeout: ClubConfig.ioTimeout,
       sendTimeout: ClubConfig.ioTimeout,
     ));
-    dio.interceptors.add(InterceptorsWrapper(
+    client.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) {
         final tok = session.accessToken;
         if (tok != null) options.headers['Authorization'] = 'Bearer $tok';
@@ -37,7 +47,7 @@ class ClubApiClient {
             opts.extra['__retried'] = true;
             opts.headers['Authorization'] = 'Bearer ${session.accessToken}';
             try {
-              return handler.resolve(await dio.fetch(opts));
+              return handler.resolve(await client.fetch(opts));
             } on DioException catch (e2) {
               return handler.next(e2);
             }
@@ -46,6 +56,7 @@ class ClubApiClient {
         handler.next(e);
       },
     ));
+    return client;
   }
 
   /// Run a Dio call and normalize any [DioException] to a [ClubError] — the single place that

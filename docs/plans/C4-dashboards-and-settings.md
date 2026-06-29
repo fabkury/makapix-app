@@ -85,14 +85,20 @@ the read-only website snapshot in `reference/makapix-club/` (FastAPI `api/` + Ne
 
 Legend: ✅ done · ◑ in progress · ○ not started
 
-- ○ Plan doc committed
-- ○ Groundwork: `ClubUser`/`ClubMe` fields, `dioRoot`, `apiRoot`, monitored-hashtag constant
-- ○ Feature A — Settings (api · state · ui · nav)
+- ✅ Plan doc committed
+- ✅ Groundwork: `ClubUser`/`ClubMe` fields, `dioRoot`, `apiRoot`, monitored-hashtag constant
+- ✅ Feature A — Settings (api · state · ui · nav) — `flutter analyze` clean
 - ○ Feature B — Artist dashboard (models · api · state · ui · nav)
 - ○ Feature C — PMD (models · api · state · ui · nav · ZIP save)
 - ○ Dart unit tests
-- ○ `flutter analyze` clean
+- ○ `flutter analyze` clean (full)
 - ○ STATUS.md + SPEC-CLUB §29 parity matrix updated
+
+### Notes / deviations
+- Settings form state lives in the page (`ConsumerStatefulWidget`) with widget-local dirty
+  tracking; the save call goes through `settingsApiProvider` and `AuthController.updateApprovedHashtags`.
+  No separate `state/settings_providers.dart` was needed (the `settingsApiProvider` lives in
+  `state/api_providers.dart` with every other API provider).
 
 ## Out of scope / deferred
 - Per-post stats drill-in (`/post/{id}/stats`) + daily-trend chart.
