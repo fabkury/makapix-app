@@ -17,7 +17,8 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
       _bCtrl,
       _hCtrl,
       _sCtrl,
-      _vCtrl;
+      _vCtrl,
+      _aCtrl;
 
   @override
   void initState() {
@@ -34,6 +35,7 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
     _hCtrl = TextEditingController();
     _sCtrl = TextEditingController();
     _vCtrl = TextEditingController();
+    _aCtrl = TextEditingController();
     _syncFromColor();
   }
 
@@ -47,6 +49,7 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
       _hCtrl,
       _sCtrl,
       _vCtrl,
+      _aCtrl,
     ]) {
       c.dispose();
     }
@@ -62,9 +65,9 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
     return (a.round() < 255 ? '$base${two(a.round())}' : base).toUpperCase();
   }
 
-  // Push the current colour into every text field. `skipRgb`/`skipHsv` leave the group the user is
-  // actively typing in untouched, so the caret doesn't jump while editing it.
-  void _syncFromColor({bool skipRgb = false, bool skipHsv = false}) {
+  // Push the current colour into every text field. `skip*` leaves the group the user is actively
+  // typing in untouched, so the caret doesn't jump while editing it.
+  void _syncFromColor({bool skipRgb = false, bool skipHsv = false, bool skipAlpha = false}) {
     _hexCtrl.text = _hex;
     if (!skipRgb) {
       final c = _color;
@@ -77,6 +80,15 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
       _sCtrl.text = (s * 100).round().toString();
       _vCtrl.text = (v * 100).round().toString();
     }
+    if (!skipAlpha) _aCtrl.text = a.round().toString();
+  }
+
+  // Apply the alpha field (0–255). A blank/invalid value is ignored.
+  void _applyAlpha() {
+    final v = int.tryParse(_aCtrl.text.trim());
+    if (v == null) return;
+    setState(() => a = v.clamp(0, 255).toDouble());
+    _syncFromColor(skipAlpha: true);
   }
 
   // Apply the R/G/B fields (0–255 each) as the colour. A blank/invalid field keeps its channel.
@@ -247,10 +259,17 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
                     ),
                   ),
                   SizedBox(
-                    width: 32,
-                    child: Text(
-                      a.round().toString(),
-                      textAlign: TextAlign.right,
+                    width: 48,
+                    child: TextField(
+                      controller: _aCtrl,
+                      keyboardType: TextInputType.number,
+                      textAlign: TextAlign.center,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                      ),
+                      onChanged: (_) => _applyAlpha(),
                     ),
                   ),
                 ],
