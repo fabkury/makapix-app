@@ -11,6 +11,7 @@ use crate::tool::{BrushShape, GradientKind, Stop, ToolKind};
 pub enum Action {
     NewDocument(u16, u16),
     AddFrame,
+    AddFrameAt(usize),
     DuplicateFrame(usize),
     RemoveFrame(usize),
     ReorderFrame(usize, usize),
@@ -19,6 +20,7 @@ pub enum Action {
     SetAllDurations(f32),
     SetLoopMode(LoopMode),
     AddLayer,
+    AddLayerAt(usize),
     RemoveLayer(usize),
     DuplicateLayer(usize),
     ReorderLayer(usize, usize),
@@ -134,6 +136,7 @@ impl Session {
         match a {
             NewDocument(w, h) => *self = Session::new(w.clamp(8, 256), h.clamp(8, 256)),
             AddFrame => self.add_frame(),
+            AddFrameAt(i) => self.add_frame_at(i),
             DuplicateFrame(i) => self.duplicate_frame(i),
             RemoveFrame(i) => self.remove_frame(i),
             ReorderFrame(f, t) => self.reorder_frame(f, t),
@@ -142,6 +145,7 @@ impl Session {
             SetAllDurations(ms) => self.set_all_durations(ms_to_us(ms)),
             SetLoopMode(m) => self.set_loop_mode(m),
             AddLayer => self.add_layer(),
+            AddLayerAt(i) => self.add_layer_at(i),
             RemoveLayer(i) => self.remove_layer(i),
             DuplicateLayer(i) => self.duplicate_layer(i),
             ReorderLayer(f, t) => self.reorder_layer(f, t),
@@ -379,6 +383,7 @@ fn parse_line(line: &str) -> Result<Action, String> {
     Ok(match name {
         "NewDocument" => NewDocument(u16a(0)?, u16a(1)?),
         "AddFrame" => AddFrame,
+        "AddFrameAt" => AddFrameAt(usza(0)?),
         "DuplicateFrame" => DuplicateFrame(usza(0)?),
         "RemoveFrame" => RemoveFrame(usza(0)?),
         "ReorderFrame" => ReorderFrame(usza(0)?, usza(1)?),
@@ -392,6 +397,7 @@ fn parse_line(line: &str) -> Result<Action, String> {
             o => return Err(format!("bad loop mode '{}'", o)),
         }),
         "AddLayer" => AddLayer,
+        "AddLayerAt" => AddLayerAt(usza(0)?),
         "RemoveLayer" => RemoveLayer(usza(0)?),
         "DuplicateLayer" => DuplicateLayer(usza(0)?),
         "ReorderLayer" => ReorderLayer(usza(0)?, usza(1)?),

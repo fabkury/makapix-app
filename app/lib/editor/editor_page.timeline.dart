@@ -198,6 +198,7 @@ extension _EditorTimeline on _EditorPageState {
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ListTile(dense: true, title: Text('Frame ${i + 1} of $count', style: const TextStyle(fontWeight: FontWeight.bold))),
+          ListTile(leading: const Icon(Icons.add_box_outlined), title: const Text('Add new frame here'), onTap: () { Navigator.pop(ctx); _act('AddFrameAt(${i + 1})'); }),
           ListTile(leading: const Icon(Icons.copy), title: const Text('Duplicate'), onTap: () { Navigator.pop(ctx); _act('DuplicateFrame($i)'); }),
           ListTile(leading: const Icon(Icons.timer_outlined), title: const Text('Duration…'), onTap: () { Navigator.pop(ctx); _act('SetActiveFrame($i)'); _editDuration(); }),
           ListTile(leading: const Icon(Icons.chevron_left), title: const Text('Move left'), enabled: i > 0, onTap: () { Navigator.pop(ctx); _act('ReorderFrame($i, ${i - 1})'); }),
@@ -354,6 +355,7 @@ extension _EditorTimeline on _EditorPageState {
                 },
               ),
               Wrap(spacing: 8, children: [
+                ActionChip(avatar: const Icon(Icons.add_box_outlined, size: 16), label: const Text('Add new layer here'), onPressed: () { Navigator.pop(ctx); _act('AddLayerAt(${i + 1})'); }),
                 ActionChip(avatar: const Icon(Icons.control_point_duplicate, size: 16), label: const Text('Duplicate'), onPressed: () { Navigator.pop(ctx); _act('DuplicateLayer($i)'); }),
                 ActionChip(avatar: const Icon(Icons.arrow_upward, size: 16), label: const Text('Up'), onPressed: i + 1 < count ? () { Navigator.pop(ctx); _act('ReorderLayer($i, ${i + 1})'); } : null),
                 ActionChip(avatar: const Icon(Icons.arrow_downward, size: 16), label: const Text('Down'), onPressed: i > 0 ? () { Navigator.pop(ctx); _act('ReorderLayer($i, ${i - 1})'); } : null),

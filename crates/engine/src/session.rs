@@ -1598,6 +1598,22 @@ impl Session {
         });
     }
 
+    /// Insert a fresh blank frame at index `at` (clamped to the end), making it active. Used by the
+    /// frame menu's "Add new frame here" (caller passes `i + 1` to insert just right of frame `i`).
+    pub fn add_frame_at(&mut self, at: usize) {
+        if self.doc.frames.len() >= crate::document::MAX_FRAMES {
+            return;
+        }
+        let at = at.min(self.doc.frames.len());
+        self.edit_doc("add_frame", |s| {
+            let id = s.doc.new_frame_id();
+            let layers = vec![s.doc.new_layer("Layer 1")];
+            let dur = crate::document::DEFAULT_DURATION_US;
+            s.doc.frames.insert(at, Frame { id, duration_us: dur, layers, active_layer: 0 });
+            s.doc.active_frame = at;
+        });
+    }
+
     pub fn remove_frame(&mut self, i: usize) {
         if self.doc.frames.len() <= 1 || i >= self.doc.frames.len() {
             return;
@@ -1657,6 +1673,22 @@ impl Session {
             s.doc.active_frame_mut().layers.push(layer);
             let n = s.doc.active_frame().layers.len();
             s.doc.active_frame_mut().active_layer = n - 1;
+        });
+    }
+
+    /// Insert a fresh blank layer at index `at` (clamped) in the active frame, making it active. Used
+    /// by the layer menu's "Add new layer here" (caller passes `i + 1` to insert just above layer `i`).
+    pub fn add_layer_at(&mut self, at: usize) {
+        let len = self.doc.active_frame().layers.len();
+        if len >= crate::document::MAX_LAYERS {
+            return;
+        }
+        let name = format!("Layer {}", len + 1);
+        let layer = self.doc.new_layer(name);
+        let at = at.min(len);
+        self.edit_frame(|s| {
+            s.doc.active_frame_mut().layers.insert(at, layer);
+            s.doc.active_frame_mut().active_layer = at;
         });
     }
 
@@ -2666,6 +2698,33 @@ mod tests {
         assert_eq!(s.pixel(0, 0, 8, 4), Rgba8::WHITE); // up the (now) long axis
         assert_eq!(s.pixel(0, 0, 8, 8), Rgba8::WHITE);
         assert_eq!(s.pixel(0, 0, 12, 6), Rgba8::TRANSPARENT); // off the narrow axis
+        assert!(s.doc.undo());
+    }
+
+    #[test]
+    fn add_frame_at_inserts_right_of_the_given_frame() {
+        let mut s = Session::new(8, 8);
+        s.add_frame(); // 2 frames (0,1)
+        s.add_frame(); // 3 frames (0,1,2)
+        let id1 = s.doc.frames[1].id;
+        s.add_frame_at(1); // insert a blank frame at index 1 (right of frame 0)
+        assert_eq!(s.doc.frames.len(), 4);
+        assert_eq!(s.doc.active_frame, 1, "the new frame becomes active");
+        assert_eq!(s.doc.frames[2].id, id1, "the old frame 1 shifted right to index 2");
+        assert!(s.doc.undo(), "one undo removes the inserted frame");
+        assert_eq!(s.doc.frames.len(), 3);
+    }
+
+    #[test]
+    fn add_layer_at_inserts_at_the_given_index() {
+        let mut s = Session::new(8, 8);
+        s.add_layer(); // 2 layers (0,1)
+        let bottom = s.doc.active_frame().layers[0].id;
+        s.add_layer_at(1); // insert above layer 0
+        let f = s.doc.active_frame();
+        assert_eq!(f.layers.len(), 3);
+        assert_eq!(f.active_layer, 1, "the new layer becomes active");
+        assert_eq!(f.layers[0].id, bottom, "layer 0 stays at the bottom");
         assert!(s.doc.undo());
     }
 
