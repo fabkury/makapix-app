@@ -183,11 +183,11 @@ C5 real-time & players · C6 moderation & extras. Commits and branch work are ta
   snapshot in `dispose`/`initState`) and Club state lives in long-lived Riverpod providers. Don't "optimise"
   this back into an always-both keep-alive.
 - **Android Gradle pinning:** the Flutter template generates AGP 9 / Gradle 9 / Kotlin 2.3, which
-  `file_picker` can't compile against. The repo pins AGP 8.9.1 / Gradle 8.12 / Kotlin 2.1.20 in
+  `file_picker` can't compile against. The repo pins AGP 8.11.1 / Gradle 8.14 / Kotlin 2.2.20 in
   `app/android/settings.gradle.kts` + the wrapper, and disables lint in `app/android/build.gradle.kts`.
   Don't unpin without a reason.
 - **JDK on PATH:** a bare `./gradlew` fails fast (prints just a version string) because the PATH JDK
-  (OpenJDK 25) is too new for Gradle 8.12. `flutter build` / `build_android.ps1` use Android Studio's bundled
+  (OpenJDK 25) is too new for Gradle 8.14. `flutter build` / `build_android.ps1` use Android Studio's bundled
   **JBR 21** and work; for direct gradle, pass
   `-Dorg.gradle.java.home="C:/Program Files/Android/Android Studio/jbr"`.
 - **Release signing** reads the git-ignored `app/android/key.properties` (see `key.properties.example`) and
