@@ -58,12 +58,17 @@ class _DetailBody extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return ListView(
       children: [
-        // Artwork on a dark stage.
+        // Artwork on a dark stage: stretched (aspect-ratio preserved) to 94% of the width,
+        // leaving only a thin 3% margin on each side.
         Container(
           color: const Color(0xFF0E1012),
-          height: 320,
-          padding: const EdgeInsets.all(12),
-          child: PixelArtImage(url: post.artUrl),
+          alignment: Alignment.center,
+          padding: EdgeInsets.symmetric(
+              horizontal: MediaQuery.of(context).size.width * 0.03, vertical: 12),
+          child: AspectRatio(
+            aspectRatio: post.height > 0 ? post.width / post.height : 1,
+            child: PixelArtImage(url: post.artUrl),
+          ),
         ),
         Padding(
           padding: const EdgeInsets.all(16),
@@ -102,15 +107,19 @@ class _DetailBody extends ConsumerWidget {
             ],
             if (post.hashtags.isNotEmpty)
               Wrap(
-                spacing: 6,
+                spacing: 10,
                 runSpacing: 6,
                 children: [
+                  // Borderless, vivid-coloured text — reads as a tappable link, not a badge.
                   for (final tag in post.hashtags)
-                    ActionChip(
-                      label: Text('#$tag', style: const TextStyle(fontSize: 12)),
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () => Navigator.push(
+                    GestureDetector(
+                      onTap: () => Navigator.push(
                           context, MaterialPageRoute(builder: (_) => HashtagFeedPage(tag: tag))),
+                      child: Text('#$tag',
+                          style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Theme.of(context).colorScheme.primary)),
                     ),
                 ],
               ),
