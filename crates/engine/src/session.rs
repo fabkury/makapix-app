@@ -43,6 +43,29 @@ struct Stroke {
     floating: Option<RgbaBuffer>, // for Move
 }
 
+/// One layer's lifted content within a [`MoveDraft`], re-blitted at `anchor + offset`.
+struct MoveFloat {
+    lid: u32,
+    pixels: RgbaBuffer, // the lifted content (a bbox for a selection move, the whole layer otherwise)
+    anchor: Point,      // top-left at offset (0,0): the selection bbox origin, or (0,0) for a layer
+}
+
+/// An in-progress, relocatable "move draft" (the Move tool's draw→adjust→commit flow, like the shape
+/// and paste drafts). The moved content lives in the layer(s) for crash safety — each relocation
+/// re-applies it from `before` at the current `offset` — and a semi-transparent wash marks it as
+/// pending until `move_draft_commit` (one undo step) or `move_draft_cancel` (restore `before`).
+/// Covers both the selected-pixels move (`is_selection` — the marquee follows) and the no-selection
+/// layer / move-group move.
+struct MoveDraft {
+    fid: u32,
+    before: crate::document::Frame, // pre-lift frame (COW-cheap): cancel-restore + commit baseline
+    sel_before: Option<Arc<Mask>>,
+    floats: Vec<MoveFloat>,
+    is_selection: bool,
+    bbox: Option<crate::geom::IRect>, // union opaque bbox at offset 0 (Protect-clamp + draft rect)
+    offset: Point,
+}
+
 /// Stamp positions along `a`→`b`, one every `step` px of arc length. `acc` is the distance already
 /// travelled toward the next stamp (carried across calls so spacing stays even across a stroke that
 /// arrives as many short segments); it is updated in place. The segment's own endpoints are not
@@ -135,6 +158,9 @@ pub struct Session {
     move_before: Option<(u32, crate::document::Frame)>,
     /// Union opaque bounding box of the moved layers at drag start (for "protect pixels" clamping).
     move_bbox: Option<crate::geom::IRect>,
+    /// The pending move draft (relocatable, semi-transparently washed, committed on demand). The
+    /// shell drives it via `MoveDraftBegin`/`MoveDraftMove`/`MoveDraftCommit`/`MoveDraftCancel`.
+    move_draft: Option<MoveDraft>,
 }
 
 impl Session {
@@ -161,6 +187,7 @@ impl Session {
             move_layers: Vec::new(),
             move_before: None,
             move_bbox: None,
+            move_draft: None,
         }
     }
 
@@ -398,6 +425,28 @@ impl Session {
     }
 
     fn draw_tool_preview(&self, buf: &mut RgbaBuffer) {
+        // A pending move draft: the moved pixels are already in the layer (crash-safe), so just wash
+        // them with a soft semi-transparent tint to mark "pending until Commit".
+        if let Some(d) = &self.move_draft {
+            let wash = Rgba8::new(0, 200, 255, 60); // soft cyan "draft" wash (matches the paste hue)
+            let (w, h) = (self.doc.size.w as i32, self.doc.size.h as i32);
+            for f in &d.floats {
+                for j in 0..f.pixels.height() as i32 {
+                    for i in 0..f.pixels.width() as i32 {
+                        if f.pixels.get(i, j).a == 0 {
+                            continue;
+                        }
+                        let (mut x, mut y) = (f.anchor.x + d.offset.x + i, f.anchor.y + d.offset.y + j);
+                        if self.settings.wrap {
+                            x = x.rem_euclid(w);
+                            y = y.rem_euclid(h);
+                        }
+                        buf.blend_over(x, y, wash);
+                    }
+                }
+            }
+            return;
+        }
         // A pending paste floats above everything as a dimmed, cyan-washed draft until committed.
         if let Some((clip, pos)) = &self.paste_draft {
             self.render_paste_preview(buf, clip, *pos);
@@ -537,11 +586,16 @@ impl Session {
         // Session-level fields (the clipboard + a pending paste draft live on Session, not Document)
         // are appended to the document state JSON before its closing brace.
         let mut s = crate::probe::state_json(&self.doc);
-        let paste = match self.paste_draft_rect() {
+        let rect = |r: Option<IRect>| match r {
             Some(r) => format!("[{},{},{},{}]", r.x, r.y, r.w, r.h),
             None => "null".to_string(),
         };
-        let extra = format!(",\"has_clipboard\":{},\"paste\":{}", self.clipboard.is_some(), paste);
+        let extra = format!(
+            ",\"has_clipboard\":{},\"paste\":{},\"move_draft\":{}",
+            self.clipboard.is_some(),
+            rect(self.paste_draft_rect()),
+            rect(self.move_draft_rect()),
+        );
         s.insert_str(s.len() - 1, &extra); // before the final '}'
         s
     }
@@ -1735,6 +1789,195 @@ impl Session {
         }
     }
 
+    // ---- move draft (drag → relocate → commit, like the shape/paste drafts) ----
+    //
+    // The Move tool's draw→adjust→commit flow. Begin lifts the moved content (selected pixels, or
+    // the move-group layers when there's no selection) into floating buffer(s); each MoveDraftMove
+    // re-applies it from the pre-lift frame at the accumulated offset; the content lives in the
+    // layer(s) the whole time (so a crash autosave recovers the in-progress move), washed soft cyan
+    // to read as "pending". Commit records one undo step; cancel restores the pre-lift frame.
+
+    /// Begin a move draft from the current selection (the selected pixels) or, with no selection,
+    /// the move-group layers. No-op if a draft is already open, the active layer isn't editable, or
+    /// (selection case) the selection is empty. The shell calls this on the first drag movement.
+    pub fn move_draft_begin(&mut self) {
+        if self.move_draft.is_some() || !self.active_editable() {
+            return;
+        }
+        let fi = self.doc.active_frame;
+        let fid = self.doc.frames[fi].id;
+        let before = self.doc.frames[fi].clone();
+        let sel_before = self.doc.selection.clone();
+
+        // Selection case: lift the selected pixels of the active layer.
+        if let Some(sel) = self.selection_clone() {
+            if let Some(bb) = sel.bounds() {
+                let lid = self.doc.frames[fi].active_layer().id;
+                let src = &self.doc.frames[fi].active_layer().pixels;
+                let mut floating = RgbaBuffer::new(bb.w, bb.h);
+                for j in 0..bb.h as i32 {
+                    for i in 0..bb.w as i32 {
+                        if sel.get(bb.x + i, bb.y + j) {
+                            floating.set(i, j, src.get(bb.x + i, bb.y + j));
+                        }
+                    }
+                }
+                self.move_draft = Some(MoveDraft {
+                    fid,
+                    before,
+                    sel_before,
+                    floats: vec![MoveFloat { lid, pixels: floating, anchor: Point::new(bb.x, bb.y) }],
+                    is_selection: true,
+                    bbox: Some(bb),
+                    offset: Point::new(0, 0),
+                });
+                return;
+            }
+        }
+
+        // Layer case (no selection): snapshot the editable move-group (or the active layer).
+        let editable = |li: usize, f: &crate::document::Frame| {
+            li < f.layers.len() && f.layers[li].visible && !f.layers[li].locked
+        };
+        let mut idxs: Vec<usize> =
+            self.layer_sel.iter().copied().filter(|&li| editable(li, &self.doc.frames[fi])).collect();
+        idxs.sort_unstable();
+        idxs.dedup();
+        if idxs.is_empty() {
+            let al = self.doc.frames[fi].active_layer;
+            if editable(al, &self.doc.frames[fi]) {
+                idxs.push(al);
+            }
+        }
+        if idxs.is_empty() {
+            return;
+        }
+        let floats: Vec<MoveFloat> = idxs
+            .iter()
+            .map(|&li| MoveFloat {
+                lid: self.doc.frames[fi].layers[li].id,
+                pixels: self.doc.frames[fi].layers[li].pixels.clone(),
+                anchor: Point::new(0, 0),
+            })
+            .collect();
+        let bbox = floats.iter().fold(None, |acc, f| match (acc, f.pixels.opaque_bounds()) {
+            (Some(a), Some(b)) => Some(union_irect(a, b)),
+            (a, b) => a.or(b),
+        });
+        self.move_draft = Some(MoveDraft { fid, before, sel_before, floats, is_selection: false, bbox, offset: Point::new(0, 0) });
+    }
+
+    /// Relocate the move draft by (dx, dy). Honours Wrap (both kinds) and Protect (layer move only —
+    /// pixel moves don't clamp, matching the immediate Move). No-op if no draft is open.
+    pub fn move_draft_move(&mut self, dx: i32, dy: i32) {
+        let (is_selection, mut off, bbox) = match &self.move_draft {
+            Some(d) => (d.is_selection, Point::new(d.offset.x + dx, d.offset.y + dy), d.bbox),
+            None => return,
+        };
+        if !is_selection && self.settings.protect_pixels {
+            if let Some(bb) = bbox {
+                let (cx, cy) = self.clamp_move_to_canvas(bb, off.x, off.y);
+                off = Point::new(cx, cy);
+            }
+        }
+        if let Some(d) = self.move_draft.as_mut() {
+            d.offset = off;
+        }
+        self.move_draft_apply();
+    }
+
+    /// Re-apply the draft's lifted content to the document at its current offset, starting from the
+    /// pre-lift frame each time (so relocations never drift or accumulate).
+    fn move_draft_apply(&mut self) {
+        let d = match self.move_draft.take() {
+            Some(d) => d,
+            None => return,
+        };
+        let wrap = self.settings.wrap;
+        if let Some(fi) = self.doc.frame_index_by_id(d.fid) {
+            self.doc.frames[fi] = d.before.clone(); // restore the pre-lift baseline
+            if d.is_selection {
+                if let (Some(sel), Some(f)) = (d.sel_before.as_deref(), d.floats.first()) {
+                    if let Some(bb) = sel.bounds() {
+                        if let Some(li) = self.doc.frames[fi].layer_index_by_id(f.lid) {
+                            let buf = &mut self.doc.frames[fi].layers[li].pixels;
+                            for j in 0..bb.h as i32 {
+                                for i in 0..bb.w as i32 {
+                                    if sel.get(bb.x + i, bb.y + j) {
+                                        buf.set(bb.x + i, bb.y + j, Rgba8::TRANSPARENT);
+                                    }
+                                }
+                            }
+                            let dest = Point::new(f.anchor.x + d.offset.x, f.anchor.y + d.offset.y);
+                            if wrap {
+                                buf.blit_wrapped(&f.pixels, dest.x, dest.y);
+                            } else {
+                                buf.blit_over(&f.pixels, dest);
+                            }
+                        }
+                        // The marquee follows the moved pixels (un-recorded until commit).
+                        self.doc.selection = Some(Arc::new(if wrap {
+                            sel.translated_wrapped(d.offset.x, d.offset.y)
+                        } else {
+                            sel.translated(d.offset.x, d.offset.y)
+                        }));
+                    }
+                }
+            } else {
+                for f in &d.floats {
+                    if let Some(li) = self.doc.frames[fi].layer_index_by_id(f.lid) {
+                        let buf = &mut self.doc.frames[fi].layers[li].pixels;
+                        buf.clear();
+                        if wrap {
+                            buf.blit_wrapped(&f.pixels, d.offset.x, d.offset.y);
+                        } else {
+                            buf.blit_over(&f.pixels, Point::new(d.offset.x, d.offset.y));
+                        }
+                    }
+                }
+            }
+        }
+        self.move_draft = Some(d);
+    }
+
+    /// Commit the move draft: record the relocation as one undo step (carrying the selection
+    /// transition) and drop the wash. A zero-offset draft (no movement) commits nothing.
+    pub fn move_draft_commit(&mut self) {
+        let d = match self.move_draft.take() {
+            Some(d) => d,
+            None => return,
+        };
+        if d.offset == Point::new(0, 0) {
+            return; // nothing moved → no undo step (doc already equals `before`)
+        }
+        if let Some(fi) = self.doc.frame_index_by_id(d.fid) {
+            let after = self.doc.frames[fi].clone();
+            // sel_after is read from the current doc.selection (the translated marquee for a
+            // selection move; unchanged for a layer move).
+            self.doc.record_frame_content(d.fid, d.before, after, d.sel_before);
+        }
+    }
+
+    /// Discard the move draft, restoring the pre-lift frame and selection. No undo step.
+    pub fn move_draft_cancel(&mut self) {
+        let d = match self.move_draft.take() {
+            Some(d) => d,
+            None => return,
+        };
+        if let Some(fi) = self.doc.frame_index_by_id(d.fid) {
+            self.doc.frames[fi] = d.before;
+        }
+        self.doc.selection = d.sel_before;
+    }
+
+    /// The move draft's bounding rect at its current offset (top-left + size), if one is open — for
+    /// the shell to show Commit/Cancel and know a draft is active.
+    pub fn move_draft_rect(&self) -> Option<IRect> {
+        let d = self.move_draft.as_ref()?;
+        let bb = d.bbox?;
+        Some(IRect::new(bb.x + d.offset.x, bb.y + d.offset.y, bb.w, bb.h))
+    }
+
     pub fn set_layer_opacity(&mut self, i: usize, o: u8) {
         if i < self.doc.active_frame().layers.len() {
             self.edit_frame(|s| s.doc.active_frame_mut().layers[i].opacity = o);
@@ -2859,5 +3102,103 @@ mod tests {
         let mut s2 = Session::new(8, 8);
         s2.load_bytes(&bytes).unwrap();
         assert!(s2.doc.selection.is_none());
+    }
+
+    // ---- move draft (drag → relocate → commit) ----
+
+    // A session with one white pixel at (3,3) selected, and NO undo history (set up directly so the
+    // draft's recording can be asserted cleanly).
+    fn session_with_selected_pixel() -> Session {
+        let mut s = Session::new(16, 16);
+        s.doc.active_frame_mut().active_layer_mut().pixels.set(3, 3, Rgba8::WHITE);
+        let mut m = Mask::new(16, 16);
+        m.set(3, 3, true);
+        s.doc.selection = Some(Arc::new(m));
+        s.tool = ToolKind::Move;
+        assert!(!s.doc.can_undo());
+        s
+    }
+
+    #[test]
+    fn move_draft_is_pending_until_commit_then_one_undo_step() {
+        let mut s = session_with_selected_pixel();
+        s.move_draft_begin();
+        s.move_draft_move(4, 0); // (3,3) → (7,3)
+        assert_eq!(s.pixel(0, 0, 7, 3), Rgba8::WHITE, "moved pixel shows at the draft position");
+        assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::TRANSPARENT, "origin cleared");
+        assert!(s.doc.selection.as_ref().unwrap().get(7, 3), "marquee follows the draft");
+        assert!(s.move_draft_rect().is_some(), "a draft is active");
+        assert!(!s.doc.can_undo(), "the draft records nothing until commit");
+
+        s.move_draft_commit();
+        assert!(s.move_draft_rect().is_none(), "draft cleared on commit");
+        assert!(s.doc.can_undo(), "commit is one undo step");
+        // undo restores BOTH the pixel and the mask to the origin
+        assert!(s.doc.undo());
+        assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 0, 7, 3), Rgba8::TRANSPARENT);
+        assert!(s.doc.selection.as_ref().unwrap().get(3, 3));
+        // redo re-applies both
+        assert!(s.doc.redo());
+        assert_eq!(s.pixel(0, 0, 7, 3), Rgba8::WHITE);
+        assert!(s.doc.selection.as_ref().unwrap().get(7, 3));
+    }
+
+    #[test]
+    fn move_draft_cancel_restores_exactly_and_records_nothing() {
+        let mut s = session_with_selected_pixel();
+        s.move_draft_begin();
+        s.move_draft_move(5, 2);
+        assert_eq!(s.pixel(0, 0, 8, 5), Rgba8::WHITE);
+        s.move_draft_cancel();
+        assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::WHITE, "origin restored");
+        assert_eq!(s.pixel(0, 0, 8, 5), Rgba8::TRANSPARENT);
+        assert!(s.doc.selection.as_ref().unwrap().get(3, 3), "marquee restored");
+        assert!(!s.doc.can_undo(), "cancel records nothing");
+        assert!(s.move_draft_rect().is_none());
+    }
+
+    #[test]
+    fn move_draft_relocates_cumulatively_without_drift() {
+        let mut s = session_with_selected_pixel();
+        s.move_draft_begin();
+        s.move_draft_move(2, 0);
+        s.move_draft_move(2, 0); // total +4 → (7,3)
+        assert_eq!(s.pixel(0, 0, 7, 3), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 0, 5, 3), Rgba8::TRANSPARENT, "intermediate position left no trail");
+        assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::TRANSPARENT);
+    }
+
+    #[test]
+    fn move_draft_zero_offset_commit_is_a_noop() {
+        let mut s = session_with_selected_pixel();
+        s.move_draft_begin();
+        s.move_draft_commit(); // never moved
+        assert!(!s.doc.can_undo(), "a draft that never moved records no undo step");
+        assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::WHITE);
+    }
+
+    #[test]
+    fn move_draft_layer_move_with_no_selection() {
+        let mut s = Session::new(16, 16);
+        s.doc.active_frame_mut().active_layer_mut().pixels.set(2, 2, Rgba8::WHITE);
+        assert!(s.doc.selection.is_none());
+        s.tool = ToolKind::Move;
+        s.move_draft_begin(); // no selection → whole-layer move draft
+        s.move_draft_move(3, 3);
+        assert_eq!(s.pixel(0, 0, 5, 5), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::TRANSPARENT);
+        s.move_draft_commit();
+        assert!(s.doc.undo(), "one undo step");
+        assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 0, 5, 5), Rgba8::TRANSPARENT);
+    }
+
+    #[test]
+    fn move_draft_runs_via_dsl() {
+        let mut s = session_with_selected_pixel();
+        s.run_script("MoveDraftBegin(); MoveDraftMove(4,0); MoveDraftCommit()").unwrap();
+        assert_eq!(s.pixel(0, 0, 7, 3), Rgba8::WHITE);
+        assert!(s.doc.can_undo());
     }
 }
