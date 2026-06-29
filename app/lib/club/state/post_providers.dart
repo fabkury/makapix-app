@@ -79,6 +79,12 @@ final reactionsProvider =
     StateNotifierProvider.autoDispose.family<ReactionsController, AsyncValue<ReactionTotals>, int>(
         (ref, postId) => ReactionsController(ref, postId)); // [audit F-19]
 
+/// The list of authenticated reactors for a post, backing the Reactions page. One-shot fetch
+/// (the endpoint is capped at 200, unpaginated), so a plain FutureProvider suffices.
+// autoDispose: released when the Reactions page closes. [audit F-19]
+final reactionUsersProvider = FutureProvider.autoDispose.family<List<ReactionUser>, int>(
+    (ref, postId) => ref.read(postApiProvider).reactionUsers(postId));
+
 // ---- Grid "like" (👍) toggle ----
 //
 // The feed grid shows a single 👍 like affordance per tile. Fetching per-tile reaction totals

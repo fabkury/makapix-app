@@ -108,6 +108,45 @@ void main() {
     test('curated emoji set has five entries', () => expect(kReactionEmojis, hasLength(5)));
   });
 
+  group('ReactionUser', () {
+    test('parses a reaction-users item', () {
+      final r = ReactionUser.fromJson({
+        'emoji': '🔥',
+        'created_at': '2026-06-28T14:30:45Z',
+        'user_handle': 'pixel_artist',
+        'user_avatar_url': 'https://vault-dev.makapix.club/avatar/x.gif',
+        'user_public_sqid': 'aB3x',
+      });
+      expect(r.emoji, '🔥');
+      expect(r.handle, 'pixel_artist');
+      expect(r.sqid, 'aB3x');
+      expect(r.avatarUrl, isNotNull);
+      expect(r.createdAt, isNotNull);
+    });
+
+    test('tolerates missing avatar/sqid and unparseable timestamp', () {
+      final r = ReactionUser.fromJson({'emoji': '👍', 'user_handle': 'bob', 'created_at': ''});
+      expect(r.avatarUrl, isNull);
+      expect(r.sqid, isNull);
+      expect(r.createdAt, isNull);
+    });
+
+    test('countEmojis tallies and orders curated emojis first', () {
+      final reactors = [
+        const ReactionUser(emoji: '🎉', createdAt: null, handle: 'a'), // non-curated
+        const ReactionUser(emoji: '❤️', createdAt: null, handle: 'b'),
+        const ReactionUser(emoji: '👍', createdAt: null, handle: 'c'),
+        const ReactionUser(emoji: '❤️', createdAt: null, handle: 'd'),
+      ];
+      final counts = ReactionTotals.countEmojis(reactors);
+      expect(counts['❤️'], 2);
+      expect(counts['👍'], 1);
+      expect(counts['🎉'], 1);
+      // Curated set (👍 before ❤️) precedes any non-curated emoji (🎉).
+      expect(counts.keys.toList(), ['👍', '❤️', '🎉']);
+    });
+  });
+
   group('Comment.assembleTree', () {
     test('builds a depth-2 tree and promotes orphans', () {
       final flat = [

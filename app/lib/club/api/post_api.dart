@@ -40,6 +40,16 @@ class PostApi {
   Future<void> removeReaction(int postId, String emoji) => client
       .guard(() => client.dio.delete('/post/$postId/reactions/${Uri.encodeComponent(emoji)}'));
 
+  /// Authenticated reactors for a post (newest first, server-capped at 200, no pagination).
+  /// Shape is `{items: [...], total}` — not the cursor-paged `Page<T>` envelope.
+  Future<List<ReactionUser>> reactionUsers(int postId) => client.guard(() async {
+        final resp = await client.dio.get('/post/$postId/reaction-users');
+        final items = ((resp.data as Map)['items'] as List?) ?? const [];
+        return items
+            .map((e) => ReactionUser.fromJson((e as Map).cast<String, dynamic>()))
+            .toList();
+      });
+
   /// Comments as a depth-≤2 tree (fetched flat, assembled client-side).
   Future<List<Comment>> comments(int postId) => client.guard(() async {
         final resp = await client.dio

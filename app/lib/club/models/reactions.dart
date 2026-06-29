@@ -33,6 +33,21 @@ class ReactionTotals {
   bool hasMine(String emoji) => mine.contains(emoji);
   int get mineCount => mine.length;
 
+  /// Per-emoji counts derived from a fetched reactor list, ordered by the curated
+  /// set first (then any others), so a summary header stays consistent with the rows.
+  static Map<String, int> countEmojis(List<ReactionUser> reactors) {
+    final raw = <String, int>{};
+    for (final r in reactors) {
+      raw[r.emoji] = (raw[r.emoji] ?? 0) + 1;
+    }
+    final out = <String, int>{};
+    for (final e in kReactionEmojis) {
+      if (raw.containsKey(e)) out[e] = raw.remove(e)!;
+    }
+    out.addAll(raw); // any non-curated emojis the server returned, in encounter order
+    return out;
+  }
+
   /// Optimistic local toggle of one emoji (add/remove), respecting idempotency.
   /// Caller enforces the ≤5/user cap before adding.
   ReactionTotals withLocal({required String emoji, required bool add}) {
@@ -57,4 +72,31 @@ class ReactionTotals {
       mine: mn,
     );
   }
+}
+
+/// One authenticated reactor for the Reactions page: `GET /post/{id}/reaction-users`.
+/// Anonymous reactions are excluded by the server, and the list is capped at the 200
+/// most recent (no pagination).
+class ReactionUser {
+  final String emoji;
+  final DateTime? createdAt;
+  final String handle;
+  final String? avatarUrl;
+  final String? sqid;
+
+  const ReactionUser({
+    required this.emoji,
+    required this.createdAt,
+    required this.handle,
+    this.avatarUrl,
+    this.sqid,
+  });
+
+  factory ReactionUser.fromJson(Map<String, dynamic> j) => ReactionUser(
+        emoji: (j['emoji'] ?? '').toString(),
+        createdAt: DateTime.tryParse((j['created_at'] ?? '').toString()),
+        handle: (j['user_handle'] ?? '').toString(),
+        avatarUrl: j['user_avatar_url'] as String?,
+        sqid: j['user_public_sqid'] as String?,
+      );
 }
