@@ -41,8 +41,10 @@ extension _EditorToolgrid on _EditorPageState {
   bool _actionActive(String dsl) => (dsl == 'Onion' && _onion) || (dsl == 'PlayPause' && _playing);
 
   bool _actionEnabled(String dsl) {
-    if (dsl == 'Undo') return _state['can_undo'] == true;
-    if (dsl == 'Redo') return _state['can_redo'] == true;
+    // A pending move draft makes Undo/Redo live so either can discard it (see _doToolAction), even
+    // when there's no committed history to step through.
+    if (dsl == 'Undo') return _hasMoveDraft || _state['can_undo'] == true;
+    if (dsl == 'Redo') return _hasMoveDraft || _state['can_redo'] == true;
     return true;
   }
 
@@ -50,10 +52,20 @@ extension _EditorToolgrid on _EditorPageState {
   void _doToolAction(String dsl) {
     switch (dsl) {
       case 'Undo':
-        if (_state['can_undo'] == true) _act('Undo()');
+        // Undo/Redo first discard an in-progress move draft (same as navigating away or Cancel);
+        // they only step the committed history once no draft is pending.
+        if (_hasMoveDraft) {
+          _cancelMoveDraft();
+        } else if (_state['can_undo'] == true) {
+          _act('Undo()');
+        }
         break;
       case 'Redo':
-        if (_state['can_redo'] == true) _act('Redo()');
+        if (_hasMoveDraft) {
+          _cancelMoveDraft();
+        } else if (_state['can_redo'] == true) {
+          _act('Redo()');
+        }
         break;
       case 'PlayPause':
         _playing ? _pause() : _play();
