@@ -39,27 +39,39 @@ class ClubConfig {
         ClubEnvironment.prod => 'wss://makapix.club/mqtt',
       };
 
-  // ---- GitHub OAuth (server-brokered; HTTPS App Link return leg) ----
+  // ---- GitHub OAuth (server-brokered) — return leg differs per environment ----
 
-  // The OAuth return uses a verified **HTTPS App Link** on a dedicated host (distinct from the
-  // API host to avoid the same-origin App Links trap), so Android opens the app directly — no
-  // chooser, no lingering browser tab. The custom scheme is a fallback, kept allowlisted
-  // server-side during the cutover. App id migrated club.makapix.editor → club.makapix.app
-  // (2026-06-30), so the scheme + applicationId + assetlinks package_name all use the new id.
+  // App id migrated club.makapix.editor → club.makapix.app (2026-06-30); the scheme,
+  // applicationId, and assetlinks package_name all use the new id. Both the HTTPS App Link
+  // and the custom scheme are server-allowlisted.
+  //
+  // **dev** returns via a verified **HTTPS App Link** (`app-dev.makapix.club`), a *sibling* of
+  // the dev API host `development.makapix.club`, so Chrome hands the callback's 302 off to the
+  // app cleanly. **prod** must use the **custom scheme**: its App Link host `app.makapix.club`
+  // is a *subdomain* of the prod API host `makapix.club`, so Chrome treats the 302 (and even a
+  // same-host "Open Makapix" page tap) as same-site and keeps it in the tab — App Links there
+  // can't hand off. Custom-scheme links aren't subject to that suppression. (Fixing prod to use
+  // App Links would need the app-link host to be cross-host from the callback host — a server
+  // topology change; the custom scheme is the pragmatic, app-only fix.)
 
-  /// callbackUrlScheme passed to flutter_web_auth_2 — `https` (matches the App Link).
-  static const String oauthCallbackScheme = 'https';
-
-  /// Custom-scheme fallback the app registers (Android manifest); matches applicationId.
+  /// Custom scheme the app registers (Android manifest); matches applicationId.
   static const String oauthScheme = 'club.makapix.app';
 
-  /// The exact redirect URI sent to `/auth/github/login` and captured on return — a
-  /// per-environment HTTPS App Link, allowlisted server-side (must match byte-for-byte).
+  /// The custom-scheme return (server-allowlisted).
+  static const String oauthCustomRedirectUri = 'club.makapix.app://oauth/github';
+
+  /// The redirect URI sent to `/auth/github/login` and captured on return — the HTTPS App Link
+  /// on dev, the custom scheme on prod (see the note above). Server-allowlisted byte-for-byte.
   String get oauthRedirectUri => switch (env) {
         ClubEnvironment.dev => 'https://app-dev.makapix.club/oauth/github',
-        ClubEnvironment.prod => 'https://app.makapix.club/oauth/github',
+        ClubEnvironment.prod => oauthCustomRedirectUri,
       };
 
-  /// The custom-scheme fallback redirect (also allowlisted server-side during cutover).
-  static const String oauthCustomRedirectUri = 'club.makapix.app://oauth/github';
+  /// callbackUrlScheme passed to flutter_web_auth_2 — must equal the **scheme** of the captured
+  /// return URL (the plugin keys pending callbacks by `Uri.scheme`): `https` for the dev App
+  /// Link, the custom scheme for the prod custom-scheme return.
+  String get oauthCallbackScheme => switch (env) {
+        ClubEnvironment.dev => 'https',
+        ClubEnvironment.prod => oauthScheme,
+      };
 }

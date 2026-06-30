@@ -19,10 +19,17 @@ void main() {
     expect(q['state'], 'ST');
   });
 
-  test('prod environment targets makapix.club + the prod App Link redirect', () {
+  test('prod environment targets makapix.club + the custom-scheme return', () {
+    // Prod returns via the custom scheme (App Links can't hand off there — app.makapix.club
+    // is a subdomain of the prod API host makapix.club).
     const oauth = GithubOAuth(ClubConfig(ClubEnvironment.prod));
     final uri = oauth.buildAuthorizeUrl(const Pkce(verifier: 'v', challenge: 'c', state: 's'));
     expect(uri.toString(), startsWith('https://makapix.club/api/v1/auth/github/login'));
-    expect(uri.queryParameters['redirect_uri'], 'https://app.makapix.club/oauth/github');
+    expect(uri.queryParameters['redirect_uri'], 'club.makapix.app://oauth/github');
+  });
+
+  test('callback scheme matches the return: https on dev, custom scheme on prod', () {
+    expect(const ClubConfig(ClubEnvironment.dev).oauthCallbackScheme, 'https');
+    expect(const ClubConfig(ClubEnvironment.prod).oauthCallbackScheme, 'club.makapix.app');
   });
 }

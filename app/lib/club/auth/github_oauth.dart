@@ -14,9 +14,9 @@ class GithubAuthResult {
 }
 
 /// Drives the server-brokered GitHub sign-in: opens `/auth/github/login` in an
-/// in-app browser, captures the HTTPS App Link return
-/// (`https://app[-dev].makapix.club/oauth/github`), validates `state`, and returns
-/// the code + verifier for the token exchange.
+/// in-app browser, captures the return (the dev **HTTPS App Link** or the prod
+/// **custom scheme** — see `ClubConfig.oauthRedirectUri`), validates `state`, and
+/// returns the code + verifier for the token exchange.
 class GithubOAuth {
   final ClubConfig config;
   const GithubOAuth(this.config);
@@ -38,7 +38,7 @@ class GithubOAuth {
     try {
       callback = await FlutterWebAuth2.authenticate(
         url: url,
-        callbackUrlScheme: ClubConfig.oauthCallbackScheme,
+        callbackUrlScheme: config.oauthCallbackScheme,
         // Non-ephemeral so the server's HttpOnly oauth_state cookie persists from
         // /github/login to the callback (server gotcha #2).
         options: const FlutterWebAuth2Options(preferEphemeral: false),
