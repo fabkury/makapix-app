@@ -70,27 +70,30 @@ void main() {
       expect(validatePasswordError('Sup3rPass'), isNull);
     });
 
-    test('handle rules mirror the server: 1–32 printable code points', () {
-      // Empty / whitespace-only is rejected (after stripping).
+    test('handle rules mirror the server: 3–32, letters/digits/marks/-/_, no edge symbol', () {
+      // Empty / whitespace-only / length bounds (3–32 code points after stripping).
       expect(validateHandleError(''), isNotNull);
       expect(validateHandleError('   '), isNotNull);
-      // 1 char is now valid (server min_length = 1); surrounding whitespace is stripped.
-      expect(validateHandleError('a'), isNull);
-      expect(validateHandleError('  ab  '), isNull);
-      // The server is broadly permissive: spaces-within, emoji, punctuation,
-      // leading/trailing symbols, and non-Latin scripts are all allowed.
-      expect(validateHandleError('has space'), isNull);
-      expect(validateHandleError('has.dot'), isNull);
-      expect(validateHandleError('-lead'), isNull);
-      expect(validateHandleError('trail_'), isNull);
-      expect(validateHandleError('pixel 🎨 artist'), isNull);
-      expect(validateHandleError('Пиксель'), isNull);
-      // Length is counted in code points (runes), not UTF-16 units.
-      expect(validateHandleError('😀' * 32), isNull); // 32 code points (64 UTF-16 units)
-      expect(validateHandleError('😀' * 33), isNotNull); // 33 code points → too long
-      expect(validateHandleError('a' * 33), isNotNull);
-      // Control characters are rejected (here a U+0007 bell).
-      expect(validateHandleError('bad\u{7}name'), isNotNull);
+      expect(validateHandleError('ab'), isNotNull); // < 3
+      expect(validateHandleError('a' * 33), isNotNull); // > 32
+      // Valid: ASCII with inner -/_, and letters of any script.
+      expect(validateHandleError('pixel'), isNull);
+      expect(validateHandleError('pixel_artist-7'), isNull);
+      expect(validateHandleError('  pixel  '), isNull); // surrounding whitespace stripped
+      expect(validateHandleError('Пиксель'), isNull); // Cyrillic letters
+      expect(validateHandleError('ピクセル'), isNull); // Japanese (Lo)
+      expect(validateHandleError('café'), isNull); // accented letter / combining mark
+      // Rejected: whitespace within, punctuation, symbols, emoji, control chars.
+      expect(validateHandleError('has space'), isNotNull);
+      expect(validateHandleError('has.dot'), isNotNull);
+      expect(validateHandleError('emoji😀here'), isNotNull);
+      expect(validateHandleError('😀' * 5), isNotNull);
+      expect(validateHandleError('bad\u{7}name'), isNotNull); // U+0007 bell
+      // No leading/trailing hyphen or underscore.
+      expect(validateHandleError('-lead'), isNotNull);
+      expect(validateHandleError('trail_'), isNotNull);
+      // Must contain at least one letter or digit (here: only combining acute marks).
+      expect(validateHandleError('\u{301}\u{301}\u{301}'), isNotNull);
     });
 
     test('email shape', () {
