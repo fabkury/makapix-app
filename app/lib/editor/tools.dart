@@ -73,8 +73,8 @@ const toolTips = <String, String>{
   'SelectByColor': 'Tap to select similar colours. Threshold sets tolerance.',
   'SelectLayer': 'Turn the layer\'s opaque pixels into a selection. Tap a mode to apply.',
   'HsvShift': 'Shift the selection\'s hue, saturation and value, then Apply.',
-  'Flip': 'Mirror the image horizontally or vertically.',
-  'Rotate': 'Rotate the canvas 90° or 180°.',
+  'Flip': 'Mirror the layer horizontally or vertically. Acts on the selection if any.',
+  'Rotate': 'Rotate the layer 90° or 180°, or by a free Angle. Acts on the selection if any. (Whole canvas: ☰ menu.)',
   'Invert': 'Invert the image colours.',
   'Resize': 'Change the canvas dimensions.',
 };

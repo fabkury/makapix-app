@@ -55,7 +55,8 @@ Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending)
 | Select multiple layers, move together | ✅ | layer "move group" toggle + nudge pad → `NudgeLayers` (one undoable edit) |
 | Import GIF/WebP/PNG/APNG/JPEG/BMP (crop/scale, start-frame, as-layer) | ✅ | all formats; import options dialog; **interactive crop-rectangle** (drag a region over the source preview) |
 | Export PNG / sprite-sheet / GIF | ✅ | PNG + animated GIF wired in UI; sprite-sheet in codec |
-| Canvas ops: flip H/V, invert, **rotate 90/180/270, resize, crop-to-selection** | ✅ | all in UI; rotate/resize/crop are undoable (canvas size travels with the edit) |
+| Canvas ops: invert, resize, crop-to-selection, **rotate canvas 90/180/270, flip canvas H/V** | ✅ | rotate/flip-canvas in the timeline ☰ menu's grouped **Canvas** submenu; resize/crop/rotate undoable (canvas size travels with the edit) |
+| **Flip & Rotate tools: layer/selection-scoped** | ✅ | Flip H/V and Rotate act on the active layer, or just the selected pixels (the selection mask transforms with them); Rotate adds 90/180/270 instant + an "Angle" draft with an on-canvas handle (semitransparent preview, Commit = one undo), rotate-about-centre, clip to canvas |
 | `.mkpx` compression | ✅ | per-tile RLE (v2 format, v1 still readable) — a 10k-layer project shrank **48 MB → 1.2 MB** |
 | Drag-and-drop reorder (frames & layers) | ✅ | long-press to drag in the timeline / layer strip (button reorder also kept) |
 
@@ -64,6 +65,7 @@ Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending)
 |---|---|---|
 | **C0** GitHub OAuth + PKCE + token store | ✅ | server-brokered OAuth, custom-scheme return leg (`flutter_web_auth_2`); tokens at rest in `flutter_secure_storage`; single-flight 401→refresh→retry (`api/club_api_client.dart`) |
 | **C0** Welcome / sign-in funnel | ✅ | signed-out users land on `ClubWelcomePage` (featured grid + sign-in), matching the website |
+| **C0b** In-app account creation | ✅ | email register → 6-digit OTP verify → sign in with emailed temp password → welcome wizard (set password · handle w/ live availability · avatar/bio · `complete-welcome`). Forgot-password (OTP) on sign-in; Settings → Account (change password/handle, linked logins). `ui/auth/*`, `state/registration_controller.dart` (`docs/plans/C0b-account-creation.md`) |
 | **C1** Feeds: Recent / Recommended / Following | ✅ | tabbed hub; cursor paging (`state/paged.dart`); pull-to-refresh |
 | **C1** Search (posts / hashtags / users) | ✅ | `ui/search_page.dart`, `ui/hashtag_feed_page.dart` |
 | **C1** Profiles + follow/unfollow | ✅ | `ui/profile_page.dart` |

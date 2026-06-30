@@ -116,10 +116,18 @@ extension _EditorTimeline on _EditorPageState {
   }
 
   // The editor's ☰ menu (left of the film-strip): everything that used to be in the top bar except
-  // the Undo/Redo/Play/Onion actions (which are now row-3 tools).
-  PopupMenuItem<String> _menuRow(String value, IconData icon, String label) => PopupMenuItem<String>(
+  // the Undo/Redo/Play/Onion actions (which are now row-3 tools). The top level holds Club + four
+  // grouped submenus (File / Import & export / Canvas / View) that open as bottom sheets — matching
+  // the frame/layer/palette menus — so the list stays short.
+  PopupMenuItem<String> _menuRow(String value, IconData icon, String label, {bool submenu = false}) =>
+      PopupMenuItem<String>(
         value: value,
-        child: Row(children: [Icon(icon, size: 18), const SizedBox(width: 12), Text(label)]),
+        child: Row(children: [
+          Icon(icon, size: 18),
+          const SizedBox(width: 12),
+          Text(label),
+          if (submenu) ...[const Spacer(), const Icon(Icons.chevron_right, size: 18, color: Colors.white54)],
+        ]),
       );
 
   Widget _editorMenuButton() {
@@ -136,18 +144,10 @@ extension _EditorTimeline on _EditorPageState {
         const PopupMenuDivider(),
         _menuRow('club', Icons.public, 'Club'),
         const PopupMenuDivider(),
-        _menuRow('new', Icons.insert_drive_file_outlined, 'New'),
-        _menuRow('library', Icons.collections_bookmark_outlined, 'My Drawings'),
-        _menuRow('open', Icons.folder_open, 'Open'),
-        _menuRow('save', Icons.save, 'Save'),
-        const PopupMenuDivider(),
-        _menuRow('import', Icons.image_outlined, 'Import image…'),
-        _menuRow('png', Icons.photo_outlined, 'Export frame as PNG…'),
-        _menuRow('gif', Icons.gif_box_outlined, 'Export animation as GIF…'),
-        _menuRow('post', Icons.cloud_upload_outlined, 'Post to Makapix Club'),
-        const PopupMenuDivider(),
-        CheckedPopupMenuItem<String>(value: 'grid', checked: _grid, child: const Text('Grid')),
-        _menuRow('fit', Icons.fit_screen, 'Fit to screen'),
+        _menuRow('file', Icons.folder_outlined, 'File', submenu: true),
+        _menuRow('share', Icons.import_export, 'Import & export', submenu: true),
+        _menuRow('canvas', Icons.crop_rotate, 'Canvas', submenu: true),
+        _menuRow('view', Icons.visibility_outlined, 'View', submenu: true),
       ],
     );
   }
@@ -157,39 +157,78 @@ extension _EditorTimeline on _EditorPageState {
       case 'club':
         ref.read(openClubProvider.notifier).state++;
         break;
-      case 'new':
-        _newDialog();
+      case 'file':
+        _fileMenu();
         break;
-      case 'library':
-        _openGallery();
+      case 'share':
+        _importExportMenu();
         break;
-      case 'open':
-        _open();
+      case 'canvas':
+        _canvasMenu();
         break;
-      case 'save':
-        _save();
-        break;
-      case 'import':
-        _importImage();
-        break;
-      case 'png':
-        _exportPng();
-        break;
-      case 'gif':
-        _exportGif();
-        break;
-      case 'post':
-        _postToClub();
-        break;
-      case 'grid':
-        setState(() => _grid = !_grid);
-        _redraw();
-        break;
-      case 'fit':
-        _fitView();
+      case 'view':
+        _viewMenu();
         break;
     }
   }
+
+  // A grouped submenu, as a bottom sheet (consistent with the frame/layer/palette menus). `rows`
+  // builds the action tiles with the sheet's own context so each can dismiss itself.
+  void _editorSubMenu(String title, List<Widget> Function(BuildContext) rows) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(dense: true, title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold))),
+          const Divider(height: 1),
+          ...rows(ctx),
+        ]),
+      ),
+    );
+  }
+
+  ListTile _sheetItem(BuildContext ctx, IconData icon, String label, VoidCallback action, {Color? color}) =>
+      ListTile(
+        leading: Icon(icon, color: color),
+        title: Text(label),
+        onTap: () {
+          Navigator.pop(ctx);
+          action();
+        },
+      );
+
+  void _fileMenu() => _editorSubMenu('File', (ctx) => [
+        _sheetItem(ctx, Icons.insert_drive_file_outlined, 'New', _newDialog),
+        _sheetItem(ctx, Icons.collections_bookmark_outlined, 'My Drawings', _openGallery),
+        _sheetItem(ctx, Icons.folder_open, 'Open', _open),
+        _sheetItem(ctx, Icons.save, 'Save', _save),
+      ]);
+
+  void _importExportMenu() => _editorSubMenu('Import & export', (ctx) => [
+        _sheetItem(ctx, Icons.image_outlined, 'Import image…', _importImage),
+        _sheetItem(ctx, Icons.photo_outlined, 'Export frame as PNG…', _exportPng),
+        _sheetItem(ctx, Icons.gif_box_outlined, 'Export animation as GIF…', _exportGif),
+        _sheetItem(ctx, Icons.cloud_upload_outlined, 'Post to Makapix Club', _postToClub),
+      ]);
+
+  // Whole-canvas transforms (all frames + layers). The Rotate/Flip *tools* act on the active layer
+  // or selection; these are the document-wide versions.
+  void _canvasMenu() => _editorSubMenu('Canvas', (ctx) => [
+        _sheetItem(ctx, Icons.rotate_right, 'Rotate 90° CW', () => _act('Rotate(1)')),
+        _sheetItem(ctx, Icons.rotate_left, 'Rotate 90° CCW', () => _act('Rotate(3)')),
+        _sheetItem(ctx, Icons.sync, 'Rotate 180°', () => _act('Rotate(2)')),
+        const Divider(height: 1),
+        _sheetItem(ctx, Icons.swap_horiz, 'Flip horizontal', () => _act('FlipCanvasH()')),
+        _sheetItem(ctx, Icons.swap_vert, 'Flip vertical', () => _act('FlipCanvasV()')),
+      ]);
+
+  void _viewMenu() => _editorSubMenu('View', (ctx) => [
+        _sheetItem(ctx, _grid ? Icons.grid_on : Icons.grid_off, _grid ? 'Grid: on' : 'Grid: off', () {
+          setState(() => _grid = !_grid);
+          _redraw();
+        }),
+        _sheetItem(ctx, Icons.fit_screen, 'Fit to screen', _fitView),
+      ]);
 
   void _frameMenu(int i) {
     final count = engine.frameCount;
