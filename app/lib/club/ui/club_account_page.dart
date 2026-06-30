@@ -16,6 +16,20 @@ class ClubAccountPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // When this page is used as a sign-in funnel (pushed from the welcome screen
+    // or the sign-in form), a *fresh* sign-in should drop the user back on the
+    // Club home (Recent feed), not leave them on the signed-in account view. Only
+    // fire on the transition into signed-in, so opening Account from the ☰ menu
+    // (already signed in) still shows the account view. `canPop` avoids touching
+    // the root; `context.mounted` keeps it safe if a child page popped first.
+    ref.listen<AuthState>(authControllerProvider, (prev, next) {
+      if (next.isSignedIn &&
+          !(prev?.isSignedIn ?? false) &&
+          context.mounted &&
+          Navigator.of(context).canPop()) {
+        Navigator.of(context).popUntil((r) => r.isFirst);
+      }
+    });
     final auth = ref.watch(authControllerProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Makapix Club')),
