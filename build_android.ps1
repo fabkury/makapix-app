@@ -7,9 +7,10 @@
 #   Android SDK + NDK installed (Android Studio or sdkmanager)
 #
 # Usage:  ./build_android.ps1            (build APK, dev back end)
-#         ./build_android.ps1 -Install   (build, then install to a USB-connected phone)
+#         ./build_android.ps1 -Install   (build APK, then install to a USB-connected phone)
 #         ./build_android.ps1 -Prod      (point the app at the production back end, makapix.club)
-param([switch]$Install, [switch]$Prod)
+#         ./build_android.ps1 -Bundle    (build a signed .aab for Play upload instead of an APK)
+param([switch]$Install, [switch]$Prod, [switch]$Bundle)
 
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
@@ -27,6 +28,21 @@ if ($LASTEXITCODE -ne 0) { exit 1 }
 
 # CLUB_ENV selects the back end (club_config.dart); default `dev`, `prod` targets makapix.club.
 $clubEnv = if ($Prod) { "prod" } else { "dev" }
+
+if ($Bundle) {
+  # Signed Android App Bundle for the Play Store (release signing comes from app/android/key.properties).
+  Write-Host "==> Building release AAB (CLUB_ENV=$clubEnv)..." -ForegroundColor Cyan
+  Push-Location "$root\app"
+  flutter build appbundle --release --dart-define=CLUB_ENV=$clubEnv
+  Pop-Location
+  if ($LASTEXITCODE -ne 0) { exit 1 }
+
+  $aab = "$root\app\build\app\outputs\bundle\release\app-release.aab"
+  Write-Host "==> AAB ready: $aab" -ForegroundColor Green
+  if ($Install) { Write-Host "    (-Install is ignored for -Bundle; an .aab is uploaded to Play, not adb-installed.)" -ForegroundColor Yellow }
+  return
+}
+
 Write-Host "==> Building release APK (CLUB_ENV=$clubEnv)..." -ForegroundColor Cyan
 Push-Location "$root\app"
 flutter build apk --release --dart-define=CLUB_ENV=$clubEnv
