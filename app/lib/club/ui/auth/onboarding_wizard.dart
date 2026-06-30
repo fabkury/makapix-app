@@ -110,6 +110,14 @@ class _OnboardingWizardState extends ConsumerState<OnboardingWizard> {
                 },
                 const SizedBox(height: 24),
                 Row(children: [
+                  // Go back to the previous step (e.g. profile → handle). Not offered when the
+                  // previous step is the legacy "set password" step (re-entering it would trap
+                  // the user, since it has no skip and the fields aren't pre-filled).
+                  if (i > 0 && steps[i - 1] != _Step.password)
+                    TextButton(
+                      onPressed: st.busy ? null : () => setState(() => _index = i - 1),
+                      child: const Text('Back'),
+                    ),
                   if (!_isPasswordStep(step))
                     TextButton(
                       onPressed: st.busy ? null : () => _advance(isLast, ctrl),

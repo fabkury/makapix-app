@@ -46,6 +46,22 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
     super.dispose();
   }
 
+  // Keep the top-bar selection (`_feed`) in sync with the PageView's real page.
+  // When the feed view mounts *after* the onboarding wizard, the deferred first
+  // layout makes PageView fire a spurious `onPageChanged(0)` (highlighting
+  // Recommended) while the controller actually settles on `initialPage` (Recent).
+  // Re-assert `_feed` from the controller's settled page after the frame; only act
+  // on a settled (near-integer) page so an in-progress swipe isn't disturbed.
+  void _syncFeedToPager() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_pages.hasClients) return;
+      final page = _pages.page;
+      if (page == null || (page - page.roundToDouble()).abs() > 0.01) return;
+      final kind = _feeds[page.round().clamp(0, _feeds.length - 1)];
+      if (kind != _feed) setState(() => _feed = kind);
+    });
+  }
+
   // Jump to a feed by its top-bar button (animated; keeps the swipe pager in sync).
   void _selectFeed(FeedKind kind) {
     final i = _feeds.indexOf(kind);
@@ -152,6 +168,9 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
     if ((auth.me?.needsWelcome ?? false) && !ref.watch(welcomeDismissedProvider)) {
       return const OnboardingWizard();
     }
+    // Reaching the feed view (notably right after the wizard) — re-assert the
+    // top-bar selection from the pager's real page once this frame lays out.
+    _syncFeedToPager();
     final unread = ref.watch(unreadCountProvider);
     final mySqid = auth.me?.user.sub;
     final cs = Theme.of(context).colorScheme;
