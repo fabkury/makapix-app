@@ -13,8 +13,9 @@ class GithubAuthResult {
 }
 
 /// Drives the server-brokered GitHub sign-in: opens `/auth/github/login` in an
-/// in-app browser, captures the `club.makapix.editor://oauth/github` redirect,
-/// validates `state`, and returns the code + verifier for the token exchange.
+/// in-app browser, captures the HTTPS App Link return
+/// (`https://app[-dev].makapix.club/oauth/github`), validates `state`, and returns
+/// the code + verifier for the token exchange.
 class GithubOAuth {
   final ClubConfig config;
   const GithubOAuth(this.config);
@@ -22,7 +23,7 @@ class GithubOAuth {
   /// Build the authorize URL. Pure — also exercised by tests.
   Uri buildAuthorizeUrl(Pkce pkce) =>
       Uri.parse('${config.apiBase}/auth/github/login').replace(queryParameters: {
-        'redirect_uri': ClubConfig.oauthRedirectUri,
+        'redirect_uri': config.oauthRedirectUri,
         'code_challenge': pkce.challenge,
         'code_challenge_method': 'S256',
         'state': pkce.state,
@@ -36,7 +37,7 @@ class GithubOAuth {
     try {
       callback = await FlutterWebAuth2.authenticate(
         url: url,
-        callbackUrlScheme: ClubConfig.oauthScheme,
+        callbackUrlScheme: ClubConfig.oauthCallbackScheme,
         // Non-ephemeral so the server's HttpOnly oauth_state cookie persists from
         // /github/login to the callback (server gotcha #2).
         options: const FlutterWebAuth2Options(preferEphemeral: false),

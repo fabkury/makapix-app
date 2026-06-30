@@ -39,16 +39,27 @@ class ClubConfig {
         ClubEnvironment.prod => 'wss://makapix.club/mqtt',
       };
 
-  // ---- GitHub OAuth (server-brokered; native custom-scheme return leg) ----
+  // ---- GitHub OAuth (server-brokered; HTTPS App Link return leg) ----
 
-  // NOTE — accepted legacy: the `.editor` token below is retained intentionally. It matches
-  // the Android applicationId (the installed-app identity) and the server OAuth allowlist
-  // byte-for-byte, so it is NOT renamed alongside the desktop binary (makapix_editor →
-  // makapix_club). It persists until an indeterminate, server-coordinated future migration.
+  // The OAuth return uses a verified **HTTPS App Link** on a dedicated host (distinct from the
+  // API host to avoid the same-origin App Links trap), so Android opens the app directly — no
+  // chooser, no lingering browser tab. The custom scheme is a fallback, kept allowlisted
+  // server-side during the cutover. App id migrated club.makapix.editor → club.makapix.app
+  // (2026-06-30), so the scheme + applicationId + assetlinks package_name all use the new id.
 
-  /// Custom scheme the app registers for the web-auth callback (Android manifest).
-  static const String oauthScheme = 'club.makapix.editor';
+  /// callbackUrlScheme passed to flutter_web_auth_2 — `https` (matches the App Link).
+  static const String oauthCallbackScheme = 'https';
 
-  /// The exact redirect URI allowlisted server-side (must match byte-for-byte).
-  static const String oauthRedirectUri = 'club.makapix.editor://oauth/github';
+  /// Custom-scheme fallback the app registers (Android manifest); matches applicationId.
+  static const String oauthScheme = 'club.makapix.app';
+
+  /// The exact redirect URI sent to `/auth/github/login` and captured on return — a
+  /// per-environment HTTPS App Link, allowlisted server-side (must match byte-for-byte).
+  String get oauthRedirectUri => switch (env) {
+        ClubEnvironment.dev => 'https://app-dev.makapix.club/oauth/github',
+        ClubEnvironment.prod => 'https://app.makapix.club/oauth/github',
+      };
+
+  /// The custom-scheme fallback redirect (also allowlisted server-side during cutover).
+  static const String oauthCustomRedirectUri = 'club.makapix.app://oauth/github';
 }

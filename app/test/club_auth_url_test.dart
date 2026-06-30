@@ -12,15 +12,17 @@ void main() {
     expect(uri.toString(),
         startsWith('https://development.makapix.club/api/v1/auth/github/login'));
     final q = uri.queryParameters;
-    expect(q['redirect_uri'], 'club.makapix.editor://oauth/github');
+    // The OAuth return is now a per-environment HTTPS App Link (dev host).
+    expect(q['redirect_uri'], 'https://app-dev.makapix.club/oauth/github');
     expect(q['code_challenge'], 'CHAL');
     expect(q['code_challenge_method'], 'S256');
     expect(q['state'], 'ST');
   });
 
-  test('prod environment targets makapix.club', () {
+  test('prod environment targets makapix.club + the prod App Link redirect', () {
     const oauth = GithubOAuth(ClubConfig(ClubEnvironment.prod));
     final uri = oauth.buildAuthorizeUrl(const Pkce(verifier: 'v', challenge: 'c', state: 's'));
     expect(uri.toString(), startsWith('https://makapix.club/api/v1/auth/github/login'));
+    expect(uri.queryParameters['redirect_uri'], 'https://app.makapix.club/oauth/github');
   });
 }

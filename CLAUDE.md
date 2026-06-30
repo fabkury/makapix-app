@@ -38,11 +38,11 @@ macOS CI — it cannot be built here, so don't try.
 ```
 
 The Windows exe is `app/build/windows/x64/runner/Release/makapix_club.exe`. The APK is
-`app/build/app/outputs/flutter-apk/app-release.apk`. The Android **app id is `club.makapix.editor`** (also the
-OAuth custom scheme — see `ClubConfig`). That `…editor` app id is **accepted legacy, kept intentionally**: it
-is the installed-app identity and must match the server OAuth allowlist byte-for-byte, so it is *not* renamed
-alongside the desktop binary (which was migrated `makapix_editor` → `makapix_club`). It persists until an
-indeterminate, server-coordinated future migration.
+`app/build/app/outputs/flutter-apk/app-release.apk`. The Android **app id is `club.makapix.app`** (migrated
+2026-06-30 from the legacy `club.makapix.editor`, in lockstep with the server OAuth allowlist + the hosted
+`assetlinks.json` `package_name`). It must match the server OAuth allowlist byte-for-byte. The GitHub OAuth
+return now uses a **verified HTTPS App Link** on a dedicated host (`app[-dev].makapix.club/oauth/github`); the
+custom scheme `club.makapix.app://oauth/github` is a kept fallback — see `ClubConfig`.
 
 ### The fast editor dev loop (no GUI, no device)
 
@@ -146,8 +146,9 @@ and the editor's **☰ menu → Club** returns to the hub. The shell switches pi
   401→refresh→retry interceptor (`api/club_api_client.dart`). `config/club_config.dart` selects the server:
   `dev` → `https://development.makapix.club`, `prod` → `https://makapix.club`; the REST base is
   `{baseUrl}/api/v1`. Auth tokens at rest use `flutter_secure_storage`; the GitHub OAuth return leg uses
-  `flutter_web_auth_2` with the `club.makapix.editor://oauth/github` custom scheme (registered in the Android
-  manifest; must match the server allowlist byte-for-byte).
+  `flutter_web_auth_2` with a **verified HTTPS App Link** (`https://app[-dev].makapix.club/oauth/github`,
+  `callbackUrlScheme: "https"` + an `autoVerify` manifest intent-filter), falling back to the
+  `club.makapix.app://oauth/github` custom scheme; both are server-allowlisted byte-for-byte.
 
 ### The Editor ↔ Club seam
 

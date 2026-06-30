@@ -89,8 +89,8 @@ cargo run -p makapix-cli -- run examples/showcase.txt "render:0:out.png:6" state
 cd app && flutter run -d windows                    # interactive UI (debug)
 ```
 The prebuilt release app is at `app/build/windows/x64/runner/Release/makapix_club.exe`. *(The Android app id
-and OAuth scheme `club.makapix.editor` are intentionally retained as accepted legacy — they are server-allowlisted
-and the installed-app identity — and are not renamed alongside the desktop binary.)*
+and OAuth custom scheme are **`club.makapix.app`** — migrated 2026-06-30 from the legacy `club.makapix.editor`,
+in lockstep with the server OAuth allowlist and the hosted `assetlinks.json`.)*
 
 ### Build & install on Android
 The Rust engine cross-compiles to an Android `.so` (bundled into the APK via `jniLibs`); the Dart loader
@@ -100,6 +100,6 @@ aarch64-linux-android armv7-linux-androideabi`, `cargo install cargo-ndk`.
 ./build_android.ps1              # cross-compiles .so (arm64+arm32) + builds app-release.apk
 ./build_android.ps1 -Install     # also installs to a USB-connected phone (USB debugging on)
 ```
-The APK lands at `app/build/app/outputs/flutter-apk/app-release.apk`, app id **`club.makapix.editor`**.
+The APK lands at `app/build/app/outputs/flutter-apk/app-release.apk`, app id **`club.makapix.app`**.
 **Sideload (no cable):** copy that APK to the phone → tap it → allow "install unknown apps" → Install.
 **Over USB:** enable Developer Options + USB debugging on the phone, connect it, then `adb install -r <apk>`.
