@@ -33,10 +33,14 @@ class AuthApi {
     }
   }
 
-  /// `POST /auth/register { email }` → `{ user_id, email, handle }`.
-  /// Throws [ClubError] (status 409) for `pending_verification` / already-exists.
-  Future<RegisterResult> register(String email) => _guard(() async {
-        final resp = await _dio.post('/auth/register', data: {'email': email});
+  /// `POST /auth/register { email, password? }` → `{ user_id, email, handle,
+  /// verification_method }`. With a `password` (A2) the server emails a single OTP
+  /// and `verification_method: "otp"`; without one it's the legacy link path.
+  /// Throws [ClubError] (status 409) for already-exists; on a non-A2 server an
+  /// unverified collision is `pending_verification` (A2 resumes with 200 instead).
+  Future<RegisterResult> register(String email, {String? password}) => _guard(() async {
+        final resp = await _dio.post('/auth/register',
+            data: {'email': email, 'password': ?password});
         return RegisterResult.fromJson((resp.data as Map).cast<String, dynamic>());
       });
 

@@ -6,6 +6,7 @@ import '../state/auth_controller.dart';
 import 'auth/account_management_page.dart';
 import 'auth/create_account_page.dart';
 import 'auth/forgot_password_page.dart';
+import 'auth/verify_email_page.dart';
 
 /// Reachable from the editor AppBar. Renders the sign-in form or the signed-in
 /// account view based on [authControllerProvider]. The app is not login-gated;
@@ -15,6 +16,20 @@ class ClubAccountPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // When this page is used as a sign-in funnel (pushed from the welcome screen
+    // or the sign-in form), a *fresh* sign-in should drop the user back on the
+    // Club home (Recent feed), not leave them on the signed-in account view. Only
+    // fire on the transition into signed-in, so opening Account from the ☰ menu
+    // (already signed in) still shows the account view. `canPop` avoids touching
+    // the root; `context.mounted` keeps it safe if a child page popped first.
+    ref.listen<AuthState>(authControllerProvider, (prev, next) {
+      if (next.isSignedIn &&
+          !(prev?.isSignedIn ?? false) &&
+          context.mounted &&
+          Navigator.of(context).canPop()) {
+        Navigator.of(context).popUntil((r) => r.isFirst);
+      }
+    });
     final auth = ref.watch(authControllerProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Makapix Club')),
@@ -79,6 +94,24 @@ class _SignInFormState extends ConsumerState<_SignInForm> {
                     const SizedBox(width: 8),
                     Expanded(child: Text(auth.error!, style: const TextStyle(fontSize: 13))),
                   ]),
+                ),
+              // An unverified-email login is a dead end without this — route the
+              // user to enter the OTP they have (or resend one), carrying the
+              // password they just typed so a successful verify signs them in.
+              if (auth.isUnverified)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: OutlinedButton.icon(
+                    onPressed: busy
+                        ? null
+                        : () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => VerifyEmailPage(
+                                    email: _email.text.trim(), password: _password.text))),
+                    icon: const Icon(Icons.mark_email_read_outlined),
+                    label: const Text('Verify your email'),
+                  ),
                 ),
               TextField(
                 controller: _email,
