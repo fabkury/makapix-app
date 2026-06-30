@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 
 import '../auth/club_session.dart';
 import '../config/club_config.dart';
+import '../models/account.dart';
 import '../models/club_error.dart';
 
 /// Authenticated Dio for all Club endpoints. Attaches the bearer token and, on
@@ -73,5 +74,62 @@ class ClubApiClient {
   Future<Map<String, dynamic>> me() => guard(() async {
         final resp = await dio.get('/auth/me');
         return (resp.data as Map).cast<String, dynamic>();
+      });
+
+  // ---- account management (authenticated; SPEC-CLUB §6 / C0b) ----
+
+  /// `POST /auth/change-password`. Also the wizard's "set your password" step
+  /// (where `current` is the server-emailed temporary password).
+  Future<void> changePassword(String current, String next) => guard(() async {
+        await dio.post('/auth/change-password',
+            data: {'current_password': current, 'new_password': next});
+      });
+
+  /// `POST /auth/check-handle-availability` (authed → excludes the caller's own
+  /// handle, so re-saving an unchanged handle reads as available).
+  Future<HandleAvailability> checkHandle(String handle) => guard(() async {
+        final resp = await dio.post('/auth/check-handle-availability', data: {'handle': handle});
+        return HandleAvailability.fromJson((resp.data as Map).cast<String, dynamic>());
+      });
+
+  /// `POST /auth/change-handle` → the server's resulting handle.
+  Future<String> changeHandle(String newHandle) => guard(() async {
+        final resp = await dio.post('/auth/change-handle', data: {'new_handle': newHandle});
+        return ((resp.data as Map?)?['handle'] ?? newHandle).toString();
+      });
+
+  /// `POST /auth/complete-welcome` — finishes onboarding (flips `needs_welcome`).
+  Future<void> completeWelcome() => guard(() async {
+        await dio.post('/auth/complete-welcome');
+      });
+
+  /// `GET /auth/providers` — the user's linked authentication methods.
+  Future<List<AuthIdentity>> listProviders() => guard(() async {
+        final resp = await dio.get('/auth/providers');
+        final list = (resp.data as Map?)?['identities'] as List? ?? const [];
+        return list
+            .map((e) => AuthIdentity.fromJson((e as Map).cast<String, dynamic>()))
+            .toList(growable: false);
+      });
+
+  /// `DELETE /auth/providers/{provider}/{identity_id}` — unlink a method
+  /// (server rejects unlinking the last one with 400).
+  Future<void> unlinkProvider(String provider, String identityId) => guard(() async {
+        await dio.delete(
+            '/auth/providers/${Uri.encodeComponent(provider)}/${Uri.encodeComponent(identityId)}');
+      });
+
+  /// `PATCH /user/{user_key} { bio }` (path resolves by UUID only).
+  Future<void> updateBio(String userKey, String bio) => guard(() async {
+        await dio.patch('/user/${Uri.encodeComponent(userKey)}', data: {'bio': bio});
+      });
+
+  /// `POST /user/{user_key}/avatar` (multipart) → the new avatar URL, if returned.
+  Future<String?> uploadAvatar(String userKey, List<int> bytes, String filename) =>
+      guard(() async {
+        final form = FormData.fromMap(
+            {'image': MultipartFile.fromBytes(bytes, filename: filename)});
+        final resp = await dio.post('/user/${Uri.encodeComponent(userKey)}/avatar', data: form);
+        return (resp.data as Map?)?['avatar_url'] as String?;
       });
 }

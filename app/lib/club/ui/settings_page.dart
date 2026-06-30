@@ -6,6 +6,7 @@ import '../models/club_error.dart';
 import '../state/api_providers.dart';
 import '../state/auth_controller.dart';
 import '../state/feed_providers.dart';
+import 'auth/account_management_page.dart';
 import 'widgets/common.dart';
 
 /// User settings (`SPEC-CLUB.md` §21). Currently surfaces the monitored-hashtag
@@ -81,6 +82,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ? ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                Text('Account', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 6),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.manage_accounts_outlined),
+                  title: const Text('Password, handle & linked logins'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => const AccountManagementPage())),
+                ),
+                const Divider(height: 24),
                 Text('Monitored hashtags', style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 6),
                 const Text(

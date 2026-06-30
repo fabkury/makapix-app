@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../api/auth_api.dart';
 import '../api/edit_api.dart';
 import '../api/feed_api.dart';
 import '../api/notifications_api.dart';
@@ -10,7 +11,10 @@ import '../api/search_api.dart';
 import '../api/pmd_api.dart';
 import '../api/settings_api.dart';
 import '../api/stats_api.dart';
-import 'auth_controller.dart' show clubApiClientProvider;
+import 'auth_controller.dart' show clubApiClientProvider, clubConfigProvider;
+
+/// The unauthenticated account-lifecycle client (register / OTP / handle-check).
+final authApiProvider = Provider<AuthApi>((ref) => AuthApi(ref.watch(clubConfigProvider)));
 
 final feedApiProvider = Provider<FeedApi>((ref) => FeedApi(ref.watch(clubApiClientProvider)));
 final postApiProvider = Provider<PostApi>((ref) => PostApi(ref.watch(clubApiClientProvider)));

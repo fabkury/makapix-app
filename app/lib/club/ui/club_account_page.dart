@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/club_user.dart';
 import '../state/auth_controller.dart';
+import 'auth/account_management_page.dart';
+import 'auth/create_account_page.dart';
+import 'auth/forgot_password_page.dart';
 
 /// Reachable from the editor AppBar. Renders the sign-in form or the signed-in
 /// account view based on [authControllerProvider]. The app is not login-gated;
@@ -123,11 +126,26 @@ class _SignInFormState extends ConsumerState<_SignInForm> {
                 icon: const Icon(Icons.code),
                 label: const Text('Continue with GitHub'),
               ),
-              const SizedBox(height: 16),
-              const Text(
-                'No account? Sign up at makapix.club, verify your email, then sign in here.',
-                style: TextStyle(color: Colors.white38, fontSize: 11),
-                textAlign: TextAlign.center,
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: busy
+                    ? null
+                    : () => Navigator.push(context,
+                        MaterialPageRoute(builder: (_) => const ForgotPasswordPage())),
+                child: const Text('Forgot password?'),
+              ),
+              const Divider(height: 24),
+              Text('New to Makapix Club?',
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  textAlign: TextAlign.center),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: busy
+                    ? null
+                    : () => Navigator.push(context,
+                        MaterialPageRoute(builder: (_) => const CreateAccountPage())),
+                icon: const Icon(Icons.person_add_alt),
+                label: const Text('Create account'),
               ),
             ],
           ),
@@ -178,6 +196,13 @@ class _AccountView extends ConsumerWidget {
         _kv('Can post publicly',
             me.capabilities['can_post_public'] == true ? 'Yes' : 'Pending approval'),
         const SizedBox(height: 24),
+        OutlinedButton.icon(
+          onPressed: () => Navigator.push(
+              context, MaterialPageRoute(builder: (_) => const AccountManagementPage())),
+          icon: const Icon(Icons.manage_accounts_outlined),
+          label: const Text('Manage account'),
+        ),
+        const SizedBox(height: 12),
         OutlinedButton.icon(
           onPressed: () => ctrl.logout(),
           icon: const Icon(Icons.logout),

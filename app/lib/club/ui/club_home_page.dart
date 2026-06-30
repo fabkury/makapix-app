@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/post.dart';
+import '../state/account_providers.dart';
 import '../state/auth_controller.dart';
 import '../state/edit_bridge.dart';
 import '../state/feed_providers.dart';
@@ -9,6 +10,7 @@ import '../state/notifications_providers.dart';
 import '../state/player_providers.dart';
 import 'artist_dashboard_page.dart';
 import 'artwork_detail_page.dart';
+import 'auth/onboarding_wizard.dart';
 import 'club_account_page.dart';
 import 'club_welcome_page.dart';
 import 'notifications_page.dart';
@@ -144,6 +146,11 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
     }
     if (!auth.isSignedIn) {
       return const ClubWelcomePage();
+    }
+    // New accounts (and any not-yet-welcomed sign-in) get the onboarding wizard
+    // before the feeds, unless they chose "Skip for now" this session.
+    if ((auth.me?.needsWelcome ?? false) && !ref.watch(welcomeDismissedProvider)) {
+      return const OnboardingWizard();
     }
     final unread = ref.watch(unreadCountProvider);
     final mySqid = auth.me?.user.sub;

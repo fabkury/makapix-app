@@ -94,6 +94,11 @@ class AuthController extends StateNotifier<AuthState> {
     await _loadMe();
   }
 
+  /// Re-fetch `/auth/me` and flip to signed-in (or signed-out on an auth error).
+  /// Used after the in-app registration sign-in and after onboarding /
+  /// account-management changes so the UI reflects the server immediately.
+  Future<void> reloadMe() => _loadMe();
+
   Future<void> _loadMe() async {
     try {
       final me = ClubMe.fromJson(await api.me());
