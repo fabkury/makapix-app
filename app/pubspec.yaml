@@ -60,6 +60,24 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
 
+  # Generates the platform launcher-icon variants (Android mipmap densities +
+  # adaptive icon XML, Windows .ico) from the brand masters in assets/icons/.
+  # Regenerate after changing the masters: `dart run flutter_launcher_icons`.
+  flutter_launcher_icons: ^0.14.4
+
+# Launcher-icon generation config (consumed by the flutter_launcher_icons tool).
+# Masters live in assets/icons/; iOS is intentionally omitted (deferred — no ios/ project).
+flutter_launcher_icons:
+  image_path: "assets/icons/icon.png"            # full-bleed master: legacy Android + Windows
+  android: true                                  # regenerates mipmap-*/ic_launcher.png
+  min_sdk_android: 21
+  adaptive_icon_background: "assets/icons/icon_background.png"
+  adaptive_icon_foreground: "assets/icons/icon_foreground.png"
+  windows:
+    generate: true
+    image_path: "assets/icons/icon.png"
+    icon_size: 256
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
