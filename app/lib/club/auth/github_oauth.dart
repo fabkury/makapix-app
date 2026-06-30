@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 
 import '../config/club_config.dart';
@@ -42,8 +43,23 @@ class GithubOAuth {
         // /github/login to the callback (server gotcha #2).
         options: const FlutterWebAuth2Options(preferEphemeral: false),
       );
-    } catch (_) {
-      throw ClubError(code: 'oauth_cancelled', message: 'GitHub sign-in was cancelled.');
+    } catch (e) {
+      // flutter_web_auth_2 reports a user-dismissed browser as
+      // PlatformException(code: "CANCELED"). Anything else (no browser/activity,
+      // or an upstream failure the user gave up on) is a real error — don't
+      // mislabel it as a deliberate cancel. (Note: when the *return* never reaches
+      // the app — e.g. a broken server callback — the user still ends up closing
+      // the tab, which surfaces here as CANCELED; that's a server-side problem,
+      // not something the app can distinguish at this layer.)
+      final cancelled = e is PlatformException &&
+          (e.code.toUpperCase() == 'CANCELED' || e.code.toUpperCase() == 'CANCELLED');
+      if (cancelled) {
+        throw ClubError(code: 'oauth_cancelled', message: 'GitHub sign-in was cancelled.');
+      }
+      throw ClubError(
+        code: 'oauth_failed',
+        message: "Couldn't complete GitHub sign-in. Please try again.",
+      );
     }
 
     final cb = Uri.parse(callback);
