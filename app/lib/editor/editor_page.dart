@@ -48,8 +48,9 @@ const _kCurrentDrawing = 'editor.currentDrawingId'; // last-open library drawing
 const _transformTools = {'Flip', 'Rotate', 'Invert', 'Resize'};
 // Row-3 "action" tools in the reorderable grid: tapping fires an action/toggle immediately rather
 // than selecting a draw tool (handled in _toolTile / _doToolAction). Undo/Redo are NOT here — they
-// are pinned at the left of row-3 (see _buildToolBar / _pinnedActionTile).
-const _actionTools = {'PlayPause', 'Onion'};
+// are pinned at the left of row-3 (see _buildToolBar / _pinnedActionTile). Play is NOT here either —
+// it is a selectable tool group whose controls live in row-1 (see _isPlayTool / _buildToolOptions).
+const _actionTools = {'Onion'};
 // Paint tools that support a "Precision" mode (off-finger reticle + draw-by-button). Precision is
 // a per-tool toggle, remembered independently per tool — see [_precisionTools].
 const _precisionTools = {'Pencil', 'Brush', 'Airbrush', 'Eraser', 'Dodge', 'Burn', 'Eyedropper'};
@@ -223,9 +224,13 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // engine's draw tool, and the canvas is inert while one is active.
   bool get _isTransformTool => _transformTools.contains(_tool);
 
-  // Tools whose canvas is inert (no drawing on tap/drag): the transform action groups and Sel Lyr
-  // (whose alpha→selection actions are triggered from row-1, not the canvas).
-  bool get _isInertCanvasTool => _isTransformTool || _tool == 'SelectLayer';
+  // The Play tool: a selectable playback group (like the transform tools). Its controls — play/pause,
+  // prev/next frame, go to frame — live in row-1, and the canvas is inert while it's active.
+  bool get _isPlayTool => _tool == 'PlayPause';
+
+  // Tools whose canvas is inert (no drawing on tap/drag): the transform action groups, the Play
+  // group, and Sel Lyr (whose alpha→selection actions are triggered from row-1, not the canvas).
+  bool get _isInertCanvasTool => _isTransformTool || _isPlayTool || _tool == 'SelectLayer';
 
   // Freehand selection tools — their drag grows a live marquee preview, so the outline must be
   // re-pulled on every move (unlike paint tools). Excludes the inert SelectLayer. [audit F-9/F-11]
@@ -380,7 +385,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
             _buildLayers(layers), // layers film-strip, directly above the tool options
             _buildToolOptions(), // row-1
             _buildPalette(), // row-2
-            _buildToolBar(), // row-3 (now also holds Undo/Redo/Play-Pause/Onion)
+            _buildToolBar(), // row-3 (also holds the pinned Undo/Redo and the Onion toggle)
             _buildTooltipBand(context),
           ],
         ),

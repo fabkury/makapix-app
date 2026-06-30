@@ -34,11 +34,7 @@ extension _EditorToolgrid on _EditorPageState {
     return enabled ? tile : Opacity(opacity: 0.4, child: tile);
   }
 
-  // The (possibly dynamic) ToolDef for an action tool — Play/Pause swaps icon+label with playback.
-  ToolDef _actionDef(String dsl) =>
-      dsl == 'PlayPause' ? ToolDef('PlayPause', _playing ? Icons.pause : Icons.play_arrow, _playing ? 'Pause' : 'Play') : _toolDef(dsl);
-
-  bool _actionActive(String dsl) => (dsl == 'Onion' && _onion) || (dsl == 'PlayPause' && _playing);
+  bool _actionActive(String dsl) => dsl == 'Onion' && _onion;
 
   bool _actionEnabled(String dsl) {
     // A pending move draft makes Undo/Redo live so either can discard it (see _doToolAction), even
@@ -67,9 +63,6 @@ extension _EditorToolgrid on _EditorPageState {
           _act('Redo()');
         }
         break;
-      case 'PlayPause':
-        _playing ? _pause() : _play();
-        break;
       case 'Onion':
         setState(() => _onion = !_onion);
         _redraw();
@@ -81,7 +74,7 @@ extension _EditorToolgrid on _EditorPageState {
   // the order minus the dragged tool, used to map a hovered tile to a drop index.
   Widget _toolTile(String dsl, List<String> others) {
     final isAction = _actionTools.contains(dsl);
-    final t = isAction ? _actionDef(dsl) : _toolDef(dsl);
+    final t = _toolDef(dsl);
     final selected = !isAction && dsl == _tool;
     final active = isAction && _actionActive(dsl);
     final enabled = !isAction || _actionEnabled(dsl);
