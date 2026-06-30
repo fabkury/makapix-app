@@ -2815,6 +2815,28 @@ mod tests {
     }
 
     #[test]
+    fn flip_document_flips_all_layers_and_selection() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(1, 2); // layer 0
+        s.add_layer();
+        s.tap(3, 4); // layer 1 (now active)
+        s.tool = ToolKind::SelectRect;
+        s.stroke_path(&[(0, 0), (3, 3)]); // a 4×4 selection at the top-left
+        let before = s.doc.content_hash();
+        s.flip_document(true); // canvas-wide horizontal flip
+        assert_eq!(s.size(), (16, 16), "a canvas flip never resizes");
+        assert_eq!(s.pixel(0, 0, 14, 2), Rgba8::WHITE, "layer 0 mirrored: (1,2) → (14,2)");
+        assert_eq!(s.pixel(0, 1, 12, 4), Rgba8::WHITE, "layer 1 mirrored too: (3,4) → (12,4)");
+        assert_eq!(s.pixel(0, 0, 1, 2), Rgba8::TRANSPARENT);
+        let sel = s.doc.selection.as_ref().expect("selection mirrors with the canvas");
+        assert!(sel.get(15, 0) && sel.get(12, 3), "the mask flipped to the top-right");
+        assert!(!sel.get(0, 0));
+        assert!(s.doc.undo(), "the canvas flip is one undo step");
+        assert_eq!(s.doc.content_hash(), before);
+    }
+
+    #[test]
     fn flip_selection_mirrors_an_asymmetric_mask() {
         let mut s = Session::new(16, 16);
         s.tool = ToolKind::SelectRect;

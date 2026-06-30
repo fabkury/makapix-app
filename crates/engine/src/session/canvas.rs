@@ -127,6 +127,44 @@ impl Session {
         });
     }
 
+    /// Flip the whole document (every frame + every layer) across the X axis (`horizontal`) or Y
+    /// axis — the canvas-wide Flip reached from the timeline ☰ menu. The **Flip tool**
+    /// (`flip_horizontal`/`flip_vertical`) flips only the active layer / selection; this is the
+    /// document-wide transform. Dimension-preserving, so the selection mask mirrors with the pixels
+    /// (the marquee stays aligned). One undo step.
+    pub fn flip_document(&mut self, horizontal: bool) {
+        let w = self.doc.size.w as i32;
+        let h = self.doc.size.h as i32;
+        self.edit_doc("flip", |s| {
+            for f in &mut s.doc.frames {
+                for l in &mut f.layers {
+                    let src = l.pixels.clone();
+                    l.pixels.clear();
+                    for y in 0..h {
+                        for x in 0..w {
+                            let c = if horizontal { src.get(w - 1 - x, y) } else { src.get(x, h - 1 - y) };
+                            if c.a != 0 {
+                                l.pixels.set(x, y, c);
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some(m) = s.selection_clone() {
+                let mut nm = Mask::new(w as u32, h as u32);
+                for y in 0..h {
+                    for x in 0..w {
+                        if m.get(x, y) {
+                            let (fx, fy) = if horizontal { (w - 1 - x, y) } else { (x, h - 1 - y) };
+                            nm.set(fx, fy, true);
+                        }
+                    }
+                }
+                s.doc.selection = Some(Arc::new(nm)); // the mask mirrors with the pixels
+            }
+        });
+    }
+
     /// Resize the canvas, placing existing content at top-left or centered (SPEC §28.1).
     pub fn resize_canvas(&mut self, nw: u16, nh: u16, center: bool) {
         let new_size = Size::new(nw.clamp(8, 256), nh.clamp(8, 256));
