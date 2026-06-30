@@ -453,6 +453,33 @@ extension _EditorControls on _EditorPageState {
     if (_tool == 'Resize') {
       children.add(_miniBtn('Resize…', _resizeCanvasDialog));
     }
+    if (_tool == 'PlayPause') {
+      final n = engine.frameCount;
+      final active = engine.activeFrame;
+      // Play / pause toggle — the playback control formerly on the row-3 tile. A single-frame
+      // document can't animate, so the button is disabled then.
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(
+            minimumSize: const Size(0, 34),
+            backgroundColor: _playing ? const Color(0xFFB0703A) : const Color(0xFF4080C0),
+          ),
+          onPressed: n > 1 ? () => _playing ? _pause() : _play() : null,
+          icon: Icon(_playing ? Icons.pause : Icons.play_arrow, size: 16),
+          label: Text(_playing ? 'Pause' : 'Play'),
+        ),
+      ));
+      children.add(const SizedBox(width: 6));
+      // Prev / Next frame — pressing either auto-pauses playback first (see _stepFrame), with the
+      // current "Frame X / N" between them.
+      children.add(IconButton(iconSize: 22, tooltip: 'Previous frame', onPressed: () => _stepFrame(-1), icon: const Icon(Icons.skip_previous)));
+      label('Frame ${active + 1} / $n');
+      children.add(IconButton(iconSize: 22, tooltip: 'Next frame', onPressed: () => _stepFrame(1), icon: const Icon(Icons.skip_next)));
+      children.add(const SizedBox(width: 6));
+      // Go to… — type a frame number and jump to it (also auto-pauses playback first).
+      children.add(_miniBtn('Go to…', _gotoFrameDialog));
+    }
 
     return Container(
       height: 48,

@@ -549,4 +549,42 @@ extension _EditorEngine on _EditorPageState {
     _redraw();
   }
 
+  // Step to the previous (delta = -1) or next (delta = +1) animation frame, wrapping around the
+  // ends. Pressing either auto-pauses playback first (the Play tool's contract).
+  void _stepFrame(int delta) {
+    if (_playing) _pause();
+    final n = engine.frameCount;
+    if (n <= 1) return;
+    final next = ((engine.activeFrame + delta) % n + n) % n;
+    _act('SetActiveFrame($next)');
+  }
+
+  // "Go to…" — prompt for a 1-based frame number and jump to it. Auto-pauses playback first; an
+  // empty/out-of-range entry is clamped, and Cancel leaves the active frame unchanged.
+  Future<void> _gotoFrameDialog() async {
+    if (_playing) _pause();
+    final n = engine.frameCount;
+    final ctrl = TextEditingController(text: '${engine.activeFrame + 1}');
+    ctrl.selection = TextSelection(baseOffset: 0, extentOffset: ctrl.text.length);
+    final entered = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Go to frame'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(labelText: 'Frame (1 – $n)'),
+          onSubmitted: (s) => Navigator.pop(ctx, int.tryParse(s.trim())),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, int.tryParse(ctrl.text.trim())), child: const Text('Go')),
+        ],
+      ),
+    );
+    if (entered == null || !mounted) return;
+    _act('SetActiveFrame(${(entered - 1).clamp(0, n - 1)})');
+  }
+
 }

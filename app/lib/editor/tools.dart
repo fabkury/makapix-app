@@ -36,8 +36,9 @@ const tools = <ToolDef>[
   ToolDef('Rotate', Icons.rotate_90_degrees_cw, 'Rotate'),
   ToolDef('Invert', Icons.invert_colors, 'Invert'),
   ToolDef('Resize', Icons.aspect_ratio, 'Resize'),
-  // Action tools: tapping performs an action (or toggles) immediately instead of selecting a
-  // draw tool. Play/Pause swaps icon+label with playback; Onion lights up while on.
+  // Play: a selectable tool group (like the transform tools above). Selecting it reveals its
+  // playback controls in row-1 (play/pause, prev/next frame, go to frame) and leaves the canvas
+  // inert. Onion is an action toggle: tapping it lights up onion-skinning immediately.
   // (Undo/Redo are NOT here — they are pinned at the left of row-3, see _buildToolBar.)
   ToolDef('PlayPause', Icons.play_arrow, 'Play'),
   ToolDef('Onion', Icons.layers, 'Onion'),
@@ -77,4 +78,5 @@ const toolTips = <String, String>{
   'Rotate': 'Rotate the layer 90° or 180°, or by a free Angle. Acts on the selection if any. (Whole canvas: ☰ menu.)',
   'Invert': 'Invert the image colours.',
   'Resize': 'Change the canvas dimensions.',
+  'PlayPause': 'Play or pause the animation. Step to the previous or next frame, or jump to one.',
 };
