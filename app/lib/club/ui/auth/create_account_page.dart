@@ -8,8 +8,9 @@ import 'forgot_password_page.dart';
 
 /// The in-app "create account" flow, hosted in **one** route so a successful
 /// sign-in pops cleanly back to the Club root (where the `needs_welcome` gate
-/// then shows the onboarding wizard). Steps: email → 6-digit code → first
-/// sign-in with the emailed temporary password.
+/// then shows the onboarding wizard). Steps: email + chosen password → 6-digit
+/// code → (legacy only) temp-password sign-in. On the A2 path the chosen password
+/// is set at registration, so verifying the code signs the user straight in.
 class CreateAccountPage extends ConsumerStatefulWidget {
   const CreateAccountPage({super.key});
   @override
@@ -18,12 +19,15 @@ class CreateAccountPage extends ConsumerStatefulWidget {
 
 class _CreateAccountPageState extends ConsumerState<CreateAccountPage> {
   final _email = TextEditingController();
+  final _password = TextEditingController();
   final _code = TextEditingController();
   final _temp = TextEditingController();
+  bool _obscure = true;
 
   @override
   void dispose() {
     _email.dispose();
+    _password.dispose();
     _code.dispose();
     _temp.dispose();
     super.dispose();
@@ -31,8 +35,8 @@ class _CreateAccountPageState extends ConsumerState<CreateAccountPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Either path to a session (email+temp-password OR "Sign up with GitHub")
-    // flips the global auth state — when it does, leave the flow.
+    // Either path to a session (email+password OR "Sign up with GitHub") flips the
+    // global auth state — when it does, leave the flow.
     ref.listen<AuthState>(authControllerProvider, (prev, next) {
       if (next.isSignedIn && mounted) {
         Navigator.of(context).popUntil((r) => r.isFirst);
@@ -47,7 +51,7 @@ class _CreateAccountPageState extends ConsumerState<CreateAccountPage> {
       appBar: AppBar(title: const Text('Create account')),
       body: AuthFormShell(
         children: switch (reg.step) {
-          RegStep.email => _emailStep(reg, ctrl, githubBusy),
+          RegStep.details => _detailsStep(reg, ctrl, githubBusy),
           RegStep.code => _codeStep(reg, ctrl),
           RegStep.signIn => _signInStep(reg, ctrl),
           RegStep.done => const [Center(child: CircularProgressIndicator())],
@@ -69,13 +73,14 @@ class _CreateAccountPageState extends ConsumerState<CreateAccountPage> {
       ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
       : Text(label);
 
-  // ---- step 1: email ----
-  List<Widget> _emailStep(RegistrationState reg, RegistrationController ctrl, bool githubBusy) {
+  // ---- step 1: email + chosen password ----
+  List<Widget> _detailsStep(RegistrationState reg, RegistrationController ctrl, bool githubBusy) {
     final busy = reg.busy || githubBusy;
     final banner = authBanner(error: reg.error, notice: reg.notice);
+    void submit() => ctrl.submitDetails(_email.text, _password.text);
     return [
       ..._header('Create your account',
-          'Sign up with your email — we\'ll send a 6-digit code to verify it.'),
+          'Sign up with your email and choose a password — we\'ll email a 6-digit code to verify it.'),
       ?banner,
       TextField(
         controller: _email,
@@ -83,11 +88,27 @@ class _CreateAccountPageState extends ConsumerState<CreateAccountPage> {
         keyboardType: TextInputType.emailAddress,
         autocorrect: false,
         decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder()),
-        onSubmitted: (_) => busy ? null : ctrl.submitEmail(_email.text),
+      ),
+      const SizedBox(height: 12),
+      TextField(
+        controller: _password,
+        enabled: !busy,
+        obscureText: _obscure,
+        decoration: InputDecoration(
+          labelText: 'Password',
+          border: const OutlineInputBorder(),
+          helperText: 'At least 8 characters, with a letter and a number.',
+          helperMaxLines: 2,
+          suffixIcon: IconButton(
+            icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
+            onPressed: () => setState(() => _obscure = !_obscure),
+          ),
+        ),
+        onSubmitted: (_) => busy ? null : submit(),
       ),
       const SizedBox(height: 16),
       FilledButton(
-        onPressed: busy ? null : () => ctrl.submitEmail(_email.text),
+        onPressed: busy ? null : submit,
         child: _spinnerOr('Create account', reg.busy),
       ),
       const SizedBox(height: 12),
@@ -116,9 +137,7 @@ class _CreateAccountPageState extends ConsumerState<CreateAccountPage> {
   List<Widget> _codeStep(RegistrationState reg, RegistrationController ctrl) {
     final banner = authBanner(error: reg.error, notice: reg.notice);
     return [
-      ..._header('Verify your email',
-          'Enter the 6-digit code we emailed to ${reg.email}. You\'ll also receive a '
-              'temporary password — keep that email for the next step.'),
+      ..._header('Verify your email', 'Enter the 6-digit code we emailed to ${reg.email}.'),
       ?banner,
       TextField(
         controller: _code,
@@ -142,7 +161,7 @@ class _CreateAccountPageState extends ConsumerState<CreateAccountPage> {
     ];
   }
 
-  // ---- step 3: first sign-in with the emailed temporary password ----
+  // ---- step 3 (legacy/non-A2 only): sign in with the emailed temp password ----
   List<Widget> _signInStep(RegistrationState reg, RegistrationController ctrl) {
     final banner = authBanner(error: reg.error, notice: reg.notice);
     return [

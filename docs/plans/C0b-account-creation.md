@@ -203,7 +203,35 @@ inbox to read the OTP + temp password) remains — user-run.
 ### Notes / findings
 - The server's `/auth/register` only issues a **link** token, never an OTP, so the in-app flow makes a second
   `email-otp/request` call → the user gets **two emails** (temp password + 6-digit code). The verify-screen copy
-  states this. A future one-line server change (have `register` also send the OTP) collapses it to one email.
+  states this. **Resolved in principle (A2):** the server team accepted a change letting `register` accept an
+  optional `password` and send a single OTP email — see `docs/club-server-cr-register-chosen-password.md`
+  (✅ accepted) and `inbox/reply-register-chosen-password.md`.
+
+### A2 "one email, chosen password" — ✅ IMPLEMENTED (2026-06-30, live on dev)
+The server shipped A2 to `development.makapix.club`; the app now uses it (still version-tolerant — it falls back
+to the temp-password flow if a server ever returns `"link"`):
+- The create-account screen takes a **password**; `register { email, password }` is sent (`AuthApi.register`).
+- `RegisterResult.verificationMethod`: `"otp"` → go straight to the code step (no `email-otp/request` call) and,
+  after verify, **auto sign-in** with the chosen password — the temp-password screen is skipped. `"link"`/absent
+  or a `pending_verification` 409 → legacy fallback (request OTP, temp-password sign-in).
+- The wizard's **"set your password" step is skipped** on the A2 path (`pendingWelcomePasswordProvider` left null);
+  only the legacy temp-password path stashes it.
+- `RegistrationController` rewritten (`submitDetails(email, password)`, `isLegacy`, `_completeSignIn(stash:)`);
+  `RegStep.email` → `RegStep.details`.
+
+### Sign-in recovery: "Email not verified" → verify path — ✅ IMPLEMENTED (2026-06-30)
+Device testing surfaced a dead end: signing in with an **unverified** email showed *"Email not verified"* with no
+way forward. Fixed:
+- `AuthState` now carries `errorCode` + an `isUnverified` helper (tolerant of envelope/message differences).
+  `AuthController.loginPassword` threads `ClubError.code`.
+- The sign-in form shows a **"Verify your email"** button when `isUnverified`, opening `ui/auth/verify_email_page.dart`
+  (enter the OTP they have, or **Resend**), seeded with the typed email + password so a successful verify signs
+  them straight in. Backed by `state/verify_email_controller.dart`.
+
+### Still backstopped server-side
+- The new **`weak_password`** 400 (v1 envelope; field under `details.field`) is enforced by the server; the app
+  also pre-validates client-side.
+- The `"link"` / no-password path (website parity, GitHub users) still routes through the wizard.
 - The onboarding password step intentionally does **not** clear the stashed temp password (that would shrink the
   gated step list and skip the handle step); it is cleared in `OnboardingController.finish()`.
 - file_picker 11 uses the static `FilePicker.pickFiles(...)` (no `.platform` singleton).

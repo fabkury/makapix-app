@@ -3,19 +3,37 @@
 /// signed-in [ClubMe]/[ClubUser] (which come from `/auth/me`).
 library;
 
-/// `POST /auth/register` → 201. The server generates a handle + a random password
-/// (emailed); no tokens are returned (the user must verify first).
+/// `POST /auth/register`. With a chosen `password` (A2) the server creates the
+/// account with it and emails a single 6-digit OTP (`verification_method: "otp"`);
+/// without one it generates + emails a random password and a link
+/// (`verification_method: "link"`, the website path). New = 201, resume = 200 —
+/// both success.
 class RegisterResult {
   final int userId;
   final String email;
   final String handle;
-  const RegisterResult({required this.userId, required this.email, required this.handle});
+
+  /// `"otp"` → the server emailed a code and accepted our chosen password (skip
+  /// the separate OTP request + the temp-password sign-in). `"link"` (default for
+  /// any caller that omits a password, incl. a non-A2 server that ignored it) →
+  /// fall back to the temp-password flow.
+  final String verificationMethod;
+
+  const RegisterResult({
+    required this.userId,
+    required this.email,
+    required this.handle,
+    this.verificationMethod = 'link',
+  });
 
   factory RegisterResult.fromJson(Map<String, dynamic> j) => RegisterResult(
         userId: (j['user_id'] as num?)?.toInt() ?? 0,
         email: (j['email'] ?? '').toString(),
         handle: (j['handle'] ?? '').toString(),
+        verificationMethod: (j['verification_method'] ?? 'link').toString(),
       );
+
+  bool get isOtp => verificationMethod == 'otp';
 }
 
 /// `POST /auth/email-otp/verify` → marks the email verified.

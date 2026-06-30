@@ -36,16 +36,29 @@ class AuthState {
   final AuthStatus status;
   final ClubMe? me;
   final String? error;
-  const AuthState(this.status, {this.me, this.error});
+
+  /// The machine-readable [ClubError.code] for a failure (e.g.
+  /// `email_not_verified`), so the UI can offer a tailored next step.
+  final String? errorCode;
+
+  const AuthState(this.status, {this.me, this.error, this.errorCode});
 
   const AuthState.loading() : this(AuthStatus.loading);
   const AuthState.signedOut() : this(AuthStatus.signedOut);
   const AuthState.signingIn() : this(AuthStatus.signingIn);
   AuthState.signedIn(ClubMe me) : this(AuthStatus.signedIn, me: me);
-  const AuthState.failure(String message) : this(AuthStatus.error, error: message);
+  const AuthState.failure(String message, {String? code})
+      : this(AuthStatus.error, error: message, errorCode: code);
 
   bool get isSignedIn => status == AuthStatus.signedIn;
   bool get isBusy => status == AuthStatus.loading || status == AuthStatus.signingIn;
+
+  /// True when a failure means the email is registered but unverified — the UI
+  /// routes these to the verify-email screen. Tolerant of envelope differences.
+  bool get isUnverified =>
+      status == AuthStatus.error &&
+      (errorCode == 'email_not_verified' ||
+          (error?.toLowerCase().contains('not verified') ?? false));
 }
 
 /// Orchestrates sign-in/out and exposes [AuthState] to the UI. The editor never
@@ -121,7 +134,7 @@ class AuthController extends StateNotifier<AuthState> {
       await session.loginPassword(email.trim(), password);
       await _loadMe();
     } on ClubError catch (e) {
-      state = AuthState.failure(e.message);
+      state = AuthState.failure(e.message, code: e.code);
     } catch (_) {
       state = const AuthState.failure('Unexpected error. Please try again.');
     }
