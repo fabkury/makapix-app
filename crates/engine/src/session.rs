@@ -2200,7 +2200,16 @@ impl Session {
     // ---- animation / rng ----
 
     pub fn play(&mut self) {
+        // Begin playback from the CURRENT active frame (the one being edited), not always frame 0:
+        // align the virtual clock to that frame's start offset in the timeline. Because playback
+        // loops, every frame is still shown once the animation wraps around.
+        self.clock.now_us = self.frame_start_us(self.doc.active_frame);
         self.playing = true;
+    }
+    /// Start time (µs) of frame `index` in the linear timeline — the sum of all earlier frames'
+    /// durations (an out-of-range index simply sums them all). Used to seed the play clock.
+    fn frame_start_us(&self, index: usize) -> u64 {
+        self.doc.frames.iter().take(index).map(|f| f.duration_us as u64).sum()
     }
     pub fn pause(&mut self) {
         self.playing = false;
@@ -2990,6 +2999,20 @@ mod tests {
         assert_eq!(s.doc.frames[2].id, id1, "the old frame 1 shifted right to index 2");
         assert!(s.doc.undo(), "one undo removes the inserted frame");
         assert_eq!(s.doc.frames.len(), 3);
+    }
+
+    #[test]
+    fn play_starts_from_the_active_frame() {
+        let mut s = Session::new(8, 8);
+        s.add_frame(); // 2 frames
+        s.add_frame(); // 3 frames (0,1,2)
+        s.set_active_frame(2);
+        s.play();
+        assert_eq!(s.current_play_frame(), 2, "playback begins at the active frame, not frame 0");
+        // Advancing past the last frame wraps back to the start, so every frame is still reached.
+        let total: u64 = s.doc.frames.iter().map(|f| f.duration_us as u64).sum();
+        s.advance_clock_ms(total / 1000); // one full loop forward
+        assert_eq!(s.current_play_frame(), 2, "a full loop returns to the start frame");
     }
 
     #[test]
