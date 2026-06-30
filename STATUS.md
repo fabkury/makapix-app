@@ -63,9 +63,9 @@ Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending)
 ## Club social layer (C0–C3, Dart-only — `app/lib/club/`)
 | Area | Status | Notes |
 |---|---|---|
-| **C0** GitHub OAuth + PKCE + token store | ✅ | server-brokered OAuth, custom-scheme return leg (`flutter_web_auth_2`); tokens at rest in `flutter_secure_storage`; single-flight 401→refresh→retry (`api/club_api_client.dart`) |
+| **C0** GitHub OAuth + PKCE + token store | ✅ | server-brokered OAuth via **HTTPS App Links** (`flutter_web_auth_2`; app id `club.makapix.app`); tokens at rest in `flutter_secure_storage`; single-flight 401→refresh→retry (`api/club_api_client.dart`). **Verified on-device** (App Links verified on both hosts; returns into the app). Residual one-tap Custom-Tab return is accepted (§6.3) |
 | **C0** Welcome / sign-in funnel | ✅ | signed-out users land on `ClubWelcomePage` (featured grid + sign-in), matching the website |
-| **C0b** In-app account creation | ✅ | email register → 6-digit OTP verify → sign in with emailed temp password → welcome wizard (set password · handle w/ live availability · avatar/bio · `complete-welcome`). Forgot-password (OTP) on sign-in; Settings → Account (change password/handle, linked logins). `ui/auth/*`, `state/registration_controller.dart` (`docs/plans/C0b-account-creation.md`) |
+| **C0b** In-app account creation | ✅ | **chosen-password** register → single 6-digit OTP verify → auto sign-in (A2) → welcome wizard (handle w/ live availability + **Back** · avatar/bio · `complete-welcome`). "Verify your email" recovery + forgot-password (OTP) on sign-in; Settings → Account (change password/handle, linked logins). Handle rules mirror the server (1–32 printable-Unicode code points). **Verified end-to-end on-device against dev.** `ui/auth/*`, `state/registration_controller.dart` (`docs/plans/C0b-account-creation.md`) |
 | **C1** Feeds: Recent / Recommended / Following | ✅ | tabbed hub; cursor paging (`state/paged.dart`); pull-to-refresh |
 | **C1** Search (posts / hashtags / users) | ✅ | `ui/search_page.dart`, `ui/hashtag_feed_page.dart` |
 | **C1** Profiles + follow/unfollow | ✅ | `ui/profile_page.dart` |
