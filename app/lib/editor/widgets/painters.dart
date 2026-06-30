@@ -99,6 +99,43 @@ class CursorOutlinePainter extends CustomPainter {
   bool shouldRepaint(CursorOutlinePainter old) => true; // driven by the animation
 }
 
+/// Marching ants for an UNCOMMITTED selection draft (the Select Shape tool's draw → adjust → commit
+/// flow). Deliberately a distinct cyan-on-dark identity from the committed selection's black/white
+/// ants ([OutlinePainter]) — the two can show at once (existing selection + the draft about to be
+/// combined into it), so the draft must never read as a live selection. The segments trace the exact
+/// pixels the draft would select, so the preview matches what Commit produces (only the colour differs).
+class SelectionDraftPainter extends CustomPainter {
+  final List<List<int>> edges; // [x1,y1,x2,y2,t] in canvas-corner coords
+  final double scale;
+  final Offset off;
+  final Animation<double> anim;
+  SelectionDraftPainter(this.edges, this.scale, this.off, this.anim) : super(repaint: anim);
+
+  static const _cyan = Color(0xFF00E5FF);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (edges.isEmpty || scale <= 0) return;
+    final ox = off.dx, oy = off.dy;
+    final phase = (anim.value * 4).floor(); // 4-unit marching period (matches the selection ants)
+    final back = <Offset>[]; // continuous dark backing for contrast against any pixels
+    final dash = <Offset>[]; // cyan dashes (the marching "on" segments)
+    for (final e in edges) {
+      final p1 = Offset(ox + e[0] * scale, oy + e[1] * scale);
+      final p2 = Offset(ox + e[2] * scale, oy + e[3] * scale);
+      back..add(p1)..add(p2);
+      if (((e[4] + phase) % 4) < 2) dash..add(p1)..add(p2);
+    }
+    canvas.drawPoints(
+        ui.PointMode.lines, back, Paint()..color = const Color(0xCC04323B)..strokeWidth = 2.5..isAntiAlias = false);
+    canvas.drawPoints(
+        ui.PointMode.lines, dash, Paint()..color = _cyan..strokeWidth = 1.6..isAntiAlias = false);
+  }
+
+  @override
+  bool shouldRepaint(SelectionDraftPainter old) => true; // driven by the animation
+}
+
 /// Draggable endpoint markers for an uncommitted figure (Line/Rect/Ellipse). Drawn in SCREEN
 /// space as a ringed target at each endpoint so it stays a constant on-screen size and frames the
 /// pixel without hiding it.

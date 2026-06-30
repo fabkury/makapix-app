@@ -123,6 +123,24 @@ class _EditorPageState extends ConsumerState<EditorPage>
   double _rotOrigAngle = 0;
   // Triangle apex skew along its top edge, in [-1, 1] (0 = centred isosceles; ±1 = right triangle).
   double _triTip = 0;
+  // ---- Select Shape draft (Rectangle/Ellipse): an uncommitted selection the user drafts on the
+  // canvas before it becomes a real selection. PURELY shell-side — the engine's selection is
+  // untouched until Commit (then replayed as one pointer drag, the engine's immediate-select path).
+  // Two endpoints in canvas-pixel coords (or null when no draft is pending) plus the kind toggle.
+  Offset? _selA, _selB;
+  String _selShapeKind = 'Rectangle'; // 'Rectangle' | 'Ellipse' (row-1 toggle → engine SelectRect/SelectEllipse)
+  // The Select Shape tool keeps its OWN aspect-ratio lock, independent of the Shape tool's _lockRatio
+  // /_ratio (so locking a square selection never disturbs a locked shape-draw ratio, and vice versa).
+  bool _selLockRatio = false; // constrain the selection draft's width:height to _selRatio
+  double _selRatio = 1.0; // locked selection aspect ratio (width / height); 1 = square/circle
+  // active gesture: 0=none, 1=dragging A, 2=dragging B, 3=drawing a new draft, 4=moving the whole draft
+  int _selDrag = 0;
+  Offset? _newSelStart; // deferred start of a not-yet-materialized new draft (a stray tap leaves any draft intact)
+  Offset? _selMoveAnchor, _selMoveOrigA, _selMoveOrigB; // whole-draft reposition origins
+  // Cached distinct marching-ants boundary segments of the draft (the exact rect/ellipse pixels it
+  // would select), rebuilt only when the draft changes — NOT on every animation tick. Each segment
+  // is [x1,y1,x2,y2,t] in canvas-corner coords, mirroring _selectionEdges.
+  List<List<int>> _selDraftEdges = const [];
   // Ruler tool: a non-destructive measurement line (two draggable endpoints in canvas-pixel
   // coords). Never drawn to the canvas; cleared when switching tools.
   Offset? _rulerA, _rulerB;
@@ -224,6 +242,11 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // Which shape the unified "Shape" tool draws (Ellipse/Triangle/Rectangle); maps to a ToolKind.
   String _shapeKind = 'Rectangle';
   bool get _hasShapeDraft => _shapeA != null && _shapeB != null;
+
+  // The unified "Select Shape" tool: drag → adjust reticles → Commit, like the Shape tool but the
+  // payload is a selection (combined Replace/Add/Subtract/Intersect) rather than drawn pixels.
+  bool get _isSelShapeTool => _tool == 'SelectShape';
+  bool get _hasSelDraft => _selA != null && _selB != null;
 
   // The Ruler is a pure measurement overlay (no engine tool, no drawing).
   bool get _isRuler => _tool == 'Ruler';

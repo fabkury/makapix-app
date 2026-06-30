@@ -24,8 +24,9 @@ const tools = <ToolDef>[
   ToolDef('Eyedropper', Icons.colorize, 'Pick'),
   ToolDef('Move', Icons.open_with, 'Move'),
   ToolDef('CopyPaste', Icons.content_copy, 'Copy'),
-  ToolDef('SelectRect', Icons.highlight_alt, 'Sel Rect'),
-  ToolDef('SelectEllipse', Icons.lens_blur, 'Sel Oval'),
+  // Select Shape concentrates Rectangle/Ellipse selection into one tool with a row-1 toggle (like the
+  // Shape tool groups Ellipse/Triangle/Rectangle); it drafts the selection before committing it.
+  ToolDef('SelectShape', Icons.highlight_alt, 'Select'),
   ToolDef('SelectFree', Icons.gesture, 'Lasso'),
   ToolDef('SelectByColor', Icons.colorize_outlined, 'Sel Color'),
   ToolDef('SelectLayer', Icons.opacity, 'Sel Lyr'),
@@ -65,8 +66,7 @@ const toolTips = <String, String>{
   'Eyedropper': 'Tap a pixel to pick its colour as primary.',
   'Move': 'Drag to move the selected pixels, or the whole layer if nothing is selected.',
   'CopyPaste': 'Clipboard for the selection: Copy, Cut, Paste, Clear. Paste drops a movable draft you position, then Commit.',
-  'SelectRect': 'Drag to select a rectangular area.',
-  'SelectEllipse': 'Drag to select an elliptical area.',
+  'SelectShape': 'Drag to draft a rectangular or elliptical selection. Drag the reticles to adjust, then Commit.',
   'SelectCircle': 'Drag from the centre to select a circle.',
   'SelectPoly': 'Trace an outline to select an area.',
   'SelectFree': 'Lasso freely around pixels to select them.',

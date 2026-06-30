@@ -143,6 +143,18 @@ extension _EditorCanvas on _EditorPageState {
                     painter: ShapeRotateHandlePainter(_rotDraftCenter, _rotDraftCorner, _rotDraftAngle, vScale, vOff),
                     size: Size.infinite,
                   ),
+                if (_isSelShapeTool && _hasSelDraft) ...[
+                  // The uncommitted selection draft: distinct cyan marching ants (vs the committed
+                  // selection's black/white ants, still shown behind it) + draggable endpoint reticles.
+                  CustomPaint(
+                    painter: SelectionDraftPainter(_selDraftEdges, vScale, vOff, _antCtrl),
+                    size: Size.infinite,
+                  ),
+                  CustomPaint(
+                    painter: HandlePainter([_selA!, _selB!], vScale, vOff),
+                    size: Size.infinite,
+                  ),
+                ],
                 if (_isRuler && _hasRuler)
                   // measurement line + endpoint coords + length (never drawn to the canvas)
                   CustomPaint(
@@ -190,6 +202,10 @@ extension _EditorCanvas on _EditorPageState {
       _beginShape(pos, box);
       return;
     }
+    if (_isSelShapeTool) {
+      _beginSelDraft(pos, box);
+      return;
+    }
     if (_isCopyPaste) {
       _pasteDragLast = _toCanvas(pos, box); // a drag moves the floating paste draft (if any)
       return;
@@ -233,6 +249,10 @@ extension _EditorCanvas on _EditorPageState {
     }
     if (_isDraftTool) {
       _continueShape(pos, box);
+      return;
+    }
+    if (_isSelShapeTool) {
+      _continueSelDraft(pos, box);
       return;
     }
     if (_isCopyPaste) {
@@ -320,6 +340,10 @@ extension _EditorCanvas on _EditorPageState {
       _endShape();
       return;
     }
+    if (_isSelShapeTool) {
+      _endSelDraft();
+      return;
+    }
     if (_isCopyPaste) {
       _pasteDragLast = null; // releasing leaves the paste where it was dragged
       return;
@@ -393,6 +417,20 @@ extension _EditorCanvas on _EditorPageState {
       _newShapeStart = null;
       _shapeMoveAnchor = _shapeMoveOrigA = _shapeMoveOrigB = null;
       _redraw();
+      setState(() {});
+      return;
+    }
+    if (_isSelShapeTool) {
+      // Second finger interrupted a selection-draft gesture. Keep any established draft, but drop a
+      // brand-new degenerate one (a single point) so a pinch over empty canvas leaves nothing behind.
+      if (_selDrag == 3 && _hasSelDraft && _selA == _selB) {
+        _selA = null;
+        _selB = null;
+        _selDraftEdges = const [];
+      }
+      _selDrag = 0;
+      _newSelStart = null;
+      _selMoveAnchor = _selMoveOrigA = _selMoveOrigB = null;
       setState(() {});
       return;
     }
@@ -525,18 +563,28 @@ extension _EditorCanvas on _EditorPageState {
     setState(() {});
   }
 
-  // Translate both endpoints by the drag delta from the press point, clamped so the whole draft
-  // stays on-canvas (a rigid move — both ends shift by the same amount).
+  // Translate both endpoints by the drag delta from the press point (a rigid move — both ends shift
+  // by the same amount). Bounded to the SAME generous off-canvas margin as dragging a single endpoint
+  // (_clampGenerous), so the whole draft can be dragged partly or fully off the canvas — a legal,
+  // croppable position — while staying rigid and matching the engine-stored endpoints.
   void _moveWholeDraft(Offset p) {
     final origA = _shapeMoveOrigA!, origB = _shapeMoveOrigB!, anchor = _shapeMoveAnchor!;
-    final w = (engine.width - 1).toDouble(), h = (engine.height - 1).toDouble();
-    final dx = (p.dx - anchor.dx).clamp(-math.min(origA.dx, origB.dx), w - math.max(origA.dx, origB.dx));
-    final dy = (p.dy - anchor.dy).clamp(-math.min(origA.dy, origB.dy), h - math.max(origA.dy, origB.dy));
-    _shapeA = Offset(origA.dx + dx, origA.dy + dy);
-    _shapeB = Offset(origB.dx + dx, origB.dy + dy);
+    final (dx, dy) = _rigidDelta(p - anchor, origA, origB);
+    _shapeA = origA + Offset(dx, dy);
+    _shapeB = origB + Offset(dx, dy);
     _pushShape();
     _redraw();
     setState(() {});
+  }
+
+  // Clamp a rigid translation `raw` so both endpoints stay within the generous off-canvas margin
+  // (matching _clampGenerous: -span .. 2·span), keeping the move rigid (one delta for both ends). The
+  // bounds are always valid (lower ≤ 0 ≤ upper) because every endpoint is already within that margin.
+  (double, double) _rigidDelta(Offset raw, Offset a, Offset b) {
+    final wf = engine.width.toDouble(), hf = engine.height.toDouble();
+    final dx = raw.dx.clamp(-wf - math.min(a.dx, b.dx), 2 * wf - math.max(a.dx, b.dx));
+    final dy = raw.dy.clamp(-hf - math.min(a.dy, b.dy), 2 * hf - math.max(a.dy, b.dy));
+    return (dx, dy);
   }
 
   // Endpoints may leave the canvas (so a shape/gradient extends past an edge and is cropped, not
@@ -551,8 +599,10 @@ extension _EditorCanvas on _EditorPageState {
   // only). The box is sized to reach the finger in whichever axis is more extended. Bounded to the
   // generous off-canvas margin so the handles match the engine preview.
   Offset _ratioed(Offset anchor, Offset moving) {
-    if (!_lockRatio || _tool != 'Shape') return _clampGenerous(moving);
-    final r = _ratio <= 0 ? 1.0 : _ratio;
+    // Shape and Select Shape each carry their own independent lock + ratio.
+    final (locked, ratio) = _tool == 'SelectShape' ? (_selLockRatio, _selRatio) : (_lockRatio, _ratio);
+    if (!locked || !(_tool == 'Shape' || _tool == 'SelectShape')) return _clampGenerous(moving);
+    final r = ratio <= 0 ? 1.0 : ratio;
     final dw = moving.dx - anchor.dx;
     final dh = moving.dy - anchor.dy;
     final h = (dh.abs() > dw.abs() / r) ? dh.abs() : dw.abs() / r;
@@ -569,6 +619,147 @@ extension _EditorCanvas on _EditorPageState {
     _pushShape();
     _redraw();
     setState(() {});
+  }
+
+  // ---- Select Shape draft gestures (drag → adjust reticles → Commit, like the figure draft, but
+  // the result is a selection). Purely shell-side: nothing reaches the engine until Commit, so the
+  // canvas image never changes here — only the overlay (the distinct draft ants + reticles). ----
+
+  // Begin a selection-draft gesture: grab the nearer endpoint reticle if the press lands near one;
+  // with a draft already pending a press OFF the reticles repositions the whole draft (drag) and a
+  // tap leaves it untouched. A fresh draft only starts when none is pending. Mirrors `_beginShape`.
+  void _beginSelDraft(Offset pos, Size box) {
+    final p = _toCanvas(pos, box);
+    _newSelStart = null;
+    if (_hasSelDraft) {
+      final (s, off) = _view(box);
+      Offset screenOf(Offset c) => Offset(off.dx + (c.dx + 0.5) * s, off.dy + (c.dy + 0.5) * s);
+      final tol = (s * 1.1).clamp(30.0, 56.0); // generous grab radius so the ends are easy to hit
+      final dA = (pos - screenOf(_selA!)).distance;
+      final dB = (pos - screenOf(_selB!)).distance;
+      if (dA <= tol && dA <= dB) {
+        _selDrag = 1;
+        _selA = p;
+      } else if (dB <= tol) {
+        _selDrag = 2;
+        _selB = p;
+      } else {
+        _selDrag = 4;
+        _selMoveAnchor = p;
+        _selMoveOrigA = _selA;
+        _selMoveOrigB = _selB;
+      }
+    } else {
+      // No draft yet: materialize a degenerate draft so a tap drops a starting reticle.
+      _selDrag = 3;
+      _newSelStart = p;
+      _selA = p;
+      _selB = p;
+    }
+    _rebuildSelDraftEdges();
+    setState(() {});
+  }
+
+  void _continueSelDraft(Offset pos, Size box) {
+    if (_selDrag == 0) return;
+    final p = _toCanvas(pos, box);
+    if (_selDrag == 4) {
+      _moveWholeSelDraft(p);
+      return;
+    }
+    if (_selDrag == 1) {
+      _selA = _ratioed(_selB!, p); // dragging A: anchor is B
+    } else if (_selDrag == 2) {
+      _selB = _ratioed(_selA!, p); // dragging B: anchor is A
+    } else {
+      final a = _newSelStart ?? p; // new draft: A fixed at the press, B follows (ratio-locked to A)
+      _selA = a;
+      _selB = _ratioed(a, p);
+    }
+    _rebuildSelDraftEdges();
+    setState(() {});
+  }
+
+  // Translate both endpoints rigidly by the drag delta, bounded to the generous off-canvas margin
+  // (same as dragging a single endpoint) so the whole selection draft can be dragged off-canvas.
+  void _moveWholeSelDraft(Offset p) {
+    final origA = _selMoveOrigA!, origB = _selMoveOrigB!, anchor = _selMoveAnchor!;
+    final (dx, dy) = _rigidDelta(p - anchor, origA, origB);
+    _selA = origA + Offset(dx, dy);
+    _selB = origB + Offset(dx, dy);
+    _rebuildSelDraftEdges();
+    setState(() {});
+  }
+
+  // Releasing leaves the draft in place (ants + reticles persist); Commit is an explicit button.
+  void _endSelDraft() {
+    _selDrag = 0;
+    _newSelStart = null;
+    _selMoveAnchor = _selMoveOrigA = _selMoveOrigB = null;
+    setState(() {});
+  }
+
+  // Re-snap the pending selection draft to the current ratio (Lock Ratio / ratio slider changed).
+  void _reapplySelRatio() {
+    if (!_hasSelDraft) return;
+    _selB = _ratioed(_selA!, _selB!);
+    _rebuildSelDraftEdges();
+    setState(() {});
+  }
+
+  // Recompute the cached draft ants whenever the draft changes. The boundary segments trace the EXACT
+  // pixels the rect/ellipse would select (mirroring the engine's `rect_filled`/`ellipse_filled`), so
+  // the cyan draft preview matches the selection that Commit will produce — only the colour differs.
+  void _rebuildSelDraftEdges() {
+    _selDraftEdges = _hasSelDraft ? _computeSelDraftEdges() : const [];
+  }
+
+  // The on-canvas cells (`y*w+x`) the current draft covers, clipped to the canvas. Centre and radii
+  // for the ellipse use the UNCLIPPED box corners so an off-canvas endpoint still curves correctly.
+  Set<int> _computeSelDraftCells() {
+    final w = engine.width, h = engine.height;
+    final ax = _selA!.dx.round(), ay = _selA!.dy.round();
+    final bx = _selB!.dx.round(), by = _selB!.dy.round();
+    final fx0 = math.min(ax, bx), fx1 = math.max(ax, bx);
+    final fy0 = math.min(ay, by), fy1 = math.max(ay, by);
+    final x0 = math.max(0, fx0), x1 = math.min(w - 1, fx1);
+    final y0 = math.max(0, fy0), y1 = math.min(h - 1, fy1);
+    final cells = <int>{};
+    if (x1 < x0 || y1 < y0) return cells;
+    if (_selShapeKind == 'Ellipse') {
+      final cx = (fx0 + fx1) / 2.0, cy = (fy0 + fy1) / 2.0;
+      final rx = math.max(0.5, (fx1 - fx0) / 2.0), ry = math.max(0.5, (fy1 - fy0) / 2.0);
+      for (var y = y0; y <= y1; y++) {
+        for (var x = x0; x <= x1; x++) {
+          final nx = (x - cx) / rx, ny = (y - cy) / ry;
+          if (nx * nx + ny * ny <= 1.0) cells.add(y * w + x);
+        }
+      }
+    } else {
+      for (var y = y0; y <= y1; y++) {
+        for (var x = x0; x <= x1; x++) {
+          cells.add(y * w + x);
+        }
+      }
+    }
+    return cells;
+  }
+
+  // Boundary segments (canvas-corner coords + marching phase `t = x+y`) around the draft cells.
+  List<List<int>> _computeSelDraftEdges() {
+    final w = engine.width;
+    final cells = _computeSelDraftCells();
+    final edges = <List<int>>[];
+    bool cov(int x, int y) => cells.contains(y * w + x);
+    for (final key in cells) {
+      final x = key % w, y = key ~/ w;
+      final t = x + y;
+      if (!cov(x - 1, y)) edges.add([x, y, x, y + 1, t]);
+      if (!cov(x + 1, y)) edges.add([x + 1, y, x + 1, y + 1, t]);
+      if (!cov(x, y - 1)) edges.add([x, y, x + 1, y, t]);
+      if (!cov(x, y + 1)) edges.add([x, y + 1, x + 1, y + 1, t]);
+    }
+    return edges;
   }
 
   // ---- ruler gestures (measure only — never draws to the canvas) ----

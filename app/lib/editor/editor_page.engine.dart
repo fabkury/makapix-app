@@ -294,6 +294,8 @@ extension _EditorEngine on _EditorPageState {
     // Navigating away mid-draft (changing tools) cancels the pending figure and erases its preview
     // — same as the row-1 Cancel button (this also redraws, so the outline doesn't linger).
     if (_hasShapeDraft) _cancelShapeDraft();
+    // Likewise, a pending Select Shape draft is discarded (and its ants erased) when leaving the tool.
+    if (_hasSelDraft) _cancelSelDraft();
     // Likewise, a pending paste draft is cancelled & erased when leaving the Copy & Paste tool.
     if (_hasPasteDraft) {
       _send('PasteCancel()');
@@ -331,6 +333,9 @@ extension _EditorEngine on _EditorPageState {
     }
     if (t == 'Shape') {
       _send('SelectTool($_shapeKind)'); // 'Shape' is a shell grouping; engine draws by ToolKind
+    } else if (t == 'SelectShape') {
+      // 'SelectShape' is a shell grouping over the engine's SelectRect/SelectEllipse selection tools.
+      _send('SelectTool(${_selShapeKind == 'Ellipse' ? 'SelectEllipse' : 'SelectRect'})');
     } else if (t != 'Ruler') {
       _send('SelectTool($t)'); // Ruler is a pure overlay; no engine draw tool
     } else if (leavingSelectLayer) {
@@ -380,6 +385,36 @@ extension _EditorEngine on _EditorPageState {
       _triTip = 0;
     });
     _redraw();
+  }
+
+  // Commit the pending selection draft into the real selection. The engine tool is already
+  // SelectRect/SelectEllipse, so replaying the draft as one pointer drag runs the engine's immediate
+  // selection path — combining the rect/ellipse into the current selection (Replace/Add/Subtract/
+  // Intersect) as one undo step — exactly as before, just deferred behind the draft.
+  void _commitSelDraft() {
+    if (!_hasSelDraft) return;
+    final a = _selA!, b = _selB!;
+    _send('PointerDown(${a.dx.round()},${a.dy.round()})');
+    _send('PointerMove(${b.dx.round()},${b.dy.round()})');
+    _send('PointerUp()');
+    setState(() {
+      _selA = null;
+      _selB = null;
+      _selDrag = 0;
+      _selDraftEdges = const [];
+    });
+    _refreshState(); // pick up the new selection + undo/redo availability
+    _redraw(); // the committed selection's marching ants replace the draft's
+  }
+
+  // Discard the pending selection draft without changing the selection (just drops the draft ants).
+  void _cancelSelDraft() {
+    setState(() {
+      _selA = null;
+      _selB = null;
+      _selDrag = 0;
+      _selDraftEdges = const [];
+    });
   }
 
   // Finalize the pending move draft as one undo step (drops the "pending" wash).

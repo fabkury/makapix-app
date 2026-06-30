@@ -35,6 +35,30 @@ extension _EditorControls on _EditorPageState {
       children.add(const SizedBox(width: 8));
     }
 
+    if (_isSelShapeTool && _hasSelDraft) {
+      // Commit the selection draft into the real selection (per the active mode) / discard it. Drag
+      // the on-canvas reticles to fine-tune first.
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF30A050)),
+          onPressed: _commitSelDraft,
+          icon: const Icon(Icons.check, size: 16),
+          label: const Text('Commit'),
+        ),
+      ));
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(minimumSize: const Size(0, 34), foregroundColor: const Color(0xFFE06060)),
+          onPressed: _cancelSelDraft,
+          icon: const Icon(Icons.close, size: 16),
+          label: const Text('Cancel'),
+        ),
+      ));
+      children.add(const SizedBox(width: 8));
+    }
+
     if (_isCopyPaste && _hasPasteDraft) {
       // Commit / cancel the floating paste. Drag anywhere on the canvas to position it first.
       children.add(Padding(
@@ -384,6 +408,19 @@ extension _EditorControls on _EditorPageState {
       children.add(_miniBtn('All', () => _act('SelectAll()')));
       children.add(_miniBtn('None', () => _act('SelectNone()')));
     }
+    if (_tool == 'SelectShape') {
+      // Which selection shape to draft. Switching the kind keeps any pending draft (re-previews it
+      // live) and re-points the engine tool so Commit combines the right shape.
+      const kinds = ['Rectangle', 'Ellipse'];
+      children.add(_toggle(['Rect', 'Oval'], kinds.indexOf(_selShapeKind), (i) {
+        setState(() => _selShapeKind = kinds[i]);
+        _send('SelectTool(${_selShapeKind == 'Ellipse' ? 'SelectEllipse' : 'SelectRect'})');
+        if (_hasSelDraft) {
+          _rebuildSelDraftEdges();
+          setState(() {});
+        }
+      }));
+    }
     if (_tool.startsWith('Select') && _tool != 'SelectLayer') {
       children.add(_toggle(['Replace', 'Add', 'Subtract', 'Intersect'],
           ['Replace', 'Add', 'Subtract', 'Intersect'].indexOf(_selMode), (i) {
@@ -394,6 +431,29 @@ extension _EditorControls on _EditorPageState {
       children.add(_miniBtn('None', () => _act('SelectNone()')));
       children.add(_miniBtn('Invert', () => _act('InvertSelection()')));
       // Clipboard ops (Copy/Cut/Paste) and Clear now live in the dedicated Copy & Paste tool.
+    }
+    if (_tool == 'SelectShape') {
+      // Lock the selection's aspect ratio (width:height) to the slider value — e.g. ratio 1 makes the
+      // Rectangle draft a square and the Ellipse a circle. Independent of the Shape tool's ratio.
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: FilterChip(
+          selected: _selLockRatio,
+          label: Text(_selLockRatio ? 'Ratio ✔' : 'Lock Ratio'),
+          selectedColor: const Color(0xFF30A050),
+          onSelected: (v) {
+            setState(() => _selLockRatio = v);
+            if (v) _reapplySelRatio(); // snap the pending draft to the ratio immediately
+          },
+        ),
+      ));
+      if (_selLockRatio) {
+        // Logarithmic 0.2..5 with 1.0 at the centre (each half spans an equal ratio range).
+        _labeledLogSlider(children, 'Ratio', _selRatio, 0.2, 5.0, (v) {
+          setState(() => _selRatio = v);
+          _reapplySelRatio();
+        });
+      }
     }
     if (_tool == 'CopyPaste') {
       children.add(_miniBtn('Copy', () => _act('Copy()')));
