@@ -329,7 +329,8 @@ impl Session {
 
     pub fn composite_frame_bytes(&self, frame: usize) -> Vec<u8> {
         let f = &self.doc.frames[frame.min(self.doc.frames.len() - 1)];
-        render::composite_frame(f, self.doc.size.w as u32, self.doc.size.h as u32).to_rgba_bytes()
+        // Export/publish path: always the canvas window, never the gutter.
+        render::composite_frame(f, self.doc.canvas_rect()).to_rgba_bytes()
     }
 
     /// Content hash of a frame (low 64 bits) — used by the shell to cache thumbnails.
@@ -343,7 +344,7 @@ impl Session {
     pub fn frame_thumb_bytes(&self, frame: usize, tw: u32, th: u32) -> Vec<u8> {
         let i = frame.min(self.doc.frames.len() - 1);
         let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
-        let flat = render::composite_frame(&self.doc.frames[i], w, h);
+        let flat = render::composite_frame(&self.doc.frames[i], self.doc.canvas_rect());
         let (tw, th) = (tw.max(1), th.max(1));
         let mut out = vec![0u8; (tw * th * 4) as usize];
         for ty in 0..th {
@@ -421,7 +422,8 @@ impl Session {
         // of the active frame (the document itself is untouched until Commit).
         let preview = self.move_draft_preview_frame().or_else(|| self.rotate_draft_preview_frame());
         let frame = preview.as_ref().unwrap_or_else(|| self.doc.active_frame());
-        let mut buf = render::render_display(&self.doc, frame, &ov);
+        // Phase 1: the normal (canvas) view. The overscan view will pass `storage_rect()` here.
+        let mut buf = render::render_display(frame, self.doc.canvas_rect(), &ov);
         self.draw_tool_preview(&mut buf);
         buf.to_rgba_bytes()
     }
@@ -3615,7 +3617,7 @@ mod tests {
     // without the wash (the wash is added later, in draw_tool_preview). `None` if no draft is open.
     fn preview_pixel(s: &Session, x: i32, y: i32) -> Option<Rgba8> {
         let f = s.move_draft_preview_frame()?;
-        Some(render::composite_frame(&f, s.doc.size.w as u32, s.doc.size.h as u32).get(x, y))
+        Some(render::composite_frame(&f, s.doc.canvas_rect()).get(x, y))
     }
 
     #[test]

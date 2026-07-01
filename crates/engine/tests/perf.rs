@@ -40,7 +40,7 @@ fn perf_large_animation() {
     let t1 = Instant::now();
     let mut sink = 0u64;
     for fr in &s.doc.frames {
-        let flat = render::composite_frame(fr, 64, 64);
+        let flat = render::composite_frame(fr, s.doc.canvas_rect());
         sink = sink.wrapping_add(flat.to_rgba_bytes()[0] as u64);
     }
     let composite_all = t1.elapsed();

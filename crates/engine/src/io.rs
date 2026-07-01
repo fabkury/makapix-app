@@ -354,6 +354,7 @@ pub fn load_from_bytes(data: &[u8]) -> Result<Document, IoError> {
 
     Ok(Document {
         size,
+        margin: Document::gutter_for(size),
         active_frame: active_frame.min(frames.len() - 1),
         frames,
         palettes,

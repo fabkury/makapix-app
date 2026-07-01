@@ -237,7 +237,7 @@ fn stress_hundreds_of_frames_tens_of_layers_no_crash() {
     // composite every frame — must not panic
     let mut total = 0u64;
     for f in &s.doc.frames {
-        let flat = render::composite_frame(f, 64, 64);
+        let flat = render::composite_frame(f, s.doc.canvas_rect());
         total += flat.to_rgba_bytes().len() as u64;
     }
     assert!(total > 0);
