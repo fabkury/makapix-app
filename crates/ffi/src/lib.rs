@@ -237,7 +237,8 @@ pub extern "C" fn mkpx_save(ptr: *mut Session, out_len: *mut u64) -> *mut u8 {
     Box::into_raw(bytes) as *mut u8
 }
 
-/// Load a `.mkpx` document from bytes. Returns 0 on success, -1 on failure.
+/// Load a `.mkpx` document from bytes — accepts both the **plain** container and the **compact**
+/// (DEFLATE) envelope, auto-detected by signature. Returns 0 on success, -1 on failure.
 #[no_mangle]
 pub extern "C" fn mkpx_load(ptr: *mut Session, data: *const u8, len: usize) -> c_int {
     let s = match session(ptr) {
@@ -245,10 +246,40 @@ pub extern "C" fn mkpx_load(ptr: *mut Session, data: *const u8, len: usize) -> c
         None => return -1,
     };
     let bytes = unsafe { slice::from_raw_parts(data, len) };
-    match s.load_bytes(bytes) {
-        Ok(()) => 0,
-        Err(_) => -1,
+    if makapix_codec::mkpx_compact::is_compact(bytes) {
+        // Inflate the compact envelope at the periphery, then load the plain bytes in the engine.
+        match makapix_codec::mkpx_compact::open(bytes) {
+            Ok(plain) => match s.load_bytes(&plain) {
+                Ok(()) => 0,
+                Err(_) => -1,
+            },
+            Err(_) => -1,
+        }
+    } else {
+        // Plain container — load directly, no copy.
+        match s.load_bytes(bytes) {
+            Ok(()) => 0,
+            Err(_) => -1,
+        }
     }
+}
+
+/// Serialize the document to a **compact** (DEFLATE-wrapped) `.mkpx`, for explicit "Save" / export.
+/// The 10 s autosave should use [`mkpx_save`] (plain, cheap). Returns a malloc'd buffer; writes its
+/// length to `out_len`. Free with `mkpx_free_bytes(ptr, len)`.
+#[no_mangle]
+pub extern "C" fn mkpx_save_compact(ptr: *mut Session, out_len: *mut u64) -> *mut u8 {
+    let s = match session(ptr) {
+        Some(s) => s,
+        None => return std::ptr::null_mut(),
+    };
+    let plain = s.save_bytes();
+    let bytes = makapix_codec::mkpx_compact::compress(&plain).into_boxed_slice();
+    let len = bytes.len();
+    if !out_len.is_null() {
+        unsafe { *out_len = len as u64 };
+    }
+    Box::into_raw(bytes) as *mut u8
 }
 
 /// Import an image file (GIF/PNG/APNG/JPEG/BMP/WebP) into the document.
@@ -415,6 +446,25 @@ mod tests {
         assert!(!saved.is_null() && len > 0);
         let p2 = mkpx_new(8, 8);
         assert_eq!(mkpx_load(p2, saved, len as usize), 0);
+        assert_eq!(mkpx_width(p2), 16);
+        mkpx_free_bytes(saved, len);
+        mkpx_free(p);
+        mkpx_free(p2);
+    }
+
+    #[test]
+    fn ffi_save_compact_then_load() {
+        // Explicit/export save writes the compact (DEFLATE) envelope; mkpx_load auto-detects it.
+        let p = mkpx_new(16, 16);
+        let script = b"SelectTool(Pencil); Tap(5,5); Tap(9,9)";
+        let _ = mkpx_run(p, script.as_ptr(), script.len());
+        let mut len: u64 = 0;
+        let saved = mkpx_save_compact(p, &mut len);
+        assert!(!saved.is_null() && len > 0);
+        let bytes = unsafe { slice::from_raw_parts(saved, len as usize) };
+        assert!(makapix_codec::mkpx_compact::is_compact(bytes), "compact signature");
+        let p2 = mkpx_new(8, 8);
+        assert_eq!(mkpx_load(p2, saved, len as usize), 0, "load inflates compact");
         assert_eq!(mkpx_width(p2), 16);
         mkpx_free_bytes(saved, len);
         mkpx_free(p);
