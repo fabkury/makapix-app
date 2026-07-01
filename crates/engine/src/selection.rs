@@ -124,6 +124,19 @@ impl Mask {
         self.trim_tail();
     }
 
+    /// Clear every set bit outside `r`, keeping only the selection within that window (storage
+    /// coordinates). Holds a selection gesture inside the editable region — the canvas, or the whole
+    /// storage area when the overscan view is on (SPEC §8, §12).
+    pub fn intersect_rect(&mut self, r: IRect) {
+        for y in 0..self.h as i32 {
+            for x in 0..self.w as i32 {
+                if !r.contains(Point::new(x, y)) {
+                    self.set(x, y, false);
+                }
+            }
+        }
+    }
+
     pub fn is_empty(&self) -> bool {
         self.bits.iter().all(|&w| w == 0)
     }
@@ -188,18 +201,21 @@ impl Mask {
         out
     }
 
-    /// Like [`translated`], but set bits leaving an edge re-enter the opposite edge (toroidal) —
-    /// so a wrapped pixel move's selection follows the pixels.
-    pub fn translated_wrapped(&self, dx: i32, dy: i32) -> Mask {
+    /// Like [`translated`], but set bits leaving a `canvas` edge re-enter the opposite edge
+    /// (toroidal, wrapping around the canvas rect — not the larger storage grid) — so a wrapped pixel
+    /// move's selection follows the pixels.
+    pub fn translated_wrapped(&self, dx: i32, dy: i32, canvas: IRect) -> Mask {
         let mut out = Mask::new(self.w, self.h);
-        let (w, h) = (self.w as i32, self.h as i32);
-        if w <= 0 || h <= 0 {
+        let (cw, ch) = (canvas.w as i32, canvas.h as i32);
+        if cw <= 0 || ch <= 0 {
             return out;
         }
-        for y in 0..h {
-            for x in 0..w {
+        for y in 0..self.h as i32 {
+            for x in 0..self.w as i32 {
                 if self.get(x, y) {
-                    out.set((x + dx).rem_euclid(w), (y + dy).rem_euclid(h), true);
+                    let nx = canvas.x + (x + dx - canvas.x).rem_euclid(cw);
+                    let ny = canvas.y + (y + dy - canvas.y).rem_euclid(ch);
+                    out.set(nx, ny, true);
                 }
             }
         }

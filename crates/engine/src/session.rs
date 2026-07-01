@@ -124,7 +124,7 @@ fn spaced_points(a: Point, b: Point, step: f32, acc: &mut f32) -> Vec<Point> {
 /// Shared by the display preview (on a throwaway clone) and `move_draft_commit` (on the real frame),
 /// so both render identically. Returns the translated selection mask for a selection move (for the
 /// marquee + commit), else `None`.
-fn move_draft_paint(d: &MoveDraft, frame: &mut crate::document::Frame, wrap: bool) -> Option<Mask> {
+fn move_draft_paint(d: &MoveDraft, frame: &mut crate::document::Frame, wrap: bool, canvas: IRect) -> Option<Mask> {
     if d.is_selection {
         let sel = d.sel_before.as_deref()?;
         let bb = sel.bounds()?;
@@ -140,14 +140,14 @@ fn move_draft_paint(d: &MoveDraft, frame: &mut crate::document::Frame, wrap: boo
                 }
                 let dest = Point::new(f.anchor.x + d.offset.x, f.anchor.y + d.offset.y);
                 if wrap {
-                    buf.blit_wrapped(&f.pixels, dest.x, dest.y);
+                    buf.blit_wrapped(&f.pixels, dest.x, dest.y, canvas);
                 } else {
                     buf.blit_over(&f.pixels, dest);
                 }
             }
         }
         Some(if wrap {
-            sel.translated_wrapped(d.offset.x, d.offset.y)
+            sel.translated_wrapped(d.offset.x, d.offset.y, canvas)
         } else {
             sel.translated(d.offset.x, d.offset.y)
         })
@@ -157,7 +157,7 @@ fn move_draft_paint(d: &MoveDraft, frame: &mut crate::document::Frame, wrap: boo
                 let buf = &mut frame.layers[li].pixels;
                 buf.clear();
                 if wrap {
-                    buf.blit_wrapped(&f.pixels, d.offset.x, d.offset.y);
+                    buf.blit_wrapped(&f.pixels, d.offset.x, d.offset.y, canvas);
                 } else {
                     buf.blit_over(&f.pixels, Point::new(d.offset.x, d.offset.y));
                 }
@@ -311,9 +311,14 @@ impl Session {
     /// Compose `shape` into the current selection per `mode` and record it as one undo step (the
     /// shared body of the marquee tools and select-by-alpha).
     fn combine_selection(&mut self, shape: &Mask, mode: CombineMode) {
-        let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
+        let s = self.doc.storage();
+        let (w, h) = (s.w as u32, s.h as u32);
+        // Hold the incoming shape inside the selectable window (canvas, or storage under overscan) so
+        // a gesture that strays into the gutter can't select off-canvas pixels unless allowed.
+        let mut shape = shape.clone();
+        shape.intersect_rect(self.selection_clip());
         let mut m = self.selection_clone().unwrap_or_else(|| Mask::new(w, h));
-        m.combine(shape, mode);
+        m.combine(&shape, mode);
         self.set_selection(Some(m));
     }
 
@@ -373,12 +378,13 @@ impl Session {
         let li = layer.min(f.layers.len() - 1);
         let src = &f.layers[li].pixels;
         let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
+        let org = self.doc.origin(); // sample the canvas window of the storage-sized layer buffer
         let (tw, th) = (tw.max(1), th.max(1));
         let mut out = vec![0u8; (tw * th * 4) as usize];
         for ty in 0..th {
             for tx in 0..tw {
-                let sx = (tx * w / tw) as i32;
-                let sy = (ty * h / th) as i32;
+                let sx = org.x + (tx * w / tw) as i32;
+                let sy = org.y + (ty * h / th) as i32;
                 let c = src.get(sx, sy);
                 let o = ((ty * tw + tx) * 4) as usize;
                 out[o] = c.r;
@@ -422,10 +428,16 @@ impl Session {
         // of the active frame (the document itself is untouched until Commit).
         let preview = self.move_draft_preview_frame().or_else(|| self.rotate_draft_preview_frame());
         let frame = preview.as_ref().unwrap_or_else(|| self.doc.active_frame());
-        // Phase 1: the normal (canvas) view. The overscan view will pass `storage_rect()` here.
-        let mut buf = render::render_display(frame, self.doc.canvas_rect(), &ov);
+        // Render the whole storage area so the tool previews (which draw in storage coordinates) need
+        // no offset; then crop to the canvas for the normal view, or emit the whole thing (gutter
+        // dimmed) for the overscan view. [perf: storage-sized checker fill — optimise if it bites]
+        let mut buf = render::render_display(frame, self.doc.storage_rect(), &ov);
         self.draw_tool_preview(&mut buf);
-        buf.to_rgba_bytes()
+        if self.settings.overscan_view {
+            buf.to_rgba_bytes()
+        } else {
+            buf.to_rgba_bytes_rect(self.doc.canvas_rect())
+        }
     }
 
     /// Live preview of a drag-in-progress for shape/selection/gradient/move tools, drawn on
@@ -482,18 +494,19 @@ impl Session {
     /// pointer-drag preview and the draft preview.
     fn render_gradient_preview(&self, buf: &mut RgbaBuffer, a: Point, b: Point) {
         let spec = &self.settings.gradient;
-        let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
+        // The gradient is canvas-only; bound the preview fill to the canvas window (storage coords).
+        let cr = self.doc.canvas_rect();
         // Sort stops once (not per pixel); a selection bounds the fill to its bbox. [audit F-14/F-15]
         let mut stops = spec.stops.clone();
         stops.sort_by(|p, q| p.t.total_cmp(&q.t));
         let (x0, y0, x1, y1) = match self.doc.selection.as_ref().and_then(|m| m.bounds()) {
             Some(bb) => (
-                bb.x.max(0),
-                bb.y.max(0),
-                (bb.x + bb.w as i32).min(w as i32),
-                (bb.y + bb.h as i32).min(h as i32),
+                bb.x.max(cr.x),
+                bb.y.max(cr.y),
+                (bb.x + bb.w as i32).min(cr.right()),
+                (bb.y + bb.h as i32).min(cr.bottom()),
             ),
-            None => (0, 0, w as i32, h as i32),
+            None => (cr.x, cr.y, cr.right(), cr.bottom()),
         };
         for y in y0..y1 {
             for x in x0..x1 {
@@ -609,7 +622,7 @@ impl Session {
                     if let Some(bb) = sel.bounds() {
                         let (dx, dy) = (b.x - a.x, b.y - a.y);
                         if self.settings.wrap {
-                            buf.blit_wrapped(float, bb.x + dx, bb.y + dy);
+                            buf.blit_wrapped(float, bb.x + dx, bb.y + dy, self.doc.canvas_rect());
                         } else {
                             buf.blit_over(float, Point::new(bb.x + dx, bb.y + dy));
                         }
@@ -623,7 +636,8 @@ impl Session {
     /// The selection mask the shell should outline: the committed selection, or — while a
     /// selection tool is being dragged — a live preview of (current selection ∘ drag shape).
     pub fn outline_mask(&self) -> Option<Mask> {
-        let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
+        let s = self.doc.storage();
+        let (w, h) = (s.w as u32, s.h as u32);
         // While a selection rotate draft is open the marquee follows the (preview) rotated mask,
         // even though the document's selection isn't touched until Commit.
         if let Some(m) = self.rotate_draft_outline() {
@@ -634,7 +648,7 @@ impl Session {
         if let Some(d) = self.move_draft.as_ref().filter(|d| d.is_selection) {
             if let Some(sel) = d.sel_before.as_deref() {
                 return Some(if self.settings.wrap {
-                    sel.translated_wrapped(d.offset.x, d.offset.y)
+                    sel.translated_wrapped(d.offset.x, d.offset.y, self.doc.canvas_rect())
                 } else {
                     sel.translated(d.offset.x, d.offset.y)
                 });
@@ -652,7 +666,8 @@ impl Session {
                 }
                 _ => None,
             };
-            if let Some(shape) = shape {
+            if let Some(mut shape) = shape {
+                shape.intersect_rect(self.selection_clip());
                 let mut m = self.selection_clone().unwrap_or_else(|| Mask::new(w, h));
                 m.combine(&shape, self.selection_mode);
                 return Some(m);
@@ -668,11 +683,15 @@ impl Session {
             Some(m) if !m.is_empty() => m,
             _ => return 0,
         };
+        // Emit the canvas window of the storage-sized mask (overscan off): offset reads by the gutter
+        // origin so a canvas coordinate maps to the right storage cell. [Phase 3 adds a storage-sized
+        // path for the overscan view.]
         let (w, h) = (self.doc.size.w as usize, self.doc.size.h as usize);
+        let org = self.doc.origin();
         let n = (w * h).min(out.len());
         for (i, slot) in out.iter_mut().enumerate().take(n) {
-            let x = (i % w) as i32;
-            let y = (i / w) as i32;
+            let x = org.x + (i % w) as i32;
+            let y = org.y + (i / w) as i32;
             *slot = m.get(x, y) as u8;
         }
         n
@@ -682,6 +701,9 @@ impl Session {
     /// `RgbaBuffer::get` already returns transparent out of bounds), so a bad index can never panic
     /// across the boundary. [audit F-28]
     pub fn pixel(&self, f: usize, l: usize, x: i32, y: i32) -> Rgba8 {
+        // `x,y` are canvas-relative (gutter reachable via negative / ≥ canvas coords); map to storage.
+        let o = self.doc.origin();
+        let (x, y) = (x + o.x, y + o.y);
         let frame = match self.doc.frames.get(f.min(self.doc.frames.len().saturating_sub(1))) {
             Some(fr) => fr,
             None => return Rgba8::TRANSPARENT,
@@ -1008,6 +1030,7 @@ impl Session {
                 }
             }
             let fi = self.doc.active_frame;
+            let cr = self.doc.canvas_rect();
             for idx in 0..self.move_layers.len() {
                 let li = self.move_layers[idx].0;
                 if li < self.doc.frames[fi].layers.len() {
@@ -1016,7 +1039,7 @@ impl Session {
                     buf.clear();
                     // Wrap: pixels leaving one edge re-enter the opposite one. Regular: clip them.
                     if wrap {
-                        buf.blit_wrapped(snap, dx, dy);
+                        buf.blit_wrapped(snap, dx, dy, cr);
                     } else {
                         buf.blit_over(snap, Point::new(dx, dy));
                     }
@@ -1096,6 +1119,7 @@ impl Session {
                     if let (Some(float), Some(sel)) = (stroke.floating, self.selection_clone()) {
                         let (dx, dy) = (last.x - start.x, last.y - start.y);
                         let wrap = self.settings.wrap;
+                        let cr = self.doc.canvas_rect();
                         if let Some(bb) = sel.bounds() {
                             let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
                             // erase originals
@@ -1108,7 +1132,7 @@ impl Session {
                             }
                             // Wrap: pixels leaving an edge re-enter the opposite one. Regular: clip.
                             if wrap {
-                                buf.blit_wrapped(&float, bb.x + dx, bb.y + dy);
+                                buf.blit_wrapped(&float, bb.x + dx, bb.y + dy, cr);
                             } else {
                                 buf.blit_over(&float, Point::new(bb.x + dx, bb.y + dy));
                             }
@@ -1116,7 +1140,7 @@ impl Session {
                         // Assign directly (no separate record): the mask transition is captured by
                         // the commit_edit() below, so the pixel move and its mask move undo as one.
                         self.doc.selection = Some(Arc::new(
-                            if wrap { sel.translated_wrapped(dx, dy) } else { sel.translated(dx, dy) },
+                            if wrap { sel.translated_wrapped(dx, dy, cr) } else { sel.translated(dx, dy) },
                         ));
                     }
                 }
@@ -1126,11 +1150,11 @@ impl Session {
 
         // Selection tools: build the shape mask and combine it into the selection as one undo step
         // (selection changes are now undoable + serialized; see Document::selection).
+        let (sw, sh) = { let s = self.doc.storage(); (s.w as u32, s.h as u32) };
         match self.tool {
             ToolKind::SelectRect | ToolKind::SelectEllipse | ToolKind::SelectCircle => {
-                let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
                 let kind = self.tool;
-                let shape = Mask::from_plot(w, h, |plot| match kind {
+                let shape = Mask::from_plot(sw, sh, |plot| match kind {
                     ToolKind::SelectRect => crate::raster::rect_filled(start, last, plot),
                     ToolKind::SelectEllipse => crate::raster::ellipse_filled(start, last, plot),
                     _ => crate::raster::circle_filled(start, last, plot),
@@ -1138,15 +1162,13 @@ impl Session {
                 self.combine_selection(&shape, self.selection_mode);
             }
             ToolKind::SelectPoly | ToolKind::SelectFree => {
-                let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
                 let path = stroke.path.clone();
-                let shape = Mask::from_plot(w, h, |plot| crate::raster::polygon_filled(&path, plot));
+                let shape = Mask::from_plot(sw, sh, |plot| crate::raster::polygon_filled(&path, plot));
                 self.combine_selection(&shape, self.selection_mode);
             }
             ToolKind::SelectByColor => {
-                let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
                 let buf = self.doc.active_frame().active_layer().pixels.clone();
-                let shape = Mask::from_color(w, h, &buf, start, self.settings.threshold, self.settings.contiguous);
+                let shape = Mask::from_color(sw, sh, &buf, start, self.settings.threshold, self.settings.contiguous);
                 self.combine_selection(&shape, self.selection_mode);
             }
             _ => {}
@@ -1421,8 +1443,12 @@ impl Session {
     /// make `spaced_points`/`raster::line` iterate billions of times (a multi-second hang / OOM).
     /// One canvas span of margin preserves every real stroke while bounding the work. [audit F-6]
     fn clamp_pointer(&self, p: Point) -> Point {
+        // Pointer/DSL input is canvas-relative (gutter = negative / ≥ canvas). Clamp to the reachable
+        // range — one canvas of margin on each side, matching the gutter — then map to the storage
+        // coordinates the layer buffers are indexed by, by adding the gutter origin. [SPEC §8]
         let (w, h) = (self.doc.size.w as i32, self.doc.size.h as i32);
-        Point::new(p.x.clamp(-w, 2 * w), p.y.clamp(-h, 2 * h))
+        let o = self.doc.origin();
+        Point::new(p.x.clamp(-w, 2 * w) + o.x, p.y.clamp(-h, 2 * h) + o.y)
     }
 
     /// Stamp (mode, color) for the active stamp-style paint tool, or `None` if the active tool
@@ -1525,7 +1551,8 @@ impl Session {
     /// opaque/drawn pixels) and combine it with the current selection using `mode`. Undoable +
     /// serialized (one undo step).
     pub fn select_by_alpha(&mut self, mode: CombineMode) {
-        let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
+        let s = self.doc.storage();
+        let (w, h) = (s.w as u32, s.h as u32);
         let cutoff = self.settings.alpha_cutoff;
         let buf = self.doc.active_frame().active_layer().pixels.clone();
         let shape = Mask::from_plot(w, h, |plot| {
@@ -1541,18 +1568,20 @@ impl Session {
     }
 
     pub fn select_all(&mut self) {
-        let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
-        let mut m = Mask::new(w, h);
+        let s = self.doc.storage();
+        let mut m = Mask::new(s.w as u32, s.h as u32);
         m.select_all();
+        m.intersect_rect(self.selection_clip()); // Select-All covers the canvas (or storage on overscan)
         self.set_selection(Some(m));
     }
     pub fn select_none(&mut self) {
         self.set_selection(None);
     }
     pub fn invert_selection(&mut self) {
-        let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
-        let mut m = self.selection_clone().unwrap_or_else(|| Mask::new(w, h));
+        let s = self.doc.storage();
+        let mut m = self.selection_clone().unwrap_or_else(|| Mask::new(s.w as u32, s.h as u32));
         m.invert();
+        m.intersect_rect(self.selection_clip()); // invert within the selectable window, not the gutter
         self.set_selection(Some(m));
     }
     /// Translate the selection MASK (not the pixels) by (dx, dy), honouring the same off-canvas edge
@@ -1582,13 +1611,14 @@ impl Session {
             None => return,
         };
         let moved = if self.settings.wrap {
-            m.translated_wrapped(dx, dy)
+            m.translated_wrapped(dx, dy, self.doc.canvas_rect())
         } else if self.settings.protect_pixels {
             match m.bounds() {
                 Some(bb) => {
-                    let (w, h) = (self.doc.size.w as i32, self.doc.size.h as i32);
-                    let cdx = dx.clamp(-bb.x, w - (bb.x + bb.w as i32));
-                    let cdy = dy.clamp(-bb.y, h - (bb.y + bb.h as i32));
+                    // Clamp so the selection stays within the canvas window (storage coords).
+                    let cr = self.doc.canvas_rect();
+                    let cdx = dx.clamp(cr.x - bb.x, cr.right() - (bb.x + bb.w as i32));
+                    let cdy = dy.clamp(cr.y - bb.y, cr.bottom() - (bb.y + bb.h as i32));
                     m.translated(cdx, cdy)
                 }
                 None => m,
@@ -1977,10 +2007,11 @@ impl Session {
         acc
     }
 
-    /// Clamp a translation so an opaque bounding box `bbox` stays fully on-canvas.
+    /// Clamp a translation so an opaque bounding box `bbox` (storage coords) stays fully inside the
+    /// canvas window — Protect-pixels never pushes opaque content off the canvas into the gutter.
     fn clamp_move_to_canvas(&self, bbox: crate::geom::IRect, dx: i32, dy: i32) -> (i32, i32) {
-        let (w, h) = (self.doc.size.w as i32, self.doc.size.h as i32);
-        (dx.clamp(-bbox.x, w - bbox.right()), dy.clamp(-bbox.y, h - bbox.bottom()))
+        let cr = self.doc.canvas_rect();
+        (dx.clamp(cr.x - bbox.x, cr.right() - bbox.right()), dy.clamp(cr.y - bbox.y, cr.bottom() - bbox.bottom()))
     }
 
     /// Translate the content of all selected layers by (dx,dy), together, as one undoable
@@ -2009,12 +2040,13 @@ impl Session {
         }
         let wrap = self.settings.wrap;
         self.edit_frame(|s| {
+            let cr = s.doc.canvas_rect();
             for &li in &layers {
                 let src = s.doc.active_frame().layers[li].pixels.clone();
                 let buf = &mut s.doc.active_frame_mut().layers[li].pixels;
                 buf.clear();
                 if wrap {
-                    buf.blit_wrapped(&src, dx, dy);
+                    buf.blit_wrapped(&src, dx, dy, cr);
                 } else {
                     for y in 0..src.height() as i32 {
                         for x in 0..src.width() as i32 {
@@ -2043,6 +2075,7 @@ impl Session {
             None => return,
         };
         let wrap = self.settings.wrap;
+        let cr = self.doc.canvas_rect();
         let before = self.begin_edit();
         {
             let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
@@ -2056,7 +2089,7 @@ impl Session {
                 }
             }
             if wrap {
-                buf.blit_wrapped(&float, bb.x + dx, bb.y + dy);
+                buf.blit_wrapped(&float, bb.x + dx, bb.y + dy, cr);
             } else {
                 buf.blit_over(&float, Point::new(bb.x + dx, bb.y + dy));
             }
@@ -2065,7 +2098,7 @@ impl Session {
         // "after": undo restores both the pixels and the mask to their pre-nudge positions, redo
         // re-applies both. (Assign directly — not via set_selection — so it isn't a separate step.)
         self.doc.selection = Some(Arc::new(
-            if wrap { sel.translated_wrapped(dx, dy) } else { sel.translated(dx, dy) },
+            if wrap { sel.translated_wrapped(dx, dy, cr) } else { sel.translated(dx, dy) },
         ));
         self.commit_edit(before);
     }
@@ -2184,7 +2217,7 @@ impl Session {
             return None;
         }
         let mut frame = self.doc.frames[fi].clone();
-        move_draft_paint(d, &mut frame, self.settings.wrap);
+        move_draft_paint(d, &mut frame, self.settings.wrap, self.doc.canvas_rect());
         Some(frame)
     }
 
@@ -2203,8 +2236,9 @@ impl Session {
             Some(fi) => fi,
             None => return,
         };
+        let cr = self.doc.canvas_rect();
         let before = self.doc.frames[fi].clone();
-        let translated = move_draft_paint(&d, &mut self.doc.frames[fi], self.settings.wrap);
+        let translated = move_draft_paint(&d, &mut self.doc.frames[fi], self.settings.wrap, cr);
         if let Some(m) = translated {
             self.doc.selection = Some(Arc::new(m)); // the marquee moves with the committed pixels
         }
