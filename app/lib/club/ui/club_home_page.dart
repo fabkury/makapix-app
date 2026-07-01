@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/post.dart';
 import '../state/account_providers.dart';
 import '../state/auth_controller.dart';
-import '../state/edit_bridge.dart';
 import '../state/feed_providers.dart';
 import '../state/notifications_providers.dart';
 import '../state/player_providers.dart';
@@ -13,6 +12,7 @@ import 'artwork_detail_page.dart';
 import 'auth/onboarding_wizard.dart';
 import 'club_account_page.dart';
 import 'club_welcome_page.dart';
+import 'contribute_page.dart';
 import 'notifications_page.dart';
 import 'post_management_page.dart';
 import 'profile_page.dart';
@@ -22,8 +22,8 @@ import 'widgets/feed_grid.dart';
 import 'widgets/send_target_binder.dart';
 
 /// The social hub. Top bar (left → right): the Makapix Club menu · my profile · notifications,
-/// then Contribute (opens the editor) · Recommended · Recent · Following · Search. The selected
-/// feed fills the body.
+/// then Contribute · Recommended · Recent · Following · Search. The selected page (Contribute or a
+/// feed) fills the body, and horizontal swipes move between them.
 class ClubHomePage extends ConsumerStatefulWidget {
   const ClubHomePage({super.key});
   @override
@@ -31,14 +31,22 @@ class ClubHomePage extends ConsumerStatefulWidget {
 }
 
 class _ClubHomePageState extends ConsumerState<ClubHomePage> {
-  // Swipeable feed pages, left → right matching the top-bar order. The body lands on Recent
-  // ("New artworks", like the website), which sits in the middle so a swipe either way reaches
-  // a neighbouring feed.
+  // Swipeable pages, left → right matching the top-bar order. Page 0 is Contribute (a peer to the
+  // feeds); the feeds follow. The body lands on Recent ("New artworks", like the website), so a
+  // swipe reaches Recommended → Contribute one way and Following the other.
   static const List<FeedKind> _feeds = [FeedKind.promoted, FeedKind.recent, FeedKind.following];
-  static const int _initialPage = 1; // FeedKind.recent
+  // PageView layout: Contribute(0) · Recommended(1) · Recent(2) · Following(3). Feed i is at page i+1.
+  static const int _initialPage = 2; // FeedKind.recent
+  int get _pageCount => _feeds.length + 1;
 
   late final PageController _pages = PageController(initialPage: _initialPage);
-  FeedKind _feed = _feeds[_initialPage];
+  // The active page's feed, or null while the Contribute page (page 0) is showing.
+  FeedKind? _feed = _feedForPage(_initialPage);
+
+  // Page ⇄ feed mapping: page 0 is Contribute (no feed); page p≥1 is `_feeds[p-1]`.
+  static FeedKind? _feedForPage(int page) =>
+      page <= 0 ? null : _feeds[(page - 1).clamp(0, _feeds.length - 1)];
+  int get _currentPage => _feed == null ? 0 : _feeds.indexOf(_feed!) + 1;
 
   @override
   void dispose() {
@@ -47,34 +55,34 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
   }
 
   // Keep the top-bar selection (`_feed`) in sync with the PageView's real page.
-  // When the feed view mounts *after* the onboarding wizard, the deferred first
-  // layout makes PageView fire a spurious `onPageChanged(0)` (highlighting
-  // Recommended) while the controller actually settles on `initialPage` (Recent).
-  // Re-assert `_feed` from the controller's settled page after the frame; only act
-  // on a settled (near-integer) page so an in-progress swipe isn't disturbed.
+  // When the view mounts *after* the onboarding wizard, the deferred first layout makes PageView
+  // fire a spurious `onPageChanged(0)` (highlighting Contribute) while the controller actually
+  // settles on `initialPage` (Recent). Re-assert `_feed` from the controller's settled page after
+  // the frame; only act on a settled (near-integer) page so an in-progress swipe isn't disturbed.
   void _syncFeedToPager() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_pages.hasClients) return;
       final page = _pages.page;
       if (page == null || (page - page.roundToDouble()).abs() > 0.01) return;
-      final kind = _feeds[page.round().clamp(0, _feeds.length - 1)];
+      final kind = _feedForPage(page.round().clamp(0, _pageCount - 1));
       if (kind != _feed) setState(() => _feed = kind);
     });
   }
 
-  // Jump to a feed by its top-bar button (animated; keeps the swipe pager in sync).
-  void _selectFeed(FeedKind kind) {
-    final i = _feeds.indexOf(kind);
-    if (i < 0 || i == _feeds.indexOf(_feed)) return;
-    _pages.animateToPage(i, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+  // Jump to a page by its top-bar button (animated; keeps the swipe pager in sync).
+  void _goToPage(int page) {
+    if (page == _currentPage) return;
+    _pages.animateToPage(page, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
   }
 
-  void _openPost(Post p) => Navigator.push(
+  void _selectFeed(FeedKind kind) => _goToPage(_feeds.indexOf(kind) + 1);
+
+  void _openPost(FeedKind kind, Post p) => Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => ArtworkDetailPage(
             sqid: p.sqid,
-            feed: pagedArtworkSource(feedProvider(_feed), feedProvider(_feed).notifier),
+            feed: pagedArtworkSource(feedProvider(kind), feedProvider(kind).notifier),
           ),
         ),
       );
@@ -93,7 +101,8 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
   Widget _feedBody(FeedKind kind) {
     final state = ref.watch(feedProvider(kind));
     final n = ref.read(feedProvider(kind).notifier);
-    return FeedGrid(state: state, onLoadMore: n.loadMore, onRefresh: n.refresh, onTap: _openPost);
+    return FeedGrid(
+        state: state, onLoadMore: n.loadMore, onRefresh: n.refresh, onTap: (p) => _openPost(kind, p));
   }
 
   // A compact top-bar icon button (8 sit side-by-side, so they're tight).
@@ -114,6 +123,15 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
   Widget _feedIcon(IconData icon, IconData selectedIcon, String tip, FeedKind kind, ColorScheme cs) {
     final selected = _feed == kind;
     return _navIcon(selected ? selectedIcon : icon, tip, () => _selectFeed(kind),
+        color: selected ? cs.primary : null);
+  }
+
+  // The Contribute selector: like a feed icon, but its "feed" is the Contribute page (page 0),
+  // so it's highlighted whenever no feed is active.
+  Widget _contributeIcon(ColorScheme cs) {
+    final selected = _feed == null;
+    return _navIcon(selected ? Icons.add_circle : Icons.add_circle_outline, 'Contribute',
+        () => _goToPage(0),
         color: selected ? cs.primary : null);
   }
 
@@ -201,8 +219,7 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
         ]),
         // Right group: Contribute · Recommended · Recent · Following · Search.
         actions: [
-          _navIcon(Icons.add_circle_outline, 'Contribute (open the editor)',
-              () => ref.read(openEditorProvider.notifier).state++),
+          _contributeIcon(cs),
           _feedIcon(Icons.diamond_outlined, Icons.diamond, 'Recommended', FeedKind.promoted, cs),
           _feedIcon(Icons.visibility_outlined, Icons.visibility, 'Recent', FeedKind.recent, cs),
           _feedIcon(Icons.people_outline, Icons.people, 'Following', FeedKind.following, cs),
@@ -210,14 +227,18 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
           const SizedBox(width: 4),
         ],
       ),
-      // Swipe horizontally to move Recommended ↔ Recent ↔ Following; the top-bar buttons jump
-      // to a page and stay in sync via onPageChanged.
+      // Swipe horizontally to move Contribute ↔ Recommended ↔ Recent ↔ Following; the top-bar
+      // buttons jump to a page and stay in sync via onPageChanged. The Contribute page has no
+      // player channel, so sending is disabled there.
       body: SendTargetBinder(
-        target: _channelFor(_feed),
+        target: _feed == null ? null : _channelFor(_feed!),
         child: PageView(
           controller: _pages,
-          onPageChanged: (i) => setState(() => _feed = _feeds[i]),
-          children: [for (final kind in _feeds) _feedBody(kind)],
+          onPageChanged: (i) => setState(() => _feed = _feedForPage(i)),
+          children: [
+            const ContributePage(),
+            for (final kind in _feeds) _feedBody(kind),
+          ],
         ),
       ),
     );
