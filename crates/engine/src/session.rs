@@ -3952,6 +3952,26 @@ mod tests {
     }
 
     #[test]
+    fn selection_reaches_the_gutter_only_under_overscan() {
+        let mut s = Session::new(16, 16);
+        let o = s.doc.origin();
+        // Overscan OFF: a marquee dragged into the left gutter clips to the canvas.
+        s.run_script("SelectTool(SelectRect); Stroke([(-5,2),(5,5)])").unwrap();
+        {
+            let sel = s.doc.selection.as_ref().unwrap();
+            assert!(!sel.get(o.x - 5, o.y + 2), "overscan off: the gutter part is not selected");
+            assert!(sel.get(o.x, o.y + 2), "overscan off: the on-canvas part is selected");
+        }
+        // Overscan ON: the same gesture selects into the gutter.
+        s.run_script("SetOverscanView(1); SelectNone(); SelectTool(SelectRect); Stroke([(-5,2),(5,5)])")
+            .unwrap();
+        {
+            let sel = s.doc.selection.as_ref().unwrap();
+            assert!(sel.get(o.x - 5, o.y + 2), "overscan on: the gutter part IS selected");
+        }
+    }
+
+    #[test]
     fn flip_preserves_and_mirrors_gutter_pixels() {
         let mut s = Session::new(16, 16);
         s.settings.primary = Rgba8::WHITE;
