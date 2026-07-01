@@ -24,6 +24,19 @@ impl Tile {
     fn is_all_transparent(&self) -> bool {
         self.0.iter().all(|p| p.a == 0)
     }
+    /// Build a tile from `TILE_AREA*4` straight-RGBA bytes (row-major local order). `None` if the
+    /// slice is too short. Used by `io` to materialize a dictionary tile once, then share its `Arc`.
+    pub fn from_bytes(bytes: &[u8]) -> Option<Tile> {
+        if bytes.len() < TILE_AREA * 4 {
+            return None;
+        }
+        let mut arr = [Rgba8::TRANSPARENT; TILE_AREA];
+        for (k, slot) in arr.iter_mut().enumerate() {
+            let o = k * 4;
+            *slot = Rgba8::new(bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3]);
+        }
+        Some(Tile(arr))
+    }
 }
 
 #[derive(Clone)]
@@ -373,6 +386,14 @@ impl RgbaBuffer {
             }
             v
         })
+    }
+
+    /// Install a (possibly shared) tile `Arc` at storage tile index `i`; out-of-range is ignored.
+    /// Placing one shared `Arc` at many indices is how `io` restores in-RAM COW sharing on load.
+    pub fn set_tile(&mut self, i: usize, tile: Option<Arc<Tile>>) {
+        if i < self.tiles.len() {
+            self.tiles[i] = tile;
+        }
     }
 
     /// Install tile `i` from 4096 raw RGBA bytes.
