@@ -41,6 +41,10 @@ struct Stroke {
     last: Point,
     path: Vec<Point>,
     floating: Option<RgbaBuffer>, // for Move
+    /// Pencil pixel-perfect: the tail of recently painted pixels (with their captured pre-stroke
+    /// colours), used to detect and undo the L-shaped "corner double" as the stroke is drawn. Only
+    /// populated for a 1px Pencil with `pixel_perfect` on; empty otherwise. See [`pp_corner`].
+    pp: Vec<(Point, Rgba8)>,
 }
 
 /// One layer's lifted content within a [`MoveDraft`], re-blitted at `anchor + offset`.
@@ -175,6 +179,16 @@ fn sel_eq(a: &Option<Arc<Mask>>, b: &Option<Arc<Mask>>) -> bool {
 }
 
 /// Smallest rectangle covering both `a` and `b`.
+/// Pixel-perfect corner test: is `b` the redundant middle of an L-shaped elbow `a → b → c`?
+/// True when `a` and `c` are diagonal neighbours (one step apart on both axes) and `b` is the
+/// orthogonal pixel wedged between them — the "corner double" a hand would never place.
+fn pp_corner(a: Point, b: Point, c: Point) -> bool {
+    (a.x == b.x || a.y == b.y)
+        && (c.x == b.x || c.y == b.y)
+        && (a.x - c.x).abs() == 1
+        && (a.y - c.y).abs() == 1
+}
+
 fn union_irect(a: crate::geom::IRect, b: crate::geom::IRect) -> crate::geom::IRect {
     let x = a.x.min(b.x);
     let y = a.y.min(b.y);
@@ -849,11 +863,24 @@ impl Session {
         let before = self.begin_edit();
         self.paint_acc = 0.0; // fresh stroke → reset Brush/Airbrush spacing
         let mut floating = None;
+        // Pixel-perfect Pencil: seeds the corner-double filter with the first painted pixel (captured
+        // with its pre-stroke colour so a later removal restores it). Empty for every other case.
+        let mut pp = Vec::new();
         // The single Move tool moves the selected pixels when there's a selection, else the layer.
         let has_sel = self.doc.selection.as_ref().and_then(|s| s.bounds()).is_some();
         // Paint-immediately tools.
         if self.active_editable() {
             match self.tool {
+                ToolKind::Pencil if self.pixel_perfect_active() => {
+                    // Plot the first pixel ourselves so we can record its pre-stroke colour as the
+                    // seed of the pixel-perfect sequence (see `pencil_perfect_step`).
+                    let color = self.settings.primary;
+                    let sel = self.selection_clone();
+                    let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
+                    let orig = buf.get(p.x, p.y);
+                    tool::plot(buf, sel.as_ref(), p.x, p.y, color, PaintMode::Replace);
+                    pp.push((p, orig));
+                }
                 ToolKind::Pencil => self.stamp_active(p, PaintMode::Replace, self.settings.primary),
                 ToolKind::Brush => self.stamp_active(p, PaintMode::Over, self.settings.primary),
                 ToolKind::Eraser => self.stamp_active(p, PaintMode::Erase, Rgba8::TRANSPARENT),
@@ -928,7 +955,7 @@ impl Session {
                 }
             });
         }
-        self.stroke = Some(Stroke { before, start: p, last: p, path: vec![p], floating });
+        self.stroke = Some(Stroke { before, start: p, last: p, path: vec![p], floating, pp });
     }
 
     pub fn pointer_move(&mut self, x: i32, y: i32) {
@@ -980,6 +1007,7 @@ impl Session {
         }
         if self.active_editable() {
             match self.tool {
+                ToolKind::Pencil if self.pixel_perfect_active() => self.pencil_perfect_step(last, p),
                 ToolKind::Pencil => self.stroke_active(last, p, PaintMode::Replace, self.settings.primary),
                 ToolKind::Brush => self.brush_stroke_spaced(last, p, PaintMode::Over, self.settings.primary),
                 ToolKind::Eraser => self.stroke_active(last, p, PaintMode::Erase, Rgba8::TRANSPARENT),
@@ -1237,6 +1265,58 @@ impl Session {
         let sel = self.selection_clone();
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
         tool::stroke_segment(buf, sel.as_ref(), a, b, size, shape, color, mode);
+    }
+
+    /// True when the Pencil should draw in pixel-perfect mode: the toggle is on and the brush is a
+    /// single pixel (the only width where "corner doubles" are well-defined).
+    fn pixel_perfect_active(&self) -> bool {
+        self.settings.pixel_perfect && self.settings.brush_size == 1
+    }
+
+    /// Paint a 1px Pencil segment in pixel-perfect mode: stamp each interpolated pixel from `a` to
+    /// `b`, then drop the redundant "corner double" (the L-elbow) as soon as a turn completes,
+    /// restoring the removed pixel to its captured pre-stroke colour. The running tail lives in
+    /// `stroke.pp` so detection continues across successive `pointer_move` segments.
+    fn pencil_perfect_step(&mut self, a: Point, b: Point) {
+        let color = self.settings.primary;
+        let sel = self.selection_clone();
+        // Move the running tail out of the stroke so `self.doc` and `self.stroke` aren't both
+        // borrowed at once; put it back at the end.
+        let mut pp = match self.stroke.as_mut() {
+            Some(s) => std::mem::take(&mut s.pp),
+            None => return,
+        };
+        let mut pts = Vec::new();
+        crate::raster::line(a, b, |x, y| pts.push(Point::new(x, y)));
+        {
+            let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
+            for c in pts {
+                // Successive segments share an endpoint (`line(a,b)` then `line(b,c)` both yield `b`);
+                // skip a repeat so it isn't mistaken for a step.
+                if pp.last().map(|&(q, _)| q == c).unwrap_or(false) {
+                    continue;
+                }
+                let orig = buf.get(c.x, c.y); // pre-stroke colour (stroke hasn't touched `c` yet)
+                tool::plot(buf, sel.as_ref(), c.x, c.y, color, PaintMode::Replace);
+                pp.push((c, orig));
+                let n = pp.len();
+                if n >= 3 && pp_corner(pp[n - 3].0, pp[n - 2].0, pp[n - 1].0) {
+                    // The middle pixel is the corner double: restore it and drop it from the tail so
+                    // its neighbours become adjacent and the filter continues cleanly.
+                    let (mid, mid_orig) = pp[n - 2];
+                    buf.set(mid.x, mid.y, mid_orig);
+                    pp.remove(n - 2);
+                }
+            }
+        }
+        // Only the last two pixels are needed as anchors for the next segment; keep the tail bounded.
+        let keep = pp.len().saturating_sub(2);
+        if keep > 0 {
+            pp.drain(0..keep);
+        }
+        if let Some(s) = self.stroke.as_mut() {
+            s.pp = pp;
+        }
     }
     fn airbrush_active(&mut self, p: Point) {
         let (size, intensity, color) = (self.settings.brush_size, self.settings.intensity, self.settings.primary);

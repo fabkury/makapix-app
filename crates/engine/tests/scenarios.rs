@@ -26,6 +26,90 @@ fn pencil_outline_shape_and_undo() {
     assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::TRANSPARENT); // hollow interior
 }
 
+// A staircase drag (single-step moves) whose turns each produce a "corner double". Without
+// pixel-perfect the corners (2,1) and (3,2) are painted; with it on they are dropped, leaving a
+// clean 1px diagonal through (1,1),(2,2),(3,3).
+const STAIRCASE: &str = "Stroke([(1,1),(2,1),(2,2),(3,2),(3,3)])";
+const RED: Rgba8 = Rgba8 { r: 255, g: 0, b: 0, a: 255 };
+
+#[test]
+fn pencil_pixel_perfect_removes_corner() {
+    let s = run(&format!(
+        r#"
+        NewDocument(8,8)
+        SelectTool(Pencil); SetPrimaryColor(#FF0000FF); SetBrushSize(1); SetPixelPerfect(true)
+        {STAIRCASE}
+    "#
+    ));
+    // Kept diagonal.
+    assert_eq!(s.pixel(0, 0, 1, 1), RED);
+    assert_eq!(s.pixel(0, 0, 2, 2), RED);
+    assert_eq!(s.pixel(0, 0, 3, 3), RED);
+    // Corner doubles removed.
+    assert_eq!(s.pixel(0, 0, 2, 1), Rgba8::TRANSPARENT);
+    assert_eq!(s.pixel(0, 0, 3, 2), Rgba8::TRANSPARENT);
+}
+
+#[test]
+fn pencil_pixel_perfect_off_keeps_corner() {
+    let s = run(&format!(
+        r#"
+        NewDocument(8,8)
+        SelectTool(Pencil); SetPrimaryColor(#FF0000FF); SetBrushSize(1); SetPixelPerfect(false)
+        {STAIRCASE}
+    "#
+    ));
+    // Every stepped pixel, corners included, is painted (today's behaviour — regression guard).
+    assert_eq!(s.pixel(0, 0, 2, 1), RED);
+    assert_eq!(s.pixel(0, 0, 3, 2), RED);
+}
+
+#[test]
+fn pencil_pixel_perfect_restores_underlying() {
+    // Pre-fill the corner pixel green, then draw the pixel-perfect staircase over it. The removed
+    // corner must be restored to the underlying green, not punched out to transparent.
+    let s = run(&format!(
+        r#"
+        NewDocument(8,8)
+        SelectTool(Pencil); SetPrimaryColor(#00FF00FF); SetBrushSize(1); SetPixelPerfect(false)
+        Tap(2,1)
+        SetPrimaryColor(#FF0000FF); SetPixelPerfect(true)
+        {STAIRCASE}
+    "#
+    ));
+    assert_eq!(s.pixel(0, 0, 2, 1), Rgba8::rgb(0, 255, 0));
+    assert_eq!(s.pixel(0, 0, 2, 2), RED); // rest of the stroke still drawn
+}
+
+#[test]
+fn pencil_pixel_perfect_only_at_size_1() {
+    // Above 1px the filter is a no-op: the corner is still painted.
+    let s = run(&format!(
+        r#"
+        NewDocument(8,8)
+        SelectTool(Pencil); SetPrimaryColor(#FF0000FF); SetBrushSize(2); SetPixelPerfect(true)
+        {STAIRCASE}
+    "#
+    ));
+    assert_eq!(s.pixel(0, 0, 2, 1), RED);
+}
+
+#[test]
+fn pencil_pixel_perfect_undo_restores_blank() {
+    // The whole pixel-perfect stroke is one undo record; undo returns the canvas to blank.
+    let s = run(&format!(
+        r#"
+        NewDocument(8,8)
+        SelectTool(Pencil); SetPrimaryColor(#FF0000FF); SetBrushSize(1); SetPixelPerfect(true)
+        {STAIRCASE}
+        Undo()
+    "#
+    ));
+    for (x, y) in [(1, 1), (2, 2), (3, 3), (2, 1), (3, 2)] {
+        assert_eq!(s.pixel(0, 0, x, y), Rgba8::TRANSPARENT, "({x},{y}) should be blank after undo");
+    }
+}
+
 #[test]
 fn undo_redo_is_identity_over_random_script() {
     // Property: after N random edits, undo all then redo all returns the exact document.

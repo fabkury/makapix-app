@@ -162,6 +162,10 @@ pub struct ToolSettings {
     /// When true, a layer Move wraps pixels around the canvas edges (top↔bottom, left↔right)
     /// instead of clipping them off. Mutually exclusive with `protect_pixels` (enforced by the UI).
     pub wrap: bool,
+    /// Pencil "pixel perfect": while drawing a 1px Pencil stroke, drop the redundant "corner double"
+    /// pixels (the L-shaped elbow at each turn) so the line stays a clean 1px wide. Only meaningful
+    /// at `brush_size == 1`; a no-op otherwise.
+    pub pixel_perfect: bool,
 }
 impl Default for ToolSettings {
     fn default() -> Self {
@@ -182,6 +186,7 @@ impl Default for ToolSettings {
             line_width: 1,
             protect_pixels: false,
             wrap: false,
+            pixel_perfect: false,
         }
     }
 }

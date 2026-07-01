@@ -97,6 +97,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   int get _brushSize => _sizeByTool[_tool] ?? (_tool == 'Airbrush' ? 8 : 1);
   set _brushSize(int v) => _sizeByTool[_tool] = v;
   bool _round = true;
+  bool _perfect = false; // Pencil pixel-perfect: drop L-corner doubles on a 1px stroke
   int _threshold = 16;
   bool _contiguous = true;
   bool _fillAllLayers = false; // Bucket: decide the fill region from the composited image

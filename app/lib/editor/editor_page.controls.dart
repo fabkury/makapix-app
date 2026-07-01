@@ -267,6 +267,26 @@ extension _EditorControls on _EditorPageState {
         _send('SetBrushShape(${_round ? 'Round' : 'Square'})');
       }));
     }
+    if (_tool == 'Pencil') {
+      // Pixel-perfect: drop the redundant "corner double" pixels as a 1px stroke turns, keeping the
+      // line a clean 1px. Only meaningful at Size 1 (the engine no-ops it above), so grey it out
+      // there while keeping it visible/discoverable.
+      final perfectEnabled = _brushSize == 1;
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: FilterChip(
+          selected: _perfect,
+          label: Text(_perfect ? 'Perfect ✔' : 'Perfect'),
+          selectedColor: const Color(0xFF30A050),
+          onSelected: perfectEnabled
+              ? (v) {
+                  setState(() => _perfect = v);
+                  _send('SetPixelPerfect($_perfect)');
+                }
+              : null,
+        ),
+      ));
+    }
     if (_tool == 'Airbrush' || _tool == 'Dodge' || _tool == 'Burn') {
       _labeledSlider(children, 'Intensity', _intensity.toDouble(), 1, 255, (v) {
         setState(() => _intensity = v.round());

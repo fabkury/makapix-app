@@ -1,0 +1,7 @@
+# Pencil "pixel perfect" demo: a shallow, hand-jittered drag that would normally leave L-shaped
+# corner doubles. With SetPixelPerfect(true) the corners are dropped, leaving a clean 1px line.
+# Probe it headlessly, e.g.:
+#   cargo run -p makapix-cli -- run examples/pixel_perfect.txt ascii:0:0
+NewDocument(24, 12)
+SelectTool(Pencil); SetPrimaryColor(#101010FF); SetBrushSize(1); SetPixelPerfect(true)
+Stroke([(2,9),(3,9),(4,8),(5,8),(6,7),(7,7),(8,6),(9,6),(10,5),(11,5),(12,4),(13,4),(14,3),(15,3),(16,2)])
