@@ -129,9 +129,11 @@ is a thin entry point; `lib/app.dart` is the neutral root `MaterialApp`; **`lib/
 both pillars (mounting only the active one — see the platform-gotcha on `IndexedStack`). The app **opens on the
 Club pillar** (signed-out users land on Club's own welcome/sign-in funnel). There is **no persistent
 pillar-switching chrome** (no bottom bar / rail): navigation is in-content — the Club's top-bar **Contribute**
-button opens the editor (also on the signed-out welcome page, so the **editor stays reachable without login**),
-and the editor's **☰ menu → Club** returns to the hub. The shell switches pillars via the `openEditorProvider` /
-`openClubProvider` signals (and `pendingClubEditProvider` for edit/remix).
+control selects a swipeable **Contribute page** (a peer to the feeds — `lib/club/ui/contribute_page.dart`) that
+opens the editor or accepts a direct file upload; the **signed-out welcome page** keeps a Contribute button
+that opens the editor straight away, so the **editor stays reachable without login**. The editor's **☰ menu →
+Club** returns to the hub. The shell switches pillars via the `openEditorProvider` / `openClubProvider`
+signals (and `pendingClubEditProvider` for edit/remix).
 
 - **Editor UI:** `app/lib/editor/`, mirroring `lib/club/` — `editor_page.dart` (the `EditorPage` +
   `_EditorPageState`: the three-row UI of tool options · palette · tools, plus canvas, timeline, layers,
