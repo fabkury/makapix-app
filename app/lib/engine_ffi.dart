@@ -96,6 +96,8 @@ class Engine {
   late final _LayerThumbD _layerThumb = _lib.lookupFunction<_LayerThumbC, _LayerThumbD>('mkpx_layer_thumb');
   late final _LayerHashD _layerHash = _lib.lookupFunction<_LayerHashC, _LayerHashD>('mkpx_layer_hash');
   late final _SaveD _save = _lib.lookupFunction<_SaveC, _SaveD>('mkpx_save');
+  // Same C signature as mkpx_save (Session*, out_len) → bytes; wraps the plain bytes in DEFLATE.
+  late final _SaveD _saveCompact = _lib.lookupFunction<_SaveC, _SaveD>('mkpx_save_compact');
   late final _LoadD _load = _lib.lookupFunction<_LoadC, _LoadD>('mkpx_load');
   late final _FreeStringD _freeStr = _lib.lookupFunction<_FreeStringC, _FreeStringD>('mkpx_free_string');
   late final _FreeBytesD _freeBytes = _lib.lookupFunction<_FreeBytesC, _FreeBytesD>('mkpx_free_bytes');
@@ -202,6 +204,19 @@ class Engine {
   Uint8List save() {
     final lenPtr = malloc<Uint64>();
     final p = _save(_s, lenPtr);
+    final len = lenPtr.value;
+    final bytes = Uint8List.fromList(p.asTypedList(len));
+    _freeBytes(p, len);
+    malloc.free(lenPtr);
+    return bytes;
+  }
+
+  /// Serialize to a **compact** (DEFLATE-wrapped) `.mkpx` — for the explicit "Save" / portable export
+  /// only. Autosave and library persistence use [save] (plain, cheap); both forms load back via
+  /// [load], which auto-detects the envelope.
+  Uint8List saveCompact() {
+    final lenPtr = malloc<Uint64>();
+    final p = _saveCompact(_s, lenPtr);
     final len = lenPtr.value;
     final bytes = Uint8List.fromList(p.asTypedList(len));
     _freeBytes(p, len);
