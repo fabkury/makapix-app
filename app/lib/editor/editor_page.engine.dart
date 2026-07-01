@@ -61,7 +61,9 @@ extension _EditorEngine on _EditorPageState {
   // every paint move; the cheap [_rebuildOutlineEdges] handles per-move footprint updates. [F-11]
   void _updateOutline() {
     if (!_engineReady) return;
-    final w = engine.width, h = engine.height;
+    // Trace in display coordinates (storage-sized under overscan); the outline overlay is drawn at
+    // the same image offset as the display, so gutter marquees line up with the shown pixels.
+    final w = engine.displayWidth, h = engine.displayHeight;
     final mask = engine.outlineMask();
     final edges = <List<int>>[];
     if (mask.isNotEmpty && mask.length >= w * h) {
@@ -187,13 +189,15 @@ extension _EditorEngine on _EditorPageState {
     } else {
       _rebuildOutlineEdges();
     }
-    final w = engine.width, h = engine.height;
     final frame = _playing ? engine.playFrame : engine.activeFrame;
+    // Playback composites the canvas; editing uses the display, which is storage-sized (canvas +
+    // gutter) under the overscan view. Size the decode to whichever we asked for.
     final bytes = _playing
         ? engine.compositeFrame(frame)
         // grid:false — the pixel grid is drawn as a thin screen-space overlay (GridPainter), not
         // baked into the upscaled canvas where it would render as thick lines.
         : engine.display(onion: _onion, grid: false, checker: true);
+    final (w, h) = _playing ? (engine.width, engine.height) : (engine.displayWidth, engine.displayHeight);
     final img = await _decode(bytes, w, h);
     if (!mounted) {
       img.dispose(); // we navigated away mid-decode; don't leak the GPU image [audit F-10]
@@ -352,7 +356,7 @@ extension _EditorEngine on _EditorPageState {
     _send('SetIntensity($_intensity); SetShapeFill($_shapeFill); SetLineWidth($_lineWidth)');
     _send('SetSpacing($_spacing); SetFillAllLayers($_fillAllLayers)');
     _send('SetSelectionMode($_selMode); SetProtectPixels($_protectPixels); SetWrap($_wrap)');
-    _send('SetPixelPerfect($_perfect)');
+    _send('SetPixelPerfect($_perfect); SetOverscanView(${_overscan ? 1 : 0})');
     if (t == 'Gradient') {
       _send('SetGradientType(${_radial ? 'Radial' : 'Linear'})');
       _send('SetGradientSmoothstep($_gradSmooth)');
@@ -524,6 +528,15 @@ extension _EditorEngine on _EditorPageState {
     final z = zoom ?? _zoom;
     final s = _fitScale(box) * z;
     return (s, _centeredOffset(box, s) + (pan ?? _pan));
+  }
+
+  // Screen-space top-left of the (storage-sized under overscan) display image. The view transform
+  // keeps the *canvas* fixed; the image's origin sits `gutter` canvas-pixels up-and-left of the
+  // canvas so the canvas lands at the same place either way. Equals `off` in the normal view.
+  Offset _imageOffset(double scale, Offset off) {
+    final gx = (engine.displayWidth - engine.width) / 2.0;
+    final gy = (engine.displayHeight - engine.height) / 2.0;
+    return off - Offset(gx * scale, gy * scale);
   }
 
   Offset _toCanvas(Offset local, Size box) {

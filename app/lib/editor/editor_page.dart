@@ -178,6 +178,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   Offset? _moveSelDragLast; // last canvas position while dragging the selection mask
   bool _onion = false;
   bool _grid = false;
+  bool _overscan = false; // show the off-canvas gutter (dimmed) around the canvas
   bool _playing = false;
   Timer? _playTimer;
   Map<String, dynamic> _state = {};

@@ -227,6 +227,16 @@ extension _EditorTimeline on _EditorPageState {
           setState(() => _grid = !_grid);
           _redraw();
         }),
+        _sheetItem(
+          ctx,
+          _overscan ? Icons.crop_free : Icons.crop_din,
+          _overscan ? 'Overscan: on' : 'Overscan: off',
+          () {
+            setState(() => _overscan = !_overscan);
+            engine.run('SetOverscanView(${_overscan ? 1 : 0})');
+            _redraw();
+          },
+        ),
         _sheetItem(ctx, Icons.fit_screen, 'Fit to screen', _fitView),
       ]);
 
