@@ -836,6 +836,23 @@ impl Session {
         l.visible && !l.locked
     }
 
+    /// The window (storage coords) that **paint** tools may write into: always the canvas — tools
+    /// never draw into the off-canvas gutter (SPEC §8, §15). The gutter is reached only by Move,
+    /// paste and the canvas transforms.
+    fn paint_clip(&self) -> IRect {
+        self.doc.canvas_rect()
+    }
+
+    /// The window (storage coords) a **selection** gesture may cover. Canvas-only today; the overscan
+    /// view (Phase 3) widens this to the whole storage so parked pixels can be selected.
+    fn selection_clip(&self) -> IRect {
+        if self.settings.overscan_view {
+            self.doc.storage_rect()
+        } else {
+            self.doc.canvas_rect()
+        }
+    }
+
     // ---- pointer routing ----
 
     pub fn pointer_down(&mut self, x: i32, y: i32) {
@@ -877,10 +894,11 @@ impl Session {
                     // Plot the first pixel ourselves so we can record its pre-stroke colour as the
                     // seed of the pixel-perfect sequence (see `pencil_perfect_step`).
                     let color = self.settings.primary;
+                    let clip = self.paint_clip();
                     let sel = self.selection_clone();
                     let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
                     let orig = buf.get(p.x, p.y);
-                    tool::plot(buf, sel.as_ref(), p.x, p.y, color, PaintMode::Replace);
+                    tool::plot(buf, sel.as_ref(), clip, p.x, p.y, color, PaintMode::Replace);
                     pp.push((p, orig));
                 }
                 ToolKind::Pencil => self.stamp_active(p, PaintMode::Replace, self.settings.primary),
@@ -894,13 +912,16 @@ impl Session {
                     let (th, cont) = (self.settings.threshold, self.settings.contiguous);
                     let sel = self.selection_clone();
                     // "All layers": decide the region from the composited frame (computed before the
-                    // mutable layer borrow), while the fill still lands in the active layer only.
+                    // mutable layer borrow), while the fill still lands in the active layer only. The
+                    // reference is composited over the whole **storage** area so its coordinates line
+                    // up with the storage-indexed layer buffer the flood reads. [risk: bucket ref]
                     let reference = self
                         .settings
                         .fill_all_layers
-                        .then(|| render::composite_active(&self.doc));
+                        .then(|| render::composite_frame(self.doc.active_frame(), self.doc.storage_rect()));
+                    let clip = self.paint_clip();
                     let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-                    tool::flood_fill(buf, reference.as_ref(), sel.as_ref(), p, color, th, cont, PaintMode::Replace);
+                    tool::flood_fill(buf, reference.as_ref(), sel.as_ref(), clip, p, color, th, cont, PaintMode::Replace);
                 }
                 ToolKind::Move => {
                     // lift selected pixels into a floating buffer
@@ -1052,11 +1073,12 @@ impl Session {
             match self.tool {
                 ToolKind::Gradient => {
                     let spec = self.settings.gradient.clone();
+                    let clip = self.paint_clip();
                     let sel = self.selection_clone();
                     let (fi, li) = (self.doc.active_frame, self.doc.active_frame().active_layer);
                     {
                         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-                        tool::apply_gradient(buf, sel.as_ref(), &spec, start, last);
+                        tool::apply_gradient(buf, sel.as_ref(), clip, &spec, start, last);
                     }
                     let (fid, lid) = (self.doc.frames[fi].id, self.doc.frames[fi].layers[li].id);
                     self.last_gradient =
@@ -1065,9 +1087,10 @@ impl Session {
                 ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse | ToolKind::Triangle => {
                     let color = self.settings.primary;
                     let (fill, lw, kind) = (self.settings.shape_fill, self.settings.line_width, self.tool);
+                    let clip = self.paint_clip();
                     let sel = self.selection_clone();
                     let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-                    tool::draw_shape(buf, sel.as_ref(), kind, start, last, 0.0, 0.0, color, fill, lw, PaintMode::Over);
+                    tool::draw_shape(buf, sel.as_ref(), clip, kind, start, last, 0.0, 0.0, color, fill, lw, PaintMode::Over);
                 }
                 ToolKind::Move => {
                     if let (Some(float), Some(sel)) = (stroke.floating, self.selection_clone()) {
@@ -1199,13 +1222,14 @@ impl Session {
             None => return,
         };
         let before = self.begin_edit();
+        let clip = self.paint_clip();
         let sel = self.selection_clone();
         if self.tool == ToolKind::Gradient {
             let spec = self.settings.gradient.clone();
             let (fi, li) = (self.doc.active_frame, self.doc.active_frame().active_layer);
             {
                 let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-                tool::apply_gradient(buf, sel.as_ref(), &spec, a, b);
+                tool::apply_gradient(buf, sel.as_ref(), clip, &spec, a, b);
             }
             let (fid, lid) = (self.doc.frames[fi].id, self.doc.frames[fi].layers[li].id);
             self.last_gradient = Some((spec.kind, spec.stops.clone(), a, b, spec.smoothstep, fid, lid));
@@ -1214,7 +1238,7 @@ impl Session {
             let (fill, lw, kind) = (self.settings.shape_fill, self.settings.line_width, self.tool);
             let (rot, tip) = (self.shape_rotation, self.triangle_tip);
             let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-            tool::draw_shape(buf, sel.as_ref(), kind, a, b, rot, tip, color, fill, lw, PaintMode::Over);
+            tool::draw_shape(buf, sel.as_ref(), clip, kind, a, b, rot, tip, color, fill, lw, PaintMode::Over);
         }
         self.commit_edit(before);
         self.shape_draft = None;
@@ -1258,15 +1282,17 @@ impl Session {
 
     fn stamp_active(&mut self, p: Point, mode: PaintMode, color: Rgba8) {
         let (size, shape) = (self.settings.brush_size, self.settings.brush_shape);
+        let clip = self.paint_clip();
         let sel = self.selection_clone();
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-        tool::stamp(buf, sel.as_ref(), p, size, shape, color, mode);
+        tool::stamp(buf, sel.as_ref(), clip, p, size, shape, color, mode);
     }
     fn stroke_active(&mut self, a: Point, b: Point, mode: PaintMode, color: Rgba8) {
         let (size, shape) = (self.settings.brush_size, self.settings.brush_shape);
+        let clip = self.paint_clip();
         let sel = self.selection_clone();
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-        tool::stroke_segment(buf, sel.as_ref(), a, b, size, shape, color, mode);
+        tool::stroke_segment(buf, sel.as_ref(), clip, a, b, size, shape, color, mode);
     }
 
     /// True when the Pencil should draw in pixel-perfect mode: the toggle is on and the brush is a
@@ -1281,6 +1307,7 @@ impl Session {
     /// `stroke.pp` so detection continues across successive `pointer_move` segments.
     fn pencil_perfect_step(&mut self, a: Point, b: Point) {
         let color = self.settings.primary;
+        let clip = self.paint_clip();
         let sel = self.selection_clone();
         // Move the running tail out of the stroke so `self.doc` and `self.stroke` aren't both
         // borrowed at once; put it back at the end.
@@ -1299,7 +1326,7 @@ impl Session {
                     continue;
                 }
                 let orig = buf.get(c.x, c.y); // pre-stroke colour (stroke hasn't touched `c` yet)
-                tool::plot(buf, sel.as_ref(), c.x, c.y, color, PaintMode::Replace);
+                tool::plot(buf, sel.as_ref(), clip, c.x, c.y, color, PaintMode::Replace);
                 pp.push((c, orig));
                 let n = pp.len();
                 if n >= 3 && pp_corner(pp[n - 3].0, pp[n - 2].0, pp[n - 1].0) {
@@ -1322,9 +1349,10 @@ impl Session {
     }
     fn airbrush_active(&mut self, p: Point) {
         let (size, intensity, color) = (self.settings.brush_size, self.settings.intensity, self.settings.primary);
+        let clip = self.paint_clip();
         let sel = self.selection_clone();
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-        tool::airbrush_dab(buf, sel.as_ref(), p, size, intensity, color, &mut self.rng);
+        tool::airbrush_dab(buf, sel.as_ref(), clip, p, size, intensity, color, &mut self.rng);
     }
 
     /// Distance (canvas px) between successive Brush/Airbrush stamps: spacing% of the brush size,
@@ -1341,10 +1369,11 @@ impl Session {
             return;
         }
         let (size, shape) = (self.settings.brush_size, self.settings.brush_shape);
+        let clip = self.paint_clip();
         let sel = self.selection_clone();
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
         for p in pts {
-            tool::stamp(buf, sel.as_ref(), p, size, shape, color, mode);
+            tool::stamp(buf, sel.as_ref(), clip, p, size, shape, color, mode);
         }
     }
 
@@ -1366,9 +1395,10 @@ impl Session {
     }
     fn dodge_burn_active(&mut self, p: Point, dv: f32) {
         let (size, shape) = (self.settings.brush_size, self.settings.brush_shape);
+        let clip = self.paint_clip();
         let sel = self.selection_clone();
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-        tool::dodge_burn_stamp(buf, sel.as_ref(), p, size, shape, dv);
+        tool::dodge_burn_stamp(buf, sel.as_ref(), clip, p, size, shape, dv);
     }
 
     // ---- precision mode (draw-by-button, reticle off the finger) ----
@@ -1690,9 +1720,10 @@ impl Session {
         }
         let before = self.begin_edit();
         let color = self.settings.primary;
+        let clip = self.selection_clip();
         let sel = self.selection_clone();
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-        tool::fill_region(buf, sel.as_ref(), color);
+        tool::fill_region(buf, sel.as_ref(), clip, color);
         self.commit_edit(before);
     }
 
@@ -1702,9 +1733,10 @@ impl Session {
             return;
         }
         let before = self.begin_edit();
+        let clip = self.selection_clip();
         let sel = self.selection_clone();
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-        tool::clear_region(buf, sel.as_ref());
+        tool::clear_region(buf, sel.as_ref(), clip);
         self.commit_edit(before);
     }
 
