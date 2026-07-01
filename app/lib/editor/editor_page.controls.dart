@@ -294,7 +294,7 @@ extension _EditorControls on _EditorPageState {
       });
     }
     // Stamp spacing (% of brush size) for the stamp-trail tools. Tap the label to type a value.
-    if (_tool == 'Brush' || _tool == 'Airbrush') {
+    if (_tool == 'Brush' || _tool == 'Airbrush' || _tool == 'Dodge' || _tool == 'Burn') {
       _labeledSlider(children, 'Spacing', _spacing.toDouble(), 1, 1000, (v) {
         setState(() => _spacing = v.round());
         _send('SetSpacing($_spacing)');

@@ -219,7 +219,7 @@ pub struct Session {
     clock: VirtualClock,
     playing: bool,
     stroke: Option<Stroke>,
-    /// Distance (canvas px) travelled since the last spaced Brush/Airbrush stamp in the current
+    /// Distance (canvas px) travelled since the last spaced Brush/Airbrush/Dodge/Burn stamp in the current
     /// stroke. Carried across pointer/reticle moves so stamps stay evenly spaced regardless of how
     /// the path is chopped into events. Reset to 0 when a stroke begins.
     paint_acc: f32,
@@ -1099,8 +1099,8 @@ impl Session {
                 ToolKind::Brush => self.brush_stroke_spaced(last, p, PaintMode::Over, self.settings.primary),
                 ToolKind::Eraser => self.stroke_active(last, p, PaintMode::Erase, Rgba8::TRANSPARENT),
                 ToolKind::Airbrush => self.airbrush_stroke_spaced(last, p),
-                ToolKind::Dodge => self.dodge_burn_active(p, self.dodge_dv(true)),
-                ToolKind::Burn => self.dodge_burn_active(p, self.dodge_dv(false)),
+                ToolKind::Dodge => self.dodge_burn_stroke_spaced(last, p, self.dodge_dv(true)),
+                ToolKind::Burn => self.dodge_burn_stroke_spaced(last, p, self.dodge_dv(false)),
                 _ => {}
             }
         }
@@ -1420,8 +1420,8 @@ impl Session {
         tool::airbrush_dab(buf, sel.as_ref(), clip, p, size, intensity, color, &mut self.rng);
     }
 
-    /// Distance (canvas px) between successive Brush/Airbrush stamps: spacing% of the brush size,
-    /// never below 1px.
+    /// Distance (canvas px) between successive Brush/Airbrush/Dodge/Burn stamps: spacing% of the
+    /// brush size, never below 1px.
     fn brush_step(&self) -> f32 {
         (self.settings.spacing as f32 / 100.0 * self.settings.brush_size as f32).max(1.0)
     }
@@ -1448,6 +1448,15 @@ impl Session {
         let pts = spaced_points(a, b, self.brush_step(), &mut self.paint_acc);
         for p in pts {
             self.airbrush_active(p);
+        }
+    }
+
+    /// Dodge/burn a stamp at each spaced point along `a`→`b` (interpolated, carrying `paint_acc`),
+    /// so a fast drag lightens/darkens an even trail instead of leaving gaps.
+    fn dodge_burn_stroke_spaced(&mut self, a: Point, b: Point, dv: f32) {
+        let pts = spaced_points(a, b, self.brush_step(), &mut self.paint_acc);
+        for p in pts {
+            self.dodge_burn_active(p, dv);
         }
     }
     fn dodge_dv(&self, lighten: bool) -> f32 {
@@ -1532,12 +1541,12 @@ impl Session {
             let os = Point::new(old.x + o.x, old.y + o.y);
             let cs = self.cursor_storage();
             match self.tool {
-                // Brush/Airbrush honour the spacing setting; Pencil/Eraser stay continuous.
+                // Brush/Airbrush/Dodge/Burn honour the spacing setting; Pencil/Eraser stay continuous.
                 ToolKind::Brush => self.brush_stroke_spaced(os, cs, PaintMode::Over, self.settings.primary),
                 ToolKind::Airbrush => self.airbrush_stroke_spaced(os, cs),
-                // Dodge/Burn lighten/darken a stamp at each reticle step (as on the pointer path).
+                // Dodge/Burn lighten/darken a stamp at each spaced step (as on the pointer path).
                 ToolKind::Dodge | ToolKind::Burn => {
-                    self.dodge_burn_active(cs, self.dodge_dv(self.tool == ToolKind::Dodge));
+                    self.dodge_burn_stroke_spaced(os, cs, self.dodge_dv(self.tool == ToolKind::Dodge));
                 }
                 _ => match self.cursor_paint() {
                     Some((mode, color)) => self.stroke_active(os, cs, mode, color),
@@ -3185,6 +3194,34 @@ mod tests {
         for x in 0..16 {
             assert_eq!(s.pixel(0, 0, x, 0), Rgba8::WHITE, "x={}", x);
         }
+    }
+
+    #[test]
+    fn dodge_spacing_leaves_gaps_between_stamps() {
+        // Dodge honours the spacing setting just like the brush: dragged across a solid grey row
+        // with a step far larger than the brush, it lightens discrete dots and leaves the gaps.
+        let mut s = Session::new(32, 1);
+        s.settings.brush_size = 1;
+        // Fill the row with mid-grey so there is something to lighten.
+        s.settings.primary = Rgba8::rgb(100, 100, 100);
+        s.tool = ToolKind::Pencil;
+        s.pointer_down(0, 0);
+        s.pointer_move(31, 0);
+        s.pointer_up();
+        // Dodge with a 5px step (500% of a 1px brush).
+        s.tool = ToolKind::Dodge;
+        s.settings.intensity = 255;
+        s.settings.spacing = 500;
+        s.pointer_down(0, 0); // first stamp at x=0
+        s.pointer_move(31, 0);
+        s.pointer_up();
+        // Lightened at the spaced stamps…
+        assert!(s.pixel(0, 0, 0, 0).r > 100, "x=0 lightened");
+        assert!(s.pixel(0, 0, 5, 0).r > 100, "x=5 lightened");
+        assert!(s.pixel(0, 0, 10, 0).r > 100, "x=10 lightened");
+        // …untouched in the gaps between them.
+        assert_eq!(s.pixel(0, 0, 2, 0).r, 100, "x=2 untouched");
+        assert_eq!(s.pixel(0, 0, 7, 0).r, 100, "x=7 untouched");
     }
 
     #[test]
