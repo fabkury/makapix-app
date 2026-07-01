@@ -127,11 +127,6 @@ pub struct Document {
     /// almost every site means by "size". Distinct from [`storage`](Self::storage), which also
     /// includes the off-canvas **gutter** where moved pixels are preserved (SPEC §8, §15).
     pub size: Size,
-    /// Gutter width kept on **each** side of the canvas. `(0,0)` means "no gutter" (storage ==
-    /// canvas); a full-canvas gutter (`margin == size`) makes storage `3w × 3h`. Pixels pushed
-    /// off-canvas by Move survive within the storage area and persist in `.mkpx`; tools may still
-    /// only edit the canvas. The canvas top-left sits at [`origin`](Self::origin) within storage.
-    pub margin: Size,
     pub frames: Vec<Frame>,
     pub active_frame: usize,
     pub palettes: Vec<Palette>,
@@ -165,7 +160,6 @@ impl Document {
         };
         Document {
             size,
-            margin,
             frames: vec![f0],
             active_frame: 0,
             palettes: vec![Palette::default_palette()],
@@ -180,24 +174,31 @@ impl Document {
 
     // ---- canvas ↔ storage geometry (SPEC §8) ----
 
-    /// The gutter kept on each side of a canvas of the given size. Returning `(0,0)` means the
-    /// storage area equals the canvas (no off-canvas memory). **Phase 2 flips this to `size`** — a
-    /// full-canvas gutter on every side, i.e. a `3w × 3h` storage area. Centralised here so the
-    /// whole engine derives the gutter one way.
+    /// The gutter kept on each side of a canvas of the given size: a **full canvas** on every side,
+    /// giving a `3w × 3h` storage area. Pixels moved off the canvas are preserved anywhere in this
+    /// area (SPEC §8, §15). Centralised here so the whole engine derives the gutter one way — set it
+    /// back to `(0,0)` to disable the feature everywhere.
     pub fn gutter_for(size: Size) -> Size {
-        let _ = size;
-        Size::new(0, 0)
+        size
+    }
+
+    /// The gutter kept on each side of the current canvas. **Derived** from the canvas size (never
+    /// stored), so it can never desync — undo/redo restore only `size` and the gutter follows. [F: undo]
+    pub fn margin(&self) -> Size {
+        Document::gutter_for(self.size)
     }
 
     /// Canvas top-left within the storage buffers (= the per-side gutter). Add this to a canvas
     /// coordinate to reach the storage/tile coordinate a layer buffer is indexed by.
     pub fn origin(&self) -> Point {
-        Point::new(self.margin.w as i32, self.margin.h as i32)
+        let m = self.margin();
+        Point::new(m.w as i32, m.h as i32)
     }
 
     /// Full storage dimensions of every layer buffer: `canvas + 2·gutter`.
     pub fn storage(&self) -> Size {
-        Size::new(self.size.w + 2 * self.margin.w, self.size.h + 2 * self.margin.h)
+        let m = self.margin();
+        Size::new(self.size.w + 2 * m.w, self.size.h + 2 * m.h)
     }
 
     /// The canvas window expressed in storage/tile coordinates — the region tools may edit and the
@@ -210,6 +211,12 @@ impl Document {
     /// overscan display.
     pub fn storage_rect(&self) -> IRect {
         IRect::from_size(self.storage())
+    }
+
+    /// Change the canvas size and re-derive the gutter/storage from it (the canvas transforms call
+    /// this, then rebuild every layer buffer at the new [`storage`](Self::storage) size).
+    pub fn set_canvas_size(&mut self, new_size: Size) {
+        self.size = new_size; // the gutter/storage is derived from `size`, so nothing else to update
     }
 
     // ---- accessors ----

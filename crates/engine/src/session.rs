@@ -1221,9 +1221,11 @@ impl Session {
         self.shape_draft = Some((a, b));
     }
 
-    /// The pending figure draft's endpoints, if any (for the shell to draw handles).
+    /// The pending figure draft's endpoints (canvas-relative), if any (for the shell to draw handles).
     pub fn shape_draft(&self) -> Option<(Point, Point)> {
+        let o = self.doc.origin();
         self.shape_draft
+            .map(|(a, b)| (Point::new(a.x - o.x, a.y - o.y), Point::new(b.x - o.x, b.y - o.y)))
     }
 
     /// Rasterize the pending draft into the active layer as one undo edit, then clear the draft.
@@ -1437,6 +1439,13 @@ impl Session {
         )
     }
 
+    /// The reticle position in storage coordinates (canvas coords + gutter origin) — the precision
+    /// cursor is stored canvas-relative, but the paint helpers write in storage coordinates.
+    fn cursor_storage(&self) -> Point {
+        let o = self.doc.origin();
+        Point::new(self.cursor.x + o.x, self.cursor.y + o.y)
+    }
+
     /// Clamp an incoming pointer coordinate to a generous margin around the canvas. Off-canvas
     /// input is legitimate (a freehand stroke can run past the edge and be clipped), so this is NOT
     /// `clamp_cursor`'s canvas-tight clamp — but an unbounded coordinate from a malformed event would
@@ -1477,16 +1486,20 @@ impl Session {
         let old = self.cursor;
         self.cursor = self.clamp_cursor(Point::new(old.x + dx, old.y + dy));
         if self.precision_before.is_some() && self.active_editable() && self.cursor != old {
+            // Translate the reticle path to storage coordinates for the paint helpers.
+            let o = self.doc.origin();
+            let os = Point::new(old.x + o.x, old.y + o.y);
+            let cs = self.cursor_storage();
             match self.tool {
                 // Brush/Airbrush honour the spacing setting; Pencil/Eraser stay continuous.
-                ToolKind::Brush => self.brush_stroke_spaced(old, self.cursor, PaintMode::Over, self.settings.primary),
-                ToolKind::Airbrush => self.airbrush_stroke_spaced(old, self.cursor),
+                ToolKind::Brush => self.brush_stroke_spaced(os, cs, PaintMode::Over, self.settings.primary),
+                ToolKind::Airbrush => self.airbrush_stroke_spaced(os, cs),
                 // Dodge/Burn lighten/darken a stamp at each reticle step (as on the pointer path).
                 ToolKind::Dodge | ToolKind::Burn => {
-                    self.dodge_burn_active(self.cursor, self.dodge_dv(self.tool == ToolKind::Dodge));
+                    self.dodge_burn_active(cs, self.dodge_dv(self.tool == ToolKind::Dodge));
                 }
                 _ => match self.cursor_paint() {
-                    Some((mode, color)) => self.stroke_active(old, self.cursor, mode, color),
+                    Some((mode, color)) => self.stroke_active(os, cs, mode, color),
                     None => {}
                 },
             }
@@ -1500,7 +1513,7 @@ impl Session {
         }
         self.precision_before = Some(self.begin_edit());
         self.paint_acc = 0.0; // fresh pen line → reset Brush/Airbrush spacing
-        let p = self.cursor;
+        let p = self.cursor_storage();
         match self.cursor_paint() {
             Some((mode, color)) => self.stamp_active(p, mode, color),
             None if self.tool == ToolKind::Airbrush => self.airbrush_active(p),
@@ -1531,7 +1544,7 @@ impl Session {
             return;
         }
         let before = self.begin_edit();
-        let p = self.cursor;
+        let p = self.cursor_storage();
         self.airbrush_active(p);
         self.commit_edit(before);
     }
@@ -1716,9 +1729,10 @@ impl Session {
 
     /// The pending paste draft's rect (top-left + clip size), if any — for the shell.
     pub fn paste_draft_rect(&self) -> Option<IRect> {
+        let o = self.doc.origin();
         self.paste_draft
             .as_ref()
-            .map(|(clip, pos)| IRect::new(pos.x, pos.y, clip.width(), clip.height()))
+            .map(|(clip, pos)| IRect::new(pos.x - o.x, pos.y - o.y, clip.width(), clip.height()))
     }
 
     /// Stamp the pending paste draft into the active layer (alpha-over, cropped to the canvas) as one
@@ -2257,7 +2271,8 @@ impl Session {
     pub fn move_draft_rect(&self) -> Option<IRect> {
         let d = self.move_draft.as_ref()?;
         let bb = d.bbox?;
-        Some(IRect::new(bb.x + d.offset.x, bb.y + d.offset.y, bb.w, bb.h))
+        let o = self.doc.origin();
+        Some(IRect::new(bb.x + d.offset.x - o.x, bb.y + d.offset.y - o.y, bb.w, bb.h))
     }
 
     pub fn set_layer_opacity(&mut self, i: usize, o: u8) {
@@ -2426,13 +2441,25 @@ impl Session {
     }
 
     pub fn bounds_of_selection(&self) -> Option<IRect> {
-        self.doc.selection.as_ref().and_then(|m| m.bounds())
+        // Report bounds in canvas-relative coordinates (gutter → negative), subtracting the origin.
+        let o = self.doc.origin();
+        self.doc.selection.as_ref().and_then(|m| m.bounds()).map(|b| IRect::new(b.x - o.x, b.y - o.y, b.w, b.h))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Canvas-relative view of the current selection mask: `.get(x, y)` offsets by the gutter origin
+    /// so tests can assert selection membership in canvas coordinates. False when there's no selection.
+    struct SelCanvas<'a>(&'a Session);
+    impl SelCanvas<'_> {
+        fn get(&self, x: i32, y: i32) -> bool {
+            let o = self.0.doc.origin();
+            self.0.doc.selection.as_ref().map(|m| m.get(x + o.x, y + o.y)).unwrap_or(false)
+        }
+    }
 
     #[test]
     fn pencil_then_undo_redo() {
@@ -2553,24 +2580,24 @@ mod tests {
         let mut s = Session::new(8, 8);
         sel_2x2(&mut s, 2, 2);
         s.move_selection(2, 2);
-        assert!(s.doc.selection.as_ref().unwrap().get(4, 4));
-        assert!(!s.doc.selection.as_ref().unwrap().get(2, 2)); // pixels never moved, only the mask
+        assert!(SelCanvas(&s).get(4, 4));
+        assert!(!SelCanvas(&s).get(2, 2)); // pixels never moved, only the mask
 
         // Wrap: cells leaving an edge re-enter the opposite one.
         let mut s = Session::new(8, 8);
         s.settings.wrap = true;
         sel_2x2(&mut s, 6, 6);
         s.move_selection(2, 2); // (6,6) -> (8,8) wraps to (0,0)
-        assert!(s.doc.selection.as_ref().unwrap().get(0, 0));
+        assert!(SelCanvas(&s).get(0, 0));
 
         // Protect: clamp so the whole selection stays on-canvas.
         let mut s = Session::new(8, 8);
         s.settings.protect_pixels = true;
         sel_2x2(&mut s, 6, 6);
         s.move_selection(5, 5); // would push off the right/bottom → clamped to no move
-        assert!(s.doc.selection.as_ref().unwrap().get(6, 6));
+        assert!(SelCanvas(&s).get(6, 6));
         s.move_selection(-3, -3); // moves freely the other way
-        assert!(s.doc.selection.as_ref().unwrap().get(3, 3));
+        assert!(SelCanvas(&s).get(3, 3));
     }
 
     #[test]
@@ -2731,8 +2758,9 @@ mod tests {
     #[test]
     fn bucket_all_layers_bounds_region_by_composite() {
         let mut s = Session::new(8, 8);
+        let o = s.doc.origin();
         for y in 0..8 {
-            s.doc.active_frame_mut().layers[0].pixels.set(4, y, Rgba8::BLACK); // wall on the bottom layer
+            s.doc.active_frame_mut().layers[0].pixels.set(o.x + 4, o.y + y, Rgba8::BLACK); // wall (canvas x=4)
         }
         let top = s.doc.new_layer("top");
         s.doc.active_frame_mut().layers.push(top);
@@ -2859,7 +2887,7 @@ mod tests {
         assert_eq!(s.pixel(0, 0, 2, 4), Rgba8::TRANSPARENT);
 
         // The mask rotated too: the 6×2 region became a 2×6 region (x∈[4,6), y∈[2,8)).
-        let sel = s.doc.selection.as_ref().expect("selection survives the rotation");
+        let sel = SelCanvas(&s);
         assert!(sel.get(5, 2) && sel.get(4, 7), "rotated tall-bar cells are selected");
         assert!(!sel.get(2, 4) && !sel.get(7, 4), "original wide-bar-only cells are deselected");
     }
@@ -2935,12 +2963,13 @@ mod tests {
         // While the draft is open the marquee (outline) follows the rotated mask, but the committed
         // document selection is still the original.
         let outline = s.outline_mask().expect("an open selection rotate draft outlines the rotated mask");
-        assert!(outline.get(4, 2), "the outline shows the rotated tall bar");
-        assert!(!outline.get(2, 4), "the outline no longer shows the original wide bar");
-        assert!(s.doc.selection.as_ref().unwrap().get(2, 4), "the document selection is untouched until commit");
+        let og = s.doc.origin();
+        assert!(outline.get(og.x + 4, og.y + 2), "the outline shows the rotated tall bar");
+        assert!(!outline.get(og.x + 2, og.y + 4), "the outline no longer shows the original wide bar");
+        assert!(SelCanvas(&s).get(2, 4), "the document selection is untouched until commit");
 
         s.rotate_draft_commit();
-        let sel = s.doc.selection.as_ref().unwrap();
+        let sel = SelCanvas(&s);
         assert!(sel.get(4, 2) && !sel.get(2, 4), "commit rotates the selection mask with the pixels");
     }
 
@@ -2986,7 +3015,7 @@ mod tests {
         assert_eq!(s.pixel(0, 0, 14, 2), Rgba8::WHITE, "layer 0 mirrored: (1,2) → (14,2)");
         assert_eq!(s.pixel(0, 1, 12, 4), Rgba8::WHITE, "layer 1 mirrored too: (3,4) → (12,4)");
         assert_eq!(s.pixel(0, 0, 1, 2), Rgba8::TRANSPARENT);
-        let sel = s.doc.selection.as_ref().expect("selection mirrors with the canvas");
+        let sel = SelCanvas(&s);
         assert!(sel.get(15, 0) && sel.get(12, 3), "the mask flipped to the top-right");
         assert!(!sel.get(0, 0));
         assert!(s.doc.undo(), "the canvas flip is one undo step");
@@ -3001,7 +3030,7 @@ mod tests {
         s.selection_mode = CombineMode::Add;
         s.stroke_path(&[(6, 4), (6, 4)]); // add a lone cell at the right → bbox x∈[2,6] (w=5)
         s.flip_horizontal(); // within the bbox each local i maps to (4 - i)
-        let sel = s.doc.selection.as_ref().expect("selection survives the flip");
+        let sel = SelCanvas(&s);
         assert!(sel.get(6, 4) && sel.get(5, 4) && sel.get(2, 4), "left/right cells mirrored");
         assert!(sel.get(6, 5) && sel.get(5, 5), "the second row mirrored too");
         assert!(!sel.get(3, 4), "the original asymmetric cell is cleared by the mirror");
@@ -3361,7 +3390,7 @@ mod tests {
         // cutoff 0 → select all non-transparent pixels (alpha > 0)
         s.settings.alpha_cutoff = 0;
         s.run_script("SelectByAlpha(Replace)").unwrap();
-        let sel = s.doc.selection.as_ref().expect("selection set");
+        let sel = SelCanvas(&s);
         assert!(sel.get(0, 0), "the opaque pixel IS selected at cutoff 0");
         assert!(!sel.get(3, 3), "a transparent pixel is NOT selected");
         // A translucent pixel (alpha 128) is selected only while the cutoff is below 128.
@@ -3369,7 +3398,7 @@ mod tests {
         s.tap(1, 1);
         s.settings.alpha_cutoff = 128;
         s.run_script("SelectByAlpha(Replace)").unwrap();
-        let sel = s.doc.selection.as_ref().unwrap();
+        let sel = SelCanvas(&s);
         assert!(!sel.get(1, 1), "alpha 128 is not > cutoff 128 → not selected");
         assert!(sel.get(0, 0), "alpha 255 > cutoff 128 → still selected");
     }
@@ -3439,7 +3468,7 @@ mod tests {
         s.pointer_up();
         assert_eq!(s.pixel(0, 0, 14, 14), Rgba8::WHITE, "selected pixel wrapped");
         assert_eq!(s.pixel(0, 0, 1, 1), Rgba8::TRANSPARENT, "origin cleared");
-        let sel = s.doc.selection.as_ref().expect("selection kept");
+        let sel = SelCanvas(&s);
         assert!(sel.get(14, 14), "the selection followed the pixel");
         assert!(!sel.get(1, 1));
     }
@@ -3574,18 +3603,18 @@ mod tests {
         s.pointer_up();
         assert_eq!(s.pixel(0, 0, 5, 5), Rgba8::WHITE);
         assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::TRANSPARENT);
-        assert!(s.doc.selection.as_ref().unwrap().get(5, 5), "mask followed the pixel");
+        assert!(SelCanvas(&s).get(5, 5), "mask followed the pixel");
         // ONE undo restores both the pixel AND the selection mask to the origin.
         assert!(s.doc.undo());
         assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::WHITE, "pixel moved back");
         assert_eq!(s.pixel(0, 0, 5, 5), Rgba8::TRANSPARENT);
-        let sel = s.doc.selection.as_ref().expect("selection restored");
+        let sel = SelCanvas(&s);
         assert!(sel.get(2, 2), "the mask moved back with the pixel");
         assert!(!sel.get(5, 5), "the mask is no longer at the moved position");
         // redo re-applies both
         assert!(s.doc.redo());
         assert_eq!(s.pixel(0, 0, 5, 5), Rgba8::WHITE);
-        assert!(s.doc.selection.as_ref().unwrap().get(5, 5));
+        assert!(SelCanvas(&s).get(5, 5));
     }
 
     #[test]
@@ -3599,11 +3628,11 @@ mod tests {
         s.pointer_up();
         s.nudge_selection(1, 0); // arrow-key move of the selected pixel
         assert_eq!(s.pixel(0, 0, 4, 3), Rgba8::WHITE);
-        assert!(s.doc.selection.as_ref().unwrap().get(4, 3));
+        assert!(SelCanvas(&s).get(4, 3));
         assert!(s.doc.undo());
         assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::WHITE, "pixel back");
-        assert!(s.doc.selection.as_ref().unwrap().get(3, 3), "mask back");
-        assert!(!s.doc.selection.as_ref().unwrap().get(4, 3));
+        assert!(SelCanvas(&s).get(3, 3), "mask back");
+        assert!(!SelCanvas(&s).get(4, 3));
     }
 
     #[test]
@@ -3647,10 +3676,10 @@ mod tests {
         s.pointer_down(2, 2);
         s.pointer_move(7, 7);
         s.pointer_up();
-        assert!(s.doc.selection.as_ref().unwrap().get(7, 7), "mask moved");
+        assert!(SelCanvas(&s).get(7, 7), "mask moved");
         assert!(s.doc.undo());
-        assert!(s.doc.selection.as_ref().unwrap().get(2, 2), "mask move undone");
-        assert!(!s.doc.selection.as_ref().unwrap().get(7, 7));
+        assert!(SelCanvas(&s).get(2, 2), "mask move undone");
+        assert!(!SelCanvas(&s).get(7, 7));
     }
 
     #[test]
@@ -3670,9 +3699,11 @@ mod tests {
     // draft's recording can be asserted cleanly).
     fn session_with_selected_pixel() -> Session {
         let mut s = Session::new(16, 16);
-        s.doc.active_frame_mut().active_layer_mut().pixels.set(3, 3, Rgba8::WHITE);
-        let mut m = Mask::new(16, 16);
-        m.set(3, 3, true);
+        let o = s.doc.origin();
+        let st = s.doc.storage();
+        s.doc.active_frame_mut().active_layer_mut().pixels.set(o.x + 3, o.y + 3, Rgba8::WHITE);
+        let mut m = Mask::new(st.w as u32, st.h as u32);
+        m.set(o.x + 3, o.y + 3, true); // canvas (3,3) in storage coords
         s.doc.selection = Some(Arc::new(m));
         s.tool = ToolKind::Move;
         assert!(!s.doc.can_undo());
@@ -3701,7 +3732,8 @@ mod tests {
         // The PREVIEW (what the canvas shows) and the marquee follow the move, though.
         assert_eq!(preview_pixel(&s, 7, 3), Some(Rgba8::WHITE), "preview shows the move at the destination");
         assert_eq!(preview_pixel(&s, 3, 3), Some(Rgba8::TRANSPARENT), "preview clears the origin");
-        assert!(s.outline_mask().unwrap().get(7, 3), "marquee follows the draft");
+        let og = s.doc.origin();
+        assert!(s.outline_mask().unwrap().get(og.x + 7, og.y + 3), "marquee follows the draft");
         assert!(s.move_draft_rect().is_some());
 
         s.move_draft_commit();
@@ -3710,14 +3742,14 @@ mod tests {
         // NOW the document reflects the move (pixel + mask).
         assert_eq!(s.pixel(0, 0, 7, 3), Rgba8::WHITE);
         assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::TRANSPARENT);
-        assert!(s.doc.selection.as_ref().unwrap().get(7, 3));
+        assert!(SelCanvas(&s).get(7, 3));
         // one undo restores both pixel and mask; redo re-applies both
         assert!(s.doc.undo());
         assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::WHITE);
-        assert!(s.doc.selection.as_ref().unwrap().get(3, 3));
+        assert!(SelCanvas(&s).get(3, 3));
         assert!(s.doc.redo());
         assert_eq!(s.pixel(0, 0, 7, 3), Rgba8::WHITE);
-        assert!(s.doc.selection.as_ref().unwrap().get(7, 3));
+        assert!(SelCanvas(&s).get(7, 3));
     }
 
     #[test]
@@ -3729,7 +3761,7 @@ mod tests {
         s.move_draft_cancel();
         assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::WHITE, "origin intact");
         assert_eq!(s.pixel(0, 0, 8, 5), Rgba8::TRANSPARENT);
-        assert!(s.doc.selection.as_ref().unwrap().get(3, 3), "marquee unchanged");
+        assert!(SelCanvas(&s).get(3, 3), "marquee unchanged");
         assert_eq!(s.doc.content_hash(), before, "nothing was materialized");
         assert!(!s.doc.can_undo(), "cancel records nothing");
         assert!(s.move_draft_rect().is_none());
@@ -3777,7 +3809,8 @@ mod tests {
     #[test]
     fn move_draft_layer_move_with_no_selection() {
         let mut s = Session::new(16, 16);
-        s.doc.active_frame_mut().active_layer_mut().pixels.set(2, 2, Rgba8::WHITE);
+        let o = s.doc.origin();
+        s.doc.active_frame_mut().active_layer_mut().pixels.set(o.x + 2, o.y + 2, Rgba8::WHITE);
         assert!(s.doc.selection.is_none());
         s.tool = ToolKind::Move;
         s.move_draft_begin(); // no selection → whole-layer move draft
@@ -3798,5 +3831,75 @@ mod tests {
         s.run_script("MoveDraftBegin(); MoveDraftMove(4,0); MoveDraftCommit()").unwrap();
         assert_eq!(s.pixel(0, 0, 7, 3), Rgba8::WHITE);
         assert!(s.doc.can_undo());
+    }
+
+    // ---- off-canvas gutter (SPEC §8, §15) ----
+
+    #[test]
+    fn move_preserves_pixels_in_the_gutter_and_recovers_them() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(0, 0); // one white pixel at canvas (0,0)
+        s.select_all();
+        s.tool = ToolKind::Move;
+        s.nudge_selection(-5, 0); // push it 5px off the left edge into the gutter
+
+        // Preserved off-canvas (a negative canvas coord reaches the gutter), gone from the canvas...
+        assert_eq!(s.pixel(0, 0, -5, 0), Rgba8::WHITE, "the moved pixel is preserved in the gutter");
+        assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::TRANSPARENT, "its old canvas position is now empty");
+        // ...and never appears in the exported (canvas-cropped) image.
+        assert!(
+            s.composite_frame_bytes(0).iter().all(|&b| b == 0),
+            "the gutter pixel is excluded from the exported canvas"
+        );
+        // Nudging back out of the gutter recovers it — no data was lost.
+        s.nudge_selection(5, 0);
+        assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::WHITE, "moved back out of the gutter intact");
+    }
+
+    #[test]
+    fn paint_tools_never_leak_into_the_gutter() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        // A pencil stroke that runs well past the right edge (clamp_pointer allows the gutter range).
+        s.run_script("SelectTool(Pencil); Stroke([(10,8),(25,8)])").unwrap();
+        assert_eq!(s.pixel(0, 0, 15, 8), Rgba8::WHITE, "the on-canvas part is drawn");
+        assert_eq!(s.pixel(0, 0, 18, 8), Rgba8::TRANSPARENT, "nothing spilled into the gutter");
+        // Opaque content is confined to the canvas window.
+        let o = s.doc.origin();
+        let bb = s.doc.active_frame().active_layer().pixels.opaque_bounds().unwrap();
+        assert!(bb.x >= o.x && bb.right() <= o.x + 16, "paint stayed inside the canvas");
+    }
+
+    #[test]
+    fn mkpx_v4_roundtrips_gutter_pixels() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(0, 0);
+        s.select_all();
+        s.tool = ToolKind::Move;
+        s.nudge_selection(-5, 0); // park a pixel in the gutter
+        let back = crate::io::load_from_bytes(&crate::io::save_to_bytes(&s.doc)).unwrap();
+        let o = back.origin();
+        assert_eq!(
+            back.active_frame().active_layer().pixels.get(o.x - 5, o.y),
+            Rgba8::WHITE,
+            "the gutter pixel survives a .mkpx round-trip"
+        );
+        assert_eq!(back.content_hash(), s.doc.content_hash());
+    }
+
+    #[test]
+    fn flip_preserves_and_mirrors_gutter_pixels() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(0, 0);
+        s.select_all();
+        s.tool = ToolKind::Move;
+        s.nudge_selection(-5, 0); // pixel at canvas (-5, 0) in the left gutter
+        s.select_none();
+        s.flip_document(true); // horizontal flip mirrors the whole storage
+        // canvas x=-5 mirrors to x = 15 - (-5) = ... reflected across the canvas: (w-1 - x) = 15-(-5)=20.
+        assert_eq!(s.pixel(0, 0, 20, 0), Rgba8::WHITE, "the gutter pixel mirrored with the artwork");
     }
 }

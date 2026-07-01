@@ -163,7 +163,8 @@ mod tests {
     #[test]
     fn composite_single_layer_passthrough() {
         let mut d = Document::new(8, 8);
-        d.active_frame_mut().active_layer_mut().pixels.set(1, 1, Rgba8::WHITE);
+        let o = d.origin();
+        d.active_frame_mut().active_layer_mut().pixels.set(o.x + 1, o.y + 1, Rgba8::WHITE);
         let flat = composite_active(&d);
         assert_eq!(flat.get(1, 1), Rgba8::WHITE);
     }
