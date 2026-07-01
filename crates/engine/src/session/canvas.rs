@@ -50,7 +50,8 @@ impl Session {
                 }
                 // Place the mirrored pixels and build the mirrored selection mask. The reflection is
                 // a bijection within the bbox, so nothing leaves the canvas.
-                let mut new_mask = Mask::new(self.doc.size.w as u32, self.doc.size.h as u32);
+                let storage = self.doc.storage();
+                let mut new_mask = Mask::new(storage.w as u32, storage.h as u32);
                 {
                     let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
                     for j in 0..bh {
@@ -73,9 +74,11 @@ impl Session {
             }
         }
 
-        // No selection → flip the whole active layer across the canvas dimensions.
-        let w = self.doc.size.w as i32;
-        let h = self.doc.size.h as i32;
+        // No selection → flip the whole active layer across the **storage** dimensions. Because the
+        // canvas is centred in storage, a whole-storage flip maps the canvas onto itself (flipping
+        // its content) and flips the gutter along with it. [SPEC §8 gutter preserve+transform]
+        let storage = self.doc.storage();
+        let (w, h) = (storage.w as i32, storage.h as i32);
         let src = self.doc.active_frame().active_layer().pixels.clone();
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
         buf.clear();
@@ -99,12 +102,17 @@ impl Session {
         }
         let old = self.doc.size;
         let new_size = if q == 2 { old } else { Size::new(old.h, old.w) };
-        let (ow, oh) = (old.w as i32, old.h as i32);
+        // Rotate the whole storage grid (canvas + gutter); the centred canvas rotates onto the new
+        // centred canvas. [SPEC §8 gutter preserve+transform]
+        let old_storage = self.doc.storage();
+        let (ow, oh) = (old_storage.w as i32, old_storage.h as i32);
+        let new_margin = crate::document::Document::gutter_for(new_size);
+        let new_storage = Size::new(new_size.w + 2 * new_margin.w, new_size.h + 2 * new_margin.h);
         self.edit_doc("rotate", |s| {
             for f in &mut s.doc.frames {
                 for l in &mut f.layers {
                     let src = l.pixels.clone();
-                    let mut dst = RgbaBuffer::from_size(new_size);
+                    let mut dst = RgbaBuffer::from_size(new_storage);
                     for y in 0..oh {
                         for x in 0..ow {
                             let c = src.get(x, y);
@@ -122,7 +130,7 @@ impl Session {
                     l.pixels = dst;
                 }
             }
-            s.doc.size = new_size;
+            s.doc.set_canvas_size(new_size);
             s.doc.selection = None; // the old mask is wrong-sized now; clearing rides this undo step
         });
     }
@@ -133,8 +141,9 @@ impl Session {
     /// document-wide transform. Dimension-preserving, so the selection mask mirrors with the pixels
     /// (the marquee stays aligned). One undo step.
     pub fn flip_document(&mut self, horizontal: bool) {
-        let w = self.doc.size.w as i32;
-        let h = self.doc.size.h as i32;
+        // Flip the whole storage (canvas + gutter); the centred canvas maps onto itself.
+        let storage = self.doc.storage();
+        let (w, h) = (storage.w as i32, storage.h as i32);
         self.edit_doc("flip", |s| {
             for f in &mut s.doc.frames {
                 for l in &mut f.layers {
@@ -173,28 +182,37 @@ impl Session {
         }
         self.shape_draft = None; // endpoints reference the old dimensions
         let old = self.doc.size;
-        let (ox, oy) = if center {
+        // Work in storage coords: shift the whole old storage (canvas + gutter) so the old canvas
+        // top-left lands at the new canvas top-left (plus the centring offset), clipping whatever no
+        // longer fits. This preserves the gutter that still fits. [SPEC §8]
+        let old_storage = self.doc.storage();
+        let old_origin = self.doc.origin();
+        let new_margin = crate::document::Document::gutter_for(new_size);
+        let new_storage = Size::new(new_size.w + 2 * new_margin.w, new_size.h + 2 * new_margin.h);
+        let coff = if center {
             ((new_size.w as i32 - old.w as i32) / 2, (new_size.h as i32 - old.h as i32) / 2)
         } else {
             (0, 0)
         };
+        let dx = new_margin.w as i32 + coff.0 - old_origin.x;
+        let dy = new_margin.h as i32 + coff.1 - old_origin.y;
         self.edit_doc("resize", |s| {
             for f in &mut s.doc.frames {
                 for l in &mut f.layers {
                     let src = l.pixels.clone();
-                    let mut dst = RgbaBuffer::from_size(new_size);
-                    for y in 0..old.h as i32 {
-                        for x in 0..old.w as i32 {
+                    let mut dst = RgbaBuffer::from_size(new_storage);
+                    for y in 0..old_storage.h as i32 {
+                        for x in 0..old_storage.w as i32 {
                             let c = src.get(x, y);
                             if c.a != 0 {
-                                dst.set(x + ox, y + oy, c);
+                                dst.set(x + dx, y + dy, c);
                             }
                         }
                     }
                     l.pixels = dst;
                 }
             }
-            s.doc.size = new_size;
+            s.doc.set_canvas_size(new_size);
             s.doc.selection = None; // the old mask is wrong-sized now; clearing rides this undo step
         });
     }
@@ -209,24 +227,30 @@ impl Session {
         let nw = (bounds.w as u16).clamp(8, 256);
         let nh = (bounds.h as u16).clamp(8, 256);
         let new_size = Size::new(nw, nh);
-        let (ox, oy) = (bounds.x, bounds.y);
+        // `bounds` is in storage coords; shift the whole old storage so the selection's top-left lands
+        // at the new canvas top-left, keeping whatever surrounding gutter still fits. [SPEC §8]
+        let old_storage = self.doc.storage();
+        let new_margin = crate::document::Document::gutter_for(new_size);
+        let new_storage = Size::new(new_size.w + 2 * new_margin.w, new_size.h + 2 * new_margin.h);
+        let dx = new_margin.w as i32 - bounds.x;
+        let dy = new_margin.h as i32 - bounds.y;
         self.edit_doc("crop", |s| {
             for f in &mut s.doc.frames {
                 for l in &mut f.layers {
                     let src = l.pixels.clone();
-                    let mut dst = RgbaBuffer::from_size(new_size);
-                    for y in 0..nh as i32 {
-                        for x in 0..nw as i32 {
-                            let c = src.get(ox + x, oy + y);
+                    let mut dst = RgbaBuffer::from_size(new_storage);
+                    for y in 0..old_storage.h as i32 {
+                        for x in 0..old_storage.w as i32 {
+                            let c = src.get(x, y);
                             if c.a != 0 {
-                                dst.set(x, y, c);
+                                dst.set(x + dx, y + dy, c);
                             }
                         }
                     }
                     l.pixels = dst;
                 }
             }
-            s.doc.size = new_size;
+            s.doc.set_canvas_size(new_size);
             s.doc.selection = None; // crop consumes the selection; clearing rides this undo step
         });
     }
@@ -265,7 +289,9 @@ impl Session {
         let fi = self.doc.active_frame;
         let fid = self.doc.frames[fi].id;
         let lid = self.doc.frames[fi].active_layer().id;
-        let (cw, ch) = (self.doc.size.w as i32, self.doc.size.h as i32);
+        // Rotate over the whole storage about its centre (= the canvas centre for a centred gutter),
+        // so the canvas rotates in place and the gutter rotates with it. [SPEC §8]
+        let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
         let sel_before = self.doc.selection.clone();
 
         // Selection present (and non-empty) → lift just the masked pixels, pivot on the bbox centre.
@@ -340,7 +366,9 @@ impl Session {
             Some(fi) => fi,
             None => return,
         };
-        let (cw, ch) = (self.doc.size.w as i32, self.doc.size.h as i32);
+        // Rotate over the whole storage about its centre (= the canvas centre for a centred gutter),
+        // so the canvas rotates in place and the gutter rotates with it. [SPEC §8]
+        let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
         let before = self.doc.frames[fi].clone();
         let rotated_mask = apply_rotation_to_frame(&d, &mut self.doc.frames[fi], cw, ch);
         if let Some(m) = rotated_mask {
@@ -365,7 +393,9 @@ impl Session {
             return None;
         }
         let mut frame = self.doc.frames[fi].clone();
-        let (cw, ch) = (self.doc.size.w as i32, self.doc.size.h as i32);
+        // Rotate over the whole storage about its centre (= the canvas centre for a centred gutter),
+        // so the canvas rotates in place and the gutter rotates with it. [SPEC §8]
+        let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
         apply_rotation_to_frame(d, &mut frame, cw, ch);
         Some(frame)
     }
@@ -377,7 +407,9 @@ impl Session {
             Some(d) => d,
             None => return,
         };
-        let (cw, ch) = (self.doc.size.w as i32, self.doc.size.h as i32);
+        // Rotate over the whole storage about its centre (= the canvas centre for a centred gutter),
+        // so the canvas rotates in place and the gutter rotates with it. [SPEC §8]
+        let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
         let (out, _mask) = rotate_resample(d, cw, ch);
         let wash = Rgba8::new(0, 200, 255, 60); // soft cyan "draft" wash (matches move/paste)
         for y in 0..ch {
@@ -393,7 +425,9 @@ impl Session {
     /// preview), else `None`. Used by `outline_mask`.
     pub(super) fn rotate_draft_outline(&self) -> Option<Mask> {
         let d = self.rotate_draft.as_ref().filter(|d| d.is_selection && d.fid == self.doc.active_frame().id)?;
-        let (cw, ch) = (self.doc.size.w as i32, self.doc.size.h as i32);
+        // Rotate over the whole storage about its centre (= the canvas centre for a centred gutter),
+        // so the canvas rotates in place and the gutter rotates with it. [SPEC §8]
+        let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
         let (_out, mask) = rotate_resample(d, cw, ch);
         Some(mask)
     }
@@ -402,7 +436,8 @@ impl Session {
     /// place the rotate handle and know a draft is active.
     pub(super) fn rotate_draft_rect(&self) -> Option<IRect> {
         let d = self.rotate_draft.as_ref()?;
-        Some(IRect::new(d.src_origin.x, d.src_origin.y, d.sw as u32, d.sh as u32))
+        let o = self.doc.origin();
+        Some(IRect::new(d.src_origin.x - o.x, d.src_origin.y - o.y, d.sw as u32, d.sh as u32))
     }
 
     /// The rotate draft's current angle in milliradians, if one is open — for the shell's readout.

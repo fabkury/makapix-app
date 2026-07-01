@@ -81,6 +81,8 @@ class Engine {
   late final _RunD _run = _lib.lookupFunction<_RunC, _RunD>('mkpx_run');
   late final _U32D _width = _lib.lookupFunction<_U32C, _U32D>('mkpx_width');
   late final _U32D _height = _lib.lookupFunction<_U32C, _U32D>('mkpx_height');
+  late final _U32D _displayWidth = _lib.lookupFunction<_U32C, _U32D>('mkpx_display_width');
+  late final _U32D _displayHeight = _lib.lookupFunction<_U32C, _U32D>('mkpx_display_height');
   late final _U32D _frameCount = _lib.lookupFunction<_U32C, _U32D>('mkpx_frame_count');
   late final _U32D _activeFrame = _lib.lookupFunction<_U32C, _U32D>('mkpx_active_frame');
   late final _U32D _playFrame = _lib.lookupFunction<_U32C, _U32D>('mkpx_play_frame');
@@ -110,6 +112,11 @@ class Engine {
 
   int get width => _width(_s);
   int get height => _height(_s);
+
+  /// Size of the buffer [display] returns and [outlineMask] fills: the whole storage area
+  /// (canvas + off-canvas gutter) when the overscan view is on, else the canvas.
+  int get displayWidth => _displayWidth(_s);
+  int get displayHeight => _displayHeight(_s);
   int get frameCount => _frameCount(_s);
   int get activeFrame => _activeFrame(_s);
   int get playFrame => _playFrame(_s);
@@ -130,7 +137,7 @@ class Engine {
 
   /// Active-frame display RGBA bytes (with overlays).
   Uint8List display({bool onion = false, bool grid = false, bool checker = true}) {
-    final cap = width * height * 4;
+    final cap = displayWidth * displayHeight * 4; // storage-sized under the overscan view
     final out = malloc<Uint8>(cap);
     final n = _display(_s, onion ? 1 : 0, grid ? 1 : 0, checker ? 1 : 0, out, cap);
     final bytes = Uint8List.fromList(out.asTypedList(n < 0 ? 0 : n));
@@ -183,7 +190,7 @@ class Engine {
 
   /// 1-byte-per-pixel selection coverage (1=selected) for drawing the outline; empty if none.
   Uint8List outlineMask() {
-    final cap = width * height;
+    final cap = displayWidth * displayHeight; // storage-sized under the overscan view
     if (cap <= 0) return Uint8List(0);
     final out = malloc<Uint8>(cap);
     final n = _outline(_s, out, cap);

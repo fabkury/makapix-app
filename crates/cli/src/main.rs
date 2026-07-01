@@ -186,5 +186,5 @@ fn layer_buffer(s: &Session, f: usize, l: usize) -> makapix_engine::buffer::Rgba
 }
 fn composite(s: &Session, f: usize) -> makapix_engine::buffer::RgbaBuffer {
     let f = f.min(s.doc.frames.len() - 1);
-    render::composite_frame(&s.doc.frames[f], s.doc.size.w as u32, s.doc.size.h as u32)
+    render::composite_frame(&s.doc.frames[f], s.doc.canvas_rect())
 }

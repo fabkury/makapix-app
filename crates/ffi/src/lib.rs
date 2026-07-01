@@ -64,6 +64,16 @@ pub extern "C" fn mkpx_width(ptr: *mut Session) -> u32 {
 pub extern "C" fn mkpx_height(ptr: *mut Session) -> u32 {
     session(ptr).map(|s| s.size().1 as u32).unwrap_or(0)
 }
+/// The size of the buffer `mkpx_display` fills: the whole storage (canvas + gutter) when the overscan
+/// view is on, else the canvas. The shell sizes its texture + outline buffer from these.
+#[no_mangle]
+pub extern "C" fn mkpx_display_width(ptr: *mut Session) -> u32 {
+    session(ptr).map(|s| s.display_size().0).unwrap_or(0)
+}
+#[no_mangle]
+pub extern "C" fn mkpx_display_height(ptr: *mut Session) -> u32 {
+    session(ptr).map(|s| s.display_size().1).unwrap_or(0)
+}
 #[no_mangle]
 pub extern "C" fn mkpx_frame_count(ptr: *mut Session) -> u32 {
     session(ptr).map(|s| s.doc.frames.len() as u32).unwrap_or(0)

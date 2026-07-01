@@ -142,20 +142,29 @@ impl Session {
             return;
         }
         let (cw, ch) = (self.doc.size.w as u32, self.doc.size.h as u32);
+        let storage = self.doc.storage();
+        let origin = self.doc.origin();
         let before = self.doc.frames.clone();
         let before_active = self.doc.active_frame;
         let before_size = self.doc.size;
         let sel_before = self.doc.selection.clone();
 
+        // Place a canvas-sized decoded frame into a storage-sized layer buffer, at the canvas origin.
+        let to_storage = |buf: &RgbaBuffer| {
+            let mut sbuf = RgbaBuffer::from_size(storage);
+            sbuf.blit_over(buf, origin);
+            sbuf
+        };
+
         for (i, df) in frames.iter().enumerate() {
             let target = cfg.start_frame + i;
-            let buf = frame_to_buffer(df, cw, ch, &cfg);
+            let buf = to_storage(&frame_to_buffer(df, cw, ch, &cfg));
             let dur = Document::clamp_duration(df.duration_us.max(1));
 
             if cfg.as_layer && target < self.doc.frames.len() {
                 if self.doc.frames[target].layers.len() < crate::document::MAX_LAYERS {
                     let id = self.doc.layer_ids.alloc();
-                    let mut layer = crate::document::Layer::new(id, self.doc.size, format!("Import {}", i + 1));
+                    let mut layer = crate::document::Layer::new(id, storage, format!("Import {}", i + 1));
                     layer.pixels = buf;
                     self.doc.frames[target].layers.push(layer);
                 }
@@ -164,7 +173,7 @@ impl Session {
                 while self.doc.frames.len() <= target && self.doc.frames.len() < crate::document::MAX_FRAMES {
                     let fid = self.doc.frame_ids.alloc();
                     let lid = self.doc.layer_ids.alloc();
-                    let layer = crate::document::Layer::new(lid, self.doc.size, "Layer 1");
+                    let layer = crate::document::Layer::new(lid, storage, "Layer 1");
                     self.doc.frames.push(Frame { id: fid, duration_us: dur, layers: vec![layer], active_layer: 0 });
                 }
                 if target < self.doc.frames.len() {

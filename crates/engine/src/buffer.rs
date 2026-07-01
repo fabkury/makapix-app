@@ -336,19 +336,23 @@ impl RgbaBuffer {
         }
     }
 
-    /// Blit `src` shifted by (dx,dy) with toroidal wrap-around: a source pixel at (x,y) lands at
-    /// ((x+dx) mod w, (y+dy) mod h), so nothing falls off the canvas (the Move tool's Wrap mode).
-    /// Only non-transparent source pixels are written, so clear `self` first.
-    pub fn blit_wrapped(&mut self, src: &RgbaBuffer, dx: i32, dy: i32) {
-        let (w, h) = (self.w as i32, self.h as i32);
-        if w <= 0 || h <= 0 {
+    /// Blit `src` shifted by (dx,dy) with toroidal wrap-around **within the `canvas` rect**: a source
+    /// pixel destined for `(i+dx, j+dy)` lands wrapped inside `canvas`, so nothing falls off the
+    /// canvas edges (the Move tool's Wrap mode). The wrap is around the canvas, not the larger
+    /// storage buffer, so the gutter never participates. Only non-transparent source pixels are
+    /// written, so clear `self` first.
+    pub fn blit_wrapped(&mut self, src: &RgbaBuffer, dx: i32, dy: i32, canvas: IRect) {
+        let (cw, ch) = (canvas.w as i32, canvas.h as i32);
+        if cw <= 0 || ch <= 0 {
             return;
         }
         for j in 0..src.h as i32 {
             for i in 0..src.w as i32 {
                 let c = src.get(i, j);
                 if c.a != 0 {
-                    self.set((i + dx).rem_euclid(w), (j + dy).rem_euclid(h), c);
+                    let x = canvas.x + (i + dx - canvas.x).rem_euclid(cw);
+                    let y = canvas.y + (j + dy - canvas.y).rem_euclid(ch);
+                    self.set(x, y, c);
                 }
             }
         }
@@ -395,6 +399,24 @@ impl RgbaBuffer {
                 out[i + 1] = c.g;
                 out[i + 2] = c.b;
                 out[i + 3] = c.a;
+            }
+        }
+        out
+    }
+
+    /// Flatten a sub-rect `r` (buffer coordinates) to a tightly-packed row-major straight-RGBA byte
+    /// buffer of `r.w × r.h`. Used to crop the storage-sized display buffer down to the canvas window
+    /// (or emit the whole storage for the overscan view) without an intermediate buffer.
+    pub fn to_rgba_bytes_rect(&self, r: IRect) -> Vec<u8> {
+        let mut out = vec![0u8; (r.w * r.h * 4) as usize];
+        for j in 0..r.h as i32 {
+            for i in 0..r.w as i32 {
+                let c = self.get(r.x + i, r.y + j);
+                let o = ((j as u32 * r.w + i as u32) * 4) as usize;
+                out[o] = c.r;
+                out[o + 1] = c.g;
+                out[o + 2] = c.b;
+                out[o + 3] = c.a;
             }
         }
         out

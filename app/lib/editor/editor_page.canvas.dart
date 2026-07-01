@@ -46,6 +46,9 @@ extension _EditorCanvas on _EditorPageState {
     return LayoutBuilder(builder: (context, c) {
       final box = Size(c.maxWidth, c.maxHeight);
       final (vScale, vOff) = _view(box);
+      // The display image is storage-sized under the overscan view; offset it so the canvas stays
+      // put on screen (the gutter extends past the edges). Equals vOff in the normal view.
+      final vImgOff = _imageOffset(vScale, vOff);
       return Container(
         color: const Color(0xFF222428),
         child: Listener(
@@ -87,7 +90,7 @@ extension _EditorCanvas on _EditorPageState {
             ValueListenableBuilder<ui.Image?>(
               valueListenable: _imageVN,
               builder: (_, img, _) => RepaintBoundary(
-                child: CustomPaint(painter: CanvasPainter(img, vScale, vOff), size: Size.infinite),
+                child: CustomPaint(painter: CanvasPainter(img, vScale, vImgOff), size: Size.infinite),
               ),
             ),
             // The pixel grid is a SCREEN-space overlay (thin hairlines on the pixel boundaries), not
@@ -105,7 +108,7 @@ extension _EditorCanvas on _EditorPageState {
             ValueListenableBuilder<int>(
               valueListenable: _overlayVN,
               builder: (_, _, _) => Stack(fit: StackFit.expand, children: [
-                CustomPaint(painter: OutlinePainter(_outlineEdges, vScale, vOff, _antCtrl), size: Size.infinite),
+                CustomPaint(painter: OutlinePainter(_outlineEdges, vScale, vImgOff, _antCtrl), size: Size.infinite),
                 if (_isCursorTool)
                   // Amber marching outline around the EXACT pixels the actuate button would draw —
                   // a distinct visual from the selection's black/white ants (the airbrush shows its

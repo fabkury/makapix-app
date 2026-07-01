@@ -12,12 +12,12 @@ funnel) and the editor is a co-equal feature reachable **without login** via the
 Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending) · **○ stubbed / not yet**.
 
 ## Build artifacts
-- `crates/engine` — pure deterministic core (dependency-free). **56 lib + 8 scenario + 3 import + 1 perf tests.**
+- `crates/engine` — pure deterministic core (dependency-free). **150 lib + 13 scenario + 4 fuzz + 1 perf tests.**
 - `crates/codec` — image import/export (`image` crate). **2 tests.**
 - `crates/ffi` — C-ABI DLL (`makapix_ffi.dll`). **2 tests** (lifecycle + GIF import→export).
 - `crates/cli` — `mkpx` headless harness (renders PNG, prints oracles/JSON; exit-code CI gate).
 - `app/` — Flutter Windows app → `app/build/windows/x64/runner/Release/makapix_club.exe` (+ bundled DLL).
-- **Total: 68 Rust tests green.** Engine loop verified by rendering `examples/demo.txt` & `showcase.txt`.
+- **Total: 174 Rust tests green.** Engine loop verified by rendering `examples/demo.txt` & `showcase.txt`.
 
 ## Core first-class features
 | Feature | Status | Notes |
@@ -26,7 +26,8 @@ Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending)
 | Compact three-row UI/UX | ✅ | row-1 tool options · row-2 palette · row-3 tools (a **2-row, horizontally-scrolling, user-reorderable** tool grid) |
 | Configurable tool order | ✅ | "Rearrange" mode: drag-and-drop tools + ◀▶ move-one-slot buttons; order persisted across launches (shared_preferences) |
 | Mobile-first, responsive to tablet | ✅ | mobile-first column; **wide viewports (≥1000px) move frames+layers into a right side panel** |
-| Lossless `.mkpx` (frames + layers) | ✅ | chunked, versioned, sparse tiles; round-trip is a test gate |
+| Lossless `.mkpx` (frames + layers) | ✅ | chunked, versioned (v4), sparse tiles; round-trip is a test gate |
+| Off-canvas gutter + overscan view | ✅ | Move preserves pixels pushed off-canvas in a 1-canvas gutter each side (3×3 storage); paint stays canvas-only; ☰ View → Overscan reveals the dimmed gutter (keep-zoom-pan). See SPEC §8.3 |
 | Memory efficient (1024f / 256² / RGBA, per-frame undo) | ✅ | tiled COW + lazy alloc; 500f×20L = **48 MiB**, verified no-crash |
 | Post to Makapix Club (publish) | ✅ | "Post to Club" exports the document (static→PNG, animated→GIF) and hands **only bytes** to `lib/club`, which runs conformance → metadata/license/visibility → bearer-auth upload (the real C2 publish flow). `tools/mock_club_server.py` remains an optional local harness; see the Club table below. |
 

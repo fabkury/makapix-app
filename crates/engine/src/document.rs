@@ -4,7 +4,7 @@
 
 use crate::buffer::RgbaBuffer;
 use crate::color::Rgba8;
-use crate::geom::Size;
+use crate::geom::{IRect, Point, Size};
 use crate::history::History;
 use crate::selection::Mask;
 use crate::util::{Hash, Hasher, IdGen};
@@ -123,6 +123,9 @@ impl Palette {
 }
 
 pub struct Document {
+    /// The **canvas**: the editable, exported, user-facing dimensions (8..=256). This is what
+    /// almost every site means by "size". Distinct from [`storage`](Self::storage), which also
+    /// includes the off-canvas **gutter** where moved pixels are preserved (SPEC §8, §15).
     pub size: Size,
     pub frames: Vec<Frame>,
     pub active_frame: usize,
@@ -144,9 +147,11 @@ pub struct Document {
 impl Document {
     pub fn new(w: u16, h: u16) -> Document {
         let size = Size::new(w, h);
+        let margin = Document::gutter_for(size);
+        let storage = Size::new(size.w + 2 * margin.w, size.h + 2 * margin.h);
         let mut frame_ids = IdGen::default();
         let mut layer_ids = IdGen::default();
-        let l0 = Layer::new(layer_ids.alloc(), size, "Layer 1");
+        let l0 = Layer::new(layer_ids.alloc(), storage, "Layer 1");
         let f0 = Frame {
             id: frame_ids.alloc(),
             duration_us: DEFAULT_DURATION_US,
@@ -165,6 +170,53 @@ impl Document {
             layer_ids,
             selection: None,
         }
+    }
+
+    // ---- canvas ↔ storage geometry (SPEC §8) ----
+
+    /// The gutter kept on each side of a canvas of the given size: a **full canvas** on every side,
+    /// giving a `3w × 3h` storage area. Pixels moved off the canvas are preserved anywhere in this
+    /// area (SPEC §8, §15). Centralised here so the whole engine derives the gutter one way — set it
+    /// back to `(0,0)` to disable the feature everywhere.
+    pub fn gutter_for(size: Size) -> Size {
+        size
+    }
+
+    /// The gutter kept on each side of the current canvas. **Derived** from the canvas size (never
+    /// stored), so it can never desync — undo/redo restore only `size` and the gutter follows. [F: undo]
+    pub fn margin(&self) -> Size {
+        Document::gutter_for(self.size)
+    }
+
+    /// Canvas top-left within the storage buffers (= the per-side gutter). Add this to a canvas
+    /// coordinate to reach the storage/tile coordinate a layer buffer is indexed by.
+    pub fn origin(&self) -> Point {
+        let m = self.margin();
+        Point::new(m.w as i32, m.h as i32)
+    }
+
+    /// Full storage dimensions of every layer buffer: `canvas + 2·gutter`.
+    pub fn storage(&self) -> Size {
+        let m = self.margin();
+        Size::new(self.size.w + 2 * m.w, self.size.h + 2 * m.h)
+    }
+
+    /// The canvas window expressed in storage/tile coordinates — the region tools may edit and the
+    /// default source rect for compositing, display, thumbnails and export.
+    pub fn canvas_rect(&self) -> IRect {
+        IRect::new(self.origin().x, self.origin().y, self.size.w as u32, self.size.h as u32)
+    }
+
+    /// The whole storage area (canvas + gutter) in storage coordinates — the source rect for the
+    /// overscan display.
+    pub fn storage_rect(&self) -> IRect {
+        IRect::from_size(self.storage())
+    }
+
+    /// Change the canvas size and re-derive the gutter/storage from it (the canvas transforms call
+    /// this, then rebuild every layer buffer at the new [`storage`](Self::storage) size).
+    pub fn set_canvas_size(&mut self, new_size: Size) {
+        self.size = new_size; // the gutter/storage is derived from `size`, so nothing else to update
     }
 
     // ---- accessors ----
@@ -213,7 +265,7 @@ impl Document {
     }
 
     pub fn new_layer(&mut self, name: impl Into<String>) -> Layer {
-        Layer::new(self.layer_ids.alloc(), self.size, name)
+        Layer::new(self.layer_ids.alloc(), self.storage(), name)
     }
 
     pub fn new_frame_id(&mut self) -> u32 {

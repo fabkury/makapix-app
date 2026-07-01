@@ -4,7 +4,7 @@
 
 use crate::buffer::RgbaBuffer;
 use crate::color::{self, Rgba8};
-use crate::geom::Point;
+use crate::geom::{IRect, Point};
 use crate::raster;
 use crate::selection::Mask;
 use crate::util::SeededRng;
@@ -166,6 +166,10 @@ pub struct ToolSettings {
     /// pixels (the L-shaped elbow at each turn) so the line stays a clean 1px wide. Only meaningful
     /// at `brush_size == 1`; a no-op otherwise.
     pub pixel_perfect: bool,
+    /// Overscan view: when on, the display renders the whole storage area (canvas + gutter, the gutter
+    /// dimmed) and selection gestures may reach into the gutter. A view/interaction flag driven from
+    /// the shell (like `wrap`); it never affects paint tools, export or thumbnails. [SPEC §8]
+    pub overscan_view: bool,
 }
 impl Default for ToolSettings {
     fn default() -> Self {
@@ -187,13 +191,19 @@ impl Default for ToolSettings {
             protect_pixels: false,
             wrap: false,
             pixel_perfect: false,
+            overscan_view: false,
         }
     }
 }
 
-/// Write `color` at (x,y) honoring the selection clip and paint mode.
+/// Write `color` at (x,y) honoring the edit `clip` (the canvas window, in storage coords — pixels
+/// outside it are the off-canvas gutter that tools may not draw into), the selection clip, and the
+/// paint mode. Storage coordinates throughout.
 #[inline]
-pub fn plot(buf: &mut RgbaBuffer, sel: Option<&Mask>, x: i32, y: i32, color: Rgba8, mode: PaintMode) {
+pub fn plot(buf: &mut RgbaBuffer, sel: Option<&Mask>, clip: IRect, x: i32, y: i32, color: Rgba8, mode: PaintMode) {
+    if !clip.contains(Point::new(x, y)) {
+        return; // outside the editable window (the gutter) — never draw here
+    }
     if let Some(m) = sel {
         if !m.get(x, y) {
             return;
@@ -210,6 +220,7 @@ pub fn plot(buf: &mut RgbaBuffer, sel: Option<&Mask>, x: i32, y: i32, color: Rgb
 pub fn stamp(
     buf: &mut RgbaBuffer,
     sel: Option<&Mask>,
+    clip: IRect,
     center: Point,
     size: u16,
     shape: BrushShape,
@@ -217,7 +228,7 @@ pub fn stamp(
     mode: PaintMode,
 ) {
     let radius = (size.max(1) as i32 - 1) / 2;
-    let mut f = |x: i32, y: i32| plot(buf, sel, x, y, color, mode);
+    let mut f = |x: i32, y: i32| plot(buf, sel, clip, x, y, color, mode);
     match shape {
         BrushShape::Round => {
             if size <= 1 {
@@ -231,9 +242,11 @@ pub fn stamp(
 }
 
 /// Interpolated stroke segment from `a` to `b`, stamping along the path (SPEC §11.1).
+#[allow(clippy::too_many_arguments)]
 pub fn stroke_segment(
     buf: &mut RgbaBuffer,
     sel: Option<&Mask>,
+    clip: IRect,
     a: Point,
     b: Point,
     size: u16,
@@ -244,7 +257,7 @@ pub fn stroke_segment(
     let mut centers = Vec::new();
     raster::line(a, b, |x, y| centers.push(Point::new(x, y)));
     for c in centers {
-        stamp(buf, sel, c, size, shape, color, mode);
+        stamp(buf, sel, clip, c, size, shape, color, mode);
     }
 }
 
@@ -252,10 +265,12 @@ pub fn stroke_segment(
 /// Flood-fill from `seed`. The fill is always written to `buf` (the active layer). The region to
 /// fill is decided by `reference` when `Some` — the composited image, for the "All layers" mode, so
 /// connectivity/colour-matching considers every layer — otherwise by `buf` itself (active layer).
+#[allow(clippy::too_many_arguments)]
 pub fn flood_fill(
     buf: &mut RgbaBuffer,
     reference: Option<&RgbaBuffer>,
     sel: Option<&Mask>,
+    clip: IRect,
     seed: Point,
     color: Rgba8,
     threshold: u8,
@@ -263,8 +278,8 @@ pub fn flood_fill(
     mode: PaintMode,
 ) {
     let w = buf.width() as i32;
-    let h = buf.height() as i32;
-    if seed.x < 0 || seed.y < 0 || seed.x >= w || seed.y >= h {
+    // Bucket is canvas-only: the flood may neither start nor spread outside `clip` (the gutter).
+    if !clip.contains(seed) {
         return;
     }
     // Sample the deciding buffer: the reference (composite) if given, else the layer being filled.
@@ -275,10 +290,10 @@ pub fn flood_fill(
     let target = read(seed.x, seed.y, buf);
     let in_sel = |x: i32, y: i32| sel.map(|m| m.get(x, y)).unwrap_or(true);
     if contiguous {
-        let mut visited = vec![false; (w * h) as usize];
+        let mut visited = vec![false; (w * buf.height() as i32) as usize];
         let mut stack = vec![seed];
         while let Some(p) = stack.pop() {
-            if p.x < 0 || p.y < 0 || p.x >= w || p.y >= h {
+            if !clip.contains(p) {
                 continue;
             }
             let idx = (p.y * w + p.x) as usize;
@@ -289,17 +304,17 @@ pub fn flood_fill(
             if !in_sel(p.x, p.y) || color::max_channel_delta(read(p.x, p.y, buf), target) > threshold {
                 continue;
             }
-            plot(buf, sel, p.x, p.y, color, mode);
+            plot(buf, sel, clip, p.x, p.y, color, mode);
             stack.push(Point::new(p.x + 1, p.y));
             stack.push(Point::new(p.x - 1, p.y));
             stack.push(Point::new(p.x, p.y + 1));
             stack.push(Point::new(p.x, p.y - 1));
         }
     } else {
-        for y in 0..h {
-            for x in 0..w {
+        for y in clip.y..clip.bottom() {
+            for x in clip.x..clip.right() {
                 if in_sel(x, y) && color::max_channel_delta(read(x, y, buf), target) <= threshold {
-                    plot(buf, sel, x, y, color, mode);
+                    plot(buf, sel, clip, x, y, color, mode);
                 }
             }
         }
@@ -384,16 +399,15 @@ pub fn gradient_eval_sorted(kind: GradientKind, stops: &[Stop], p0: Point, p1: P
     gradient_color_at_sorted(stops, gradient_t(kind, p0, p1, x, y), smooth)
 }
 
-/// Fill a region with the gradient, clipped to selection (SPEC §11.3). Deterministic per pixel.
-pub fn apply_gradient(buf: &mut RgbaBuffer, sel: Option<&Mask>, spec: &GradientSpec, p0: Point, p1: Point) {
-    let w = buf.width() as i32;
-    let h = buf.height() as i32;
+/// Fill a region with the gradient, clipped to selection and the canvas `clip` (SPEC §11.3).
+/// Deterministic per pixel.
+pub fn apply_gradient(buf: &mut RgbaBuffer, sel: Option<&Mask>, clip: IRect, spec: &GradientSpec, p0: Point, p1: Point) {
     // Sort the stops ONCE, not once per pixel — `gradient_color_at` used to clone+sort the whole
     // stop vector for every pixel (65 536× on a 256² fill). [audit F-14]
     let mut stops = spec.stops.clone();
     stops.sort_by(|a, b| a.t.total_cmp(&b.t));
-    for y in 0..h {
-        for x in 0..w {
+    for y in clip.y..clip.bottom() {
+        for x in clip.x..clip.right() {
             if let Some(m) = sel {
                 if !m.get(x, y) {
                     continue;
@@ -406,9 +420,11 @@ pub fn apply_gradient(buf: &mut RgbaBuffer, sel: Option<&Mask>, spec: &GradientS
 }
 
 /// Airbrush dab: stochastically spray `intensity`-many points within radius (SPEC §11.1).
+#[allow(clippy::too_many_arguments)]
 pub fn airbrush_dab(
     buf: &mut RgbaBuffer,
     sel: Option<&Mask>,
+    clip: IRect,
     center: Point,
     size: u16,
     intensity: u8,
@@ -422,7 +438,7 @@ pub fn airbrush_dab(
         let dx = (rng.next_f32() * 2.0 - 1.0) * radius as f32;
         let dy = (rng.next_f32() * 2.0 - 1.0) * radius as f32;
         if dx * dx + dy * dy <= r2 {
-            plot(buf, sel, center.x + dx as i32, center.y + dy as i32, color, PaintMode::Over);
+            plot(buf, sel, clip, center.x + dx as i32, center.y + dy as i32, color, PaintMode::Over);
         }
     }
 }
@@ -431,6 +447,7 @@ pub fn airbrush_dab(
 pub fn dodge_burn_stamp(
     buf: &mut RgbaBuffer,
     sel: Option<&Mask>,
+    clip: IRect,
     center: Point,
     size: u16,
     shape: BrushShape,
@@ -438,6 +455,9 @@ pub fn dodge_burn_stamp(
 ) {
     let radius = (size.max(1) as i32 - 1) / 2;
     let mut apply = |x: i32, y: i32| {
+        if !clip.contains(Point::new(x, y)) {
+            return;
+        }
         if let Some(m) = sel {
             if !m.get(x, y) {
                 return;
@@ -492,28 +512,24 @@ pub fn map_region(buf: &mut RgbaBuffer, sel: Option<&Mask>, f: impl Fn(Rgba8) ->
     }
 }
 
-/// Fill the selection (or whole layer) with a solid color.
-pub fn fill_region(buf: &mut RgbaBuffer, sel: Option<&Mask>, color: Rgba8) {
-    let w = buf.width() as i32;
-    let h = buf.height() as i32;
-    for y in 0..h {
-        for x in 0..w {
-            plot(buf, sel, x, y, color, PaintMode::Replace);
+/// Fill the selection (or the whole `clip` window when there's no selection) with a solid color.
+pub fn fill_region(buf: &mut RgbaBuffer, sel: Option<&Mask>, clip: IRect, color: Rgba8) {
+    for y in clip.y..clip.bottom() {
+        for x in clip.x..clip.right() {
+            plot(buf, sel, clip, x, y, color, PaintMode::Replace);
         }
     }
 }
 
-/// Clear (erase) the selection (or whole layer).
-pub fn clear_region(buf: &mut RgbaBuffer, sel: Option<&Mask>) {
+/// Clear (erase) the selection, or the whole layer (gutter included) when there's no selection.
+pub fn clear_region(buf: &mut RgbaBuffer, sel: Option<&Mask>, clip: IRect) {
     if sel.is_none() {
         buf.clear();
         return;
     }
-    let w = buf.width() as i32;
-    let h = buf.height() as i32;
-    for y in 0..h {
-        for x in 0..w {
-            plot(buf, sel, x, y, Rgba8::TRANSPARENT, PaintMode::Erase);
+    for y in clip.y..clip.bottom() {
+        for x in clip.x..clip.right() {
+            plot(buf, sel, clip, x, y, Rgba8::TRANSPARENT, PaintMode::Erase);
         }
     }
 }
@@ -535,6 +551,7 @@ fn rotated_kind(kind: ToolKind) -> Option<u8> {
 pub fn draw_shape(
     buf: &mut RgbaBuffer,
     sel: Option<&Mask>,
+    clip: IRect,
     kind: ToolKind,
     a: Point,
     b: Point,
@@ -546,7 +563,7 @@ pub fn draw_shape(
     mode: PaintMode,
 ) {
     let lw = line_width.max(1) as i32;
-    let mut f = |x: i32, y: i32| plot(buf, sel, x, y, color, mode);
+    let mut f = |x: i32, y: i32| plot(buf, sel, clip, x, y, color, mode);
     // The Triangle carries its own rotation + apex skew through one path.
     if kind == ToolKind::Triangle {
         if fill {
@@ -591,14 +608,14 @@ mod tests {
     #[test]
     fn pencil_stamp_sets_pixel() {
         let mut b = RgbaBuffer::new(16, 16);
-        stamp(&mut b, None, Point::new(5, 5), 1, BrushShape::Square, Rgba8::WHITE, PaintMode::Replace);
+        stamp(&mut b, None, IRect::new(0, 0, 16, 16), Point::new(5, 5), 1, BrushShape::Square, Rgba8::WHITE, PaintMode::Replace);
         assert_eq!(b.get(5, 5), Rgba8::WHITE);
     }
 
     #[test]
     fn flood_fill_fills_region() {
         let mut b = RgbaBuffer::new(8, 8);
-        flood_fill(&mut b, None, None, Point::new(0, 0), Rgba8::WHITE, 0, true, PaintMode::Replace);
+        flood_fill(&mut b, None, None, IRect::new(0, 0, 8, 8), Point::new(0, 0), Rgba8::WHITE, 0, true, PaintMode::Replace);
         // all-transparent target → fills entire canvas
         for y in 0..8 {
             for x in 0..8 {
@@ -614,7 +631,7 @@ mod tests {
         for y in 0..8 {
             b.set(4, y, Rgba8::BLACK);
         }
-        flood_fill(&mut b, None, None, Point::new(0, 0), Rgba8::WHITE, 0, true, PaintMode::Replace);
+        flood_fill(&mut b, None, None, IRect::new(0, 0, 8, 8), Point::new(0, 0), Rgba8::WHITE, 0, true, PaintMode::Replace);
         assert_eq!(b.get(0, 0), Rgba8::WHITE);
         assert_eq!(b.get(3, 3), Rgba8::WHITE);
         assert_eq!(b.get(5, 3), Rgba8::TRANSPARENT); // other side untouched
@@ -629,7 +646,7 @@ mod tests {
             stops: vec![Stop::new(Rgba8::rgb(255, 0, 0), 0.0), Stop::new(Rgba8::rgb(0, 0, 255), 1.0)],
             smoothstep: false,
         };
-        apply_gradient(&mut b, None, &spec, Point::new(0, 0), Point::new(15, 0));
+        apply_gradient(&mut b, None, IRect::new(0, 0, 16, 1), &spec, Point::new(0, 0), Point::new(15, 0));
         assert_eq!(b.get(0, 0), Rgba8::rgb(255, 0, 0));
         assert_eq!(b.get(15, 0), Rgba8::rgb(0, 0, 255));
     }
@@ -661,7 +678,7 @@ mod tests {
             smoothstep: false,
         };
         let (p0, p1) = (Point::new(16, 16), Point::new(16, 0));
-        apply_gradient(&mut b, None, &spec, p0, p1);
+        apply_gradient(&mut b, None, IRect::new(0, 0, 32, 32), &spec, p0, p1);
         for y in 0..32 {
             for x in 0..32 {
                 let expected = gradient_eval(spec.kind, &spec.stops, p0, p1, x, y, spec.smoothstep);
@@ -676,7 +693,7 @@ mod tests {
             let mut b = RgbaBuffer::new(32, 32);
             let mut rng = SeededRng::new(seed);
             for _ in 0..5 {
-                airbrush_dab(&mut b, None, Point::new(16, 16), 6, 200, Rgba8::WHITE, &mut rng);
+                airbrush_dab(&mut b, None, IRect::new(0, 0, 32, 32), Point::new(16, 16), 6, 200, Rgba8::WHITE, &mut rng);
             }
             b.content_hash()
         };
@@ -688,7 +705,7 @@ mod tests {
     fn fill_region_with_selection() {
         let mut b = RgbaBuffer::new(16, 16);
         let sel = Mask::from_plot(16, 16, |p| raster::rect_filled(Point::new(2, 2), Point::new(5, 5), p));
-        fill_region(&mut b, Some(&sel), Rgba8::WHITE);
+        fill_region(&mut b, Some(&sel), IRect::new(0, 0, 16, 16), Rgba8::WHITE);
         assert_eq!(b.get(3, 3), Rgba8::WHITE);
         assert_eq!(b.get(10, 10), Rgba8::TRANSPARENT);
         let _ = IRect::new(0, 0, 1, 1);

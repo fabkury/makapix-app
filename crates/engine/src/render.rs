@@ -5,53 +5,61 @@
 use crate::buffer::{RgbaBuffer, TILE};
 use crate::color::{self, Rgba8};
 use crate::document::{Document, Frame};
-use crate::geom::Point;
+use crate::geom::{IRect, Point};
 
-/// Run `f(x, y)` over every pixel of the present (materialized) tiles of `src`, skipping absent
-/// (fully-transparent) tiles entirely. Each pixel is visited exactly once, so callers that compute
-/// a per-pixel result independent of visit order get identical output to a full row scan — at a
-/// fraction of the cost when most of `src` is empty (the typical pixel-art layer). [audit F-13]
+/// Run `f(x, y)` over every present (materialized) pixel of `src` **within `rect`** (buffer/storage
+/// coordinates), skipping absent (fully-transparent) tiles entirely. Each pixel is visited exactly
+/// once, so callers that compute a per-pixel result independent of visit order get identical output
+/// to a full row scan — at a fraction of the cost when most of `src` is empty. [audit F-13]
 #[inline]
-fn for_present_pixels(src: &RgbaBuffer, w: u32, h: u32, mut f: impl FnMut(i32, i32)) {
+fn for_present_pixels_in(src: &RgbaBuffer, rect: IRect, mut f: impl FnMut(i32, i32)) {
     for ty in 0..src.tiles_y() {
         for tx in 0..src.tiles_x() {
             if !src.tile_present(tx, ty) {
                 continue;
             }
-            let (x0, y0) = (tx * TILE, ty * TILE);
-            let (x1, y1) = ((x0 + TILE).min(w), (y0 + TILE).min(h));
+            let (tx0, ty0) = ((tx * TILE) as i32, (ty * TILE) as i32);
+            // Clip the tile to `rect` so we never read outside the requested window.
+            let x0 = tx0.max(rect.x);
+            let y0 = ty0.max(rect.y);
+            let x1 = (tx0 + TILE as i32).min(rect.right());
+            let y1 = (ty0 + TILE as i32).min(rect.bottom());
             for y in y0..y1 {
                 for x in x0..x1 {
-                    f(x as i32, y as i32);
+                    f(x, y);
                 }
             }
         }
     }
 }
 
-/// Flatten the visible layers of `frame` into a single straight-RGBA buffer.
-pub fn composite_frame(frame: &Frame, w: u32, h: u32) -> RgbaBuffer {
-    let mut out = RgbaBuffer::new(w, h);
+/// Flatten the visible layers of `frame` into a single straight-RGBA buffer covering `src` (a rect
+/// in storage coordinates). The output is `src.w × src.h`, indexed from `(0,0)`: a layer pixel at
+/// storage `(src.x+lx, src.y+ly)` lands at output `(lx, ly)`. Pass [`Document::canvas_rect`] for the
+/// canvas image (display/export/thumbnails) or [`Document::storage_rect`] for the overscan view.
+pub fn composite_frame(frame: &Frame, src: IRect) -> RgbaBuffer {
+    let mut out = RgbaBuffer::new(src.w, src.h);
     for layer in &frame.layers {
         if !layer.visible || layer.opacity == 0 {
             continue;
         }
         let px = &layer.pixels;
-        for_present_pixels(px, w, h, |x, y| {
-            let src = px.get(x, y);
-            if src.a == 0 {
+        for_present_pixels_in(px, src, |sx, sy| {
+            let s = px.get(sx, sy);
+            if s.a == 0 {
                 return;
             }
-            let dst = out.get(x, y);
-            out.set(x, y, color::over_opacity(src, dst, layer.opacity));
+            let (lx, ly) = (sx - src.x, sy - src.y);
+            let dst = out.get(lx, ly);
+            out.set(lx, ly, color::over_opacity(s, dst, layer.opacity));
         });
     }
     out
 }
 
-/// Composite the active frame of a document.
+/// Composite the canvas window of the active frame of a document.
 pub fn composite_active(doc: &Document) -> RgbaBuffer {
-    composite_frame(doc.active_frame(), doc.size.w as u32, doc.size.h as u32)
+    composite_frame(doc.active_frame(), doc.canvas_rect())
 }
 
 /// Overlay options for display rendering (engine-side; the shell may also draw these).
@@ -66,10 +74,12 @@ pub struct Overlays<'a> {
 }
 
 /// Render a frame to a display buffer with optional overlays (onion skin, selection ants,
-/// grid, checker background). Used by the shell's canvas and the `render` probe.
-pub fn render_display(doc: &Document, frame: &Frame, ov: &Overlays) -> RgbaBuffer {
-    let w = doc.size.w as u32;
-    let h = doc.size.h as u32;
+/// grid, checker background). Used by the shell's canvas and the `render` probe. `src` (storage
+/// coordinates) selects the window: the canvas rect for the normal view, the full storage rect for
+/// the overscan view. The output is `src.w × src.h` and everything is drawn output-relative.
+pub fn render_display(frame: &Frame, src: IRect, ov: &Overlays) -> RgbaBuffer {
+    let w = src.w;
+    let h = src.h;
     let mut out = RgbaBuffer::new(w, h);
 
     if ov.checker_bg {
@@ -85,14 +95,14 @@ pub fn render_display(doc: &Document, frame: &Frame, ov: &Overlays) -> RgbaBuffe
         }
     }
     if let Some(prev) = ov.onion_prev {
-        blit_onion(&mut out, prev, w, h, Rgba8::new(255, 80, 80, 64));
+        blit_onion(&mut out, prev, src, Rgba8::new(255, 80, 80, 64));
     }
     if let Some(next) = ov.onion_next {
-        blit_onion(&mut out, next, w, h, Rgba8::new(80, 80, 255, 64));
+        blit_onion(&mut out, next, src, Rgba8::new(80, 80, 255, 64));
     }
 
-    let flat = composite_frame(frame, w, h);
-    for_present_pixels(&flat, w, h, |x, y| {
+    let flat = composite_frame(frame, src);
+    for_present_pixels_in(&flat, IRect::new(0, 0, w, h), |x, y| {
         let c = flat.get(x, y);
         if c.a != 0 {
             out.blend_over(x, y, c);
@@ -109,7 +119,8 @@ pub fn render_display(doc: &Document, frame: &Frame, ov: &Overlays) -> RgbaBuffe
         }
     }
     if let Some(cur) = ov.cursor {
-        draw_reticle(&mut out, cur);
+        // The reticle position arrives in storage coords; draw it output-relative.
+        draw_reticle(&mut out, Point::new(cur.x - src.x, cur.y - src.y));
     }
     out
 }
@@ -135,9 +146,9 @@ fn draw_reticle(out: &mut RgbaBuffer, c: Point) {
     }
 }
 
-fn blit_onion(out: &mut RgbaBuffer, frame: &Frame, w: u32, h: u32, tint: Rgba8) {
-    let flat = composite_frame(frame, w, h);
-    for_present_pixels(&flat, w, h, |x, y| {
+fn blit_onion(out: &mut RgbaBuffer, frame: &Frame, src: IRect, tint: Rgba8) {
+    let flat = composite_frame(frame, src);
+    for_present_pixels_in(&flat, IRect::new(0, 0, src.w, src.h), |x, y| {
         if flat.get(x, y).a != 0 {
             out.blend_over(x, y, tint);
         }
@@ -152,7 +163,8 @@ mod tests {
     #[test]
     fn composite_single_layer_passthrough() {
         let mut d = Document::new(8, 8);
-        d.active_frame_mut().active_layer_mut().pixels.set(1, 1, Rgba8::WHITE);
+        let o = d.origin();
+        d.active_frame_mut().active_layer_mut().pixels.set(o.x + 1, o.y + 1, Rgba8::WHITE);
         let flat = composite_active(&d);
         assert_eq!(flat.get(1, 1), Rgba8::WHITE);
     }

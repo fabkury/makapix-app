@@ -10,13 +10,16 @@ use std::sync::Arc;
 
 pub const MAGIC: &[u8; 4] = b"MKPX";
 /// v1 = raw tiles; v2 = per-tile RLE-compressed tiles (SPEC §17.1, §28.8); v3 adds a trailing
-/// selection chunk (the document-sized 1-bit mask, for crash-safety; SPEC §12). We write v3 and
-/// still read v1/v2 (which simply carry no selection) for backward compatibility.
-pub const FORMAT_VERSION: u16 = 3;
+/// selection chunk (the 1-bit mask, for crash-safety; SPEC §12). v4 stores **storage-sized** tiles
+/// and selection (canvas + the off-canvas gutter; SPEC §8) — the canvas `size` in the header is
+/// unchanged and the gutter/storage is re-derived on load. We write v4 and still read v1–v3, lifting
+/// their canvas-sized tiles into the gutter'd storage at the canvas origin.
+pub const FORMAT_VERSION: u16 = 4;
 const TILE_BYTES: usize = 32 * 32 * 4;
-/// Largest legal selection word count: a 256×256 canvas is 65536 bits = 1024 `u64` words. A larger
-/// count in a file is corruption (bounds the loader's allocation against a crafted value).
-const MAX_SEL_WORDS: usize = (256 * 256) / 64;
+/// Largest legal selection word count: the biggest storage grid is a 256×256 canvas with a full
+/// 256-px gutter each side = 768×768 = 589824 bits = 9216 `u64` words. A larger count in a file is
+/// corruption (bounds the loader's allocation against a crafted value).
+const MAX_SEL_WORDS: usize = (768 * 768) / 64;
 
 /// RLE-encode one 4096-byte tile as `(run:u16, pixel:[u8;4])*` over its 1024 pixels.
 fn rle_encode_tile(bytes: &[u8]) -> Vec<u8> {
@@ -231,7 +234,7 @@ pub fn save_to_bytes(doc: &Document) -> Vec<u8> {
 
 /// Read the v3 selection chunk. A mask whose dimensions don't match this document (a stale chunk) is
 /// dropped rather than applied, since every `get()` against a mismatched mask would be out of range.
-fn read_selection(r: &mut Reader, size: Size) -> Result<Option<Arc<Mask>>, IoError> {
+fn read_selection(r: &mut Reader, storage: Size) -> Result<Option<Arc<Mask>>, IoError> {
     if r.u8()? == 0 {
         return Ok(None);
     }
@@ -245,7 +248,9 @@ fn read_selection(r: &mut Reader, size: Size) -> Result<Option<Arc<Mask>>, IoErr
     for _ in 0..nwords {
         words.push(r.u64()?);
     }
-    if w != size.w as u32 || h != size.h as u32 {
+    // The mask is storage-sized (v4). A v1–v3 canvas-sized mask (or any stale size) mismatches and is
+    // dropped rather than applied, since every get() against a mismatched mask is out of range.
+    if w != storage.w as u32 || h != storage.h as u32 {
         return Ok(None); // stale dimensions → drop the selection, keep the document
     }
     Ok(Mask::from_words(w, h, words).map(Arc::new)) // None if the word count is inconsistent (corrupt)
@@ -267,6 +272,11 @@ pub fn load_from_bytes(data: &[u8]) -> Result<Document, IoError> {
     if !size.in_range() {
         return Err(IoError::Corrupt("canvas size out of range"));
     }
+    // The gutter/storage is re-derived from the canvas size (a fixed policy), so it is never stored.
+    // v4 tiles are already storage-sized; v1–v3 tiles are canvas-sized and get lifted to `origin`.
+    let margin = Document::gutter_for(size);
+    let storage = Size::new(size.w + 2 * margin.w, size.h + 2 * margin.h);
+    let origin = crate::geom::Point::new(margin.w as i32, margin.h as i32);
     let active_frame = r.u32()? as usize;
     let loop_mode = loop_mode_from_u8(r.u8()?);
 
@@ -311,7 +321,13 @@ pub fn load_from_bytes(data: &[u8]) -> Result<Document, IoError> {
             let flags = r.u8()?;
             let opacity = r.u8()?;
             let _blend = r.u8()?;
-            let mut pixels = RgbaBuffer::from_size(size);
+            // v4 stores storage-sized tiles directly; v1–v3 store canvas-sized tiles that we read
+            // into a canvas-sized buffer and then lift into the gutter'd storage buffer at `origin`.
+            let mut pixels = if version >= 4 {
+                RgbaBuffer::from_size(storage)
+            } else {
+                RgbaBuffer::from_size(size)
+            };
             let nt = r.u32()? as usize;
             if nt != pixels.num_tiles() {
                 return Err(IoError::Corrupt("tile count mismatch"));
@@ -326,6 +342,11 @@ pub fn load_from_bytes(data: &[u8]) -> Result<Document, IoError> {
                         pixels.put_tile_bytes(i, &b);
                     }
                 }
+            }
+            if version < 4 {
+                let mut lifted = RgbaBuffer::from_size(storage);
+                lifted.blit_over(&pixels, origin);
+                pixels = lifted;
             }
             layers.push(Layer {
                 id: lid,
@@ -344,8 +365,9 @@ pub fn load_from_bytes(data: &[u8]) -> Result<Document, IoError> {
         return Err(IoError::Corrupt("no frames"));
     }
 
-    // selection chunk (v3+); v1/v2 carry none.
-    let selection = if version >= 3 { read_selection(&mut r, size)? } else { None };
+    // selection chunk (v3+); v1/v2 carry none. The mask is validated against the storage size (v4);
+    // a v3 canvas-sized mask mismatches and is dropped.
+    let selection = if version >= 3 { read_selection(&mut r, storage)? } else { None };
 
     // Seed the id generators just past the highest persisted id — directly, never by looping up to
     // it: a crafted id like 0xFFFFFFFF would otherwise hang the loader for billions of allocs. [F-2]
@@ -413,7 +435,8 @@ mod tests {
     #[test]
     fn roundtrips_a_selection() {
         let mut doc = Document::new(40, 24);
-        let shape = Mask::from_plot(40, 24, |p| {
+        let st = doc.storage(); // the selection mask is storage-sized (canvas + gutter)
+        let shape = Mask::from_plot(st.w as u32, st.h as u32, |p| {
             crate::raster::rect_filled(crate::geom::Point::new(3, 4), crate::geom::Point::new(20, 18), p)
         });
         doc.selection = Some(Arc::new(shape));
