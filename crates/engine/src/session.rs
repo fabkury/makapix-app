@@ -328,6 +328,17 @@ impl Session {
         (self.doc.size.w, self.doc.size.h)
     }
 
+    /// The dimensions of the buffer `display_bytes` returns and the coverage `outline_mask_bytes`
+    /// writes: the whole storage (canvas + gutter) when the overscan view is on, else the canvas.
+    pub fn display_size(&self) -> (u32, u32) {
+        if self.settings.overscan_view {
+            let s = self.doc.storage();
+            (s.w as u32, s.h as u32)
+        } else {
+            (self.doc.size.w as u32, self.doc.size.h as u32)
+        }
+    }
+
     pub fn composite_active_bytes(&self) -> Vec<u8> {
         render::composite_active(&self.doc).to_rgba_bytes()
     }
@@ -434,9 +445,26 @@ impl Session {
         let mut buf = render::render_display(frame, self.doc.storage_rect(), &ov);
         self.draw_tool_preview(&mut buf);
         if self.settings.overscan_view {
+            self.dim_gutter(&mut buf); // darken the off-canvas gutter so the canvas stands out
             buf.to_rgba_bytes()
         } else {
             buf.to_rgba_bytes_rect(self.doc.canvas_rect())
+        }
+    }
+
+    /// Darken every pixel of the storage-sized display buffer that lies outside the canvas rect — the
+    /// off-canvas gutter — so the overscan view reads clearly as "beyond the canvas". Buffer coords
+    /// are storage coords (the display was rendered over `storage_rect`).
+    fn dim_gutter(&self, buf: &mut RgbaBuffer) {
+        let cr = self.doc.canvas_rect();
+        let st = self.doc.storage();
+        let wash = Rgba8::new(0, 0, 0, 130);
+        for y in 0..st.h as i32 {
+            for x in 0..st.w as i32 {
+                if !cr.contains(Point::new(x, y)) {
+                    buf.blend_over(x, y, wash);
+                }
+            }
         }
     }
 
@@ -683,11 +711,15 @@ impl Session {
             Some(m) if !m.is_empty() => m,
             _ => return 0,
         };
-        // Emit the canvas window of the storage-sized mask (overscan off): offset reads by the gutter
-        // origin so a canvas coordinate maps to the right storage cell. [Phase 3 adds a storage-sized
-        // path for the overscan view.]
-        let (w, h) = (self.doc.size.w as usize, self.doc.size.h as usize);
-        let org = self.doc.origin();
+        // Overscan on → emit the whole storage-sized mask (the shell traces gutter edges too);
+        // otherwise emit just the canvas window, offset by the gutter origin so a canvas coordinate
+        // maps to the right storage cell.
+        let (w, h, org) = if self.settings.overscan_view {
+            let st = self.doc.storage();
+            (st.w as usize, st.h as usize, Point::new(0, 0))
+        } else {
+            (self.doc.size.w as usize, self.doc.size.h as usize, self.doc.origin())
+        };
         let n = (w * h).min(out.len());
         for (i, slot) in out.iter_mut().enumerate().take(n) {
             let x = org.x + (i % w) as i32;
@@ -748,12 +780,21 @@ impl Session {
             ),
             None => "null".to_string(),
         };
+        // Gutter geometry for the shell: `storage` is the full off-canvas area, `origin` the canvas
+        // top-left within it, `overscan` whether the display is currently the whole storage.
+        let st = self.doc.storage();
+        let og = self.doc.origin();
         let extra = format!(
-            ",\"has_clipboard\":{},\"paste\":{},\"move_draft\":{},\"rotate_draft\":{}",
+            ",\"has_clipboard\":{},\"paste\":{},\"move_draft\":{},\"rotate_draft\":{},\"storage\":[{},{}],\"origin\":[{},{}],\"overscan\":{}",
             self.clipboard.is_some(),
             rect(self.paste_draft_rect()),
             rect(self.move_draft_rect()),
             rotate_draft,
+            st.w,
+            st.h,
+            og.x,
+            og.y,
+            self.settings.overscan_view,
         );
         s.insert_str(s.len() - 1, &extra); // before the final '}'
         s
@@ -3887,6 +3928,27 @@ mod tests {
             "the gutter pixel survives a .mkpx round-trip"
         );
         assert_eq!(back.content_hash(), s.doc.content_hash());
+    }
+
+    #[test]
+    fn overscan_view_reveals_the_gutter_and_resizes_the_display() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(0, 0);
+        s.select_all();
+        s.tool = ToolKind::Move;
+        s.nudge_selection(-5, 0); // park a pixel in the gutter
+        // Normal view: the display is canvas-sized.
+        assert_eq!(s.display_size(), (16, 16));
+        assert_eq!(s.display_bytes(false, false, false).len(), 16 * 16 * 4);
+        // Overscan on: the display is the whole 3×16 storage, and the gutter pixel is within it.
+        s.run_script("SetOverscanView(1)").unwrap();
+        assert_eq!(s.display_size(), (48, 48));
+        let bytes = s.display_bytes(false, false, false);
+        assert_eq!(bytes.len(), 48 * 48 * 4);
+        let o = s.doc.origin();
+        let idx = (((o.y as usize) * 48 + (o.x as usize - 5)) * 4) + 3; // parked pixel's alpha byte
+        assert!(bytes[idx] > 0, "the gutter pixel is visible in the overscan display");
     }
 
     #[test]
