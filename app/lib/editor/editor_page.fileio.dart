@@ -234,6 +234,23 @@ extension _EditorFileIo on _EditorPageState {
     _toast('Exported GIF ($fc frames, ${bytes.length ~/ 1024} KiB)');
   }
 
+  // Lossless animated WebP (static WebP for a single-frame document) — same engine export the
+  // Club publish flow uses, saved to a user-chosen file instead.
+  Future<void> _exportWebp() async {
+    final path = await FilePicker.saveFile(fileName: 'animation.webp', type: FileType.custom, allowedExtensions: ['webp']);
+    if (path == null) return;
+    final fc = engine.frameCount;
+    final docBytes = engine.save();
+    _toast('Rendering WebP…');
+    final bytes = await Engine.encodeInBackground(docBytes, format: 'webp'); // [F-12]
+    if (bytes.isEmpty) {
+      _toast('Export failed');
+      return;
+    }
+    await File(path).writeAsBytes(bytes);
+    _toast('Exported WebP ($fc frames, ${bytes.length ~/ 1024} KiB)');
+  }
+
   Future<void> _resizeCanvasDialog() async {
     double w = engine.width.toDouble();
     double h = engine.height.toDouble();

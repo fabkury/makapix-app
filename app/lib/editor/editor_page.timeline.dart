@@ -208,6 +208,7 @@ extension _EditorTimeline on _EditorPageState {
         _sheetItem(ctx, Icons.image_outlined, 'Import image…', _importImage),
         _sheetItem(ctx, Icons.photo_outlined, 'Export frame as PNG…', _exportPng),
         _sheetItem(ctx, Icons.gif_box_outlined, 'Export animation as GIF…', _exportGif),
+        _sheetItem(ctx, Icons.animation, 'Export animation as WebP…', _exportWebp),
         _sheetItem(ctx, Icons.cloud_upload_outlined, 'Post to Makapix Club', _postToClub),
       ]);
 
