@@ -157,9 +157,11 @@ extension _EditorEngine on _EditorPageState {
     return edges;
   }
 
-  String _hex(Color c) =>
-      '#${c.red.toRadixString(16).padLeft(2, '0')}${c.green.toRadixString(16).padLeft(2, '0')}${c.blue.toRadixString(16).padLeft(2, '0')}${c.alpha.toRadixString(16).padLeft(2, '0')}'
-          .toUpperCase();
+  String _hex(Color c) {
+    String two(int x) => x.toRadixString(16).padLeft(2, '0');
+    final v = c.toARGB32(); // 8-bit ARGB, reordered to #RRGGBBAA
+    return '#${two((v >> 16) & 0xFF)}${two((v >> 8) & 0xFF)}${two(v & 0xFF)}${two((v >> 24) & 0xFF)}'.toUpperCase();
+  }
 
   Color _parseHex(String h) {
     h = h.replaceAll('#', '');

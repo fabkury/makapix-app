@@ -750,7 +750,7 @@ extension _EditorControls on _EditorPageState {
     final pname = active < names.length ? names[active] : 'Palette';
     final sb = StringBuffer('GIMP Palette\nName: $pname\nColumns: 0\n#\n');
     for (final c in _palette) {
-      sb.writeln('${c.red}\t${c.green}\t${c.blue}\t${_hex(c)}');
+      sb.writeln('${(c.r * 255).round()}\t${(c.g * 255).round()}\t${(c.b * 255).round()}\t${_hex(c)}');
     }
     await File(path).writeAsString(sb.toString());
     _toast('Saved palette (${_palette.length} colors)');

@@ -27,7 +27,7 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
     h = c.hue;
     s = c.saturation;
     v = c.value;
-    a = widget.initial.alpha.toDouble();
+    a = (widget.initial.a * 255).round().toDouble();
     _hexCtrl = TextEditingController();
     _rCtrl = TextEditingController();
     _gCtrl = TextEditingController();
@@ -61,7 +61,7 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
   String get _hex {
     final c = _color;
     String two(int x) => x.toRadixString(16).padLeft(2, '0');
-    final base = '${two(c.red)}${two(c.green)}${two(c.blue)}';
+    final base = '${two((c.r * 255).round())}${two((c.g * 255).round())}${two((c.b * 255).round())}';
     return (a.round() < 255 ? '$base${two(a.round())}' : base).toUpperCase();
   }
 

@@ -68,6 +68,7 @@ extension _EditorFileIo on _EditorPageState {
     final bytes = await File(res.files.single.path!).readAsBytes();
 
     final srcImg = await _decodeBytes(bytes);
+    if (!mounted) return;
     int mode = 0; // Fit
     bool asLayer = true;
     Rect? cropRect; // in source pixels
