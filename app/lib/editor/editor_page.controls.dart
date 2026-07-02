@@ -107,7 +107,7 @@ extension _EditorControls on _EditorPageState {
       children.add(const SizedBox(width: 4));
       if (_tool == 'Eyedropper') {
         // PICK (one-time colour pick at the reticle, off-finger). The eyedropper has no continuous
-        // "Pen" mode — picking is a single operation.
+        // "Hold" mode — picking is a single operation.
         children.add(Padding(
           padding: const EdgeInsets.symmetric(horizontal: 3),
           child: ElevatedButton.icon(
@@ -141,12 +141,12 @@ extension _EditorControls on _EditorPageState {
             ),
           ));
         }
-        // PEN toggle (continuous stroke/spray while dragging the reticle)
+        // HOLD toggle (pen held down: continuous stroke/spray while dragging the reticle)
         children.add(Padding(
           padding: const EdgeInsets.symmetric(horizontal: 3),
           child: FilterChip(
             selected: _penDown,
-            label: Text(_penDown ? 'Pen ✔' : 'Pen'),
+            label: Text(_penDown ? 'Hold ✔' : 'Hold'),
             selectedColor: const Color(0xFF30A050),
             onSelected: (v) {
               setState(() => _penDown = v);
