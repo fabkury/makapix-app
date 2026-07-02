@@ -206,49 +206,64 @@ extension _EditorFileIo on _EditorPageState {
     if (mounted) _toast('Loaded "${req.sourceTitle}" — edit, then Post to Club');
   }
 
+  // Save already-encoded export bytes to a user-chosen file. Mirrors _save(): `bytes` must go to
+  // the picker because on Android/iOS the picker writes the file itself (and returns a content URI
+  // that File() can't write to) — calling saveFile WITHOUT bytes throws on Android before any UI
+  // shows, which is why the export buttons silently did nothing there. On desktop saveFile only
+  // returns a path, so the write happens here. Encoding therefore runs BEFORE the dialog opens.
+  Future<void> _saveExport(Uint8List bytes, {required String fileName, required String ext, required String done}) async {
+    try {
+      final path = await FilePicker.saveFile(
+        fileName: fileName,
+        type: FileType.custom,
+        allowedExtensions: [ext],
+        bytes: bytes,
+      );
+      if (path == null) return; // the user cancelled
+      if (!Platform.isAndroid && !Platform.isIOS) {
+        await File(path).writeAsBytes(bytes);
+      }
+      if (mounted) _toast(done);
+    } catch (e) {
+      if (mounted) _toast('Could not save: $e');
+    }
+  }
+
   Future<void> _exportPng() async {
-    final path = await FilePicker.saveFile(fileName: 'frame_${engine.activeFrame + 1}.png', type: FileType.custom, allowedExtensions: ['png']);
-    if (path == null) return;
-    final docBytes = engine.save();
-    final bytes = await Engine.encodeInBackground(docBytes, format: 'png', frame: engine.activeFrame); // [F-12]
+    final frame = engine.activeFrame;
+    final bytes = await Engine.encodeInBackground(engine.save(), format: 'png', frame: frame); // [F-12]
     if (bytes.isEmpty) {
       _toast('Export failed');
       return;
     }
-    await File(path).writeAsBytes(bytes);
-    _toast('Exported PNG (${bytes.length ~/ 1024} KiB)');
+    await _saveExport(bytes,
+        fileName: 'frame_${frame + 1}.png', ext: 'png', done: 'Exported PNG (${bytes.length ~/ 1024} KiB)');
   }
 
   Future<void> _exportGif() async {
-    final path = await FilePicker.saveFile(fileName: 'animation.gif', type: FileType.custom, allowedExtensions: ['gif']);
-    if (path == null) return;
     final fc = engine.frameCount;
-    final docBytes = engine.save();
     _toast('Rendering GIF…');
-    final bytes = await Engine.encodeInBackground(docBytes, format: 'gif'); // [F-12]
+    final bytes = await Engine.encodeInBackground(engine.save(), format: 'gif'); // [F-12]
     if (bytes.isEmpty) {
       _toast('Export failed');
       return;
     }
-    await File(path).writeAsBytes(bytes);
-    _toast('Exported GIF ($fc frames, ${bytes.length ~/ 1024} KiB)');
+    await _saveExport(bytes,
+        fileName: 'animation.gif', ext: 'gif', done: 'Exported GIF ($fc frames, ${bytes.length ~/ 1024} KiB)');
   }
 
   // Lossless animated WebP (static WebP for a single-frame document) — same engine export the
   // Club publish flow uses, saved to a user-chosen file instead.
   Future<void> _exportWebp() async {
-    final path = await FilePicker.saveFile(fileName: 'animation.webp', type: FileType.custom, allowedExtensions: ['webp']);
-    if (path == null) return;
     final fc = engine.frameCount;
-    final docBytes = engine.save();
     _toast('Rendering WebP…');
-    final bytes = await Engine.encodeInBackground(docBytes, format: 'webp'); // [F-12]
+    final bytes = await Engine.encodeInBackground(engine.save(), format: 'webp'); // [F-12]
     if (bytes.isEmpty) {
       _toast('Export failed');
       return;
     }
-    await File(path).writeAsBytes(bytes);
-    _toast('Exported WebP ($fc frames, ${bytes.length ~/ 1024} KiB)');
+    await _saveExport(bytes,
+        fileName: 'animation.webp', ext: 'webp', done: 'Exported WebP ($fc frames, ${bytes.length ~/ 1024} KiB)');
   }
 
   Future<void> _resizeCanvasDialog() async {
