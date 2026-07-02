@@ -364,39 +364,57 @@ pub extern "C" fn mkpx_import(
     0
 }
 
-/// Export the active (or given) frame as PNG. Returns a malloc'd buffer; len via `out_len`.
+/// Upscale (nearest-neighbour) then PNG-encode one frame's RGBA, with coarse 2-step progress
+/// (composite/extract done → encode done) and a cancel check between the steps. The shared tail
+/// of the two single-frame PNG exports.
+fn png_out(w: u16, h: u16, rgba: Vec<u8>, scale: u32, out_len: *mut u64) -> *mut u8 {
+    let scale = scale.clamp(1, 32);
+    export_progress_set(1, 2);
+    if EXPORT_CANCEL.load(Ordering::Relaxed) {
+        return std::ptr::null_mut();
+    }
+    let data = if scale == 1 { rgba } else { makapix_codec::upscale_nearest(w as u32, h as u32, &rgba, scale) };
+    let out = match makapix_codec::encode_png(w as u32 * scale, h as u32 * scale, &data) {
+        Ok(v) => bytes_out(v, out_len),
+        Err(_) => std::ptr::null_mut(),
+    };
+    export_progress_set(2, 2);
+    out
+}
+
+/// Export the active (or given) frame as PNG, upscaled ×`scale` (nearest-neighbour, clamped
+/// 1..=32). Returns a malloc'd buffer; len via `out_len`.
 #[no_mangle]
-pub extern "C" fn mkpx_export_png(ptr: *mut Session, frame: u32, out_len: *mut u64) -> *mut u8 {
+pub extern "C" fn mkpx_export_png(ptr: *mut Session, frame: u32, scale: u32, out_len: *mut u64) -> *mut u8 {
     let s = match session(ptr) {
         Some(s) => s,
         None => return std::ptr::null_mut(),
     };
     let (w, h) = s.size();
+    EXPORT_CANCEL.store(false, Ordering::Relaxed);
+    export_progress_set(0, 2);
     let rgba = s.composite_frame_bytes(frame as usize);
-    match makapix_codec::encode_png(w as u32, h as u32, &rgba) {
-        Ok(v) => bytes_out(v, out_len),
-        Err(_) => std::ptr::null_mut(),
-    }
+    png_out(w, h, rgba, scale, out_len)
 }
 
 /// Export ONE layer of one frame as a PNG — the layer's own pixels (straight alpha), not the
-/// composite. Stale indices clamp (bounds-safe). Returns a malloc'd buffer; len via `out_len`;
-/// null when the frame has no layers or on encode failure.
+/// composite — upscaled ×`scale` (nearest-neighbour, clamped 1..=32). Stale indices clamp
+/// (bounds-safe). Returns a malloc'd buffer; len via `out_len`; null when the frame has no
+/// layers or on encode failure.
 #[no_mangle]
-pub extern "C" fn mkpx_export_layer_png(ptr: *mut Session, frame: u32, layer: u32, out_len: *mut u64) -> *mut u8 {
+pub extern "C" fn mkpx_export_layer_png(ptr: *mut Session, frame: u32, layer: u32, scale: u32, out_len: *mut u64) -> *mut u8 {
     let s = match session(ptr) {
         Some(s) => s,
         None => return std::ptr::null_mut(),
     };
     let (w, h) = s.size();
+    EXPORT_CANCEL.store(false, Ordering::Relaxed);
+    export_progress_set(0, 2);
     let rgba = s.layer_rgba_bytes(frame as usize, layer as usize);
     if rgba.is_empty() {
         return std::ptr::null_mut();
     }
-    match makapix_codec::encode_png(w as u32, h as u32, &rgba) {
-        Ok(v) => bytes_out(v, out_len),
-        Err(_) => std::ptr::null_mut(),
-    }
+    png_out(w, h, rgba, scale, out_len)
 }
 
 /// Composite every frame with per-frame progress (steps 0..n of 2n) and honouring cancel.
@@ -422,10 +440,11 @@ fn encode_progress_hook(done: usize, total: usize) -> bool {
     !EXPORT_CANCEL.load(Ordering::Relaxed)
 }
 
-/// Export all frames as an animated GIF. Returns a malloc'd buffer; len via `out_len`.
-/// Progress is reported via `mkpx_export_progress`; null on failure OR `mkpx_export_cancel`.
+/// Export all frames as an animated GIF, upscaled ×`scale` (nearest-neighbour, clamped 1..=32,
+/// applied one frame at a time). Returns a malloc'd buffer; len via `out_len`. Progress is
+/// reported via `mkpx_export_progress`; null on failure OR `mkpx_export_cancel`.
 #[no_mangle]
-pub extern "C" fn mkpx_export_gif(ptr: *mut Session, out_len: *mut u64) -> *mut u8 {
+pub extern "C" fn mkpx_export_gif(ptr: *mut Session, scale: u32, out_len: *mut u64) -> *mut u8 {
     let s = match session(ptr) {
         Some(s) => s,
         None => return std::ptr::null_mut(),
@@ -435,17 +454,18 @@ pub extern "C" fn mkpx_export_gif(ptr: *mut Session, out_len: *mut u64) -> *mut 
         Some(f) => f,
         None => return std::ptr::null_mut(),
     };
-    match makapix_codec::encode_gif_with(w as u32, h as u32, &frames, &mut encode_progress_hook) {
+    match makapix_codec::encode_gif_with(w as u32, h as u32, &frames, scale, &mut encode_progress_hook) {
         Ok(v) => bytes_out(v, out_len),
         Err(_) => std::ptr::null_mut(),
     }
 }
 
 /// Export the artwork as a LOSSLESS WebP (static for one frame, animated WebP for many) — the
-/// recommended format for Makapix Club submissions. Returns a malloc'd buffer; len via `out_len`.
+/// recommended format for Makapix Club submissions — upscaled ×`scale` (nearest-neighbour,
+/// clamped 1..=32, applied one frame at a time). Returns a malloc'd buffer; len via `out_len`.
 /// Progress is reported via `mkpx_export_progress`; null on failure OR `mkpx_export_cancel`.
 #[no_mangle]
-pub extern "C" fn mkpx_export_webp(ptr: *mut Session, out_len: *mut u64) -> *mut u8 {
+pub extern "C" fn mkpx_export_webp(ptr: *mut Session, scale: u32, out_len: *mut u64) -> *mut u8 {
     let s = match session(ptr) {
         Some(s) => s,
         None => return std::ptr::null_mut(),
@@ -455,7 +475,7 @@ pub extern "C" fn mkpx_export_webp(ptr: *mut Session, out_len: *mut u64) -> *mut
         Some(f) => f,
         None => return std::ptr::null_mut(),
     };
-    match makapix_codec::encode_animated_webp_with(w as u32, h as u32, &frames, &mut encode_progress_hook) {
+    match makapix_codec::encode_animated_webp_with(w as u32, h as u32, &frames, scale, &mut encode_progress_hook) {
         Ok(v) => bytes_out(v, out_len),
         Err(_) => std::ptr::null_mut(),
     }
@@ -559,11 +579,27 @@ mod tests {
         mkpx_export_progress_reset();
         assert_eq!(mkpx_export_progress(), 0, "reset clears the pair");
         let mut len: u64 = 0;
-        let out = mkpx_export_gif(p, &mut len);
+        let out = mkpx_export_gif(p, 1, &mut len);
         assert!(!out.is_null() && len > 0);
         mkpx_free_bytes(out, len);
         // 2 frames → 2 composite steps + 2 encode steps: done == total == 4.
         assert_eq!(mkpx_export_progress(), (4u64 << 32) | 4, "export ends at done == total");
+        mkpx_free(p);
+    }
+
+    #[test]
+    fn ffi_export_png_upscaled() {
+        let _guard = EXPORT_TEST_LOCK.lock().unwrap();
+        let p = mkpx_new(16, 16);
+        let script = b"SelectTool(Pencil); Tap(3,3)";
+        let _ = mkpx_run(p, script.as_ptr(), script.len());
+        let mut len: u64 = 0;
+        let out = mkpx_export_png(p, 0, 8, &mut len);
+        assert!(!out.is_null() && len > 0);
+        let png = unsafe { slice::from_raw_parts(out, len as usize) }.to_vec();
+        mkpx_free_bytes(out, len);
+        let back = makapix_codec::decode(&png).unwrap();
+        assert_eq!((back[0].w, back[0].h), (128, 128), "16×16 at 8× exports 128×128");
         mkpx_free(p);
     }
 
@@ -586,7 +622,7 @@ mod tests {
         assert_eq!(mkpx_frame_count(p), 3);
 
         let mut len: u64 = 0;
-        let out = mkpx_export_gif(p, &mut len);
+        let out = mkpx_export_gif(p, 1, &mut len);
         assert!(!out.is_null() && len > 0);
         let exported = unsafe { slice::from_raw_parts(out, len as usize) }.to_vec();
         mkpx_free_bytes(out, len);

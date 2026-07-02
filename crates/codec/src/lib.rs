@@ -133,6 +133,32 @@ fn decode_animated<'a>(decoder: impl AnimationDecoder<'a>) -> Result<Vec<Decoded
     Ok(out)
 }
 
+/// Integer nearest-neighbour upscale (each pixel becomes a `scale`×`scale` block) — crisp
+/// pixel-art enlargement for the export paths. `scale` ≤ 1 returns a plain copy.
+pub fn upscale_nearest(w: u32, h: u32, rgba: &[u8], scale: u32) -> Vec<u8> {
+    if scale <= 1 {
+        return rgba.to_vec();
+    }
+    let (w, h, s) = (w as usize, h as usize, scale as usize);
+    let ow = w * s;
+    let mut out = vec![0u8; ow * h * s * 4];
+    let mut row = vec![0u8; ow * 4];
+    for y in 0..h {
+        // Expand one source row horizontally, then stamp it `s` times vertically (memcpy).
+        for x in 0..w {
+            let src = &rgba[(y * w + x) * 4..(y * w + x) * 4 + 4];
+            for i in 0..s {
+                row[(x * s + i) * 4..(x * s + i) * 4 + 4].copy_from_slice(src);
+            }
+        }
+        for i in 0..s {
+            let o = (y * s + i) * ow * 4;
+            out[o..o + ow * 4].copy_from_slice(&row);
+        }
+    }
+    out
+}
+
 /// Encode a single frame's RGBA to PNG.
 pub fn encode_png(w: u32, h: u32, rgba: &[u8]) -> Result<Vec<u8>, CodecError> {
     let img = RgbaImage::from_raw(w, h, rgba.to_vec()).ok_or(CodecError::Unsupported)?;
@@ -158,22 +184,29 @@ pub fn encode_webp(w: u32, h: u32, rgba: &[u8]) -> Result<Vec<u8>, CodecError> {
 /// to a lossless VP8L bitstream (image-webp) and the bitstreams are muxed into a VP8X/ANIM/ANMF
 /// container by hand — pure Rust, no libwebp. A single-frame input is just a static WebP.
 pub fn encode_animated_webp(w: u32, h: u32, frames: &[(Vec<u8>, u32)]) -> Result<Vec<u8>, CodecError> {
-    encode_animated_webp_with(w, h, frames, &mut |_, _| true)
+    encode_animated_webp_with(w, h, frames, 1, &mut |_, _| true)
 }
 
-/// [`encode_animated_webp`] with a per-frame [`EncodeProgress`] hook (VP8L encoding dominates the
-/// runtime, so per-frame granularity tracks the real work).
+/// [`encode_animated_webp`] with an integer nearest-neighbour upscale (`scale`, clamped to 1..=32
+/// and applied one frame at a time, so a big upscale never holds more than one enlarged frame)
+/// and a per-frame [`EncodeProgress`] hook (VP8L encoding dominates the runtime, so per-frame
+/// granularity tracks the real work).
 pub fn encode_animated_webp_with(
     w: u32,
     h: u32,
     frames: &[(Vec<u8>, u32)],
+    scale: u32,
     progress: EncodeProgress,
 ) -> Result<Vec<u8>, CodecError> {
     if frames.is_empty() {
         return Err(CodecError::Unsupported);
     }
+    let scale = scale.clamp(1, 32);
+    let (sw, sh) = (w, h); // source dims — what the per-frame upscaler reads
+    let up = move |rgba: &[u8]| upscale_nearest(sw, sh, rgba, scale);
+    let (w, h) = (w * scale, h * scale); // output dims — the bitstreams + container below
     if frames.len() == 1 {
-        let out = encode_webp(w, h, &frames[0].0)?;
+        let out = encode_webp(w, h, &up(&frames[0].0))?;
         if !progress(1, 1) {
             return Err(CodecError::Cancelled);
         }
@@ -182,7 +215,7 @@ pub fn encode_animated_webp_with(
     // 1. Lossless-encode each frame and pull out its VP8L bitstream chunk.
     let mut vp8l: Vec<(Vec<u8>, u32)> = Vec::with_capacity(frames.len());
     for (i, (rgba, dur_us)) in frames.iter().enumerate() {
-        let webp = encode_webp(w, h, rgba)?;
+        let webp = encode_webp(w, h, &up(rgba))?;
         let chunk = extract_vp8l(&webp).ok_or_else(|| CodecError::Encode("missing VP8L chunk".into()))?;
         vp8l.push((chunk, (*dur_us / 1000).max(1)));
         if !progress(i + 1, frames.len()) {
@@ -256,19 +289,29 @@ fn push_chunk(buf: &mut Vec<u8>, fourcc: &[u8; 4], data: &[u8]) {
 
 /// Encode frames to an animated GIF (durations in microseconds).
 pub fn encode_gif(w: u32, h: u32, frames: &[(Vec<u8>, u32)]) -> Result<Vec<u8>, CodecError> {
-    encode_gif_with(w, h, frames, &mut |_, _| true)
+    encode_gif_with(w, h, frames, 1, &mut |_, _| true)
 }
 
-/// [`encode_gif`] with a per-frame [`EncodeProgress`] hook (each frame's colour quantization
-/// dominates the runtime, so per-frame granularity tracks the real work).
-pub fn encode_gif_with(w: u32, h: u32, frames: &[(Vec<u8>, u32)], progress: EncodeProgress) -> Result<Vec<u8>, CodecError> {
+/// [`encode_gif`] with an integer nearest-neighbour upscale (`scale`, clamped to 1..=32 and
+/// applied one frame at a time, so a big upscale never holds more than one enlarged frame) and a
+/// per-frame [`EncodeProgress`] hook (each frame's colour quantization dominates the runtime, so
+/// per-frame granularity tracks the real work).
+pub fn encode_gif_with(
+    w: u32,
+    h: u32,
+    frames: &[(Vec<u8>, u32)],
+    scale: u32,
+    progress: EncodeProgress,
+) -> Result<Vec<u8>, CodecError> {
+    let scale = scale.clamp(1, 32);
     let mut out = Vec::new();
     {
         let mut enc = GifEncoder::new(&mut out);
         enc.set_repeat(image::codecs::gif::Repeat::Infinite)
             .map_err(|e| CodecError::Encode(e.to_string()))?;
         for (i, (rgba, dur_us)) in frames.iter().enumerate() {
-            let img = RgbaImage::from_raw(w, h, rgba.clone()).ok_or(CodecError::Unsupported)?;
+            let data = if scale == 1 { rgba.clone() } else { upscale_nearest(w, h, rgba, scale) };
+            let img = RgbaImage::from_raw(w * scale, h * scale, data).ok_or(CodecError::Unsupported)?;
             let delay = Delay::from_numer_denom_ms((*dur_us / 1000).max(1), 1);
             enc.encode_frame(ImgFrame::from_parts(img, 0, 0, delay))
                 .map_err(|e| CodecError::Encode(e.to_string()))?;
@@ -355,7 +398,7 @@ mod tests {
         let frames = vec![(red.clone(), 50_000), (red.clone(), 50_000), (red, 50_000)];
         // Progress fires once per frame with the right totals.
         let mut seen = Vec::new();
-        let gif = encode_gif_with(w, h, &frames, &mut |done, total| {
+        let gif = encode_gif_with(w, h, &frames, 1, &mut |done, total| {
             seen.push((done, total));
             true
         });
@@ -363,13 +406,42 @@ mod tests {
         assert_eq!(seen, vec![(1, 3), (2, 3), (3, 3)]);
         // Returning false aborts with Cancelled (both encoders).
         assert!(matches!(
-            encode_gif_with(w, h, &frames, &mut |done, _| done < 2),
+            encode_gif_with(w, h, &frames, 1, &mut |done, _| done < 2),
             Err(CodecError::Cancelled)
         ));
         assert!(matches!(
-            encode_animated_webp_with(w, h, &frames, &mut |done, _| done < 2),
+            encode_animated_webp_with(w, h, &frames, 1, &mut |done, _| done < 2),
             Err(CodecError::Cancelled)
         ));
+    }
+
+    #[test]
+    fn upscale_nearest_expands_pixel_blocks() {
+        // 2×1 red|blue at 3× → 6×3 of 3×3 blocks.
+        let rgba = [255u8, 0, 0, 255, 0, 0, 255, 255];
+        let up = upscale_nearest(2, 1, &rgba, 3);
+        assert_eq!(up.len(), 6 * 3 * 4);
+        for y in 0..3usize {
+            for x in 0..6usize {
+                let o = (y * 6 + x) * 4;
+                let expect: [u8; 4] = if x < 3 { [255, 0, 0, 255] } else { [0, 0, 255, 255] };
+                assert_eq!(&up[o..o + 4], &expect, "({x},{y})");
+            }
+        }
+        assert_eq!(upscale_nearest(2, 1, &rgba, 1), rgba.to_vec(), "scale 1 is a plain copy");
+    }
+
+    #[test]
+    fn animated_webp_upscales_losslessly() {
+        let (w, h) = (2u32, 2u32);
+        let red = vec![255u8, 0, 0, 255].repeat((w * h) as usize);
+        let blue = vec![0u8, 0, 255, 128].repeat((w * h) as usize);
+        let frames = vec![(red.clone(), 80_000), (blue, 120_000)];
+        let webp = encode_animated_webp_with(w, h, &frames, 4, &mut |_, _| true).unwrap();
+        let back = decode(&webp).unwrap();
+        assert_eq!(back.len(), 2);
+        assert_eq!((back[0].w, back[0].h), (8, 8), "4× output dimensions");
+        assert_eq!(back[0].rgba, upscale_nearest(w, h, &red, 4), "upscaled frame is lossless");
     }
 
     #[test]

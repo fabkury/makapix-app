@@ -41,12 +41,12 @@ typedef _FreeBytesC = Void Function(Pointer<Uint8>, Uint64);
 typedef _FreeBytesD = void Function(Pointer<Uint8>, int);
 typedef _ImportC = Int32 Function(Pointer<Void>, Pointer<Uint8>, IntPtr, Int32, Int32, Uint32, Int32, Int32, Int32, Int32);
 typedef _ImportD = int Function(Pointer<Void>, Pointer<Uint8>, int, int, int, int, int, int, int, int);
-typedef _ExportPngC = Pointer<Uint8> Function(Pointer<Void>, Uint32, Pointer<Uint64>);
-typedef _ExportPngD = Pointer<Uint8> Function(Pointer<Void>, int, Pointer<Uint64>);
-typedef _ExportLayerPngC = Pointer<Uint8> Function(Pointer<Void>, Uint32, Uint32, Pointer<Uint64>);
-typedef _ExportLayerPngD = Pointer<Uint8> Function(Pointer<Void>, int, int, Pointer<Uint64>);
-typedef _ExportGifC = Pointer<Uint8> Function(Pointer<Void>, Pointer<Uint64>);
-typedef _ExportGifD = Pointer<Uint8> Function(Pointer<Void>, Pointer<Uint64>);
+typedef _ExportPngC = Pointer<Uint8> Function(Pointer<Void>, Uint32, Uint32, Pointer<Uint64>);
+typedef _ExportPngD = Pointer<Uint8> Function(Pointer<Void>, int, int, Pointer<Uint64>);
+typedef _ExportLayerPngC = Pointer<Uint8> Function(Pointer<Void>, Uint32, Uint32, Uint32, Pointer<Uint64>);
+typedef _ExportLayerPngD = Pointer<Uint8> Function(Pointer<Void>, int, int, int, Pointer<Uint64>);
+typedef _ExportGifC = Pointer<Uint8> Function(Pointer<Void>, Uint32, Pointer<Uint64>);
+typedef _ExportGifD = Pointer<Uint8> Function(Pointer<Void>, int, Pointer<Uint64>);
 typedef _ExportProgressC = Uint64 Function();
 typedef _ExportProgressD = int Function();
 typedef _ExportVoidC = Void Function();
@@ -255,9 +255,10 @@ class Engine {
     return ok;
   }
 
-  Uint8List exportPng(int frame) {
+  // `scale` on every export is an integer nearest-neighbour upscale (1..=32, clamped engine-side).
+  Uint8List exportPng(int frame, {int scale = 1}) {
     final lenPtr = malloc<Uint64>();
-    final p = _exportPng(_s, frame, lenPtr);
+    final p = _exportPng(_s, frame, scale, lenPtr);
     final out = p == nullptr ? Uint8List(0) : Uint8List.fromList(p.asTypedList(lenPtr.value));
     if (p != nullptr) _freeBytes(p, lenPtr.value);
     malloc.free(lenPtr);
@@ -265,18 +266,18 @@ class Engine {
   }
 
   /// One layer of one frame as a PNG — the layer's own pixels (straight alpha), not the composite.
-  Uint8List exportLayerPng(int frame, int layer) {
+  Uint8List exportLayerPng(int frame, int layer, {int scale = 1}) {
     final lenPtr = malloc<Uint64>();
-    final p = _exportLayerPng(_s, frame, layer, lenPtr);
+    final p = _exportLayerPng(_s, frame, layer, scale, lenPtr);
     final out = p == nullptr ? Uint8List(0) : Uint8List.fromList(p.asTypedList(lenPtr.value));
     if (p != nullptr) _freeBytes(p, lenPtr.value);
     malloc.free(lenPtr);
     return out;
   }
 
-  Uint8List exportGif() {
+  Uint8List exportGif({int scale = 1}) {
     final lenPtr = malloc<Uint64>();
-    final p = _exportGif(_s, lenPtr);
+    final p = _exportGif(_s, scale, lenPtr);
     final out = p == nullptr ? Uint8List(0) : Uint8List.fromList(p.asTypedList(lenPtr.value));
     if (p != nullptr) _freeBytes(p, lenPtr.value);
     malloc.free(lenPtr);
@@ -284,9 +285,9 @@ class Engine {
   }
 
   /// Lossless WebP (static for one frame, animated WebP for many) — the recommended Club format.
-  Uint8List exportWebp() {
+  Uint8List exportWebp({int scale = 1}) {
     final lenPtr = malloc<Uint64>();
-    final p = _exportWebp(_s, lenPtr);
+    final p = _exportWebp(_s, scale, lenPtr);
     final out = p == nullptr ? Uint8List(0) : Uint8List.fromList(p.asTypedList(lenPtr.value));
     if (p != nullptr) _freeBytes(p, lenPtr.value);
     malloc.free(lenPtr);
@@ -317,27 +318,28 @@ class Engine {
   /// Falls back to a synchronous encode if the isolate can't run. The opaque session pointer is
   /// never shared across isolates; each builds its own from the bytes. [audit F-12]
   static Future<Uint8List> encodeInBackground(Uint8List docBytes,
-      {required String format, int frame = 0, int layer = 0}) async {
+      {required String format, int frame = 0, int layer = 0, int scale = 1}) async {
     try {
-      return await Isolate.run(() => _encodeFromBytes(docBytes, format: format, frame: frame, layer: layer));
+      return await Isolate.run(() => _encodeFromBytes(docBytes, format: format, frame: frame, layer: layer, scale: scale));
     } catch (_) {
-      return _encodeFromBytes(docBytes, format: format, frame: frame, layer: layer);
+      return _encodeFromBytes(docBytes, format: format, frame: frame, layer: layer, scale: scale);
     }
   }
 
-  static Uint8List _encodeFromBytes(Uint8List docBytes, {required String format, int frame = 0, int layer = 0}) {
+  static Uint8List _encodeFromBytes(Uint8List docBytes,
+      {required String format, int frame = 0, int layer = 0, int scale = 1}) {
     final e = Engine(8, 8);
     try {
       if (!e.load(docBytes)) return Uint8List(0);
       switch (format) {
         case 'webp':
-          return e.exportWebp();
+          return e.exportWebp(scale: scale);
         case 'gif':
-          return e.exportGif();
+          return e.exportGif(scale: scale);
         case 'layer-png':
-          return e.exportLayerPng(frame, layer);
+          return e.exportLayerPng(frame, layer, scale: scale);
         default:
-          return e.exportPng(frame);
+          return e.exportPng(frame, scale: scale);
       }
     } finally {
       e.dispose();

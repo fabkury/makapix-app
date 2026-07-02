@@ -43,6 +43,11 @@ part 'editor_page.toolgrid.dart';
 part 'editor_page.persistence.dart';
 
 const double _kMinZoom = 0.25, _kMaxZoom = 32.0;
+// export-dialog: warn (red alert + explicit re-confirmation) when an export's total output —
+// width × height × scale² × frames — exceeds this. ~64 million pixels ≈ 256 MB of RGBA work per
+// pass, about where a mid-to-upper-range Android phone starts to struggle: 256² at 32× (67 MP)
+// is just over the line; a 64² × 8-frame animation at 32× (34 MP) is comfortably under it.
+const _kExportWarnPixels = 64 * 1000 * 1000;
 const _prefsKey = 'tool_order_v1';
 const _kCurrentDrawing = 'editor.currentDrawingId'; // last-open library drawing (silent restore)
 const _transformTools = {'Flip', 'Rotate', 'Invert', 'Resize'};

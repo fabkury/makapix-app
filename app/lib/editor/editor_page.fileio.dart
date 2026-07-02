@@ -229,15 +229,94 @@ extension _EditorFileIo on _EditorPageState {
     }
   }
 
+  // export-dialog: every PNG/GIF/WebP export starts here (not .mkpx) — pick an integer upscale
+  // factor for the output (nearest-neighbour, so pixel edges stay crisp). Returns the factor, or
+  // null on Cancel. When the chosen size is very large (see _kExportWarnPixels), the first press
+  // of Export only raises a red alert and relabels the button "Export anyway" — the explicit
+  // re-confirmation for exports that can take minutes and a lot of memory.
+  Future<int?> _exportScaleDialog({required int frames}) {
+    final w = engine.width, h = engine.height;
+    var scale = 1;
+    var warned = false;
+    return showDialog<int>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
+        final ow = w * scale, oh = h * scale;
+        final totalPx = ow * oh * frames;
+        final big = totalPx > _kExportWarnPixels;
+        return AlertDialog(
+          title: const Text('Export size'),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Wrap(spacing: 6, children: [
+              for (final s in const [1, 4, 8, 16, 32])
+                ChoiceChip(
+                  label: Text('$s×'),
+                  selected: scale == s,
+                  selectedColor: const Color(0xFF30A050),
+                  onSelected: (_) => setS(() {
+                    scale = s;
+                    warned = false; // a newly chosen size gets its own re-confirmation
+                  }),
+                ),
+            ]),
+            const SizedBox(height: 10),
+            Text(
+              frames > 1 ? 'Output: $ow × $oh px, $frames frames' : 'Output: $ow × $oh px',
+              style: const TextStyle(fontSize: 12, color: Colors.white60),
+            ),
+            if (warned)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0x33E05050),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: const Color(0xFFE05050)),
+                  ),
+                  child: Row(children: [
+                    const Icon(Icons.warning_amber, color: Color(0xFFE05050), size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Very large export: ${(totalPx / 1e6).toStringAsFixed(0)} million pixels. '
+                        'This can take a long time and a lot of memory. Export anyway?',
+                        style: const TextStyle(fontSize: 12, color: Color(0xFFE05050)),
+                      ),
+                    ),
+                  ]),
+                ),
+              ),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(
+              style: warned ? FilledButton.styleFrom(backgroundColor: const Color(0xFFE05050)) : null,
+              onPressed: () {
+                if (big && !warned) {
+                  setS(() => warned = true); // first press on a huge size only raises the alert
+                  return;
+                }
+                Navigator.pop(ctx, scale);
+              },
+              child: Text(warned ? 'Export anyway' : 'Export'),
+            ),
+          ],
+        );
+      }),
+    );
+  }
+
   // Encode the document to `format` off the UI thread behind a modal progress dialog. The dialog
   // polls the engine library's process-wide export progress (one step per frame composited + one
   // per frame encoded — a 1,024-frame × 64-layer document can take minutes) and offers Cancel,
   // which asks the encoder to stop at the next frame boundary. Returns (bytes, cancelled):
   // bytes is empty on failure or cancellation.
-  Future<(Uint8List, bool)> _encodeWithProgress(String format, {required String title}) async {
+  Future<(Uint8List, bool)> _encodeWithProgress(String format,
+      {required String title, int frame = 0, int layer = 0, int scale = 1}) async {
     engine.resetExportProgress(); // the dialog must not briefly show the PREVIOUS export's bar
     var cancelled = false;
-    final future = Engine.encodeInBackground(engine.save(), format: format); // [F-12]
+    final future = Engine.encodeInBackground(engine.save(), format: format, frame: frame, layer: layer, scale: scale); // [F-12]
     if (mounted) {
       var dialogOpen = true;
       Timer? poll;
@@ -286,35 +365,51 @@ extension _EditorFileIo on _EditorPageState {
     return (await future, false);
   }
 
-  Future<void> _exportPng() async {
+  // A single-frame PNG export ('png' or 'layer-png'): instant at 1× (no dialog flash), behind the
+  // progress dialog when upscaled (a 32× frame can take seconds). The shared body of the two
+  // PNG menu items.
+  Future<void> _exportPngKind(String format, {required int layer, required String baseName, required String done}) async {
     final frame = engine.activeFrame;
-    final bytes = await Engine.encodeInBackground(engine.save(), format: 'png', frame: frame); // [F-12]
+    final scale = await _exportScaleDialog(frames: 1);
+    if (scale == null) return;
+    final Uint8List bytes;
+    if (scale == 1) {
+      bytes = await Engine.encodeInBackground(engine.save(), format: format, frame: frame, layer: layer); // [F-12]
+    } else {
+      final (b, cancelled) = await _encodeWithProgress(format, frame: frame, layer: layer, scale: scale, title: 'Rendering PNG…');
+      if (cancelled) {
+        _toast('Export cancelled');
+        return;
+      }
+      bytes = b;
+    }
     if (bytes.isEmpty) {
       _toast('Export failed');
       return;
     }
     await _saveExport(bytes,
-        fileName: 'frame_${frame + 1}.png', ext: 'png', done: 'Exported PNG (${bytes.length ~/ 1024} KiB)');
+        fileName: scale > 1 ? '${baseName}_${scale}x.png' : '$baseName.png',
+        ext: 'png',
+        done: '$done (${bytes.length ~/ 1024} KiB)');
   }
 
+  Future<void> _exportPng() =>
+      _exportPngKind('png', layer: 0, baseName: 'frame_${engine.activeFrame + 1}', done: 'Exported PNG');
+
   // The ACTIVE layer of the active frame, alone (straight alpha, canvas-sized) — not the composite.
-  Future<void> _exportLayerPng() async {
-    final frame = engine.activeFrame;
+  Future<void> _exportLayerPng() {
     final layer = _activeLayerIndex();
-    final bytes = await Engine.encodeInBackground(engine.save(), format: 'layer-png', frame: frame, layer: layer); // [F-12]
-    if (bytes.isEmpty) {
-      _toast('Export failed');
-      return;
-    }
-    await _saveExport(bytes,
-        fileName: 'frame_${frame + 1}_layer_${layer + 1}.png',
-        ext: 'png',
-        done: 'Exported layer ${layer + 1} (${bytes.length ~/ 1024} KiB)');
+    return _exportPngKind('layer-png',
+        layer: layer,
+        baseName: 'frame_${engine.activeFrame + 1}_layer_${layer + 1}',
+        done: 'Exported layer ${layer + 1}');
   }
 
   Future<void> _exportGif() async {
     final fc = engine.frameCount;
-    final (bytes, cancelled) = await _encodeWithProgress('gif', title: 'Rendering GIF…');
+    final scale = await _exportScaleDialog(frames: fc);
+    if (scale == null) return;
+    final (bytes, cancelled) = await _encodeWithProgress('gif', scale: scale, title: 'Rendering GIF…');
     if (cancelled) {
       _toast('Export cancelled');
       return;
@@ -324,14 +419,18 @@ extension _EditorFileIo on _EditorPageState {
       return;
     }
     await _saveExport(bytes,
-        fileName: 'animation.gif', ext: 'gif', done: 'Exported GIF ($fc frames, ${bytes.length ~/ 1024} KiB)');
+        fileName: scale > 1 ? 'animation_${scale}x.gif' : 'animation.gif',
+        ext: 'gif',
+        done: 'Exported GIF ($fc frames, ${bytes.length ~/ 1024} KiB)');
   }
 
   // Lossless animated WebP (static WebP for a single-frame document) — same engine export the
-  // Club publish flow uses, saved to a user-chosen file instead.
+  // Club publish flow uses (that path stays at 1×), saved to a user-chosen file instead.
   Future<void> _exportWebp() async {
     final fc = engine.frameCount;
-    final (bytes, cancelled) = await _encodeWithProgress('webp', title: 'Rendering WebP…');
+    final scale = await _exportScaleDialog(frames: fc);
+    if (scale == null) return;
+    final (bytes, cancelled) = await _encodeWithProgress('webp', scale: scale, title: 'Rendering WebP…');
     if (cancelled) {
       _toast('Export cancelled');
       return;
@@ -341,7 +440,9 @@ extension _EditorFileIo on _EditorPageState {
       return;
     }
     await _saveExport(bytes,
-        fileName: 'animation.webp', ext: 'webp', done: 'Exported WebP ($fc frames, ${bytes.length ~/ 1024} KiB)');
+        fileName: scale > 1 ? 'animation_${scale}x.webp' : 'animation.webp',
+        ext: 'webp',
+        done: 'Exported WebP ($fc frames, ${bytes.length ~/ 1024} KiB)');
   }
 
   Future<void> _resizeCanvasDialog() async {
