@@ -43,6 +43,8 @@ typedef _ImportC = Int32 Function(Pointer<Void>, Pointer<Uint8>, IntPtr, Int32, 
 typedef _ImportD = int Function(Pointer<Void>, Pointer<Uint8>, int, int, int, int, int, int, int, int);
 typedef _ExportPngC = Pointer<Uint8> Function(Pointer<Void>, Uint32, Pointer<Uint64>);
 typedef _ExportPngD = Pointer<Uint8> Function(Pointer<Void>, int, Pointer<Uint64>);
+typedef _ExportLayerPngC = Pointer<Uint8> Function(Pointer<Void>, Uint32, Uint32, Pointer<Uint64>);
+typedef _ExportLayerPngD = Pointer<Uint8> Function(Pointer<Void>, int, int, Pointer<Uint64>);
 typedef _ExportGifC = Pointer<Uint8> Function(Pointer<Void>, Pointer<Uint64>);
 typedef _ExportGifD = Pointer<Uint8> Function(Pointer<Void>, Pointer<Uint64>);
 typedef _ExportProgressC = Uint64 Function();
@@ -107,6 +109,7 @@ class Engine {
   late final _FreeBytesD _freeBytes = _lib.lookupFunction<_FreeBytesC, _FreeBytesD>('mkpx_free_bytes');
   late final _ImportD _import = _lib.lookupFunction<_ImportC, _ImportD>('mkpx_import');
   late final _ExportPngD _exportPng = _lib.lookupFunction<_ExportPngC, _ExportPngD>('mkpx_export_png');
+  late final _ExportLayerPngD _exportLayerPng = _lib.lookupFunction<_ExportLayerPngC, _ExportLayerPngD>('mkpx_export_layer_png');
   late final _ExportGifD _exportGif = _lib.lookupFunction<_ExportGifC, _ExportGifD>('mkpx_export_gif');
   // Same C signature as export_gif (Session*, out_len) → bytes.
   late final _ExportGifD _exportWebp = _lib.lookupFunction<_ExportGifC, _ExportGifD>('mkpx_export_webp');
@@ -261,6 +264,16 @@ class Engine {
     return out;
   }
 
+  /// One layer of one frame as a PNG — the layer's own pixels (straight alpha), not the composite.
+  Uint8List exportLayerPng(int frame, int layer) {
+    final lenPtr = malloc<Uint64>();
+    final p = _exportLayerPng(_s, frame, layer, lenPtr);
+    final out = p == nullptr ? Uint8List(0) : Uint8List.fromList(p.asTypedList(lenPtr.value));
+    if (p != nullptr) _freeBytes(p, lenPtr.value);
+    malloc.free(lenPtr);
+    return out;
+  }
+
   Uint8List exportGif() {
     final lenPtr = malloc<Uint64>();
     final p = _exportGif(_s, lenPtr);
@@ -298,20 +311,21 @@ class Engine {
 
   void dispose() => _freeS(_s);
 
-  /// Encode `docBytes` (a `.mkpx` snapshot) to the given `format` ('webp' | 'gif' | 'png') **off the
-  /// UI thread**: a background isolate builds its own engine from the snapshot and runs the
-  /// (potentially slow, multi-frame) encode, so the editor stays responsive. Falls back to a
-  /// synchronous encode if the isolate can't run. The opaque session pointer is never shared across
-  /// isolates; each builds its own from the bytes. [audit F-12]
-  static Future<Uint8List> encodeInBackground(Uint8List docBytes, {required String format, int frame = 0}) async {
+  /// Encode `docBytes` (a `.mkpx` snapshot) to the given `format` ('webp' | 'gif' | 'png' |
+  /// 'layer-png') **off the UI thread**: a background isolate builds its own engine from the
+  /// snapshot and runs the (potentially slow, multi-frame) encode, so the editor stays responsive.
+  /// Falls back to a synchronous encode if the isolate can't run. The opaque session pointer is
+  /// never shared across isolates; each builds its own from the bytes. [audit F-12]
+  static Future<Uint8List> encodeInBackground(Uint8List docBytes,
+      {required String format, int frame = 0, int layer = 0}) async {
     try {
-      return await Isolate.run(() => _encodeFromBytes(docBytes, format: format, frame: frame));
+      return await Isolate.run(() => _encodeFromBytes(docBytes, format: format, frame: frame, layer: layer));
     } catch (_) {
-      return _encodeFromBytes(docBytes, format: format, frame: frame);
+      return _encodeFromBytes(docBytes, format: format, frame: frame, layer: layer);
     }
   }
 
-  static Uint8List _encodeFromBytes(Uint8List docBytes, {required String format, int frame = 0}) {
+  static Uint8List _encodeFromBytes(Uint8List docBytes, {required String format, int frame = 0, int layer = 0}) {
     final e = Engine(8, 8);
     try {
       if (!e.load(docBytes)) return Uint8List(0);
@@ -320,6 +334,8 @@ class Engine {
           return e.exportWebp();
         case 'gif':
           return e.exportGif();
+        case 'layer-png':
+          return e.exportLayerPng(frame, layer);
         default:
           return e.exportPng(frame);
       }

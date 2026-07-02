@@ -379,6 +379,26 @@ pub extern "C" fn mkpx_export_png(ptr: *mut Session, frame: u32, out_len: *mut u
     }
 }
 
+/// Export ONE layer of one frame as a PNG — the layer's own pixels (straight alpha), not the
+/// composite. Stale indices clamp (bounds-safe). Returns a malloc'd buffer; len via `out_len`;
+/// null when the frame has no layers or on encode failure.
+#[no_mangle]
+pub extern "C" fn mkpx_export_layer_png(ptr: *mut Session, frame: u32, layer: u32, out_len: *mut u64) -> *mut u8 {
+    let s = match session(ptr) {
+        Some(s) => s,
+        None => return std::ptr::null_mut(),
+    };
+    let (w, h) = s.size();
+    let rgba = s.layer_rgba_bytes(frame as usize, layer as usize);
+    if rgba.is_empty() {
+        return std::ptr::null_mut();
+    }
+    match makapix_codec::encode_png(w as u32, h as u32, &rgba) {
+        Ok(v) => bytes_out(v, out_len),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
 /// Composite every frame with per-frame progress (steps 0..n of 2n) and honouring cancel.
 /// Returns `None` when cancelled mid-way.
 fn composite_frames_tracked(s: &mut Session) -> Option<Vec<(Vec<u8>, u32)>> {

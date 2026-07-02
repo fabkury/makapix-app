@@ -413,6 +413,34 @@ impl Session {
         out
     }
 
+    /// The full-resolution raw pixels of a single layer's canvas window (w×h straight RGBA, the
+    /// layer alone — not the composite) — for the layer PNG export. Bounds-safe: stale indices
+    /// clamp, so a bad index can never panic across the FFI boundary; empty when the frame has
+    /// no layers.
+    pub fn layer_rgba_bytes(&self, frame: usize, layer: usize) -> Vec<u8> {
+        let fi = frame.min(self.doc.frames.len().saturating_sub(1));
+        let f = &self.doc.frames[fi];
+        if f.layers.is_empty() {
+            return Vec::new();
+        }
+        let li = layer.min(f.layers.len() - 1);
+        let src = &f.layers[li].pixels;
+        let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
+        let org = self.doc.origin(); // the canvas window of the storage-sized layer buffer
+        let mut out = vec![0u8; (w * h * 4) as usize];
+        for y in 0..h {
+            for x in 0..w {
+                let c = src.get(org.x + x as i32, org.y + y as i32);
+                let o = ((y * w + x) * 4) as usize;
+                out[o] = c.r;
+                out[o + 1] = c.g;
+                out[o + 2] = c.b;
+                out[o + 3] = c.a;
+            }
+        }
+        out
+    }
+
     /// Content hash (low 64 bits) of a single layer — for caching layer film-strip thumbnails.
     /// Bounds-safe (clamps indices) so it is safe to call across the FFI with possibly stale
     /// indices, unlike the unchecked `layer_hash` used by the CLI probe.
@@ -2575,6 +2603,27 @@ mod tests {
         s.tap(0, 0); // fill layer 1 red
         let flat = render::composite_active(&s.doc);
         assert_eq!(flat.get(4, 4), Rgba8::rgb(255, 0, 0));
+    }
+
+    #[test]
+    fn layer_rgba_bytes_exports_the_layer_alone() {
+        let mut s = Session::new(8, 8);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(1, 1); // layer 0
+        s.add_layer();
+        s.settings.primary = Rgba8::rgb(255, 0, 0);
+        s.tap(2, 2); // layer 1 (active after add)
+        let px = |b: &[u8], x: usize, y: usize| {
+            let o = (y * 8 + x) * 4;
+            [b[o], b[o + 1], b[o + 2], b[o + 3]]
+        };
+        let l0 = s.layer_rgba_bytes(0, 0);
+        let l1 = s.layer_rgba_bytes(0, 1);
+        assert_eq!(px(&l0, 1, 1), [255, 255, 255, 255]);
+        assert_eq!(px(&l0, 2, 2), [0, 0, 0, 0], "layer 0 lacks layer 1's pixel");
+        assert_eq!(px(&l1, 2, 2), [255, 0, 0, 255]);
+        assert_eq!(px(&l1, 1, 1), [0, 0, 0, 0], "the layer alone, not the composite");
+        assert_eq!(s.layer_rgba_bytes(99, 99).len(), 8 * 8 * 4, "stale indices clamp");
     }
 
     #[test]

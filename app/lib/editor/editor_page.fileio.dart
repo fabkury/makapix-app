@@ -297,6 +297,21 @@ extension _EditorFileIo on _EditorPageState {
         fileName: 'frame_${frame + 1}.png', ext: 'png', done: 'Exported PNG (${bytes.length ~/ 1024} KiB)');
   }
 
+  // The ACTIVE layer of the active frame, alone (straight alpha, canvas-sized) — not the composite.
+  Future<void> _exportLayerPng() async {
+    final frame = engine.activeFrame;
+    final layer = _activeLayerIndex();
+    final bytes = await Engine.encodeInBackground(engine.save(), format: 'layer-png', frame: frame, layer: layer); // [F-12]
+    if (bytes.isEmpty) {
+      _toast('Export failed');
+      return;
+    }
+    await _saveExport(bytes,
+        fileName: 'frame_${frame + 1}_layer_${layer + 1}.png',
+        ext: 'png',
+        done: 'Exported layer ${layer + 1} (${bytes.length ~/ 1024} KiB)');
+  }
+
   Future<void> _exportGif() async {
     final fc = engine.frameCount;
     final (bytes, cancelled) = await _encodeWithProgress('gif', title: 'Rendering GIF…');
