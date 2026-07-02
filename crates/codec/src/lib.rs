@@ -16,6 +16,8 @@ use std::io::Cursor;
 pub enum CodecError {
     Decode(String),
     Encode(String),
+    /// The per-frame progress callback asked the encode to stop (user cancel).
+    Cancelled,
     Unsupported,
 }
 
@@ -24,10 +26,15 @@ impl std::fmt::Display for CodecError {
         match self {
             CodecError::Decode(s) => write!(f, "decode error: {}", s),
             CodecError::Encode(s) => write!(f, "encode error: {}", s),
+            CodecError::Cancelled => write!(f, "cancelled"),
             CodecError::Unsupported => write!(f, "unsupported format"),
         }
     }
 }
+
+/// Per-frame progress hook for the multi-frame encoders: called as `progress(done, total)` after
+/// each frame is encoded; return `false` to abort the encode with [`CodecError::Cancelled`].
+pub type EncodeProgress<'a> = &'a mut dyn FnMut(usize, usize) -> bool;
 
 const MAX_DIM: u32 = 4096;
 /// Hard cap on decoded animation frames — mirrors the engine's `MAX_FRAMES`. Untrusted GIF/APNG
@@ -151,18 +158,36 @@ pub fn encode_webp(w: u32, h: u32, rgba: &[u8]) -> Result<Vec<u8>, CodecError> {
 /// to a lossless VP8L bitstream (image-webp) and the bitstreams are muxed into a VP8X/ANIM/ANMF
 /// container by hand — pure Rust, no libwebp. A single-frame input is just a static WebP.
 pub fn encode_animated_webp(w: u32, h: u32, frames: &[(Vec<u8>, u32)]) -> Result<Vec<u8>, CodecError> {
+    encode_animated_webp_with(w, h, frames, &mut |_, _| true)
+}
+
+/// [`encode_animated_webp`] with a per-frame [`EncodeProgress`] hook (VP8L encoding dominates the
+/// runtime, so per-frame granularity tracks the real work).
+pub fn encode_animated_webp_with(
+    w: u32,
+    h: u32,
+    frames: &[(Vec<u8>, u32)],
+    progress: EncodeProgress,
+) -> Result<Vec<u8>, CodecError> {
     if frames.is_empty() {
         return Err(CodecError::Unsupported);
     }
     if frames.len() == 1 {
-        return encode_webp(w, h, &frames[0].0);
+        let out = encode_webp(w, h, &frames[0].0)?;
+        if !progress(1, 1) {
+            return Err(CodecError::Cancelled);
+        }
+        return Ok(out);
     }
     // 1. Lossless-encode each frame and pull out its VP8L bitstream chunk.
     let mut vp8l: Vec<(Vec<u8>, u32)> = Vec::with_capacity(frames.len());
-    for (rgba, dur_us) in frames {
+    for (i, (rgba, dur_us)) in frames.iter().enumerate() {
         let webp = encode_webp(w, h, rgba)?;
         let chunk = extract_vp8l(&webp).ok_or_else(|| CodecError::Encode("missing VP8L chunk".into()))?;
         vp8l.push((chunk, (*dur_us / 1000).max(1)));
+        if !progress(i + 1, frames.len()) {
+            return Err(CodecError::Cancelled);
+        }
     }
     // 2. Assemble the container body: VP8X, ANIM, then one ANMF per frame.
     let mut body = Vec::new();
@@ -231,16 +256,25 @@ fn push_chunk(buf: &mut Vec<u8>, fourcc: &[u8; 4], data: &[u8]) {
 
 /// Encode frames to an animated GIF (durations in microseconds).
 pub fn encode_gif(w: u32, h: u32, frames: &[(Vec<u8>, u32)]) -> Result<Vec<u8>, CodecError> {
+    encode_gif_with(w, h, frames, &mut |_, _| true)
+}
+
+/// [`encode_gif`] with a per-frame [`EncodeProgress`] hook (each frame's colour quantization
+/// dominates the runtime, so per-frame granularity tracks the real work).
+pub fn encode_gif_with(w: u32, h: u32, frames: &[(Vec<u8>, u32)], progress: EncodeProgress) -> Result<Vec<u8>, CodecError> {
     let mut out = Vec::new();
     {
         let mut enc = GifEncoder::new(&mut out);
         enc.set_repeat(image::codecs::gif::Repeat::Infinite)
             .map_err(|e| CodecError::Encode(e.to_string()))?;
-        for (rgba, dur_us) in frames {
+        for (i, (rgba, dur_us)) in frames.iter().enumerate() {
             let img = RgbaImage::from_raw(w, h, rgba.clone()).ok_or(CodecError::Unsupported)?;
             let delay = Delay::from_numer_denom_ms((*dur_us / 1000).max(1), 1);
             enc.encode_frame(ImgFrame::from_parts(img, 0, 0, delay))
                 .map_err(|e| CodecError::Encode(e.to_string()))?;
+            if !progress(i + 1, frames.len()) {
+                return Err(CodecError::Cancelled);
+            }
         }
     }
     Ok(out)
@@ -312,6 +346,30 @@ mod tests {
         let frames = decode(&webp).unwrap();
         assert_eq!(frames.len(), 1);
         assert_eq!(frames[0].rgba, rgba, "lossless round-trip preserves every pixel incl. alpha");
+    }
+
+    #[test]
+    fn encode_progress_reports_and_cancels() {
+        let (w, h) = (4u32, 4u32);
+        let red = vec![255u8, 0, 0, 255].repeat((w * h) as usize);
+        let frames = vec![(red.clone(), 50_000), (red.clone(), 50_000), (red, 50_000)];
+        // Progress fires once per frame with the right totals.
+        let mut seen = Vec::new();
+        let gif = encode_gif_with(w, h, &frames, &mut |done, total| {
+            seen.push((done, total));
+            true
+        });
+        assert!(gif.is_ok());
+        assert_eq!(seen, vec![(1, 3), (2, 3), (3, 3)]);
+        // Returning false aborts with Cancelled (both encoders).
+        assert!(matches!(
+            encode_gif_with(w, h, &frames, &mut |done, _| done < 2),
+            Err(CodecError::Cancelled)
+        ));
+        assert!(matches!(
+            encode_animated_webp_with(w, h, &frames, &mut |done, _| done < 2),
+            Err(CodecError::Cancelled)
+        ));
     }
 
     #[test]

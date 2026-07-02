@@ -11,6 +11,41 @@ use makapix_engine::Session;
 use std::ffi::{c_char, CStr, CString};
 use std::os::raw::c_int;
 use std::slice;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+
+// ---- export progress / cancel ----
+//
+// The multi-frame exports (GIF/WebP) run on a background isolate in the shell while the UI
+// isolate polls for progress; both isolates load this same library, so a pair of process-wide
+// atomics bridges them. done/total are packed into ONE atomic (high 32 = total, low 32 = done)
+// so a poll always reads a consistent pair. Each export resets both atomics when it starts, so
+// nothing leaks between exports (the shell's modal dialog ensures at most one runs at a time).
+static EXPORT_PROGRESS: AtomicU64 = AtomicU64::new(0);
+static EXPORT_CANCEL: AtomicBool = AtomicBool::new(false);
+
+fn export_progress_set(done: u32, total: u32) {
+    EXPORT_PROGRESS.store(((total as u64) << 32) | done as u64, Ordering::Relaxed);
+}
+
+/// Progress of the multi-frame export in flight, packed as (total << 32) | done. A step is one
+/// frame composited or one frame encoded, so total = 2 × frames. 0 = no export started.
+#[no_mangle]
+pub extern "C" fn mkpx_export_progress() -> u64 {
+    EXPORT_PROGRESS.load(Ordering::Relaxed)
+}
+
+/// Clear the progress pair. The shell calls this right before spawning an export so a poll never
+/// briefly shows the PREVIOUS export's finished bar while the new isolate is still starting.
+#[no_mangle]
+pub extern "C" fn mkpx_export_progress_reset() {
+    EXPORT_PROGRESS.store(0, Ordering::Relaxed);
+}
+
+/// Ask the export in flight to stop at its next frame boundary; its export call returns null.
+#[no_mangle]
+pub extern "C" fn mkpx_export_cancel() {
+    EXPORT_CANCEL.store(true, Ordering::Relaxed);
+}
 
 /// Create a new session with a `w×h` document. Returns an opaque pointer (null on bad args).
 #[no_mangle]
@@ -344,7 +379,31 @@ pub extern "C" fn mkpx_export_png(ptr: *mut Session, frame: u32, out_len: *mut u
     }
 }
 
+/// Composite every frame with per-frame progress (steps 0..n of 2n) and honouring cancel.
+/// Returns `None` when cancelled mid-way.
+fn composite_frames_tracked(s: &mut Session) -> Option<Vec<(Vec<u8>, u32)>> {
+    let n = s.doc.frames.len();
+    EXPORT_CANCEL.store(false, Ordering::Relaxed);
+    export_progress_set(0, 2 * n as u32);
+    let mut frames: Vec<(Vec<u8>, u32)> = Vec::with_capacity(n);
+    for i in 0..n {
+        if EXPORT_CANCEL.load(Ordering::Relaxed) {
+            return None;
+        }
+        frames.push((s.composite_frame_bytes(i), s.doc.frames[i].duration_us));
+        export_progress_set(i as u32 + 1, 2 * n as u32);
+    }
+    Some(frames)
+}
+
+/// The encoders' per-frame hook: steps n..2n of 2n, and `false` (= abort) once cancel is set.
+fn encode_progress_hook(done: usize, total: usize) -> bool {
+    export_progress_set((total + done) as u32, 2 * total as u32);
+    !EXPORT_CANCEL.load(Ordering::Relaxed)
+}
+
 /// Export all frames as an animated GIF. Returns a malloc'd buffer; len via `out_len`.
+/// Progress is reported via `mkpx_export_progress`; null on failure OR `mkpx_export_cancel`.
 #[no_mangle]
 pub extern "C" fn mkpx_export_gif(ptr: *mut Session, out_len: *mut u64) -> *mut u8 {
     let s = match session(ptr) {
@@ -352,14 +411,11 @@ pub extern "C" fn mkpx_export_gif(ptr: *mut Session, out_len: *mut u64) -> *mut 
         None => return std::ptr::null_mut(),
     };
     let (w, h) = s.size();
-    let frames: Vec<(Vec<u8>, u32)> = s
-        .doc
-        .frames
-        .iter()
-        .enumerate()
-        .map(|(i, f)| (s.composite_frame_bytes(i), f.duration_us))
-        .collect();
-    match makapix_codec::encode_gif(w as u32, h as u32, &frames) {
+    let frames = match composite_frames_tracked(s) {
+        Some(f) => f,
+        None => return std::ptr::null_mut(),
+    };
+    match makapix_codec::encode_gif_with(w as u32, h as u32, &frames, &mut encode_progress_hook) {
         Ok(v) => bytes_out(v, out_len),
         Err(_) => std::ptr::null_mut(),
     }
@@ -367,6 +423,7 @@ pub extern "C" fn mkpx_export_gif(ptr: *mut Session, out_len: *mut u64) -> *mut 
 
 /// Export the artwork as a LOSSLESS WebP (static for one frame, animated WebP for many) — the
 /// recommended format for Makapix Club submissions. Returns a malloc'd buffer; len via `out_len`.
+/// Progress is reported via `mkpx_export_progress`; null on failure OR `mkpx_export_cancel`.
 #[no_mangle]
 pub extern "C" fn mkpx_export_webp(ptr: *mut Session, out_len: *mut u64) -> *mut u8 {
     let s = match session(ptr) {
@@ -374,14 +431,11 @@ pub extern "C" fn mkpx_export_webp(ptr: *mut Session, out_len: *mut u64) -> *mut
         None => return std::ptr::null_mut(),
     };
     let (w, h) = s.size();
-    let frames: Vec<(Vec<u8>, u32)> = s
-        .doc
-        .frames
-        .iter()
-        .enumerate()
-        .map(|(i, f)| (s.composite_frame_bytes(i), f.duration_us))
-        .collect();
-    match makapix_codec::encode_animated_webp(w as u32, h as u32, &frames) {
+    let frames = match composite_frames_tracked(s) {
+        Some(f) => f,
+        None => return std::ptr::null_mut(),
+    };
+    match makapix_codec::encode_animated_webp_with(w as u32, h as u32, &frames, &mut encode_progress_hook) {
         Ok(v) => bytes_out(v, out_len),
         Err(_) => std::ptr::null_mut(),
     }
@@ -471,8 +525,31 @@ mod tests {
         mkpx_free(p2);
     }
 
+    // Tests that run an export mutate the process-wide EXPORT_PROGRESS atomics; serialize them so
+    // the progress assertions can't race another test's export (cargo runs tests on threads).
+    static EXPORT_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn ffi_export_reports_progress() {
+        let _guard = EXPORT_TEST_LOCK.lock().unwrap();
+        let p = mkpx_new(16, 16);
+        let script = b"SelectTool(Pencil); Tap(3,3); AddFrame()";
+        let _ = mkpx_run(p, script.as_ptr(), script.len());
+        assert_eq!(mkpx_frame_count(p), 2);
+        mkpx_export_progress_reset();
+        assert_eq!(mkpx_export_progress(), 0, "reset clears the pair");
+        let mut len: u64 = 0;
+        let out = mkpx_export_gif(p, &mut len);
+        assert!(!out.is_null() && len > 0);
+        mkpx_free_bytes(out, len);
+        // 2 frames → 2 composite steps + 2 encode steps: done == total == 4.
+        assert_eq!(mkpx_export_progress(), (4u64 << 32) | 4, "export ends at done == total");
+        mkpx_free(p);
+    }
+
     #[test]
     fn ffi_import_gif_then_export() {
+        let _guard = EXPORT_TEST_LOCK.lock().unwrap();
         // build a 3-frame GIF via the codec, import it, export it back, and re-decode.
         let (w, h) = (16u32, 16u32);
         let frame = |r: u8, g: u8, b: u8| vec![r, g, b, 255].repeat((w * h) as usize);

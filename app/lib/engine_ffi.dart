@@ -45,6 +45,10 @@ typedef _ExportPngC = Pointer<Uint8> Function(Pointer<Void>, Uint32, Pointer<Uin
 typedef _ExportPngD = Pointer<Uint8> Function(Pointer<Void>, int, Pointer<Uint64>);
 typedef _ExportGifC = Pointer<Uint8> Function(Pointer<Void>, Pointer<Uint64>);
 typedef _ExportGifD = Pointer<Uint8> Function(Pointer<Void>, Pointer<Uint64>);
+typedef _ExportProgressC = Uint64 Function();
+typedef _ExportProgressD = int Function();
+typedef _ExportVoidC = Void Function();
+typedef _ExportVoidD = void Function();
 
 DynamicLibrary _open() {
   // Android: the engine ships as libmakapix_ffi.so bundled in the APK (jniLibs).
@@ -106,6 +110,11 @@ class Engine {
   late final _ExportGifD _exportGif = _lib.lookupFunction<_ExportGifC, _ExportGifD>('mkpx_export_gif');
   // Same C signature as export_gif (Session*, out_len) → bytes.
   late final _ExportGifD _exportWebp = _lib.lookupFunction<_ExportGifC, _ExportGifD>('mkpx_export_webp');
+  // Export progress/cancel are PROCESS-WIDE in the engine library (no session argument): the
+  // encode isolate writes them, the UI isolate polls them.
+  late final _ExportProgressD _exportProgress = _lib.lookupFunction<_ExportProgressC, _ExportProgressD>('mkpx_export_progress');
+  late final _ExportVoidD _exportProgressReset = _lib.lookupFunction<_ExportVoidC, _ExportVoidD>('mkpx_export_progress_reset');
+  late final _ExportVoidD _exportCancel = _lib.lookupFunction<_ExportVoidC, _ExportVoidD>('mkpx_export_cancel');
 
   Engine(int w, int h) : _lib = _open() {
     _s = _new(w, h);
@@ -270,6 +279,22 @@ class Engine {
     malloc.free(lenPtr);
     return out;
   }
+
+  /// Progress of the multi-frame export in flight (GIF/WebP), as (done, total) steps — one step
+  /// per frame composited plus one per frame encoded, so total = 2 × frames. (0, 0) when no
+  /// export has started (or after [resetExportProgress]). The counters live process-wide in the
+  /// engine library, so the UI isolate can poll an export running on the encode isolate.
+  (int, int) get exportProgress {
+    final v = _exportProgress();
+    return (v & 0xFFFFFFFF, v >>> 32);
+  }
+
+  /// Clear the progress pair before spawning an export, so the dialog never briefly shows the
+  /// previous export's finished bar while the new isolate is still starting up.
+  void resetExportProgress() => _exportProgressReset();
+
+  /// Ask the export in flight to stop at its next frame boundary; its result comes back empty.
+  void cancelExport() => _exportCancel();
 
   void dispose() => _freeS(_s);
 

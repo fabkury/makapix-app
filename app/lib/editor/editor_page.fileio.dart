@@ -229,6 +229,63 @@ extension _EditorFileIo on _EditorPageState {
     }
   }
 
+  // Encode the document to `format` off the UI thread behind a modal progress dialog. The dialog
+  // polls the engine library's process-wide export progress (one step per frame composited + one
+  // per frame encoded — a 1,024-frame × 64-layer document can take minutes) and offers Cancel,
+  // which asks the encoder to stop at the next frame boundary. Returns (bytes, cancelled):
+  // bytes is empty on failure or cancellation.
+  Future<(Uint8List, bool)> _encodeWithProgress(String format, {required String title}) async {
+    engine.resetExportProgress(); // the dialog must not briefly show the PREVIOUS export's bar
+    var cancelled = false;
+    final future = Engine.encodeInBackground(engine.save(), format: format); // [F-12]
+    if (mounted) {
+      var dialogOpen = true;
+      Timer? poll;
+      var cancelling = false;
+      unawaited(showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
+          // ~10 polls/s; each is one cheap FFI read of the packed (total<<32)|done atomic.
+          poll ??= Timer.periodic(const Duration(milliseconds: 100), (_) {
+            if (ctx.mounted) setS(() {});
+          });
+          final (done, total) = engine.exportProgress;
+          return AlertDialog(
+            title: Text(title),
+            content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              LinearProgressIndicator(value: total > 0 ? done / total : null),
+              const SizedBox(height: 10),
+              Text(
+                total > 0 ? '${(100 * done / total).floor()}%' : 'Preparing…',
+                style: const TextStyle(fontSize: 12, color: Colors.white60),
+              ),
+            ]),
+            actions: [
+              TextButton(
+                onPressed: cancelling
+                    ? null
+                    : () => setS(() {
+                          cancelling = true;
+                          cancelled = true;
+                          engine.cancelExport(); // honoured at the next frame boundary
+                        }),
+                child: Text(cancelling ? 'Cancelling…' : 'Cancel'),
+              ),
+            ],
+          );
+        }),
+      ).whenComplete(() {
+        poll?.cancel();
+        dialogOpen = false;
+      }));
+      final bytes = await future;
+      if (dialogOpen && mounted) Navigator.of(context, rootNavigator: true).pop();
+      return (bytes, cancelled);
+    }
+    return (await future, false);
+  }
+
   Future<void> _exportPng() async {
     final frame = engine.activeFrame;
     final bytes = await Engine.encodeInBackground(engine.save(), format: 'png', frame: frame); // [F-12]
@@ -242,8 +299,11 @@ extension _EditorFileIo on _EditorPageState {
 
   Future<void> _exportGif() async {
     final fc = engine.frameCount;
-    _toast('Rendering GIF…');
-    final bytes = await Engine.encodeInBackground(engine.save(), format: 'gif'); // [F-12]
+    final (bytes, cancelled) = await _encodeWithProgress('gif', title: 'Rendering GIF…');
+    if (cancelled) {
+      _toast('Export cancelled');
+      return;
+    }
     if (bytes.isEmpty) {
       _toast('Export failed');
       return;
@@ -256,8 +316,11 @@ extension _EditorFileIo on _EditorPageState {
   // Club publish flow uses, saved to a user-chosen file instead.
   Future<void> _exportWebp() async {
     final fc = engine.frameCount;
-    _toast('Rendering WebP…');
-    final bytes = await Engine.encodeInBackground(engine.save(), format: 'webp'); // [F-12]
+    final (bytes, cancelled) = await _encodeWithProgress('webp', title: 'Rendering WebP…');
+    if (cancelled) {
+      _toast('Export cancelled');
+      return;
+    }
     if (bytes.isEmpty) {
       _toast('Export failed');
       return;
