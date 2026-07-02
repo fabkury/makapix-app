@@ -39,6 +39,11 @@ key.properties
 app/android/key.properties
 inbox/keystore/
 
+# ---- Google Play publisher service-account key — secret, NEVER commit ----
+# Used by tools/play_publish.py / release_android.ps1 to upload AABs to Play
+# (see docs/play-release.md). Grants release access to the Play listing.
+app/android/play-service-account.json
+
 # ---- Firebase Admin service-account key — secret, NEVER commit ----
 # Downloaded from Firebase → Project settings → Service accounts. Used by the
 # SERVER (via its vault) to send FCM pushes; must never enter this repo.

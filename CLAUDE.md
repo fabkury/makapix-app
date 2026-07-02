@@ -35,6 +35,10 @@ macOS CI — it cannot be built here, so don't try.
 # Android APK: cross-compiles the engine .so (arm64 + arm32) into jniLibs, builds a release APK.
 ./build_android.ps1            # build only
 ./build_android.ps1 -Install   # also `adb install -r` to a USB-connected phone (USB debugging on)
+
+# Google Play release (internal testing): gates → next versionCode from the Play API → signed prod
+# AAB → upload + rollout → commit/tag/push. One-time service-account setup: docs/play-release.md.
+./release_android.ps1          # -DryRun to rehearse; -VersionName X.Y.Z to bump the visible version
 ```
 
 The Windows exe is `app/build/windows/x64/runner/Release/makapix_club.exe`. The APK is
