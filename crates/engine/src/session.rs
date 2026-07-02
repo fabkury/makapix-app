@@ -296,7 +296,9 @@ impl Session {
     /// edit's record capture the transition.
     fn set_selection(&mut self, new: Option<Mask>) {
         let before = self.doc.selection.clone();
-        self.doc.selection = new.map(Arc::new);
+        // Empty ⇒ None (Document::selection invariant): a combine that leaves zero pixels selected
+        // (e.g. Subtract covering the whole selection) clears it, so drawing is free again.
+        self.doc.selection = new.and_then(Mask::nonempty).map(Arc::new);
         if !sel_eq(&before, &self.doc.selection) {
             self.doc.record_selection(before);
         }
@@ -1180,9 +1182,11 @@ impl Session {
                         }
                         // Assign directly (no separate record): the mask transition is captured by
                         // the commit_edit() below, so the pixel move and its mask move undo as one.
-                        self.doc.selection = Some(Arc::new(
-                            if wrap { sel.translated_wrapped(dx, dy, cr) } else { sel.translated(dx, dy) },
-                        ));
+                        // (Fully off-canvas without wrap ⇒ the clipped mask is empty ⇒ None.)
+                        self.doc.selection =
+                            (if wrap { sel.translated_wrapped(dx, dy, cr) } else { sel.translated(dx, dy) })
+                                .nonempty()
+                                .map(Arc::new);
                     }
                 }
                 _ => {}
@@ -1692,7 +1696,7 @@ impl Session {
         if self.move_sel_before.is_some() {
             // Inside a coalesced drag: update the mask in place; the single undo step is recorded by
             // `move_selection_commit` on finger-up. (Without this, every drag step pushed a record.)
-            self.doc.selection = Some(Arc::new(moved));
+            self.doc.selection = moved.nonempty().map(Arc::new); // dragged fully off-canvas ⇒ None
         } else {
             self.set_selection(Some(moved)); // one-shot (DSL/nudge): records its own step
         }
@@ -2160,10 +2164,12 @@ impl Session {
         }
         // Move the mask BEFORE committing so the pixel record captures the translated mask as its
         // "after": undo restores both the pixels and the mask to their pre-nudge positions, redo
-        // re-applies both. (Assign directly — not via set_selection — so it isn't a separate step.)
-        self.doc.selection = Some(Arc::new(
-            if wrap { sel.translated_wrapped(dx, dy, cr) } else { sel.translated(dx, dy) },
-        ));
+        // re-applies both. (Assign directly — not via set_selection — so it isn't a separate step.
+        // Fully off-canvas without wrap ⇒ the clipped mask is empty ⇒ None.)
+        self.doc.selection =
+            (if wrap { sel.translated_wrapped(dx, dy, cr) } else { sel.translated(dx, dy) })
+                .nonempty()
+                .map(Arc::new);
         self.commit_edit(before);
     }
 
@@ -2304,7 +2310,8 @@ impl Session {
         let before = self.doc.frames[fi].clone();
         let translated = move_draft_paint(&d, &mut self.doc.frames[fi], self.settings.wrap, cr);
         if let Some(m) = translated {
-            self.doc.selection = Some(Arc::new(m)); // the marquee moves with the committed pixels
+            // The marquee moves with the committed pixels; fully off-canvas ⇒ empty ⇒ None.
+            self.doc.selection = m.nonempty().map(Arc::new);
         }
         let after = self.doc.frames[fi].clone();
         self.doc.record_frame_content(d.fid, before, after, d.sel_before);
@@ -3617,6 +3624,32 @@ mod tests {
         assert_eq!(s.bounds_of_selection(), None);
         assert!(s.doc.undo(), "undo the SelectNone");
         assert_eq!(s.bounds_of_selection(), Some(IRect::new(2, 2, 4, 4)), "the lost selection comes back");
+    }
+
+    #[test]
+    fn subtract_that_empties_the_selection_clears_it_entirely() {
+        let mut s = Session::new(16, 16);
+        // Replace-select a 4×4 rect, then subtract a larger rect that covers all of it.
+        s.run_script("SelectTool(SelectRect); Stroke([(4,4),(7,7)])").unwrap();
+        assert_eq!(s.bounds_of_selection(), Some(IRect::new(4, 4, 4, 4)));
+        s.run_script("SetSelectionMode(Subtract); Stroke([(2,2),(10,10)])").unwrap();
+        assert!(s.doc.selection.is_none(), "zero pixels selected == no selection, not an empty mask");
+        // With no selection the whole canvas is editable again (an empty mask blocked every edit).
+        s.tool = ToolKind::Pencil;
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(12, 12); // outside the original marquee
+        assert_eq!(s.pixel(0, 0, 12, 12), Rgba8::WHITE);
+        // The clear is still one undoable step: undo the tap, then the subtract → the rect returns.
+        assert!(s.doc.undo() && s.doc.undo());
+        assert_eq!(s.bounds_of_selection(), Some(IRect::new(4, 4, 4, 4)));
+    }
+
+    #[test]
+    fn invert_of_select_all_is_no_selection() {
+        let mut s = Session::new(8, 8);
+        s.select_all();
+        s.invert_selection();
+        assert!(s.doc.selection.is_none(), "inverting a full selection leaves nothing == no selection");
     }
 
     #[test]

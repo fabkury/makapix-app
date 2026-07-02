@@ -141,6 +141,14 @@ impl Mask {
         self.bits.iter().all(|&w| w == 0)
     }
 
+    /// `Some(self)` when at least one pixel is selected, else `None`. A mask with zero set bits
+    /// means "no selection" — every writer of `Document::selection` normalizes through this, so a
+    /// selection op that ends with nothing selected (e.g. Subtract covering the whole selection)
+    /// frees the canvas instead of leaving an invisible mask that blocks every edit.
+    pub fn nonempty(self) -> Option<Mask> {
+        if self.is_empty() { None } else { Some(self) }
+    }
+
     pub fn count(&self) -> u64 {
         self.bits.iter().map(|w| w.count_ones() as u64).sum()
     }

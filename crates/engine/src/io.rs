@@ -416,7 +416,8 @@ fn decode_selection(pl: &[u8], storage: Size) -> Result<Option<Arc<Mask>>, IoErr
     let mut r = Reader::new(pl);
     let (sw, sh) = (storage.w as u32, storage.h as u32);
     match r.u8()? {
-        2 => Ok(Some(Arc::new(Mask::new(sw, sh)))),
+        // EMPTY (legacy files): zero pixels selected == no selection (Document::selection invariant).
+        2 => Ok(None),
         tag @ (0 | 1) => {
             let bx = r.u16()? as u32;
             let by = r.u16()? as u32;
@@ -447,7 +448,7 @@ fn decode_selection(pl: &[u8], storage: Size) -> Result<Option<Arc<Mask>>, IoErr
                     }
                 }
             }
-            Ok(Some(Arc::new(m)))
+            Ok(m.nonempty().map(Arc::new)) // a crafted all-zero BITS payload is "no selection" too
         }
         _ => Err(IoError::Corrupt("selection tag")),
     }
@@ -905,6 +906,17 @@ mod tests {
     #[test]
     fn roundtrips_no_selection_as_none() {
         let doc = Document::new(32, 24);
+        let back = load_from_bytes(&save_to_bytes(&doc)).unwrap();
+        assert!(back.selection.is_none());
+    }
+
+    #[test]
+    fn an_empty_selection_mask_loads_as_none() {
+        // A Session never stores Some(empty) (Document::selection invariant), but a legacy or
+        // hand-built file can carry an EMPTY SELC chunk — it must decode to "no selection".
+        let mut doc = Document::new(32, 24);
+        let st = doc.storage();
+        doc.selection = Some(Arc::new(Mask::new(st.w as u32, st.h as u32)));
         let back = load_from_bytes(&save_to_bytes(&doc)).unwrap();
         assert!(back.selection.is_none());
     }

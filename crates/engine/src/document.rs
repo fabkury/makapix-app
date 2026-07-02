@@ -136,7 +136,9 @@ pub struct Document {
     pub frame_ids: IdGen,
     pub layer_ids: IdGen,
     /// The current selection mask, document-sized (its `w/h` always match `size`). `None` means
-    /// "no selection" (ops act on the whole layer). Promoted from editor state into the document so
+    /// "no selection" (ops act on the whole layer). Invariant: `Some` always holds a **non-empty**
+    /// mask — writers normalize an all-clear result to `None` via [`Mask::nonempty`], so "zero
+    /// pixels selected" and "no selection" are one state. Promoted from editor state into the document so
     /// it participates in undo/redo (each [`History`] record carries the mask transition) and in
     /// `.mkpx` serialization (crash safety). COW-shared via `Arc`: a pixel-only edit reuses the same
     /// `Arc` for its before/after snapshot, so recording it costs only a pointer clone. The combine

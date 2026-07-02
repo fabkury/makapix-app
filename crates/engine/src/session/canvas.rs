@@ -372,7 +372,8 @@ impl Session {
         let before = self.doc.frames[fi].clone();
         let rotated_mask = apply_rotation_to_frame(&d, &mut self.doc.frames[fi], cw, ch);
         if let Some(m) = rotated_mask {
-            self.doc.selection = Some(Arc::new(m)); // the marquee follows the rotated pixels
+            // The marquee follows the rotated pixels; rotated fully out of storage ⇒ empty ⇒ None.
+            self.doc.selection = m.nonempty().map(Arc::new);
         }
         let after = self.doc.frames[fi].clone();
         self.doc.record_frame_content(d.fid, before, after, d.sel_before);
