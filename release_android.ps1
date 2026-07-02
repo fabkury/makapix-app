@@ -56,7 +56,9 @@ if ($SkipGates) {
   if ($LASTEXITCODE -ne 0) { Fail "cargo test failed" }
   Push-Location "$root\app"
   Step "Gate: flutter analyze"
-  flutter analyze
+  # Infos are non-fatal: the repo carries a few accepted info-level lints (deprecated Color
+  # accessors etc.); errors and warnings still block the release.
+  flutter analyze --no-fatal-infos
   if ($LASTEXITCODE -ne 0) { Pop-Location; Fail "flutter analyze failed" }
   Step "Gate: flutter test"
   flutter test
