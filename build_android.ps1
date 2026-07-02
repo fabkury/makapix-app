@@ -2,7 +2,7 @@
 # bundle into jniLibs, and build a release APK.
 #
 # Prereqs (one-time):
-#   rustup target add aarch64-linux-android armv7-linux-androideabi
+#   rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
 #   cargo install cargo-ndk
 #   Android SDK + NDK installed (Android Studio or sdkmanager)
 #
@@ -22,8 +22,11 @@ if (-not $ndkDir) { throw "No NDK found under $sdk\ndk. Install it via Android S
 $env:ANDROID_NDK_HOME = $ndkDir.FullName
 Write-Host "==> Using NDK: $($env:ANDROID_NDK_HOME)" -ForegroundColor Cyan
 
-Write-Host "==> Cross-compiling engine to Android (.so) for arm64-v8a + armeabi-v7a..." -ForegroundColor Cyan
-cargo ndk -t arm64-v8a -t armeabi-v7a -o "$root\app\android\app\src\main\jniLibs" build -p makapix-ffi --release
+# x86_64 is included because `flutter build apk` ships x86_64 Flutter libs by default; without a
+# matching engine .so, x86_64 devices (BlueStacks, emulators, Intel Chromebooks) install the x86_64
+# ABI and dlopen fails at runtime.
+Write-Host "==> Cross-compiling engine to Android (.so) for arm64-v8a + armeabi-v7a + x86_64..." -ForegroundColor Cyan
+cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o "$root\app\android\app\src\main\jniLibs" build -p makapix-ffi --release
 if ($LASTEXITCODE -ne 0) { exit 1 }
 
 # CLUB_ENV selects the back end (club_config.dart); default `dev`, `prod` targets makapix.club.
