@@ -210,6 +210,9 @@ pub struct Session {
     /// Precision-pencil reticle position + active pen stroke (draw-by-button, off-finger).
     cursor: Point,
     precision_before: Option<EditScope>,
+    /// Pixel-perfect corner-filter tail for the precision pen line: the reticle path has no
+    /// [`Stroke`], so its tail lives here (see `Stroke::pp` for the pointer-stroke twin).
+    pen_pp: Vec<(Point, Rgba8)>,
     clipboard: Option<(RgbaBuffer, Point)>,
     // A pending paste: the clipboard pixels floating at a top-left position, previewed semi-
     // transparently and movable until committed (Copy & Paste tool). Editor state, not undoable
@@ -265,6 +268,7 @@ impl Session {
             layer_sel: vec![0],
             cursor: Point::new(w as i32 / 2, h as i32 / 2),
             precision_before: None,
+            pen_pp: Vec::new(),
             clipboard: None,
             paste_draft: None,
             rng: SeededRng::default(),
@@ -1245,6 +1249,7 @@ impl Session {
         // Precision pen line in progress.
         if let Some(scope) = self.precision_before.take() {
             self.restore_edit(&scope);
+            self.pen_pp.clear(); // the painted pixels were reverted; the tail is stale
         }
     }
 
@@ -1370,20 +1375,30 @@ impl Session {
         self.settings.pixel_perfect && self.settings.brush_size == 1
     }
 
-    /// Paint a 1px Pencil segment in pixel-perfect mode: stamp each interpolated pixel from `a` to
-    /// `b`, then drop the redundant "corner double" (the L-elbow) as soon as a turn completes,
-    /// restoring the removed pixel to its captured pre-stroke colour. The running tail lives in
-    /// `stroke.pp` so detection continues across successive `pointer_move` segments.
+    /// Paint a 1px Pencil segment in pixel-perfect mode along the pointer stroke. The running tail
+    /// lives in `stroke.pp` so detection continues across successive `pointer_move` segments.
     fn pencil_perfect_step(&mut self, a: Point, b: Point) {
-        let color = self.settings.primary;
-        let clip = self.paint_clip();
-        let sel = self.selection_clone();
         // Move the running tail out of the stroke so `self.doc` and `self.stroke` aren't both
         // borrowed at once; put it back at the end.
         let mut pp = match self.stroke.as_mut() {
             Some(s) => std::mem::take(&mut s.pp),
             None => return,
         };
+        self.pencil_perfect_segment(a, b, &mut pp);
+        if let Some(s) = self.stroke.as_mut() {
+            s.pp = pp;
+        }
+    }
+
+    /// The pixel-perfect Pencil core, shared by the pointer stroke and the precision pen line:
+    /// stamp each interpolated pixel from `a` to `b`, then drop the redundant "corner double"
+    /// (the L-elbow) as soon as a turn completes, restoring the removed pixel to its captured
+    /// pre-stroke colour. `pp` is the running tail of recently painted pixels (with their
+    /// pre-stroke colours); the caller carries it across segments. See [`pp_corner`].
+    fn pencil_perfect_segment(&mut self, a: Point, b: Point, pp: &mut Vec<(Point, Rgba8)>) {
+        let color = self.settings.primary;
+        let clip = self.paint_clip();
+        let sel = self.selection_clone();
         let mut pts = Vec::new();
         crate::raster::line(a, b, |x, y| pts.push(Point::new(x, y)));
         {
@@ -1411,9 +1426,6 @@ impl Session {
         let keep = pp.len().saturating_sub(2);
         if keep > 0 {
             pp.drain(0..keep);
-        }
-        if let Some(s) = self.stroke.as_mut() {
-            s.pp = pp;
         }
     }
     fn airbrush_active(&mut self, p: Point) {
@@ -1545,6 +1557,13 @@ impl Session {
             let os = Point::new(old.x + o.x, old.y + o.y);
             let cs = self.cursor_storage();
             match self.tool {
+                // Pixel-perfect 1px Pencil: run the corner-double filter along the reticle path,
+                // carrying its tail in `pen_pp` (the pen line has no `Stroke` to hold it).
+                ToolKind::Pencil if self.pixel_perfect_active() => {
+                    let mut pp = std::mem::take(&mut self.pen_pp);
+                    self.pencil_perfect_segment(os, cs, &mut pp);
+                    self.pen_pp = pp;
+                }
                 // Brush/Airbrush/Dodge/Burn honour the spacing setting; Pencil/Eraser stay continuous.
                 ToolKind::Brush => self.brush_stroke_spaced(os, cs, PaintMode::Over, self.settings.primary),
                 ToolKind::Airbrush => self.airbrush_stroke_spaced(os, cs),
@@ -1567,7 +1586,20 @@ impl Session {
         }
         self.precision_before = Some(self.begin_edit());
         self.paint_acc = 0.0; // fresh pen line → reset Brush/Airbrush spacing
+        self.pen_pp.clear(); // fresh pen line → reset the pixel-perfect corner-filter tail
         let p = self.cursor_storage();
+        if self.tool == ToolKind::Pencil && self.pixel_perfect_active() {
+            // Mirror pointer_down: plot the first pixel ourselves so its pre-stroke colour seeds
+            // the pixel-perfect sequence (see `pencil_perfect_segment`).
+            let color = self.settings.primary;
+            let clip = self.paint_clip();
+            let sel = self.selection_clone();
+            let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
+            let orig = buf.get(p.x, p.y);
+            tool::plot(buf, sel.as_ref(), clip, p.x, p.y, color, PaintMode::Replace);
+            self.pen_pp.push((p, orig));
+            return;
+        }
         match self.cursor_paint() {
             Some((mode, color)) => self.stamp_active(p, mode, color),
             None if self.tool == ToolKind::Airbrush => self.airbrush_active(p),
@@ -1583,6 +1615,7 @@ impl Session {
         if let Some(before) = self.precision_before.take() {
             self.commit_edit(before);
         }
+        self.pen_pp.clear();
     }
 
     /// Plot a single dot at the reticle (pen down + up).

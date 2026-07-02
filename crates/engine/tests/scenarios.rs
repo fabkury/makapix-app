@@ -110,6 +110,50 @@ fn pencil_pixel_perfect_undo_restores_blank() {
     }
 }
 
+// The same staircase drawn with the precision pen (off-finger reticle, pen held): step the
+// reticle through (1,1)→(2,1)→(2,2)→(3,2)→(3,3) while the pen is down.
+const PEN_STAIRCASE: &str =
+    "SetCursor(1,1); CursorPenDown(); MoveCursor(1,0); MoveCursor(0,1); MoveCursor(1,0); MoveCursor(0,1); CursorPenUp()";
+
+#[test]
+fn pencil_pixel_perfect_applies_to_precision_pen_line() {
+    // Perfect + Precision together: the pen-held reticle path runs the same corner-double filter
+    // as a finger stroke (it used to be ignored on the pen path).
+    let s = run(&format!(
+        r#"
+        NewDocument(8,8)
+        SelectTool(Pencil); SetPrimaryColor(#FF0000FF); SetBrushSize(1); SetPixelPerfect(true)
+        {PEN_STAIRCASE}
+    "#
+    ));
+    // Kept diagonal.
+    assert_eq!(s.pixel(0, 0, 1, 1), RED);
+    assert_eq!(s.pixel(0, 0, 2, 2), RED);
+    assert_eq!(s.pixel(0, 0, 3, 3), RED);
+    // Corner doubles removed.
+    assert_eq!(s.pixel(0, 0, 2, 1), Rgba8::TRANSPARENT);
+    assert_eq!(s.pixel(0, 0, 3, 2), Rgba8::TRANSPARENT);
+}
+
+#[test]
+fn pencil_pixel_perfect_pen_line_restores_underlying_and_undoes_as_one() {
+    // A removed corner restores the pre-line pixel (green), and the whole pen line is one undo step.
+    let mut s = run(&format!(
+        r#"
+        NewDocument(8,8)
+        SelectTool(Pencil); SetPrimaryColor(#00FF00FF); SetBrushSize(1); SetPixelPerfect(false)
+        Tap(2,1)
+        SetPrimaryColor(#FF0000FF); SetPixelPerfect(true)
+        {PEN_STAIRCASE}
+    "#
+    ));
+    assert_eq!(s.pixel(0, 0, 2, 1), Rgba8::rgb(0, 255, 0));
+    assert_eq!(s.pixel(0, 0, 2, 2), RED); // rest of the line still drawn
+    assert!(s.doc.undo()); // one undo removes the whole pen line…
+    assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::TRANSPARENT);
+    assert_eq!(s.pixel(0, 0, 2, 1), Rgba8::rgb(0, 255, 0)); // …leaving the earlier green dot
+}
+
 #[test]
 fn undo_redo_is_identity_over_random_script() {
     // Property: after N random edits, undo all then redo all returns the exact document.
