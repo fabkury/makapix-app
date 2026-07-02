@@ -382,7 +382,17 @@ class _EditorPageState extends ConsumerState<EditorPage>
             _buildFilmRoll(), // frame film-strip + ☰ menu — the topmost area
             // ClipRect so a zoomed canvas can't paint outside its region (the CustomPaint draws the
             // scaled image past its box otherwise) — it stays behind the film-strip and bottom rows.
-            Expanded(child: ClipRect(child: _buildCanvas())),
+            // The selection-menu pill floats over the canvas area's bottom-right corner, ABOVE the
+            // canvas Listener, so its taps never fall through and start a draw gesture beneath it.
+            Expanded(
+              child: ClipRect(
+                child: Stack(fit: StackFit.expand, children: [
+                  _buildCanvas(),
+                  if (_selectionEdges.isNotEmpty)
+                    Positioned(right: 10, bottom: 10, child: _selectionMenu()),
+                ]),
+              ),
+            ),
             const Divider(height: 1),
             _buildLayers(layers), // layers film-strip, directly above the tool options
             _buildToolOptions(), // row-1

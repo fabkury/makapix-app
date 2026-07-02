@@ -426,7 +426,7 @@ extension _EditorControls on _EditorPageState {
       }
       children.add(const SizedBox(width: 6));
       children.add(_miniBtn('All', () => _act('SelectAll()')));
-      children.add(_miniBtn('None', () => _act('SelectNone()')));
+      // Select None (and Invert) live on the floating selection-menu over the canvas.
     }
     if (_tool == 'SelectShape') {
       // Which selection shape to draft. Switching the kind keeps any pending draft (re-previews it
@@ -448,9 +448,9 @@ extension _EditorControls on _EditorPageState {
         _send('SetSelectionMode($_selMode)');
       }));
       children.add(_miniBtn('All', () => _act('SelectAll()')));
-      children.add(_miniBtn('None', () => _act('SelectNone()')));
-      children.add(_miniBtn('Invert', () => _act('InvertSelection()')));
-      // Clipboard ops (Copy/Cut/Paste) and Clear now live in the dedicated Copy & Paste tool.
+      // Select None / Invert live on the floating selection-menu over the canvas (they act on an
+      // existing selection, which is exactly when that menu shows). Clipboard ops (Copy/Cut/Paste)
+      // and Clear live in the dedicated Copy & Paste tool.
     }
     if (_tool == 'SelectShape') {
       // Lock the selection's aspect ratio (width:height) to the slider value — e.g. ratio 1 makes the

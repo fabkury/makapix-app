@@ -42,6 +42,50 @@ extension _EditorCanvas on _EditorPageState {
     );
   }
 
+  // ---- selection-menu: the compact floating pill over the canvas's bottom-right corner ----
+
+  // Shown only while a selection exists (`_selectionEdges.isNotEmpty`; the engine treats zero
+  // selected pixels as "no selection", so any op that empties the selection — including this
+  // menu's own Select None — hides it). Hosts the two selection-wide actions that apply no matter
+  // which tool is active; they were removed from row-1 of the selection tools in favour of this
+  // single always-visible spot.
+  Widget _selectionMenu() {
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: const Color(0xE0141618),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        _selMenuButton(Icons.deselect, 'Select none', () => _act('SelectNone()')),
+        const SizedBox(width: 3),
+        _selMenuButton(Icons.tonality, 'Invert selection', () => _act('InvertSelection()')),
+      ]),
+    );
+  }
+
+  // A round icon button sized for the compact pill (deliberately smaller than the usual touch
+  // target — the menu must cover as little of the canvas as possible).
+  Widget _selMenuButton(IconData icon, String tooltip, VoidCallback onTap) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: const Color(0xFF2A2D33),
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onTap,
+          child: SizedBox(
+            width: 34,
+            height: 34,
+            child: Icon(icon, size: 18, color: Colors.white70),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildCanvas() {
     return LayoutBuilder(builder: (context, c) {
       final box = Size(c.maxWidth, c.maxHeight);
