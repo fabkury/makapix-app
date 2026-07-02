@@ -17,6 +17,11 @@ class PublishDraft {
   /// remix metadata pre-fill). Null for a brand-new drawing.
   final ClubEditSource? source;
 
+  /// The document as a compact-profile .mkpx ("the layers file"), offered as an
+  /// optional attachment at publish time. Null when the draft didn't come from
+  /// the editor (direct file upload) — the share checkbox is hidden then.
+  final Uint8List? mkpxBytes;
+
   const PublishDraft({
     required this.bytes,
     required this.format,
@@ -25,6 +30,7 @@ class PublishDraft {
     required this.height,
     required this.frameCount,
     this.source,
+    this.mkpxBytes,
   });
 
   bool get isAnimated => frameCount > 1;

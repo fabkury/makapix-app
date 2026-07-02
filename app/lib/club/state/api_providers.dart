@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../api/auth_api.dart';
 import '../api/edit_api.dart';
 import '../api/feed_api.dart';
+import '../api/mkpx_api.dart';
 import '../api/notifications_api.dart';
 import '../api/player_api.dart';
 import '../api/post_api.dart';
@@ -24,6 +25,7 @@ final notificationsApiProvider =
     Provider<NotificationsApi>((ref) => NotificationsApi(ref.watch(clubApiClientProvider)));
 final playerApiProvider = Provider<PlayerApi>((ref) => PlayerApi(ref.watch(clubApiClientProvider)));
 final editApiProvider = Provider<EditApi>((ref) => EditApi());
+final mkpxApiProvider = Provider<MkpxApi>((ref) => MkpxApi(ref.watch(clubApiClientProvider)));
 final settingsApiProvider =
     Provider<SettingsApi>((ref) => SettingsApi(ref.watch(clubApiClientProvider)));
 final statsApiProvider =

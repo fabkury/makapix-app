@@ -158,6 +158,10 @@ extension _EditorFileIo on _EditorPageState {
       height: h,
       frameCount: fc,
       source: _clubSource,
+      // The layers file offered by the "Share the layers (.mkpx) file" checkbox —
+      // compact profile, same as user-facing saves. The publish page decides
+      // whether it is actually sent.
+      mkpxBytes: engine.saveCompact(),
     );
     if (!mounted) return;
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => PublishPage(draft: draft)));
@@ -185,8 +189,14 @@ extension _EditorFileIo on _EditorPageState {
     await _switchToNewDrawing(
       title: req.sourceTitle,
       mutateEngine: () {
-        _send('NewDocument(${req.width},${req.height})');
-        ok = engine.importImage(req.bytes, mode: 1, asLayer: false, startFrame: 0);
+        if (req.isMkpx) {
+          // A layers (.mkpx) file: load as a full document — layers, frames,
+          // palettes intact. The engine auto-detects plain vs compact profile.
+          ok = engine.load(req.bytes);
+        } else {
+          _send('NewDocument(${req.width},${req.height})');
+          ok = engine.importImage(req.bytes, mode: 1, asLayer: false, startFrame: 0);
+        }
         _send('SelectTool($_tool)');
       },
     );
@@ -199,6 +209,7 @@ extension _EditorFileIo on _EditorPageState {
         title: req.sourceTitle,
         ownerHandle: req.sourceOwnerHandle,
         isOwner: req.isOwner,
+        hasMkpx: req.sourceHasMkpx,
       );
     });
     _refreshState();

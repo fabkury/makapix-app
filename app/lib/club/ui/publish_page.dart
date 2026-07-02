@@ -25,6 +25,7 @@ class _PublishPageState extends ConsumerState<PublishPage> {
   final _tags = TextEditingController();
   int? _licenseId;
   bool _hidden = false;
+  bool _shareLayers = false;
 
   @override
   void initState() {
@@ -133,6 +134,7 @@ class _PublishPageState extends ConsumerState<PublishPage> {
           value: _hidden,
           onChanged: uploading ? null : (v) => setState(() => _hidden = v),
         ),
+        ..._shareLayersTile(cfg, uploading),
         if (!canPostPublic && !_hidden)
           const Padding(
             padding: EdgeInsets.only(bottom: 8),
@@ -152,12 +154,14 @@ class _PublishPageState extends ConsumerState<PublishPage> {
             icon: const Icon(Icons.published_with_changes),
             label: const Text('Replace original'),
           ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 6),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
             child: Text(
                 'Updates the existing post in place — keeps its reactions, comments, and stats. '
-                'The metadata above applies only when posting as new.',
-                style: TextStyle(fontSize: 11, color: Colors.white54)),
+                'The metadata above applies only when posting as new.'
+                // Server-side rule: replacing a post's artwork drops its layers file.
+                '${d.source!.hasMkpx && cfg.upload.mkpx.enabled ? '\nReplacing also removes the layers (.mkpx) file attached to the post — you can attach a new one from the post page afterwards.' : ''}',
+                style: const TextStyle(fontSize: 11, color: Colors.white54)),
           ),
         ],
         FilledButton.icon(
@@ -176,6 +180,35 @@ class _PublishPageState extends ConsumerState<PublishPage> {
     ref
         .read(publishControllerProvider.notifier)
         .replace(postId: d.source!.postId, bytes: d.bytes, filename: d.filename);
+  }
+
+  /// "Share the layers (.mkpx) file" toggle. Present only when the server
+  /// advertises the capability (`upload.mkpx.enabled`) and the draft came from
+  /// the editor (direct file uploads carry no document). Oversize documents get
+  /// a disabled toggle with the reason instead of a server 413.
+  List<Widget> _shareLayersTile(ClubServerConfig cfg, bool uploading) {
+    final mkpx = widget.draft.mkpxBytes;
+    final rules = cfg.upload.mkpx;
+    if (!rules.enabled || mkpx == null) return const [];
+    final tooLarge = mkpx.length > rules.maxFileBytes;
+    if (tooLarge && _shareLayers) _shareLayers = false;
+    final kib = (mkpx.length / 1024).toStringAsFixed(0);
+    return [
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Share the layers (.mkpx) file'),
+        subtitle: Text(
+          tooLarge
+              ? 'Too large to share — $kib KiB exceeds the '
+                  '${(rules.maxFileBytes / (1024 * 1024)).toStringAsFixed(0)} MiB limit.'
+              : 'Signed-in members can open this artwork in the editor with all '
+                  'layers and frames ($kib KiB).',
+          style: TextStyle(fontSize: 12, color: tooLarge ? Colors.amberAccent : null),
+        ),
+        value: _shareLayers,
+        onChanged: (uploading || tooLarge) ? null : (v) => setState(() => _shareLayers = v),
+      ),
+    ];
   }
 
   Widget _conformanceBanner(ConformanceResult r) {
@@ -238,6 +271,7 @@ class _PublishPageState extends ConsumerState<PublishPage> {
           hashtags: _tags.text.trim(),
           hidden: _hidden,
           licenseId: _licenseId,
+          mkpxBytes: _shareLayers ? d.mkpxBytes : null,
         );
   }
 }

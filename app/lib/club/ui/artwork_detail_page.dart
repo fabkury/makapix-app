@@ -1,16 +1,20 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../api/mkpx_api.dart';
 import '../edit/club_edit_request.dart';
 import '../models/club_error.dart';
 import '../models/post.dart';
+import '../models/server_config.dart';
 import '../state/api_providers.dart';
 import '../state/auth_controller.dart';
 import '../state/edit_bridge.dart';
 import '../state/paged.dart';
 import '../state/player_providers.dart';
 import '../state/post_providers.dart';
+import '../state/publish_providers.dart';
 import 'hashtag_feed_page.dart';
 import 'profile_page.dart';
 import 'reactions_page.dart';
@@ -163,17 +167,16 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            // Title (left) + Edit-in-Makapix (a single icon, right).
+            // Title (left) + Edit-in-Makapix (a single icon, right). The icon turns
+            // golden (with a glow) when the post has a layers (.mkpx) file the
+            // signed-in user can open — then it loads the full layered document.
             Row(children: [
               Expanded(
                 child: Text(post.title.isEmpty ? 'Untitled' : post.title,
                     style: Theme.of(context).textTheme.titleLarge),
               ),
-              IconButton(
-                icon: const Icon(Icons.edit),
-                tooltip: 'Edit in Makapix',
-                onPressed: () => _openInEditor(context, post),
-              ),
+              _editButton(context, post),
+              ..._mkpxMenu(context, post),
             ]),
             const SizedBox(height: 4),
             _meta(post),
@@ -298,6 +301,167 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
     return Text(parts.join('  ·  '), style: const TextStyle(fontSize: 12, color: Colors.white38));
   }
 
+  // ---- mkpx-upload: golden Edit button, layers download, author attach/detach ----
+
+  /// The layers-file capability advertised by `GET /config` (`upload.mkpx`).
+  /// Absent or disabled → all mkpx affordances hidden.
+  MkpxRules get _mkpxRules =>
+      ref.watch(serverConfigProvider).valueOrNull?.upload.mkpx ?? MkpxRules.disabled;
+
+  bool _isOwner(Post post) {
+    final mySub = ref.read(authControllerProvider).me?.user.sub;
+    return mySub != null && mySub == post.owner.sqid;
+  }
+
+  /// Golden + glowing when the post has a layers file the signed-in user can
+  /// open (opens the .mkpx); the regular icon otherwise (imports the render).
+  Widget _editButton(BuildContext context, Post post) {
+    final golden =
+        _mkpxRules.enabled && post.hasMkpx && ref.watch(authControllerProvider).isSignedIn;
+    if (!golden) {
+      return IconButton(
+        icon: const Icon(Icons.edit),
+        tooltip: 'Edit in Makapix',
+        onPressed: () => _openInEditor(context, post),
+      );
+    }
+    const gold = Color(0xFFFFC94D);
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        boxShadow: [BoxShadow(color: Color(0x66FFC94D), blurRadius: 14, spreadRadius: 1)],
+      ),
+      child: IconButton(
+        icon: const Icon(Icons.edit, color: gold),
+        tooltip: 'Open with layers in Makapix',
+        onPressed: () => _openLayersInEditor(context, post),
+      ),
+    );
+  }
+
+  /// Author-only overflow menu: attach / replace / remove the layers file.
+  List<Widget> _mkpxMenu(BuildContext context, Post post) {
+    if (!_mkpxRules.enabled || post.isPlaylist || !_isOwner(post)) return const [];
+    return [
+      PopupMenuButton<String>(
+        tooltip: 'Layers file',
+        onSelected: (v) {
+          if (v == 'attach') _attachMkpx(context, post);
+          if (v == 'detach') _detachMkpx(context, post);
+        },
+        itemBuilder: (_) => [
+          PopupMenuItem(
+            value: 'attach',
+            child: Text(post.hasMkpx ? 'Replace layers file…' : 'Attach layers file…'),
+          ),
+          if (post.hasMkpx)
+            const PopupMenuItem(value: 'detach', child: Text('Remove layers file')),
+        ],
+      ),
+    ];
+  }
+
+  /// Golden-button action: download the post's .mkpx and open it in the editor
+  /// as a full layered document.
+  Future<void> _openLayersInEditor(BuildContext context, Post post) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final nav = Navigator.of(context);
+    messenger.showSnackBar(const SnackBar(content: Text('Downloading the layers file…')));
+    try {
+      final bytes = await ref.read(mkpxApiProvider).download(post.sqid);
+      final mySub = ref.read(authControllerProvider).me?.user.sub;
+      ref.read(pendingClubEditProvider.notifier).state = ClubEditRequest(
+        bytes: bytes,
+        width: post.width,
+        height: post.height,
+        sourcePostId: post.id,
+        sourceSqid: post.sqid,
+        sourceTitle: post.title,
+        sourceOwnerHandle: post.owner.handle,
+        isOwner: mySub != null && mySub == post.owner.sqid,
+        isMkpx: true,
+        sourceHasMkpx: true,
+      );
+      nav.popUntil((r) => r.isFirst); // surface the editor (app root)
+    } on ClubError catch (e) {
+      if (e.isAuth) {
+        messenger.showSnackBar(const SnackBar(
+            content: Text('Your session expired — sign in again to download the layers file.')));
+      } else if (e.status == 404) {
+        // Detached or dropped (artwork replaced) since this payload was fetched.
+        messenger.showSnackBar(
+            const SnackBar(content: Text('The layers file is no longer available.')));
+        ref.invalidate(postDetailProvider(widget.sqid));
+      } else {
+        messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } catch (_) {
+      messenger
+          .showSnackBar(const SnackBar(content: Text('Could not download the layers file.')));
+    }
+  }
+
+  /// Attach (or silently replace) the post's layers file from a picked .mkpx.
+  /// Pre-checks the magic bytes and the config size cap locally — a rejected
+  /// attach would still burn an upload rate-limit token server-side.
+  Future<void> _attachMkpx(BuildContext context, Post post) async {
+    final messenger = ScaffoldMessenger.of(context);
+    // ref.read (not the watch-based getter): this runs from an event handler.
+    final rules = ref.read(serverConfigProvider).valueOrNull?.upload.mkpx ?? MkpxRules.disabled;
+    final res = await FilePicker.pickFiles(
+        type: FileType.custom, allowedExtensions: ['mkpx'], withData: true);
+    final bytes = res?.files.single.bytes;
+    if (bytes == null) return; // cancelled
+    if (!MkpxApi.looksLikeMkpx(bytes)) {
+      messenger.showSnackBar(const SnackBar(content: Text('Not a valid .mkpx file.')));
+      return;
+    }
+    if (bytes.length > rules.maxFileBytes) {
+      messenger.showSnackBar(SnackBar(
+          content: Text('Too large — the layers file limit is '
+              '${(rules.maxFileBytes / (1024 * 1024)).toStringAsFixed(0)} MiB.')));
+      return;
+    }
+    messenger.showSnackBar(const SnackBar(content: Text('Uploading the layers file…')));
+    try {
+      await ref.read(mkpxApiProvider).attach(post.id, bytes);
+      ref.invalidate(postDetailProvider(widget.sqid));
+      messenger.showSnackBar(SnackBar(
+          content: Text(post.hasMkpx ? 'Layers file replaced.' : 'Layers file attached.')));
+    } on ClubError catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(content: Text('Could not upload the layers file.')));
+    }
+  }
+
+  Future<void> _detachMkpx(BuildContext context, Post post) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove layers file?'),
+        content: const Text(
+            'Members will no longer be able to open this artwork with its layers. '
+            'The post itself is unaffected. You can attach a new layers file later.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remove')),
+        ],
+      ),
+    );
+    if (go != true) return;
+    try {
+      await ref.read(mkpxApiProvider).detach(post.id);
+      ref.invalidate(postDetailProvider(widget.sqid));
+      messenger.showSnackBar(const SnackBar(content: Text('Layers file removed.')));
+    } on ClubError catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(content: Text('Could not remove the layers file.')));
+    }
+  }
+
   /// Download the artwork and hand it to the editor (root) for remix/replace.
   Future<void> _openInEditor(BuildContext context, Post post) async {
     final messenger = ScaffoldMessenger.of(context);
@@ -315,6 +479,7 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
         sourceTitle: post.title,
         sourceOwnerHandle: post.owner.handle,
         isOwner: mySub != null && mySub == post.owner.sqid,
+        sourceHasMkpx: post.hasMkpx,
       );
       nav.popUntil((r) => r.isFirst); // surface the editor (app root)
     } catch (e) {

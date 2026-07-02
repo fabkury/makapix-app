@@ -24,6 +24,9 @@ class Post {
   final bool userHasLiked;
   final List<PostFile> files;
   final License? license;
+  final bool hasMkpx; // attached layers (.mkpx) file — drives the golden Edit button
+  final int? mkpxFileBytes;
+  final DateTime? mkpxAttachedAt; // changes on attach AND replace (cache stamp)
 
   Post({
     required this.id,
@@ -50,6 +53,9 @@ class Post {
     required this.userHasLiked,
     required this.files,
     required this.license,
+    this.hasMkpx = false,
+    this.mkpxFileBytes,
+    this.mkpxAttachedAt,
   });
 
   bool get isAnimated => frameCount > 1;
@@ -85,6 +91,9 @@ class Post {
         license: j['license'] is Map
             ? License.fromJson((j['license'] as Map).cast<String, dynamic>())
             : null,
+        hasMkpx: j['has_mkpx'] == true,
+        mkpxFileBytes: (j['mkpx_file_bytes'] as num?)?.toInt(),
+        mkpxAttachedAt: DateTime.tryParse((j['mkpx_attached_at'] ?? '').toString()),
       );
 }
 

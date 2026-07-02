@@ -19,6 +19,10 @@ class UploadApi {
 
   /// Multipart upload. On 413 → `file_too_large`, 409 → `artwork_duplicate`,
   /// 429 → `rate_limited` (all via [ClubError]).
+  ///
+  /// [mkpxBytes] optionally attaches the layers (.mkpx) file in the same call
+  /// (contract §6): atomic — if it fails validation (`mkpx_invalid`,
+  /// `mkpx_too_large`) or quota, no post is created.
   Future<Post> uploadArtwork({
     required List<int> bytes,
     required String filename,
@@ -27,6 +31,7 @@ class UploadApi {
     String hashtags = '',
     bool hiddenByUser = false,
     int? licenseId,
+    List<int>? mkpxBytes,
   }) =>
       client.guard(() async {
         final form = FormData.fromMap({
@@ -36,8 +41,16 @@ class UploadApi {
           'hashtags': hashtags,
           'hidden_by_user': hiddenByUser.toString(),
           'license_id': ?licenseId?.toString(),
+          if (mkpxBytes != null)
+            'mkpx': MultipartFile.fromBytes(mkpxBytes, filename: 'layers.mkpx'),
         });
-        final resp = await client.dio.post('/post/upload', data: form);
+        final resp = await client.dio.post('/post/upload',
+            data: form,
+            // A layers file can reach tens of MB; the default 30 s send
+            // timeout is sized for the ≤5 MB artwork alone.
+            options: mkpxBytes == null
+                ? null
+                : Options(sendTimeout: const Duration(minutes: 5)));
         final data = (resp.data as Map).cast<String, dynamic>();
         // Tolerate either a bare Post or { post: {...} }.
         final postJson = (data['post'] as Map?)?.cast<String, dynamic>() ?? data;

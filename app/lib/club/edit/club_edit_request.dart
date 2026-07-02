@@ -13,6 +13,15 @@ class ClubEditRequest {
   final String sourceOwnerHandle;
   final bool isOwner;
 
+  /// True when [bytes] are the post's layers (.mkpx) document — loaded into the
+  /// engine as a full document (layers + frames). False when they are a
+  /// rendered image to be imported (flattened).
+  final bool isMkpx;
+
+  /// Whether the source post currently has a layers file attached (drives the
+  /// "replacing drops the layers file" warning at publish time).
+  final bool sourceHasMkpx;
+
   const ClubEditRequest({
     required this.bytes,
     required this.width,
@@ -22,6 +31,8 @@ class ClubEditRequest {
     required this.sourceTitle,
     required this.sourceOwnerHandle,
     required this.isOwner,
+    this.isMkpx = false,
+    this.sourceHasMkpx = false,
   });
 }
 
@@ -33,6 +44,7 @@ class ClubEditSource {
   final String title;
   final String ownerHandle;
   final bool isOwner;
+  final bool hasMkpx;
 
   const ClubEditSource({
     required this.postId,
@@ -40,5 +52,6 @@ class ClubEditSource {
     required this.title,
     required this.ownerHandle,
     required this.isOwner,
+    this.hasMkpx = false,
   });
 }

@@ -1,3 +1,21 @@
+/// Layers-file (.mkpx) capability from `GET /api/v1/config` → `upload.mkpx`.
+/// Absent key or `enabled: false` → feature off: hide the share checkbox,
+/// the golden Edit button styling, and every other mkpx affordance.
+class MkpxRules {
+  final bool enabled;
+  final int maxFileBytes;
+
+  const MkpxRules({required this.enabled, required this.maxFileBytes});
+
+  factory MkpxRules.fromJson(Map<String, dynamic>? j) => MkpxRules(
+        enabled: (j?['enabled'] as bool?) ?? false,
+        maxFileBytes: (j?['max_file_bytes'] as num?)?.toInt() ?? 52428800,
+      );
+
+  static const MkpxRules disabled =
+      MkpxRules(enabled: false, maxFileBytes: 52428800);
+}
+
 /// Upload conformance rules from `GET /api/v1/config` → `upload`.
 class UploadRules {
   final List<String> formats;
@@ -5,6 +23,7 @@ class UploadRules {
   final int freeFormMin;
   final int freeFormMax;
   final List<List<int>> smallWhitelist; // already includes both orientations
+  final MkpxRules mkpx;
 
   const UploadRules({
     required this.formats,
@@ -12,6 +31,7 @@ class UploadRules {
     required this.freeFormMin,
     required this.freeFormMax,
     required this.smallWhitelist,
+    this.mkpx = MkpxRules.disabled,
   });
 
   factory UploadRules.fromJson(Map<String, dynamic> j) => UploadRules(
@@ -23,6 +43,7 @@ class UploadRules {
         smallWhitelist: ((j['small_whitelist'] as List?) ?? const [])
             .map((e) => (e as List).map((n) => (n as num).toInt()).toList())
             .toList(),
+        mkpx: MkpxRules.fromJson((j['mkpx'] as Map?)?.cast<String, dynamic>()),
       );
 }
 

@@ -51,6 +51,7 @@ class PublishController extends StateNotifier<PublishState> {
     required String hashtags,
     required bool hidden,
     int? licenseId,
+    List<int>? mkpxBytes,
   }) async {
     state = const PublishState(PublishStatus.uploading);
     try {
@@ -62,6 +63,7 @@ class PublishController extends StateNotifier<PublishState> {
             hashtags: hashtags,
             hiddenByUser: hidden,
             licenseId: licenseId,
+            mkpxBytes: mkpxBytes,
           );
       state = PublishState(PublishStatus.success, post: post);
     } on ClubError catch (e) {
