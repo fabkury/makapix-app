@@ -116,9 +116,10 @@ extension _EditorTimeline on _EditorPageState {
   }
 
   // The editor's ☰ menu (left of the film-strip): everything that used to be in the top bar except
-  // the Undo/Redo/Play/Onion actions (which are now row-3 tools). The top level holds Club + four
-  // grouped submenus (File / Import & export / Canvas / View) that open as bottom sheets — matching
-  // the frame/layer/palette menus — so the list stays short.
+  // the Undo/Redo/Play/Onion actions (which are now row-3 tools). The top level holds the two Club
+  // actions (Go to Club / Post to Club) + four grouped submenus (File / Import & export / Canvas /
+  // View) that open as bottom sheets — matching the frame/layer/palette menus — so the list stays
+  // short. The header line is the document at a glance: canvas size + frame count.
   PopupMenuItem<String> _menuRow(String value, IconData icon, String label, {bool submenu = false}) =>
       PopupMenuItem<String>(
         value: value,
@@ -138,11 +139,13 @@ extension _EditorTimeline on _EditorPageState {
       itemBuilder: (_) => [
         PopupMenuItem<String>(
           enabled: false,
-          child: Text('Makapix · ${engine.width}×${engine.height}',
+          child: Text(
+              '${engine.width} × ${engine.height} px, ${engine.frameCount} ${engine.frameCount == 1 ? 'frame' : 'frames'}',
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
         ),
         const PopupMenuDivider(),
-        _menuRow('club', Icons.public, 'Club'),
+        _menuRow('club', Icons.public, 'Go to Club'),
+        _menuRow('post', Icons.cloud_upload_outlined, 'Post to Club'),
         const PopupMenuDivider(),
         _menuRow('file', Icons.folder_outlined, 'File', submenu: true),
         _menuRow('share', Icons.import_export, 'Import & export', submenu: true),
@@ -156,6 +159,9 @@ extension _EditorTimeline on _EditorPageState {
     switch (v) {
       case 'club':
         ref.read(openClubProvider.notifier).state++;
+        break;
+      case 'post':
+        _postToClub();
         break;
       case 'file':
         _fileMenu();
@@ -210,7 +216,7 @@ extension _EditorTimeline on _EditorPageState {
         _sheetItem(ctx, Icons.layers_outlined, 'Export layer as PNG…', _exportLayerPng),
         _sheetItem(ctx, Icons.gif_box_outlined, 'Export animation as GIF…', _exportGif),
         _sheetItem(ctx, Icons.animation, 'Export animation as WebP…', _exportWebp),
-        _sheetItem(ctx, Icons.cloud_upload_outlined, 'Post to Makapix Club', _postToClub),
+        // Post to Club lives at the menu's top level, beside Go to Club.
       ]);
 
   // Whole-canvas transforms (all frames + layers). The Rotate/Flip *tools* act on the active layer
