@@ -386,19 +386,35 @@ extension _EditorFileIo on _EditorPageState {
     return (await future, false);
   }
 
-  // A single-frame PNG export ('png' or 'layer-png'): instant at 1× (no dialog flash), behind the
-  // progress dialog when upscaled (a 32× frame can take seconds). The shared body of the two
-  // PNG menu items.
-  Future<void> _exportPngKind(String format, {required int layer, required String baseName, required String done}) async {
+  // A single-frame export — the active composited frame, or (layerOnly) the ACTIVE layer of it
+  // alone (straight alpha, canvas-sized) — as PNG or lossless static WebP; the dialog's format
+  // row chooses and the choice is remembered across sessions. Instant at 1× (no dialog flash),
+  // behind the progress dialog when upscaled (a 32× frame can take seconds).
+  Future<void> _exportStill({required bool layerOnly}) async {
     final frame = engine.activeFrame;
-    final choice = await _exportScaleDialog(frames: 1);
+    final layer = layerOnly ? _activeLayerIndex() : 0;
+    final prefs = _prefs ?? await SharedPreferences.getInstance();
+    final remembered = prefs.getString(_kExportStillFormatPref) ?? 'PNG';
+    if (!mounted) return;
+    final choice = await _exportScaleDialog(
+      frames: 1,
+      formats: const ['PNG', 'WebP'],
+      initialFormat: remembered,
+    );
     if (choice == null) return;
-    final (scale, _) = choice;
+    final (scale, chosen) = choice;
+    await prefs.setString(_kExportStillFormatPref, chosen);
+    final webp = chosen == 'WebP';
+    final format = layerOnly ? (webp ? 'layer-webp' : 'layer-png') : (webp ? 'frame-webp' : 'png');
+    final ext = webp ? 'webp' : 'png';
+    final baseName = layerOnly ? 'frame_${frame + 1}_layer_${layer + 1}' : 'frame_${frame + 1}';
+    final done = layerOnly ? 'Exported layer ${layer + 1}' : 'Exported $chosen';
     final Uint8List bytes;
     if (scale == 1) {
       bytes = await Engine.encodeInBackground(engine.save(), format: format, frame: frame, layer: layer); // [F-12]
     } else {
-      final (b, cancelled) = await _encodeWithProgress(format, frame: frame, layer: layer, scale: scale, title: 'Rendering PNG…');
+      final (b, cancelled) =
+          await _encodeWithProgress(format, frame: frame, layer: layer, scale: scale, title: 'Rendering $chosen…');
       if (cancelled) {
         _toast('Export cancelled');
         return;
@@ -410,22 +426,13 @@ extension _EditorFileIo on _EditorPageState {
       return;
     }
     await _saveExport(bytes,
-        fileName: scale > 1 ? '${baseName}_${scale}x.png' : '$baseName.png',
-        ext: 'png',
+        fileName: scale > 1 ? '${baseName}_${scale}x.$ext' : '$baseName.$ext',
+        ext: ext,
         done: '$done (${bytes.length ~/ 1024} KiB)');
   }
 
-  Future<void> _exportPng() =>
-      _exportPngKind('png', layer: 0, baseName: 'frame_${engine.activeFrame + 1}', done: 'Exported PNG');
-
-  // The ACTIVE layer of the active frame, alone (straight alpha, canvas-sized) — not the composite.
-  Future<void> _exportLayerPng() {
-    final layer = _activeLayerIndex();
-    return _exportPngKind('layer-png',
-        layer: layer,
-        baseName: 'frame_${engine.activeFrame + 1}_layer_${layer + 1}',
-        done: 'Exported layer ${layer + 1}');
-  }
+  Future<void> _exportFrame() => _exportStill(layerOnly: false);
+  Future<void> _exportLayer() => _exportStill(layerOnly: true);
 
   Future<void> _exportGif() async {
     final fc = engine.frameCount;
@@ -471,9 +478,10 @@ extension _EditorFileIo on _EditorPageState {
 
   // Share the artwork with other apps via the system share sheet: animations as GIF (the format
   // chat/social apps handle best) or lossless WebP (needed when a frame exceeds GIF's 256
-  // colours — the choice is remembered across sessions), stills always as PNG. The bytes go to a
-  // temp file in the app's cache dir (no storage permission needed; share_plus serves it to the
-  // receiver through its FileProvider).
+  // colours — the choice is remembered across sessions); stills always as PNG — deliberately
+  // NEVER WebP, for receiver compatibility (the file EXPORTS offer WebP stills instead). The
+  // bytes go to a temp file in the app's cache dir (no storage permission needed; share_plus
+  // serves it to the receiver through its FileProvider).
   Future<void> _share() async {
     final fc = engine.frameCount;
     final animated = fc > 1;

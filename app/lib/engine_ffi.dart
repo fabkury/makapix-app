@@ -110,6 +110,9 @@ class Engine {
   late final _ImportD _import = _lib.lookupFunction<_ImportC, _ImportD>('mkpx_import');
   late final _ExportPngD _exportPng = _lib.lookupFunction<_ExportPngC, _ExportPngD>('mkpx_export_png');
   late final _ExportLayerPngD _exportLayerPng = _lib.lookupFunction<_ExportLayerPngC, _ExportLayerPngD>('mkpx_export_layer_png');
+  // The still-WebP twins share the PNG exports' C signatures.
+  late final _ExportPngD _exportFrameWebp = _lib.lookupFunction<_ExportPngC, _ExportPngD>('mkpx_export_frame_webp');
+  late final _ExportLayerPngD _exportLayerWebp = _lib.lookupFunction<_ExportLayerPngC, _ExportLayerPngD>('mkpx_export_layer_webp');
   late final _ExportGifD _exportGif = _lib.lookupFunction<_ExportGifC, _ExportGifD>('mkpx_export_gif');
   // Same C signature as export_gif (Session*, out_len) → bytes.
   late final _ExportGifD _exportWebp = _lib.lookupFunction<_ExportGifC, _ExportGifD>('mkpx_export_webp');
@@ -275,6 +278,27 @@ class Engine {
     return out;
   }
 
+  /// One frame as a LOSSLESS static WebP — the still twin of [exportPng] (distinct from
+  /// [exportWebp], which exports the whole animation).
+  Uint8List exportFrameWebp(int frame, {int scale = 1}) {
+    final lenPtr = malloc<Uint64>();
+    final p = _exportFrameWebp(_s, frame, scale, lenPtr);
+    final out = p == nullptr ? Uint8List(0) : Uint8List.fromList(p.asTypedList(lenPtr.value));
+    if (p != nullptr) _freeBytes(p, lenPtr.value);
+    malloc.free(lenPtr);
+    return out;
+  }
+
+  /// One layer of one frame as a LOSSLESS static WebP — the still twin of [exportLayerPng].
+  Uint8List exportLayerWebp(int frame, int layer, {int scale = 1}) {
+    final lenPtr = malloc<Uint64>();
+    final p = _exportLayerWebp(_s, frame, layer, scale, lenPtr);
+    final out = p == nullptr ? Uint8List(0) : Uint8List.fromList(p.asTypedList(lenPtr.value));
+    if (p != nullptr) _freeBytes(p, lenPtr.value);
+    malloc.free(lenPtr);
+    return out;
+  }
+
   Uint8List exportGif({int scale = 1}) {
     final lenPtr = malloc<Uint64>();
     final p = _exportGif(_s, scale, lenPtr);
@@ -313,7 +337,7 @@ class Engine {
   void dispose() => _freeS(_s);
 
   /// Encode `docBytes` (a `.mkpx` snapshot) to the given `format` ('webp' | 'gif' | 'png' |
-  /// 'layer-png') **off the UI thread**: a background isolate builds its own engine from the
+  /// 'frame-webp' | 'layer-png' | 'layer-webp') **off the UI thread**: a background isolate builds its own engine from the
   /// snapshot and runs the (potentially slow, multi-frame) encode, so the editor stays responsive.
   /// Falls back to a synchronous encode if the isolate can't run. The opaque session pointer is
   /// never shared across isolates; each builds its own from the bytes. [audit F-12]
@@ -336,8 +360,12 @@ class Engine {
           return e.exportWebp(scale: scale);
         case 'gif':
           return e.exportGif(scale: scale);
+        case 'frame-webp':
+          return e.exportFrameWebp(frame, scale: scale);
         case 'layer-png':
           return e.exportLayerPng(frame, layer, scale: scale);
+        case 'layer-webp':
+          return e.exportLayerWebp(frame, layer, scale: scale);
         default:
           return e.exportPng(frame, scale: scale);
       }

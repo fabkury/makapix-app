@@ -217,8 +217,9 @@ extension _EditorTimeline on _EditorPageState {
 
   void _importExportMenu() => _editorSubMenu('Import & export', (ctx) => [
         _sheetItem(ctx, Icons.image_outlined, 'Import image…', _importImage),
-        _sheetItem(ctx, Icons.photo_outlined, 'Export frame as PNG…', _exportPng),
-        _sheetItem(ctx, Icons.layers_outlined, 'Export layer as PNG…', _exportLayerPng),
+        // Frame/layer stills offer PNG or lossless WebP inside the export dialog.
+        _sheetItem(ctx, Icons.photo_outlined, 'Export frame…', _exportFrame),
+        _sheetItem(ctx, Icons.layers_outlined, 'Export layer…', _exportLayer),
         _sheetItem(ctx, Icons.gif_box_outlined, 'Export animation as GIF…', _exportGif),
         _sheetItem(ctx, Icons.animation, 'Export animation as WebP…', _exportWebp),
         // Post to Club lives at the menu's top level, beside Go to Club.

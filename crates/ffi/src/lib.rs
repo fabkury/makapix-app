@@ -364,17 +364,20 @@ pub extern "C" fn mkpx_import(
     0
 }
 
-/// Upscale (nearest-neighbour) then PNG-encode one frame's RGBA, with coarse 2-step progress
-/// (composite/extract done → encode done) and a cancel check between the steps. The shared tail
-/// of the two single-frame PNG exports.
-fn png_out(w: u16, h: u16, rgba: Vec<u8>, scale: u32, out_len: *mut u64) -> *mut u8 {
+/// Upscale (nearest-neighbour) then encode one frame's RGBA as PNG or lossless WebP, with coarse
+/// 2-step progress (composite/extract done → encode done) and a cancel check between the steps.
+/// The shared tail of the four single-frame exports.
+fn still_out(w: u16, h: u16, rgba: Vec<u8>, scale: u32, webp: bool, out_len: *mut u64) -> *mut u8 {
     let scale = scale.clamp(1, 32);
     export_progress_set(1, 2);
     if EXPORT_CANCEL.load(Ordering::Relaxed) {
         return std::ptr::null_mut();
     }
     let data = if scale == 1 { rgba } else { makapix_codec::upscale_nearest(w as u32, h as u32, &rgba, scale) };
-    let out = match makapix_codec::encode_png(w as u32 * scale, h as u32 * scale, &data) {
+    let (ow, oh) = (w as u32 * scale, h as u32 * scale);
+    let encoded =
+        if webp { makapix_codec::encode_webp(ow, oh, &data) } else { makapix_codec::encode_png(ow, oh, &data) };
+    let out = match encoded {
         Ok(v) => bytes_out(v, out_len),
         Err(_) => std::ptr::null_mut(),
     };
@@ -382,10 +385,8 @@ fn png_out(w: u16, h: u16, rgba: Vec<u8>, scale: u32, out_len: *mut u64) -> *mut
     out
 }
 
-/// Export the active (or given) frame as PNG, upscaled ×`scale` (nearest-neighbour, clamped
-/// 1..=32). Returns a malloc'd buffer; len via `out_len`.
-#[no_mangle]
-pub extern "C" fn mkpx_export_png(ptr: *mut Session, frame: u32, scale: u32, out_len: *mut u64) -> *mut u8 {
+/// One composited frame as a still (PNG or lossless WebP): the body of the two frame exports.
+fn export_frame_still(ptr: *mut Session, frame: u32, scale: u32, webp: bool, out_len: *mut u64) -> *mut u8 {
     let s = match session(ptr) {
         Some(s) => s,
         None => return std::ptr::null_mut(),
@@ -394,15 +395,13 @@ pub extern "C" fn mkpx_export_png(ptr: *mut Session, frame: u32, scale: u32, out
     EXPORT_CANCEL.store(false, Ordering::Relaxed);
     export_progress_set(0, 2);
     let rgba = s.composite_frame_bytes(frame as usize);
-    png_out(w, h, rgba, scale, out_len)
+    still_out(w, h, rgba, scale, webp, out_len)
 }
 
-/// Export ONE layer of one frame as a PNG — the layer's own pixels (straight alpha), not the
-/// composite — upscaled ×`scale` (nearest-neighbour, clamped 1..=32). Stale indices clamp
-/// (bounds-safe). Returns a malloc'd buffer; len via `out_len`; null when the frame has no
-/// layers or on encode failure.
-#[no_mangle]
-pub extern "C" fn mkpx_export_layer_png(ptr: *mut Session, frame: u32, layer: u32, scale: u32, out_len: *mut u64) -> *mut u8 {
+/// One layer of one frame as a still — the layer's own pixels (straight alpha), not the
+/// composite: the body of the two layer exports. Stale indices clamp (bounds-safe); null when
+/// the frame has no layers.
+fn export_layer_still(ptr: *mut Session, frame: u32, layer: u32, scale: u32, webp: bool, out_len: *mut u64) -> *mut u8 {
     let s = match session(ptr) {
         Some(s) => s,
         None => return std::ptr::null_mut(),
@@ -414,7 +413,38 @@ pub extern "C" fn mkpx_export_layer_png(ptr: *mut Session, frame: u32, layer: u3
     if rgba.is_empty() {
         return std::ptr::null_mut();
     }
-    png_out(w, h, rgba, scale, out_len)
+    still_out(w, h, rgba, scale, webp, out_len)
+}
+
+/// Export the active (or given) frame as PNG, upscaled ×`scale` (nearest-neighbour, clamped
+/// 1..=32). Returns a malloc'd buffer; len via `out_len`.
+#[no_mangle]
+pub extern "C" fn mkpx_export_png(ptr: *mut Session, frame: u32, scale: u32, out_len: *mut u64) -> *mut u8 {
+    export_frame_still(ptr, frame, scale, false, out_len)
+}
+
+/// Export the active (or given) frame as a LOSSLESS static WebP, upscaled ×`scale` — the still
+/// twin of `mkpx_export_png` (for artwork whose colours exceed formats like GIF; distinct from
+/// `mkpx_export_webp`, which exports the whole animation).
+#[no_mangle]
+pub extern "C" fn mkpx_export_frame_webp(ptr: *mut Session, frame: u32, scale: u32, out_len: *mut u64) -> *mut u8 {
+    export_frame_still(ptr, frame, scale, true, out_len)
+}
+
+/// Export ONE layer of one frame as a PNG — the layer's own pixels (straight alpha), not the
+/// composite — upscaled ×`scale` (nearest-neighbour, clamped 1..=32). Stale indices clamp
+/// (bounds-safe). Returns a malloc'd buffer; len via `out_len`; null when the frame has no
+/// layers or on encode failure.
+#[no_mangle]
+pub extern "C" fn mkpx_export_layer_png(ptr: *mut Session, frame: u32, layer: u32, scale: u32, out_len: *mut u64) -> *mut u8 {
+    export_layer_still(ptr, frame, layer, scale, false, out_len)
+}
+
+/// Export ONE layer of one frame as a LOSSLESS static WebP — the still twin of
+/// `mkpx_export_layer_png`.
+#[no_mangle]
+pub extern "C" fn mkpx_export_layer_webp(ptr: *mut Session, frame: u32, layer: u32, scale: u32, out_len: *mut u64) -> *mut u8 {
+    export_layer_still(ptr, frame, layer, scale, true, out_len)
 }
 
 /// Composite every frame with per-frame progress (steps 0..n of 2n) and honouring cancel.
@@ -600,6 +630,27 @@ mod tests {
         mkpx_free_bytes(out, len);
         let back = makapix_codec::decode(&png).unwrap();
         assert_eq!((back[0].w, back[0].h), (128, 128), "16×16 at 8× exports 128×128");
+        mkpx_free(p);
+    }
+
+    #[test]
+    fn ffi_export_still_webp() {
+        let _guard = EXPORT_TEST_LOCK.lock().unwrap();
+        let p = mkpx_new(16, 16);
+        let script = b"SelectTool(Pencil); Tap(3,3)";
+        let _ = mkpx_run(p, script.as_ptr(), script.len());
+        let mut len: u64 = 0;
+        let out = mkpx_export_frame_webp(p, 0, 4, &mut len);
+        assert!(!out.is_null() && len > 0);
+        let webp = unsafe { slice::from_raw_parts(out, len as usize) }.to_vec();
+        mkpx_free_bytes(out, len);
+        assert_eq!(&webp[8..12], b"WEBP");
+        let back = makapix_codec::decode(&webp).unwrap();
+        assert_eq!((back.len(), back[0].w, back[0].h), (1, 64, 64), "one 4×-scaled still frame");
+        // The layer variant works too (single layer == the frame here).
+        let out2 = mkpx_export_layer_webp(p, 0, 0, 1, &mut len);
+        assert!(!out2.is_null() && len > 0);
+        mkpx_free_bytes(out2, len);
         mkpx_free(p);
     }
 
