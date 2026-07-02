@@ -13,6 +13,7 @@ import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:makapix_club/club/edit/club_edit_request.dart';
@@ -50,6 +51,7 @@ const double _kMinZoom = 0.25, _kMaxZoom = 32.0;
 const _kExportWarnPixels = 64 * 1000 * 1000;
 const _prefsKey = 'tool_order_v1';
 const _kCurrentDrawing = 'editor.currentDrawingId'; // last-open library drawing (silent restore)
+const _kShareFormatPref = 'editor.shareFormat_v1'; // last-used Share format for animations (GIF/WebP)
 const _transformTools = {'Flip', 'Rotate', 'Invert', 'Resize'};
 // Row-3 "action" tools in the reorderable grid: tapping fires an action/toggle immediately rather
 // than selecting a draw tool (handled in _toolTile / _doToolAction). Undo/Redo are NOT here — they

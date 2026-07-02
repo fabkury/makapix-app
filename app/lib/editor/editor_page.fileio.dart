@@ -229,24 +229,45 @@ extension _EditorFileIo on _EditorPageState {
     }
   }
 
-  // export-dialog: every PNG/GIF/WebP export starts here (not .mkpx) — pick an integer upscale
-  // factor for the output (nearest-neighbour, so pixel edges stay crisp). Returns the factor, or
-  // null on Cancel. When the chosen size is very large (see _kExportWarnPixels), the first press
-  // of Export only raises a red alert and relabels the button "Export anyway" — the explicit
-  // re-confirmation for exports that can take minutes and a lot of memory.
-  Future<int?> _exportScaleDialog({required int frames}) {
+  // export-dialog: every PNG/GIF/WebP export and every Share starts here (not .mkpx) — pick an
+  // integer upscale factor for the output (nearest-neighbour, so pixel edges stay crisp) and,
+  // when `formats` are offered (Share of an animation: GIF vs lossless WebP), the file format.
+  // Returns (scale, format) — format is '' when no choice was offered — or null on Cancel. When
+  // the chosen size is very large (see _kExportWarnPixels), the first press of Export/Share only
+  // raises a red alert and relabels the button "… anyway" — the explicit re-confirmation for
+  // exports that can take minutes and a lot of memory.
+  Future<(int, String)?> _exportScaleDialog({
+    required int frames,
+    String title = 'Export size',
+    String action = 'Export',
+    List<String> formats = const [],
+    String initialFormat = '',
+  }) {
     final w = engine.width, h = engine.height;
     var scale = 1;
+    var format = formats.contains(initialFormat) ? initialFormat : (formats.isEmpty ? '' : formats.first);
     var warned = false;
-    return showDialog<int>(
+    return showDialog<(int, String)>(
       context: context,
       builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
         final ow = w * scale, oh = h * scale;
         final totalPx = ow * oh * frames;
         final big = totalPx > _kExportWarnPixels;
         return AlertDialog(
-          title: const Text('Export size'),
+          title: Text(title),
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (formats.isNotEmpty) ...[
+              Wrap(spacing: 6, children: [
+                for (final f in formats)
+                  ChoiceChip(
+                    label: Text(f),
+                    selected: format == f,
+                    selectedColor: const Color(0xFF30A050),
+                    onSelected: (_) => setS(() => format = f),
+                  ),
+              ]),
+              const SizedBox(height: 6),
+            ],
             Wrap(spacing: 6, children: [
               for (final s in const [1, 4, 8, 16, 32])
                 ChoiceChip(
@@ -280,7 +301,7 @@ extension _EditorFileIo on _EditorPageState {
                     Expanded(
                       child: Text(
                         'Very large export: ${(totalPx / 1e6).toStringAsFixed(0)} million pixels. '
-                        'This can take a long time and a lot of memory. Export anyway?',
+                        'This can take a long time and a lot of memory. $action anyway?',
                         style: const TextStyle(fontSize: 12, color: Color(0xFFE05050)),
                       ),
                     ),
@@ -297,9 +318,9 @@ extension _EditorFileIo on _EditorPageState {
                   setS(() => warned = true); // first press on a huge size only raises the alert
                   return;
                 }
-                Navigator.pop(ctx, scale);
+                Navigator.pop(ctx, (scale, format));
               },
-              child: Text(warned ? 'Export anyway' : 'Export'),
+              child: Text(warned ? '$action anyway' : action),
             ),
           ],
         );
@@ -370,8 +391,9 @@ extension _EditorFileIo on _EditorPageState {
   // PNG menu items.
   Future<void> _exportPngKind(String format, {required int layer, required String baseName, required String done}) async {
     final frame = engine.activeFrame;
-    final scale = await _exportScaleDialog(frames: 1);
-    if (scale == null) return;
+    final choice = await _exportScaleDialog(frames: 1);
+    if (choice == null) return;
+    final (scale, _) = choice;
     final Uint8List bytes;
     if (scale == 1) {
       bytes = await Engine.encodeInBackground(engine.save(), format: format, frame: frame, layer: layer); // [F-12]
@@ -407,8 +429,9 @@ extension _EditorFileIo on _EditorPageState {
 
   Future<void> _exportGif() async {
     final fc = engine.frameCount;
-    final scale = await _exportScaleDialog(frames: fc);
-    if (scale == null) return;
+    final choice = await _exportScaleDialog(frames: fc);
+    if (choice == null) return;
+    final (scale, _) = choice;
     final (bytes, cancelled) = await _encodeWithProgress('gif', scale: scale, title: 'Rendering GIF…');
     if (cancelled) {
       _toast('Export cancelled');
@@ -428,8 +451,9 @@ extension _EditorFileIo on _EditorPageState {
   // Club publish flow uses (that path stays at 1×), saved to a user-chosen file instead.
   Future<void> _exportWebp() async {
     final fc = engine.frameCount;
-    final scale = await _exportScaleDialog(frames: fc);
-    if (scale == null) return;
+    final choice = await _exportScaleDialog(frames: fc);
+    if (choice == null) return;
+    final (scale, _) = choice;
     final (bytes, cancelled) = await _encodeWithProgress('webp', scale: scale, title: 'Rendering WebP…');
     if (cancelled) {
       _toast('Export cancelled');
@@ -443,6 +467,66 @@ extension _EditorFileIo on _EditorPageState {
         fileName: scale > 1 ? 'animation_${scale}x.webp' : 'animation.webp',
         ext: 'webp',
         done: 'Exported WebP ($fc frames, ${bytes.length ~/ 1024} KiB)');
+  }
+
+  // Share the artwork with other apps via the system share sheet: animations as GIF (the format
+  // chat/social apps handle best) or lossless WebP (needed when a frame exceeds GIF's 256
+  // colours — the choice is remembered across sessions), stills always as PNG. The bytes go to a
+  // temp file in the app's cache dir (no storage permission needed; share_plus serves it to the
+  // receiver through its FileProvider).
+  Future<void> _share() async {
+    final fc = engine.frameCount;
+    final animated = fc > 1;
+    final prefs = _prefs ?? await SharedPreferences.getInstance();
+    final remembered = prefs.getString(_kShareFormatPref) ?? 'GIF';
+    if (!mounted) return;
+    final choice = await _exportScaleDialog(
+      frames: fc,
+      title: 'Share',
+      action: 'Share',
+      formats: animated ? const ['GIF', 'WebP'] : const [],
+      initialFormat: remembered,
+    );
+    if (choice == null) return;
+    final (scale, chosen) = choice;
+    final (format, ext, mime) = !animated
+        ? ('png', 'png', 'image/png')
+        : chosen == 'WebP'
+            ? ('webp', 'webp', 'image/webp')
+            : ('gif', 'gif', 'image/gif');
+    if (animated) await prefs.setString(_kShareFormatPref, chosen);
+
+    final Uint8List bytes;
+    if (!animated && scale == 1) {
+      bytes = await Engine.encodeInBackground(engine.save(), format: 'png', frame: engine.activeFrame); // [F-12]
+    } else {
+      final (b, cancelled) = await _encodeWithProgress(format,
+          frame: engine.activeFrame, scale: scale, title: 'Rendering ${animated ? chosen : 'PNG'}…');
+      if (cancelled) {
+        _toast('Share cancelled');
+        return;
+      }
+      bytes = b;
+    }
+    if (bytes.isEmpty) {
+      _toast('Share failed');
+      return;
+    }
+
+    try {
+      // A fresh per-share subdir of the cache: deleting a shared file right after the sheet
+      // closes can race a receiver that reads lazily, so the PREVIOUS share is pruned here
+      // instead, and the OS may reclaim the cache dir at will.
+      final dir = Directory('${(await getTemporaryDirectory()).path}/share');
+      if (dir.existsSync()) dir.deleteSync(recursive: true);
+      dir.createSync(recursive: true);
+      final title = _drawingTitle.replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '_');
+      final f = File('${dir.path}/${title.isEmpty ? 'makapix' : title}.$ext');
+      await f.writeAsBytes(bytes);
+      await SharePlus.instance.share(ShareParams(files: [XFile(f.path, mimeType: mime)]));
+    } catch (e) {
+      if (mounted) _toast('Could not share: $e');
+    }
   }
 
   Future<void> _resizeCanvasDialog() async {

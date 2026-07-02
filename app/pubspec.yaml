@@ -48,6 +48,7 @@ dependencies:
   flutter_secure_storage: ^9.2.2  # access/refresh tokens at rest
   flutter_web_auth_2: ^4.1.0      # in-app browser for the server-brokered GitHub OAuth return leg
   crypto: ^3.0.5                  # PKCE S256 challenge
+  share_plus: ^12.0.2
 
 dev_dependencies:
   flutter_test:
