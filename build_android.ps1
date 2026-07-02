@@ -6,11 +6,11 @@
 #   cargo install cargo-ndk
 #   Android SDK + NDK installed (Android Studio or sdkmanager)
 #
-# Usage:  ./build_android.ps1            (build APK, dev back end)
+# Usage:  ./build_android.ps1            (build APK, prod back end — the default everywhere)
 #         ./build_android.ps1 -Install   (build APK, then install to a USB-connected phone)
-#         ./build_android.ps1 -Prod      (point the app at the production back end, makapix.club)
+#         ./build_android.ps1 -Dev       (point the app at the development back end)
 #         ./build_android.ps1 -Bundle    (build a signed .aab for Play upload instead of an APK)
-param([switch]$Install, [switch]$Prod, [switch]$Bundle)
+param([switch]$Install, [switch]$Dev, [switch]$Bundle)
 
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
@@ -29,8 +29,9 @@ Write-Host "==> Cross-compiling engine to Android (.so) for arm64-v8a + armeabi-
 cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o "$root\app\android\app\src\main\jniLibs" build -p makapix-ffi --release
 if ($LASTEXITCODE -ne 0) { exit 1 }
 
-# CLUB_ENV selects the back end (club_config.dart); default `dev`, `prod` targets makapix.club.
-$clubEnv = if ($Prod) { "prod" } else { "dev" }
+# CLUB_ENV selects the back end (club_config.dart); default `prod` (makapix.club) so no build
+# points at the dev server by accident — `-Dev` opts in to development.makapix.club.
+$clubEnv = if ($Dev) { "dev" } else { "prod" }
 
 if ($Bundle) {
   # Signed Android App Bundle for the Play Store (release signing comes from app/android/key.properties).

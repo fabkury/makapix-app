@@ -9,11 +9,12 @@ class ClubConfig {
   final ClubEnvironment env;
   const ClubConfig(this.env);
 
-  /// Selected at build time via `--dart-define=CLUB_ENV=prod` (defaults to `dev` for local and
-  /// internal-testing builds) so a release can't silently ship pointing at the dev server. [F-8]
-  static const String _envName = String.fromEnvironment('CLUB_ENV', defaultValue: 'dev');
+  /// Selected at build time via `--dart-define=CLUB_ENV=dev`. **Defaults to `prod`** (decided
+  /// 2026-07-02): no build — release or otherwise — can point at the dev server by omission;
+  /// dev must be asked for explicitly (`./build.ps1 -Dev`, `./build_android.ps1 -Dev`). [F-8]
+  static const String _envName = String.fromEnvironment('CLUB_ENV', defaultValue: 'prod');
   static const ClubConfig defaultConfig =
-      ClubConfig(_envName == 'prod' ? ClubEnvironment.prod : ClubEnvironment.dev);
+      ClubConfig(_envName == 'dev' ? ClubEnvironment.dev : ClubEnvironment.prod);
 
   /// Network timeouts applied to every Dio client. Without them a stalled connection (captive
   /// portal, dead server) hangs the request — and the spinner — forever. [audit F-7]

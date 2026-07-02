@@ -4,7 +4,7 @@
 #          → gates (cargo test, flutter analyze, flutter test)
 #          → query Play for the next free versionCode (tools/play_publish.py next-code)
 #          → write version to app/pubspec.yaml
-#          → build the signed prod AAB (build_android.ps1 -Bundle -Prod)
+#          → build the signed prod AAB (build_android.ps1 -Bundle; prod is the default backend)
 #          → upload + roll out to the track (tools/play_publish.py publish)
 #          → commit the version bump, tag v<name>+<code>, push with tags
 #
@@ -82,7 +82,7 @@ Write-Host "    releasing as $name+$code (was $curName+$curCode)"
 if ($DryRun) {
   Step "DryRun — stopping before any changes"
   Write-Host "Would: write 'version: $name+$code' to app/pubspec.yaml"
-  Write-Host "Would: ./build_android.ps1 -Bundle -Prod"
+  Write-Host "Would: ./build_android.ps1 -Bundle   (prod backend — the default)"
   Write-Host "Would: upload $aab to '$Track' with notes from $NotesFile"
   Write-Host "Would: commit + tag v$name+$code + push origin main --follow-tags"
   return
@@ -93,7 +93,7 @@ Step "Writing version: $name+$code"
 (Get-Content $pubspec) -replace '^version:\s*\S+\s*$', "version: $name+$code" | Set-Content $pubspec -Encoding utf8
 
 Step "Building signed prod AAB"
-& "$root\build_android.ps1" -Bundle -Prod
+& "$root\build_android.ps1" -Bundle
 if ($LASTEXITCODE -ne 0) { Fail "AAB build failed (pubspec already bumped — fix and rerun)" }
 
 # ---- Upload -----------------------------------------------------------------

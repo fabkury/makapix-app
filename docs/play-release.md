@@ -10,7 +10,7 @@ One command cuts a release end-to-end:
 
 The pipeline: verify clean tree on `main` → `cargo test` + `flutter analyze` + `flutter test` →
 ask the Play API for the next free `versionCode` → write it to `app/pubspec.yaml` →
-`./build_android.ps1 -Bundle -Prod` (Play builds always target the **prod** backend) →
+`./build_android.ps1 -Bundle` (**prod** is the backend default everywhere; dev requires `-Dev`) →
 upload + roll out to the **internal** track with notes from `distribution/whatsnew/whatsnew-en-US` →
 commit `chore(release)`, tag `v<name>+<code>`, push with tags.
 

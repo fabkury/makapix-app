@@ -157,7 +157,9 @@ signals (and `pendingClubEditProvider` for edit/remix).
   · `config/`.
 - **State:** **Riverpod** (`ProviderScope` wraps the app in `main()`). HTTP is **Dio** with a single-flight
   401→refresh→retry interceptor (`api/club_api_client.dart`). `config/club_config.dart` selects the server:
-  `dev` → `https://development.makapix.club`, `prod` → `https://makapix.club`; the REST base is
+  `dev` → `https://development.makapix.club`, `prod` → `https://makapix.club` — **`prod` is the
+  compile-time default** (any build without `--dart-define=CLUB_ENV=dev` talks to makapix.club; dev
+  requires the explicit `-Dev` flag on `build.ps1` / `build_android.ps1`); the REST base is
   `{baseUrl}/api/v1`. Auth tokens at rest use `flutter_secure_storage`; the GitHub OAuth return leg uses
   `flutter_web_auth_2` with a **verified HTTPS App Link** (`https://app[-dev].makapix.club/oauth/github`,
   `callbackUrlScheme: "https"` + an `autoVerify` manifest intent-filter), falling back to the

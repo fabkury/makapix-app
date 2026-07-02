@@ -1,7 +1,8 @@
 # Build the Makapix engine DLL + the Windows app, and bundle the DLL next to the exe.
-# Usage:  ./build.ps1            (release build)
+# Usage:  ./build.ps1            (release build, prod back end — the default everywhere)
 #         ./build.ps1 -Run       (build then launch the app)
-param([switch]$Run)
+#         ./build.ps1 -Dev       (point the app at the development back end)
+param([switch]$Run, [switch]$Dev)
 
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
@@ -13,9 +14,11 @@ if ($LASTEXITCODE -ne 0) { exit 1 }
 Write-Host "==> Running engine test suite..." -ForegroundColor Cyan
 cargo test 2>&1 | Select-String "test result"
 
-Write-Host "==> Building Flutter Windows app (release)..." -ForegroundColor Cyan
+# CLUB_ENV selects the back end (club_config.dart); default `prod`, `-Dev` opts in to the dev server.
+$clubEnv = if ($Dev) { "dev" } else { "prod" }
+Write-Host "==> Building Flutter Windows app (release, CLUB_ENV=$clubEnv)..." -ForegroundColor Cyan
 Push-Location "$root/app"
-flutter build windows --release
+flutter build windows --release --dart-define=CLUB_ENV=$clubEnv
 Pop-Location
 if ($LASTEXITCODE -ne 0) { exit 1 }
 
