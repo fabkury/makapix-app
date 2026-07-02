@@ -38,6 +38,8 @@ macOS CI — it cannot be built here, so don't try.
 
 # Google Play release (internal testing): gates → next versionCode from the Play API → signed prod
 # AAB → upload + rollout → commit/tag/push. One-time service-account setup: docs/play-release.md.
+# Releases run locally on this workstation by decision (2026-07-02); GitHub Actions (CI/release
+# workflows) is deferred to a later date — don't add .github/workflows without being asked.
 ./release_android.ps1          # -DryRun to rehearse; -VersionName X.Y.Z to bump the visible version
 ```
 
