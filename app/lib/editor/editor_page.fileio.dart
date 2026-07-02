@@ -10,7 +10,9 @@ extension _EditorFileIo on _EditorPageState {
   // Export a portable .mkpx to a user-chosen location. (This is separate from the automatic library
   // autosave, which keeps the working drawing safe regardless — see editor_page.persistence.dart.)
   Future<void> _save() async {
-    final bytes = engine.save();
+    // A portable, user-visible file → the compact (DEFLATE) profile. The library autosave and the
+    // render-snapshot paths (PNG/GIF/WebP export) keep the cheap plain profile; `_open` loads either.
+    final bytes = engine.saveCompact();
     try {
       final path = await FilePicker.saveFile(
         dialogTitle: 'Save .mkpx',

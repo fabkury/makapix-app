@@ -1,6 +1,11 @@
 //! Image import/export (SPEC §16). Decodes GIF/PNG/APNG/JPEG/BMP/WebP into the engine's
 //! `DecodedFrame`s (animated formats yield multiple frames with per-frame durations) and
 //! encodes documents to PNG (per-frame / sprite-sheet) and animated GIF.
+//!
+//! Also hosts the `.mkpx` **compact** (DEFLATE) envelope ([`mkpx_compact`]) — the peripheral,
+//! explicit/export save profile; the engine core reads/writes only the uncompressed `plain` form.
+
+pub mod mkpx_compact;
 
 use image::codecs::gif::{GifDecoder, GifEncoder};
 use image::{AnimationDecoder, Delay, Frame as ImgFrame, ImageDecoder, ImageFormat, RgbaImage};

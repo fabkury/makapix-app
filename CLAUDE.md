@@ -111,9 +111,14 @@ record, and exposes probes.
 `crates/engine/src/lib.rs` declares the layering (low→high): `util · geom · color · buffer/raster/selection ·
 document · history · tool · render · probe · io · session`. The engine has **zero dependencies** — its own
 hash, PRNG, sparse tiled copy-on-write buffer, and RLE `.mkpx` codec — so the Tier-1 loop and the FFI lib
-build fast and never break on a transitive dep. It is `#![forbid(unsafe_code)]`. **Don't add dependencies to
-`crates/engine`.** Image format I/O (the `image` crate) is quarantined in `crates/codec`. The workspace ships
-`panic = "abort"` in release.
+build fast and never break on a transitive dep. It is `#![forbid(unsafe_code)]`. **Don't add runtime
+dependencies to `crates/engine`.** The ban is *scoped, not dogmatic*: it guards the three properties a dep
+most easily breaks here — **cross-compilation** (Windows DLL + Android arm64/arm32, iOS later; never a
+native/`-sys` crate in the core), **determinism** (byte-identical goldens; no SIMD/float/intrinsic-fallback
+surprises), and **memory safety on untrusted input** (the `.mkpx` loader). **Pure-Rust deps are fine at the
+periphery** — image format I/O (the `image` crate) is quarantined in `crates/codec`, the model to follow —
+and **non-shipping dev-deps** (fuzzers like `proptest`/`cargo-fuzz`, `criterion` benches) are unconstrained
+and encouraged for hardening the loader and codec. The workspace ships `panic = "abort"` in release.
 
 Engine invariants you must preserve (see `SPEC.md` §25): 8-bit RGBA sRGB, premultiplied internally,
 **integer-exact** so goldens never fork per platform; canvas 8×8–256×256; frames 1–1024; layers 1–64; tiling

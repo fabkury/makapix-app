@@ -124,6 +124,7 @@ dependencies = [
  "image",
  "image-webp",
  "makapix-engine",
+ "miniz_oxide",
 ]
 
 [[package]]

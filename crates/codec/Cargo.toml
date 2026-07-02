@@ -9,6 +9,11 @@ description = "Image import/export for Makapix (GIF/PNG/APNG/JPEG/BMP/WebP)."
 [dependencies]
 makapix-engine = { path = "../engine" }
 
+# Pure-Rust DEFLATE for the `.mkpx` compact (explicit/export) envelope. Kept at the periphery so the
+# engine core stays dependency-free (see docs/mkpx-format/mkpx-format-spec-v10.md §16). Already in the
+# lockfile transitively via `image`, so this pins no new build cost.
+miniz_oxide = "0.8"
+
 [dependencies.image]
 version = "0.25"
 default-features = false
