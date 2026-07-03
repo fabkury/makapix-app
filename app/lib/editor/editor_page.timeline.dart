@@ -225,9 +225,11 @@ extension _EditorTimeline on _EditorPageState {
         // Post to Club lives at the menu's top level, beside Go to Club.
       ]);
 
-  // Whole-canvas transforms (all frames + layers). The Rotate/Flip *tools* act on the active layer
+  // Whole-canvas operations (all frames + layers). The Rotate/Flip *tools* act on the active layer
   // or selection; these are the document-wide versions.
   void _canvasMenu() => _editorSubMenu('Canvas', (ctx) => [
+        _sheetItem(ctx, Icons.aspect_ratio, 'Resize canvas…', _resizeCanvasDialog),
+        const Divider(height: 1),
         _sheetItem(ctx, Icons.rotate_right, 'Rotate 90° CW', () => _act('Rotate(1)')),
         _sheetItem(ctx, Icons.rotate_left, 'Rotate 90° CCW', () => _act('Rotate(3)')),
         _sheetItem(ctx, Icons.sync, 'Rotate 180°', () => _act('Rotate(2)')),

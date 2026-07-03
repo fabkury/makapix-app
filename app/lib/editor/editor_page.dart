@@ -54,7 +54,7 @@ const _prefsKey = 'tool_order_v1';
 const _kCurrentDrawing = 'editor.currentDrawingId'; // last-open library drawing (silent restore)
 const _kShareFormatPref = 'editor.shareFormat_v1'; // last-used Share format for animations (GIF/WebP)
 const _kExportStillFormatPref = 'editor.exportStillFormat_v1'; // last-used frame/layer export format (PNG/WebP)
-const _transformTools = {'Flip', 'Rotate', 'Invert', 'Resize'};
+const _transformTools = {'Flip', 'Rotate', 'Invert'};
 // Row-3 "action" tools in the reorderable grid: tapping fires an action/toggle immediately rather
 // than selecting a draw tool (handled in _toolTile / _doToolAction). Undo/Redo are NOT here — they
 // are pinned at the left of row-3 (see _buildToolBar / _pinnedActionTile). Play is NOT here either —

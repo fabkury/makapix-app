@@ -530,9 +530,6 @@ extension _EditorControls on _EditorPageState {
     if (_tool == 'Invert') {
       children.add(_miniBtn('Invert colours', () => _act('Invert()')));
     }
-    if (_tool == 'Resize') {
-      children.add(_miniBtn('Resize…', _resizeCanvasDialog));
-    }
     if (_tool == 'PlayPause') {
       final n = engine.frameCount;
       final active = engine.activeFrame;
