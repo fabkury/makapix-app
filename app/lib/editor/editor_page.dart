@@ -178,7 +178,8 @@ class _EditorPageState extends ConsumerState<EditorPage>
     const Color(0xFFFF8000),
     const Color(0xFF0080FF),
   ];
-  double _hsvH = 60, _hsvS = 0, _hsvV = 0;
+  // HSV-shift sliders: zero = no change, so entering the tool previews the document as-is.
+  double _hsvH = 0, _hsvS = 0, _hsvV = 0;
   // Move tool layer-move edge modes (mutually exclusive; both off = Regular = pixels clip off):
   bool _protectPixels = false; // keep opaque pixels on-canvas (non-destructive)
   bool _wrap = false; // pixels leaving one edge re-enter the opposite edge

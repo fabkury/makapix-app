@@ -469,9 +469,12 @@ impl Session {
             // (not baked into canvas pixels), so the engine no longer renders it.
             cursor: None,
         };
-        // A move or rotate draft renders as a display-only preview: composite a draft-applied clone
-        // of the active frame (the document itself is untouched until Commit).
-        let preview = self.move_draft_preview_frame().or_else(|| self.rotate_draft_preview_frame());
+        // A move/rotate draft or a pending HSV shift renders as a display-only preview: composite
+        // a clone of the active frame with it applied (the document is untouched until Commit).
+        let preview = self
+            .move_draft_preview_frame()
+            .or_else(|| self.rotate_draft_preview_frame())
+            .or_else(|| self.hsv_preview_frame());
         let frame = preview.as_ref().unwrap_or_else(|| self.doc.active_frame());
         // Render the whole storage area so the tool previews (which draw in storage coordinates) need
         // no offset; then crop to the canvas for the normal view, or emit the whole thing (gutter
@@ -1911,6 +1914,25 @@ impl Session {
         self.commit_edit(before);
     }
 
+    /// Live HSV preview: while the HSV tool is active with a non-zero shift pending, the display
+    /// composites a clone of the active frame with the shift applied to the active layer
+    /// (selection-clipped, or the whole layer with no selection) — the document itself is
+    /// untouched until `ApplyHsvShift` commits.
+    fn hsv_preview_frame(&self) -> Option<Frame> {
+        if self.tool != ToolKind::HsvShift || !self.active_editable() {
+            return None;
+        }
+        let (dh, ds, dv) = self.settings.hsv;
+        if dh == 0.0 && ds == 0.0 && dv == 0.0 {
+            return None;
+        }
+        let mut frame = self.doc.active_frame().clone();
+        let li = frame.active_layer;
+        let sel = self.selection_clone();
+        tool::hsv_shift_region(&mut frame.layers[li].pixels, sel.as_ref(), dh, ds, dv);
+        Some(frame)
+    }
+
     pub fn map_active(&mut self, f: impl Fn(Rgba8) -> Rgba8) {
         if !self.active_editable() {
             return;
@@ -3001,6 +3023,23 @@ mod tests {
         assert!(s.doc.undo());
         s.run_script("ResizeCanvas(32, 32, true)").unwrap(); // legacy: true = Center
         assert_eq!(s.pixel(0, 0, 23, 23), Rgba8::WHITE); // (15+8, 15+8)
+    }
+
+    #[test]
+    fn hsv_preview_is_display_only_until_apply() {
+        let mut s = Session::new(8, 8);
+        s.settings.primary = Rgba8::new(255, 0, 0, 255);
+        s.tap(0, 0);
+        s.run_script("SelectTool(HsvShift)\nSetHsvShift(120, 0, 0)").unwrap();
+        // The display previews the shift (red → green) while the document still holds red.
+        let px = s.display_bytes(false, false, false);
+        assert_eq!(&px[0..4], &[0, 255, 0, 255]);
+        assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::new(255, 0, 0, 255));
+        // Apply commits it; with the shift zeroed again the display matches the document.
+        s.run_script("ApplyHsvShift()\nSetHsvShift(0, 0, 0)").unwrap();
+        assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::new(0, 255, 0, 255));
+        let px = s.display_bytes(false, false, false);
+        assert_eq!(&px[0..4], &[0, 255, 0, 255]);
     }
 
     // ---- Rotate tool: layer/selection-scoped rotation + free-angle draft (session/canvas.rs) ----

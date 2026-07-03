@@ -482,12 +482,27 @@ extension _EditorControls on _EditorPageState {
       children.add(_miniBtn('Clear', () => _act('ClearSelection()')));
     }
     if (_tool == 'HsvShift') {
-      _labeledSlider(children, 'H', _hsvH, -180, 180, (v) => setState(() => _hsvH = v));
-      _labeledSlider(children, 'S', _hsvS, -1, 1, (v) => setState(() => _hsvS = v), integer: false);
-      _labeledSlider(children, 'V', _hsvV, -1, 1, (v) => setState(() => _hsvV = v), integer: false);
+      // Every slider change syncs the pending shift into the engine, whose display then
+      // composites a live preview of the active layer (selection-clipped, or the whole layer
+      // with no selection); the document is untouched until Apply (see hsv_preview_frame).
+      void syncHsv(void Function() set) {
+        setState(set);
+        _send('SetHsvShift($_hsvH, $_hsvS, $_hsvV)');
+        _redraw();
+      }
+
+      _labeledSlider(children, 'H', _hsvH, -180, 180, (v) => syncHsv(() => _hsvH = v));
+      _labeledSlider(children, 'S', _hsvS, -1, 1, (v) => syncHsv(() => _hsvS = v), integer: false);
+      _labeledSlider(children, 'V', _hsvV, -1, 1, (v) => syncHsv(() => _hsvV = v), integer: false);
       children.add(_miniBtn('Apply', () {
         _send('SetHsvShift($_hsvH, $_hsvS, $_hsvV)');
         _act('ApplyHsvShift()');
+        // The shift is baked in now; zero the sliders so the preview matches the document.
+        syncHsv(() {
+          _hsvH = 0;
+          _hsvS = 0;
+          _hsvV = 0;
+        });
       }));
     }
     if (_tool == 'Flip') {
