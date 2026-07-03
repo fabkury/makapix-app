@@ -174,6 +174,84 @@ impl Session {
         });
     }
 
+    /// Flip every layer of the ACTIVE frame (the Flip tool's "Frame" scope) across the X axis
+    /// (`horizontal`) or Y axis. Same storage-wide mirror as `flip_document`, one frame only,
+    /// ignoring the selection scope (frame mode acts on everything); the selection mask mirrors
+    /// with the pixels so the marquee stays aligned. One undo step.
+    pub fn flip_frame(&mut self, horizontal: bool) {
+        let storage = self.doc.storage();
+        let (w, h) = (storage.w as i32, storage.h as i32);
+        self.edit_doc("flip_frame", |s| {
+            {
+                let f = s.doc.active_frame_mut();
+                for l in &mut f.layers {
+                    let src = l.pixels.clone();
+                    l.pixels.clear();
+                    for y in 0..h {
+                        for x in 0..w {
+                            let c = if horizontal { src.get(w - 1 - x, y) } else { src.get(x, h - 1 - y) };
+                            if c.a != 0 {
+                                l.pixels.set(x, y, c);
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some(m) = s.selection_clone() {
+                let mut nm = Mask::new(w as u32, h as u32);
+                for y in 0..h {
+                    for x in 0..w {
+                        if m.get(x, y) {
+                            let (fx, fy) = if horizontal { (w - 1 - x, y) } else { (x, h - 1 - y) };
+                            nm.set(fx, fy, true);
+                        }
+                    }
+                }
+                s.doc.selection = Some(Arc::new(nm)); // the mask mirrors with the pixels
+            }
+        });
+    }
+
+    /// Rotate every layer of the ACTIVE frame by `quarter_turns` × 90° clockwise about the canvas
+    /// centre (the Rotate tool's "Frame" scope) — canvas dimensions unchanged, content clips on a
+    /// non-square canvas exactly like `rotate_layer`. Ignores the selection scope (frame mode acts
+    /// on everything); the mask is cleared like the document-wide rotate. One undo step.
+    pub fn rotate_frame(&mut self, quarter_turns: u8) {
+        let q = quarter_turns % 4;
+        if q == 0 {
+            return;
+        }
+        self.rotate_draft = None; // never stack on a half-open Angle draft
+        let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
+        let angle = q as f32 * std::f32::consts::FRAC_PI_2;
+        self.edit_doc("rotate_frame", |s| {
+            let fi = s.doc.active_frame;
+            let fid = s.doc.frames[fi].id;
+            let lids: Vec<_> = s.doc.frames[fi].layers.iter().map(|l| l.id).collect();
+            for lid in lids {
+                let li = match s.doc.frames[fi].layer_index_by_id(lid) {
+                    Some(i) => i,
+                    None => continue,
+                };
+                let d = RotateDraft {
+                    fid,
+                    lid,
+                    is_selection: false,
+                    sel_before: None,
+                    src: s.doc.frames[fi].layers[li].pixels.clone(),
+                    sw: cw,
+                    sh: ch,
+                    src_origin: Point::new(0, 0),
+                    src_mask: None,
+                    pivot: PointF::new(cw as f32 / 2.0, ch as f32 / 2.0),
+                    angle,
+                };
+                apply_rotation_to_frame(&d, &mut s.doc.frames[fi], cw, ch);
+            }
+            s.doc.selection = None; // ambiguous across a whole frame; cleared like the canvas rotate
+        });
+    }
+
     /// Resize the canvas, pinning existing content to an anchor (SPEC §28.1): `ax`/`ay` pick
     /// which edge/corner of the old canvas coincides with the same edge/corner of the new one —
     /// 0 = left/top, 1 = centre, 2 = right/bottom (9 anchors total).

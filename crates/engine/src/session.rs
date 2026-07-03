@@ -3026,6 +3026,38 @@ mod tests {
     }
 
     #[test]
+    fn flip_frame_flips_all_layers_in_one_undo_step() {
+        let mut s = Session::new(8, 8);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(0, 0); // layer 0
+        s.add_layer();
+        s.settings.primary = Rgba8::new(255, 0, 0, 255);
+        s.tap(1, 0); // layer 1
+        s.flip_frame(true);
+        assert_eq!(s.pixel(0, 0, 7, 0), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 1, 6, 0), Rgba8::new(255, 0, 0, 255));
+        assert!(s.doc.undo()); // ONE step restores both layers
+        assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 1, 1, 0), Rgba8::new(255, 0, 0, 255));
+    }
+
+    #[test]
+    fn rotate_frame_rotates_all_layers_in_one_undo_step() {
+        let mut s = Session::new(8, 8);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(0, 0); // layer 0
+        s.add_layer();
+        s.settings.primary = Rgba8::new(255, 0, 0, 255);
+        s.tap(7, 0); // layer 1
+        s.rotate_frame(2); // 180° about the canvas centre
+        assert_eq!(s.pixel(0, 0, 7, 7), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 1, 0, 7), Rgba8::new(255, 0, 0, 255));
+        assert!(s.doc.undo()); // ONE step restores both layers
+        assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 1, 7, 0), Rgba8::new(255, 0, 0, 255));
+    }
+
+    #[test]
     fn hsv_preview_is_display_only_until_apply() {
         let mut s = Session::new(8, 8);
         s.settings.primary = Rgba8::new(255, 0, 0, 255);

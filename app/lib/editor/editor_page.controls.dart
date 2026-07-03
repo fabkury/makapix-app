@@ -506,9 +506,10 @@ extension _EditorControls on _EditorPageState {
       }));
     }
     if (_tool == 'Flip') {
-      label(_outlineEdges.isNotEmpty ? 'Flip selection' : 'Flip layer');
-      children.add(_miniBtn('Flip H', () => _act('FlipH()')));
-      children.add(_miniBtn('Flip V', () => _act('FlipV()')));
+      label(_flipFrame ? 'Flip frame' : (_outlineEdges.isNotEmpty ? 'Flip selection' : 'Flip layer'));
+      children.add(_toggle(const ['Layer', 'Frame'], _flipFrame ? 1 : 0, (i) => setState(() => _flipFrame = i == 1)));
+      children.add(_miniBtn('Flip H', () => _act(_flipFrame ? 'FlipFrameH()' : 'FlipH()')));
+      children.add(_miniBtn('Flip V', () => _act(_flipFrame ? 'FlipFrameV()' : 'FlipV()')));
     }
     if (_tool == 'Rotate') {
       if (_hasRotateDraft) {
@@ -533,13 +534,18 @@ extension _EditorControls on _EditorPageState {
           ),
         ));
       } else {
-        // 90°/180° act on the active layer, or the selected pixels when there's a selection.
-        label(_outlineEdges.isNotEmpty ? 'Rotate selection' : 'Rotate layer');
-        children.add(IconButton(iconSize: 18, tooltip: 'Rotate 90° CW', onPressed: () => _act('RotateLayer(1)'), icon: const Icon(Icons.rotate_right)));
-        children.add(IconButton(iconSize: 18, tooltip: 'Rotate 90° CCW', onPressed: () => _act('RotateLayer(3)'), icon: const Icon(Icons.rotate_left)));
-        children.add(_miniBtn('180°', () => _act('RotateLayer(2)')));
-        children.add(const SizedBox(width: 6));
-        children.add(_miniBtn('Angle', _beginRotateDraft));
+        // 90°/180° act on the active layer (or the selected pixels), or on every layer of the
+        // active frame in Frame scope. The free-angle draft is layer-only, so Angle hides there.
+        label(_rotateFrame ? 'Rotate frame' : (_outlineEdges.isNotEmpty ? 'Rotate selection' : 'Rotate layer'));
+        children.add(_toggle(const ['Layer', 'Frame'], _rotateFrame ? 1 : 0, (i) => setState(() => _rotateFrame = i == 1)));
+        final verb = _rotateFrame ? 'RotateFrame' : 'RotateLayer';
+        children.add(IconButton(iconSize: 18, tooltip: 'Rotate 90° CW', onPressed: () => _act('$verb(1)'), icon: const Icon(Icons.rotate_right)));
+        children.add(IconButton(iconSize: 18, tooltip: 'Rotate 90° CCW', onPressed: () => _act('$verb(3)'), icon: const Icon(Icons.rotate_left)));
+        children.add(_miniBtn('180°', () => _act('$verb(2)')));
+        if (!_rotateFrame) {
+          children.add(const SizedBox(width: 6));
+          children.add(_miniBtn('Angle', _beginRotateDraft));
+        }
       }
     }
     if (_tool == 'Invert') {
