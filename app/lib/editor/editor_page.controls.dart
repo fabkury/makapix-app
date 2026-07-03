@@ -549,7 +549,9 @@ extension _EditorControls on _EditorPageState {
       }
     }
     if (_tool == 'Invert') {
-      children.add(_miniBtn('Invert colours', () => _act('Invert()')));
+      label(_invertFrame ? 'Invert frame' : (_outlineEdges.isNotEmpty ? 'Invert selection' : 'Invert layer'));
+      children.add(_toggle(const ['Layer', 'Frame'], _invertFrame ? 1 : 0, (i) => setState(() => _invertFrame = i == 1)));
+      children.add(_miniBtn('Invert colours', () => _act(_invertFrame ? 'InvertFrame()' : 'Invert()')));
     }
     if (_tool == 'PlayPause') {
       final n = engine.frameCount;

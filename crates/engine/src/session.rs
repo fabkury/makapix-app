@@ -1944,6 +1944,17 @@ impl Session {
         self.commit_edit(before);
     }
 
+    /// Apply a per-pixel colour transform to every layer of the ACTIVE frame (the Invert tool's
+    /// "Frame" scope), ignoring the selection — frame mode acts on everything, like
+    /// `flip_frame`/`rotate_frame`. One undo step.
+    pub fn map_frame(&mut self, f: impl Fn(Rgba8) -> Rgba8) {
+        self.edit_doc("map_frame", |s| {
+            for l in &mut s.doc.active_frame_mut().layers {
+                tool::map_region(&mut l.pixels, None, &f);
+            }
+        });
+    }
+
     // ---- frame & layer ops ----
 
     pub fn add_frame(&mut self) {
@@ -3055,6 +3066,22 @@ mod tests {
         assert!(s.doc.undo()); // ONE step restores both layers
         assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::WHITE);
         assert_eq!(s.pixel(0, 1, 7, 0), Rgba8::new(255, 0, 0, 255));
+    }
+
+    #[test]
+    fn invert_frame_inverts_all_layers_in_one_undo_step() {
+        let mut s = Session::new(8, 8);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(0, 0); // layer 0
+        s.add_layer();
+        s.settings.primary = Rgba8::new(255, 0, 0, 255);
+        s.tap(1, 0); // layer 1
+        s.run_script("InvertFrame()").unwrap();
+        assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::new(0, 0, 0, 255)); // white → black
+        assert_eq!(s.pixel(0, 1, 1, 0), Rgba8::new(0, 255, 255, 255)); // red → cyan
+        assert!(s.doc.undo()); // ONE step restores both layers
+        assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 1, 1, 0), Rgba8::new(255, 0, 0, 255));
     }
 
     #[test]
