@@ -142,21 +142,46 @@ extension _EditorPersistence on _EditorPageState {
       builder: (ctx) => AlertDialog(
         title: Text('Open $incoming?'),
         content: Text('What should happen to your current drawing, "$_drawingTitle"?'),
+        // Discard sits alone at the far LEFT, opposite Keep, so a mis-click near the usual
+        // confirm corner can't destroy work; it also re-confirms below.
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          TextButton(
-            style: TextButton.styleFrom(foregroundColor: const Color(0xFFE06060)),
-            onPressed: () => Navigator.pop(ctx, _OutgoingChoice.discard),
-            child: const Text('Discard it'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, _OutgoingChoice.save),
-            child: const Text('Keep in My Drawings'),
-          ),
+          Row(children: [
+            TextButton(
+              style: TextButton.styleFrom(foregroundColor: const Color(0xFFE06060)),
+              onPressed: () => Navigator.pop(ctx, _OutgoingChoice.discard),
+              child: const Text('Discard it'),
+            ),
+            const Spacer(),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, _OutgoingChoice.save),
+              child: const Text('Keep in My Drawings'),
+            ),
+          ]),
         ],
       ),
     );
     if (choice == null) return false;
+    if (choice == _OutgoingChoice.discard) {
+      if (!mounted) return false;
+      final sure = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('Discard "$_drawingTitle"?'),
+          content: const Text('It will not be kept in My Drawings. This cannot be undone.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: const Color(0xFFC62828)),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Discard'),
+            ),
+          ],
+        ),
+      );
+      if (sure != true) return false; // declined → the whole load is cancelled
+    }
     await _releaseOutgoing(discard: choice == _OutgoingChoice.discard);
     return true;
   }
