@@ -123,7 +123,7 @@ impl Palette {
 }
 
 pub struct Document {
-    /// The **canvas**: the editable, exported, user-facing dimensions (8..=256). This is what
+    /// The **canvas**: the editable, exported, user-facing dimensions (1..=256). This is what
     /// almost every site means by "size". Distinct from [`storage`](Self::storage), which also
     /// includes the off-canvas **gutter** where moved pixels are preserved (SPEC §8, §15).
     pub size: Size,

@@ -127,7 +127,7 @@ and **non-shipping dev-deps** (fuzzers like `proptest`/`cargo-fuzz`, `criterion`
 and encouraged for hardening the loader and codec. The workspace ships `panic = "abort"` in release.
 
 Engine invariants you must preserve (see `SPEC.md` §25): 8-bit RGBA sRGB, premultiplied internally,
-**integer-exact** so goldens never fork per platform; canvas 8×8–256×256; frames 1–1024; layers 1–64; tiling
+**integer-exact** so goldens never fork per platform; canvas 1×1–256×256; frames 1–1024; layers 1–64; tiling
 (32×32) + COW + lazy alloc are mandatory; per-frame 128-state undo with auto-compaction.
 
 Crates: `engine` (core) · `codec` (import GIF/PNG/APNG/JPEG/BMP/WebP, export PNG/sprite-sheet/GIF) ·

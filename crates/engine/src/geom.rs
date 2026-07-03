@@ -1,7 +1,7 @@
 //! Geometry: integer canvas coordinates, sub-pixel points, sizes, rectangles, and the
 //! pure screen↔canvas transform (SPEC §4 module 2, §5.4).
 
-pub const MIN_DIM: u16 = 8;
+pub const MIN_DIM: u16 = 1;
 pub const MAX_DIM: u16 = 256;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

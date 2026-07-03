@@ -6,7 +6,7 @@ use super::{RotateDraft, Session};
 use crate::buffer::RgbaBuffer;
 use crate::color::Rgba8;
 use crate::document::Frame;
-use crate::geom::{IRect, Point, PointF, Size};
+use crate::geom::{IRect, Point, PointF, Size, MAX_DIM, MIN_DIM};
 use crate::selection::Mask;
 use std::sync::Arc;
 
@@ -176,7 +176,7 @@ impl Session {
 
     /// Resize the canvas, placing existing content at top-left or centered (SPEC §28.1).
     pub fn resize_canvas(&mut self, nw: u16, nh: u16, center: bool) {
-        let new_size = Size::new(nw.clamp(8, 256), nh.clamp(8, 256));
+        let new_size = Size::new(nw.clamp(MIN_DIM, MAX_DIM), nh.clamp(MIN_DIM, MAX_DIM));
         if new_size == self.doc.size {
             return;
         }
@@ -224,8 +224,8 @@ impl Session {
             Some(b) => b,
             None => return,
         };
-        let nw = (bounds.w as u16).clamp(8, 256);
-        let nh = (bounds.h as u16).clamp(8, 256);
+        let nw = (bounds.w as u16).clamp(MIN_DIM, MAX_DIM);
+        let nh = (bounds.h as u16).clamp(MIN_DIM, MAX_DIM);
         let new_size = Size::new(nw, nh);
         // `bounds` is in storage coords; shift the whole old storage so the selection's top-left lands
         // at the new canvas top-left, keeping whatever surrounding gutter still fits. [SPEC §8]

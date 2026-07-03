@@ -7,6 +7,7 @@
 // C ABI and only adds noise, so we allow the lint crate-wide (the contract is documented per fn).
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
+use makapix_engine::geom::{MAX_DIM, MIN_DIM};
 use makapix_engine::Session;
 use std::ffi::{c_char, CStr, CString};
 use std::os::raw::c_int;
@@ -50,7 +51,7 @@ pub extern "C" fn mkpx_export_cancel() {
 /// Create a new session with a `w×h` document. Returns an opaque pointer (null on bad args).
 #[no_mangle]
 pub extern "C" fn mkpx_new(w: u16, h: u16) -> *mut Session {
-    if !(8..=256).contains(&w) || !(8..=256).contains(&h) {
+    if !(MIN_DIM..=MAX_DIM).contains(&w) || !(MIN_DIM..=MAX_DIM).contains(&h) {
         return std::ptr::null_mut();
     }
     Box::into_raw(Box::new(Session::new(w, h)))

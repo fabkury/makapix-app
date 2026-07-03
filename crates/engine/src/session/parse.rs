@@ -4,6 +4,7 @@
 use super::Session;
 use crate::color::Rgba8;
 use crate::document::LoopMode;
+use crate::geom::{MAX_DIM, MIN_DIM};
 use crate::selection::CombineMode;
 use crate::tool::{BrushShape, GradientKind, Stop, ToolKind};
 
@@ -144,7 +145,9 @@ impl Session {
     pub fn exec(&mut self, a: Action) {
         use Action::*;
         match a {
-            NewDocument(w, h) => *self = Session::new(w.clamp(8, 256), h.clamp(8, 256)),
+            NewDocument(w, h) => {
+                *self = Session::new(w.clamp(MIN_DIM, MAX_DIM), h.clamp(MIN_DIM, MAX_DIM))
+            }
             AddFrame => self.add_frame(),
             AddFrameAt(i) => self.add_frame_at(i),
             DuplicateFrame(i) => self.duplicate_frame(i),
