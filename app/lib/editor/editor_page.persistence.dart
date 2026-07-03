@@ -109,16 +109,30 @@ extension _EditorPersistence on _EditorPageState {
     return bytes != null;
   }
 
+  // Stop tracking the outgoing drawing before a switch. A blank drawing (single never-painted
+  // layer — see _isBlankDocument) is deleted from the library instead of flushed, so switching
+  // away never accumulates empty Untitled entries; anything else is saved as before.
+  Future<void> _releaseOutgoingDrawing() async {
+    final discard = _engineReady && _isBlankDocument();
+    if (!discard) await _autosave?.flushNow();
+    await _autosave?.stop(); // waits for any in-flight write before a delete pulls the folder
+    _autosave = null;
+    final id = _drawingId;
+    if (discard && id != null) {
+      try {
+        await _store?.delete(id);
+      } catch (_) {/* best-effort: an orphaned blank folder is harmless */}
+    }
+  }
+
   // Save the outgoing drawing, mutate the engine to new content (NewDocument / a loaded Club
   // artwork), then track that content as a brand-new library drawing. The old drawing stays in the
-  // library, so switching never clobbers work.
+  // library (blank ones are discarded), so switching never clobbers work.
   Future<void> _switchToNewDrawing({
     required String title,
     required void Function() mutateEngine,
   }) async {
-    await _autosave?.flushNow();
-    await _autosave?.stop();
-    _autosave = null;
+    await _releaseOutgoingDrawing();
     mutateEngine();
     await _createFreshDrawing(title: title);
   }
@@ -127,9 +141,7 @@ extension _EditorPersistence on _EditorPageState {
   // and adopt it.
   Future<void> _openExistingDrawing(String id) async {
     if (id == _drawingId) return;
-    await _autosave?.flushNow();
-    await _autosave?.stop();
-    _autosave = null;
+    await _releaseOutgoingDrawing();
     final ok = await _loadDrawingIntoEngine(id);
     if (!ok && mounted) _toast('Could not open that drawing (file missing or corrupt)');
     final meta = await _store?.readMeta(id);
