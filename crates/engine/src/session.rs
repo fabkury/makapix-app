@@ -2971,12 +2971,36 @@ mod tests {
         let mut s = Session::new(16, 16);
         s.settings.primary = Rgba8::WHITE;
         s.tap(0, 0);
-        s.resize_canvas(32, 32, true);
+        s.resize_canvas(32, 32, 1, 1);
         assert_eq!(s.size(), (32, 32));
         assert_eq!(s.pixel(0, 0, 8, 8), Rgba8::WHITE); // shifted by +8,+8
         assert!(s.doc.undo());
         assert_eq!(s.size(), (16, 16));
         assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::WHITE);
+    }
+
+    #[test]
+    fn resize_canvas_nine_anchors() {
+        // A bottom-right anchor keeps the bottom-right corner pixel at the corner when growing.
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(15, 15);
+        s.resize_canvas(32, 32, 2, 2);
+        assert_eq!(s.size(), (32, 32));
+        assert_eq!(s.pixel(0, 0, 31, 31), Rgba8::WHITE);
+        assert!(s.doc.undo());
+
+        // A mixed anchor (right edge, vertical centre): x shifts by the full delta, y by half.
+        s.resize_canvas(32, 32, 2, 1);
+        assert_eq!(s.pixel(0, 0, 31, 23), Rgba8::WHITE); // (15+16, 15+8)
+        assert!(s.doc.undo());
+
+        // The DSL direction names map to the same cells; legacy booleans still parse.
+        s.run_script("ResizeCanvas(32, 32, BottomRight)").unwrap();
+        assert_eq!(s.pixel(0, 0, 31, 31), Rgba8::WHITE);
+        assert!(s.doc.undo());
+        s.run_script("ResizeCanvas(32, 32, true)").unwrap(); // legacy: true = Center
+        assert_eq!(s.pixel(0, 0, 23, 23), Rgba8::WHITE); // (15+8, 15+8)
     }
 
     // ---- Rotate tool: layer/selection-scoped rotation + free-angle draft (session/canvas.rs) ----

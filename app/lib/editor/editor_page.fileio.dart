@@ -4,6 +4,24 @@ part of 'editor_page.dart';
 // @protected setState here is safe; the analyzer's check is a false positive for the
 // part/extension split that keeps each editor file focused and under ~400 lines.)
 
+// The Resize-canvas 3×3 anchor grid, indexed [y][x]: the engine DSL name, the arrow icon per
+// cell, and the human phrase for the caption.
+const _anchorNames = [
+  ['TopLeft', 'Top', 'TopRight'],
+  ['Left', 'Center', 'Right'],
+  ['BottomLeft', 'Bottom', 'BottomRight'],
+];
+const _anchorIcons = [
+  [Icons.north_west, Icons.north, Icons.north_east],
+  [Icons.west, Icons.filter_center_focus, Icons.east],
+  [Icons.south_west, Icons.south, Icons.south_east],
+];
+const _anchorHuman = [
+  ['to the top-left', 'to the top', 'to the top-right'],
+  ['to the left', 'at the center', 'to the right'],
+  ['to the bottom-left', 'to the bottom', 'to the bottom-right'],
+];
+
 // Save/open .mkpx, image import, PNG/GIF export, Post-to-Club, edit/remix intake,
 // and the resize/duration dialogs + colour-picker entry point.
 extension _EditorFileIo on _EditorPageState {
@@ -552,7 +570,7 @@ extension _EditorFileIo on _EditorPageState {
   Future<void> _resizeCanvasDialog() async {
     double w = engine.width.toDouble();
     double h = engine.height.toDouble();
-    bool center = true;
+    int ax = 1, ay = 1; // anchor cell: 0 = left/top, 1 = centre, 2 = right/bottom
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -561,7 +579,37 @@ extension _EditorFileIo on _EditorPageState {
           content: Column(mainAxisSize: MainAxisSize.min, children: [
             Row(children: [const SizedBox(width: 20, child: Text('W')), Expanded(child: Slider(value: w.clamp(1, 256), min: 1, max: 256, divisions: 255, label: '${w.toInt()}', onChanged: (v) => setS(() => w = v))), SizedBox(width: 36, child: Text('${w.toInt()}'))]),
             Row(children: [const SizedBox(width: 20, child: Text('H')), Expanded(child: Slider(value: h.clamp(1, 256), min: 1, max: 256, divisions: 255, label: '${h.toInt()}', onChanged: (v) => setS(() => h = v))), SizedBox(width: 36, child: Text('${h.toInt()}'))]),
-            SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, title: const Text('Anchor center'), subtitle: const Text('(off = top-left)', style: TextStyle(fontSize: 11)), value: center, onChanged: (v) => setS(() => center = v)),
+            // 3×3 anchor grid: which edge/corner the existing content stays pinned to.
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(children: [
+                const SizedBox(width: 20),
+                Column(mainAxisSize: MainAxisSize.min, children: [
+                  for (var y = 0; y < 3; y++)
+                    Row(mainAxisSize: MainAxisSize.min, children: [
+                      for (var x = 0; x < 3; x++)
+                        InkWell(
+                          onTap: () => setS(() {
+                            ax = x;
+                            ay = y;
+                          }),
+                          child: Container(
+                            width: 32,
+                            height: 32,
+                            margin: const EdgeInsets.all(1),
+                            decoration: BoxDecoration(
+                              color: (ax == x && ay == y) ? const Color(0xFF4080C0) : const Color(0xFF26292E),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Icon(_anchorIcons[y][x], size: 16, color: (ax == x && ay == y) ? Colors.white : Colors.white54),
+                          ),
+                        ),
+                    ]),
+                ]),
+                const SizedBox(width: 12),
+                Expanded(child: Text('Anchor: content stays pinned ${_anchorHuman[ay][ax]}.', style: const TextStyle(fontSize: 12, color: Colors.white70))),
+              ]),
+            ),
             Wrap(spacing: 6, children: [for (final p in [16, 32, 64, 128, 256]) ActionChip(label: Text('$p²'), onPressed: () => setS(() { w = p.toDouble(); h = p.toDouble(); }))]),
             if (!ClubSizeRules.accepted(w.toInt(), h.toInt())) ...[
               const SizedBox(height: 10),
@@ -570,7 +618,7 @@ extension _EditorFileIo on _EditorPageState {
           ]),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(onPressed: () { _act('ResizeCanvas(${w.toInt()}, ${h.toInt()}, $center)'); Navigator.pop(ctx); }, child: const Text('Resize')),
+            FilledButton(onPressed: () { _act('ResizeCanvas(${w.toInt()}, ${h.toInt()}, ${_anchorNames[ay][ax]})'); Navigator.pop(ctx); }, child: const Text('Resize')),
           ],
         ),
       ),

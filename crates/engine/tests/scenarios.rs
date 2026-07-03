@@ -318,10 +318,10 @@ fn tiny_canvases_draw_resize_crop_roundtrip() {
 
     // Resize below the old minimum, then back up: pixels shifted per anchor, no clamp to 8.
     let mut s = run("NewDocument(16,16)\nSelectTool(Pencil); SetPrimaryColor(#FF0000FF)\nTap(0,0)");
-    s.resize_canvas(1, 1, false);
+    s.resize_canvas(1, 1, 0, 0);
     assert_eq!(s.doc.size, makapix_engine::geom::Size::new(1, 1));
     assert_eq!(s.pixel(0, 0, 0, 0), RED);
-    s.resize_canvas(4, 4, false);
+    s.resize_canvas(4, 4, 0, 0);
     assert_eq!(s.pixel(0, 0, 0, 0), RED);
 
     // NewDocument(0,0) clamps up to the 1×1 minimum, not 8×8.

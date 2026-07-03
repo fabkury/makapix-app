@@ -108,7 +108,7 @@ pub enum Action {
     RotateDraftSetAngle(i32),
     RotateDraftCommit,
     RotateDraftCancel,
-    ResizeCanvas(u16, u16, bool),
+    ResizeCanvas(u16, u16, u8, u8), // (w, h, anchor-x, anchor-y): 0 = left/top, 1 = centre, 2 = right/bottom
     CropToSelection,
     AddPaletteColor(Rgba8),
     RemovePaletteColor(usize),
@@ -245,7 +245,7 @@ impl Session {
             RotateDraftSetAngle(m) => self.rotate_draft_set_angle(m),
             RotateDraftCommit => self.rotate_draft_commit(),
             RotateDraftCancel => self.rotate_draft_cancel(),
-            ResizeCanvas(w, h, center) => self.resize_canvas(w, h, center),
+            ResizeCanvas(w, h, ax, ay) => self.resize_canvas(w, h, ax, ay),
             CropToSelection => self.crop_to_selection(),
             AddPaletteColor(c) => self.add_palette_color(c),
             RemovePaletteColor(i) => self.remove_palette_color(i),
@@ -349,6 +349,24 @@ fn parse_stops(inner: &str) -> Result<Vec<Stop>, String> {
         return Err("need >= 2 gradient stops".into());
     }
     Ok(stops)
+}
+
+/// Third `ResizeCanvas` argument → anchor cell (x, y), each 0 = left/top, 1 = centre,
+/// 2 = right/bottom. Accepts the 9 direction names (case-insensitive, dashes ignored) plus the
+/// legacy booleans `true`/`1` = Center and `false`/`0` = TopLeft. Unknown strings fall back to
+/// Center (the historical default), keeping the parser lenient.
+fn resize_anchor(s: &str) -> (u8, u8) {
+    match s.to_ascii_lowercase().replace('-', "").as_str() {
+        "topleft" | "false" | "0" => (0, 0),
+        "top" => (1, 0),
+        "topright" => (2, 0),
+        "left" => (0, 1),
+        "right" => (2, 1),
+        "bottomleft" => (0, 2),
+        "bottom" => (1, 2),
+        "bottomright" => (2, 2),
+        _ => (1, 1), // "center" | "centre" | "true" | "1" | unknown
+    }
 }
 
 fn parse_line(line: &str) -> Result<Action, String> {
@@ -546,7 +564,10 @@ fn parse_line(line: &str) -> Result<Action, String> {
         "RotateDraftSetAngle" => RotateDraftSetAngle(i32a(0)?),
         "RotateDraftCommit" => RotateDraftCommit,
         "RotateDraftCancel" => RotateDraftCancel,
-        "ResizeCanvas" => ResizeCanvas(u16a(0)?, u16a(1)?, args.get(2).map(|s| *s == "true" || *s == "1").unwrap_or(true)),
+        "ResizeCanvas" => {
+            let (ax, ay) = resize_anchor(args.get(2).copied().unwrap_or("Center"));
+            ResizeCanvas(u16a(0)?, u16a(1)?, ax, ay)
+        }
         "CropToSelection" => CropToSelection,
         "AddPaletteColor" => AddPaletteColor(color(0)?),
         "RemovePaletteColor" => RemovePaletteColor(usza(0)?),

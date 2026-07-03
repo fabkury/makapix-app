@@ -174,8 +174,10 @@ impl Session {
         });
     }
 
-    /// Resize the canvas, placing existing content at top-left or centered (SPEC §28.1).
-    pub fn resize_canvas(&mut self, nw: u16, nh: u16, center: bool) {
+    /// Resize the canvas, pinning existing content to an anchor (SPEC §28.1): `ax`/`ay` pick
+    /// which edge/corner of the old canvas coincides with the same edge/corner of the new one —
+    /// 0 = left/top, 1 = centre, 2 = right/bottom (9 anchors total).
+    pub fn resize_canvas(&mut self, nw: u16, nh: u16, ax: u8, ay: u8) {
         let new_size = Size::new(nw.clamp(MIN_DIM, MAX_DIM), nh.clamp(MIN_DIM, MAX_DIM));
         if new_size == self.doc.size {
             return;
@@ -183,17 +185,18 @@ impl Session {
         self.shape_draft = None; // endpoints reference the old dimensions
         let old = self.doc.size;
         // Work in storage coords: shift the whole old storage (canvas + gutter) so the old canvas
-        // top-left lands at the new canvas top-left (plus the centring offset), clipping whatever no
+        // top-left lands at the new canvas top-left (plus the anchor offset), clipping whatever no
         // longer fits. This preserves the gutter that still fits. [SPEC §8]
         let old_storage = self.doc.storage();
         let old_origin = self.doc.origin();
         let new_margin = crate::document::Document::gutter_for(new_size);
         let new_storage = Size::new(new_size.w + 2 * new_margin.w, new_size.h + 2 * new_margin.h);
-        let coff = if center {
-            ((new_size.w as i32 - old.w as i32) / 2, (new_size.h as i32 - old.h as i32) / 2)
-        } else {
-            (0, 0)
-        };
+        // Anchor offset: 0, half, or all of the size delta (per axis). Centre keeps the historical
+        // truncation of `(new - old) / 2`.
+        let coff = (
+            (new_size.w as i32 - old.w as i32) * ax.min(2) as i32 / 2,
+            (new_size.h as i32 - old.h as i32) * ay.min(2) as i32 / 2,
+        );
         let dx = new_margin.w as i32 + coff.0 - old_origin.x;
         let dy = new_margin.h as i32 + coff.1 - old_origin.y;
         self.edit_doc("resize", |s| {
