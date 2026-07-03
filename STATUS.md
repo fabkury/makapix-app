@@ -74,6 +74,7 @@ Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending)
 | **C1** Notifications + unread badge | ✅ | `ui/notifications_page.dart`; badge in the hub |
 | **C2** Publish (editor → Club) | ✅ | export bytes → conformance → metadata/license/visibility → upload; auth-gated (`ui/publish_page.dart` shows a sign-in prompt when signed out) |
 | **C3** Edit / remix (Club → editor) | ✅ | a Club post opens in the editor via `pendingClubEditProvider`; `ClubEditSource` provenance enables **Replace original** vs **Post as new** |
+| **mkpx-upload** Layers-file attachments | ✅ | optional `.mkpx` on posts: share checkbox at publish, golden Edit button downloads `GET /v1/d/{sqid}.mkpx` and engine-loads the layered document, author attach/replace/detach menu (`api/mkpx_api.dart`). All UI gated on `GET /config` → `upload.mkpx.enabled`; **live on prod 2026-07-03** (contract: `reference/makapix-club/docs/mkpx-upload/API-CONTRACT.md`, E2E 23/23 in message 0004) |
 | **C4** Settings — monitored hashtags | ✅ | `ui/settings_page.dart`; content-filter opt-in via `PATCH /user/{key}{approved_hashtags}` (§21); feeds re-filter server-side on save |
 | **C4** Artist dashboard (aggregate) | ✅ | `ui/artist_dashboard_page.dart`; totals + country/device/emoji breakdowns + per-post table + authenticated-only toggle (§19). Per-post `/post/{id}/stats` drill-in deferred |
 | **C4** Post management + ZIP export | ✅ | `ui/post_management_page.dart`; bulk hide/unhide/delete + license + async ZIP data export (§20) via the unversioned `/api/pmd/*` (`ClubApiClient.dioRoot`) |
