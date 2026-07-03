@@ -294,26 +294,12 @@ extension _EditorToolgrid on _EditorPageState {
   }
 
   Future<void> _newDialog() async {
-    int w = 64, h = 64;
-    final ok = await showDialog<bool>(
+    final size = await showDialog<(int, int)>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('New document'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          for (final preset in [16, 32, 48, 64, 128, 256])
-            ListTile(
-              dense: true,
-              title: Text('$preset × $preset'),
-              onTap: () {
-                w = preset;
-                h = preset;
-                Navigator.pop(ctx, true);
-              },
-            ),
-        ]),
-      ),
+      builder: (_) => const _NewDocumentDialog(),
     );
-    if (ok == true) {
+    if (size != null) {
+      final (w, h) = size;
       // A new canvas is a new library drawing; the previous one stays saved in My Drawings.
       await _switchToNewDrawing(title: 'Untitled', mutateEngine: () {
         _send('NewDocument($w,$h)');
@@ -326,5 +312,114 @@ extension _EditorToolgrid on _EditorPageState {
         setState(() {});
       }
     }
+  }
+}
+
+// The New-document dialog: free-form width × height in the engine's full 1–256 range, with
+// square presets as shortcuts. Sizes Makapix Club won't accept (server UploadRules: the
+// free-form band + the small-size whitelist) get a red alert but remain creatable — the
+// editor is deliberately not limited to publishable sizes. Pops `(w, h)` on Create.
+class _NewDocumentDialog extends ConsumerStatefulWidget {
+  const _NewDocumentDialog();
+  @override
+  ConsumerState<_NewDocumentDialog> createState() => _NewDocumentDialogState();
+}
+
+class _NewDocumentDialogState extends ConsumerState<_NewDocumentDialog> {
+  final _w = TextEditingController(text: '64');
+  final _h = TextEditingController(text: '64');
+
+  @override
+  void dispose() {
+    _w.dispose();
+    _h.dispose();
+    super.dispose();
+  }
+
+  int? _dim(TextEditingController c) {
+    final v = int.tryParse(c.text.trim());
+    return (v != null && v >= 1 && v <= 256) ? v : null;
+  }
+
+  Widget _field(TextEditingController c, String label) {
+    return Expanded(
+      child: TextField(
+        controller: c,
+        keyboardType: TextInputType.number,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        maxLength: 3,
+        decoration: InputDecoration(labelText: label, counterText: '', isDense: true),
+        onChanged: (_) => setState(() {}),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final w = _dim(_w), h = _dim(_h);
+    final valid = w != null && h != null;
+    // Live server rules when already fetched; the baked-in fallback otherwise (offline-safe).
+    final cfg = ref.watch(serverConfigProvider).valueOrNull ?? ClubServerConfig.fallback;
+    final conformance = ClubConformance(cfg);
+    final clubOk = !valid || conformance.dimensionsAccepted(w, h);
+    final nearest = clubOk ? null : conformance.nearestConformantSize(w, h);
+    return AlertDialog(
+      title: const Text('New document'),
+      content: SizedBox(
+        width: 320,
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            _field(_w, 'Width'),
+            const Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('×')),
+            _field(_h, 'Height'),
+          ]),
+          const SizedBox(height: 10),
+          Wrap(spacing: 6, children: [
+            for (final p in [16, 32, 48, 64, 128, 256])
+              ActionChip(
+                label: Text('$p²'),
+                onPressed: () => setState(() {
+                  _w.text = '$p';
+                  _h.text = '$p';
+                }),
+              ),
+          ]),
+          if (!valid) ...[
+            const SizedBox(height: 10),
+            const Text('Each side must be 1–256 pixels.', style: TextStyle(fontSize: 12, color: Colors.white70)),
+          ],
+          if (valid && !clubOk) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: Colors.redAccent),
+              ),
+              child: Row(children: [
+                const Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Makapix Club doesn\'t accept $w × $h artworks, so this one couldn\'t be '
+                    'posted at this size. You can still create and edit it.'
+                    '${nearest != null ? '\nNearest accepted size: ${nearest[0]} × ${nearest[1]}.' : ''}',
+                    style: const TextStyle(fontSize: 12, color: Colors.redAccent),
+                  ),
+                ),
+              ]),
+            ),
+          ],
+        ]),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(
+          onPressed: valid ? () => Navigator.pop(context, (w, h)) : null,
+          child: const Text('Create'),
+        ),
+      ],
+    );
   }
 }

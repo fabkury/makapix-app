@@ -49,6 +49,10 @@ class ClubConformance {
     );
   }
 
+  /// Dimension-only acceptance — for pre-flight UI (e.g. the editor's New-document
+  /// dialog warns about sizes the Club would reject) without a file to check.
+  bool dimensionsAccepted(int w, int h) => _dimensionsOk(w, h);
+
   bool _dimensionsOk(int w, int h) {
     if (w > _u.freeFormMax || h > _u.freeFormMax) return false;
     if (w >= _u.freeFormMin && h >= _u.freeFormMin) return true;

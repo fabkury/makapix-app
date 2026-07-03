@@ -52,4 +52,12 @@ void main() {
 
   test('file too large rejected', () => expect(chk(128, 128, bytes: 6 * 1024 * 1024).ok, isFalse));
   test('unsupported format rejected', () => expect(chk(128, 128, fmt: 'jpg').ok, isFalse));
+
+  test('dimensionsAccepted mirrors the dimension rule (pre-flight UI check)', () {
+    expect(c.dimensionsAccepted(128, 128), isTrue);
+    expect(c.dimensionsAccepted(32, 32), isTrue); // whitelisted
+    expect(c.dimensionsAccepted(1, 1), isFalse); // under min, not whitelisted
+    expect(c.dimensionsAccepted(100, 100), isFalse);
+    expect(c.dimensionsAccepted(300, 300), isFalse); // over max
+  });
 }
