@@ -508,7 +508,15 @@ extension _EditorEngine on _EditorPageState {
   }
 
   void _nudgeCursor(int dx, int dy) {
-    _moveCursor(dx, dy);
+    if (_penDown) {
+      // While Hold is on a nudge paints, and each nudge is its own undo step (like a drag).
+      _send('CursorStrokeBegin()');
+      _moveCursor(dx, dy);
+      _send('CursorStrokeEnd()');
+      _refreshState();
+    } else {
+      _moveCursor(dx, dy);
+    }
     _redraw();
   }
 

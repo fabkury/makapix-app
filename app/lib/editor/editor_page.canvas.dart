@@ -272,6 +272,9 @@ extension _EditorCanvas on _EditorPageState {
       _lastTouch = pos;
       _accX = 0;
       _accY = 0;
+      // While Hold is on, each drag (finger down → up) is its own undo step: open its edit now,
+      // committed in _endDraw (CursorStrokeEnd).
+      if (_penDown) _send('CursorStrokeBegin()');
       return; // off-finger: drag moves the reticle, acting is via buttons
     }
     final p = _toCanvas(pos, box);
@@ -410,7 +413,10 @@ extension _EditorCanvas on _EditorPageState {
     }
     if (_isCursorTool) {
       _lastTouch = null;
-      if (_penDown) _refreshState();
+      if (_penDown) {
+        _send('CursorStrokeEnd()'); // commit this drag as ONE undo step (Hold stays on)
+        _refreshState();
+      }
       return;
     }
     if (_eraserX != null) {

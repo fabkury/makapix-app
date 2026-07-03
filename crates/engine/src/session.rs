@@ -210,6 +210,10 @@ pub struct Session {
     /// Precision-pencil reticle position + active pen stroke (draw-by-button, off-finger).
     cursor: Point,
     precision_before: Option<EditScope>,
+    /// Precision "Hold": the pen is logically down (drag segments paint). Each segment opens and
+    /// commits its own `precision_before` edit (`cursor_stroke_begin`/`cursor_stroke_end`), so
+    /// Undo mid-Hold reverts the LAST drag, not everything since Hold began.
+    pen_held: bool,
     /// Pixel-perfect corner-filter tail for the precision pen line: the reticle path has no
     /// [`Stroke`], so its tail lives here (see `Stroke::pp` for the pointer-stroke twin).
     pen_pp: Vec<(Point, Rgba8)>,
@@ -268,6 +272,7 @@ impl Session {
             layer_sel: vec![0],
             cursor: Point::new(w as i32 / 2, h as i32 / 2),
             precision_before: None,
+            pen_held: false,
             pen_pp: Vec::new(),
             clipboard: None,
             paste_draft: None,
@@ -1610,42 +1615,72 @@ impl Session {
         }
     }
 
-    /// Press the pen down at the reticle (begins a stroke and stamps/sprays the first point).
+    /// Press the pen down at the reticle: enter Hold. Stamps/sprays the first point and commits
+    /// that dab as its own undo step IMMEDIATELY — subsequent drag segments each record their own
+    /// step (`cursor_stroke_begin`/`cursor_stroke_end`), so Undo mid-Hold reverts the last drag.
     pub fn cursor_pen_down(&mut self) {
-        if self.precision_before.is_some() || !self.active_editable() {
+        if self.pen_held || self.precision_before.is_some() || !self.active_editable() {
             return;
         }
-        self.precision_before = Some(self.begin_edit());
+        self.pen_held = true;
+        let before = self.begin_edit();
         self.paint_acc = 0.0; // fresh pen line → reset Brush/Airbrush spacing
         self.pen_pp.clear(); // fresh pen line → reset the pixel-perfect corner-filter tail
         let p = self.cursor_storage();
         if self.tool == ToolKind::Pencil && self.pixel_perfect_active() {
-            // Mirror pointer_down: plot the first pixel ourselves so its pre-stroke colour seeds
-            // the pixel-perfect sequence (see `pencil_perfect_segment`).
             let color = self.settings.primary;
             let clip = self.paint_clip();
             let sel = self.selection_clone();
             let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-            let orig = buf.get(p.x, p.y);
             tool::plot(buf, sel.as_ref(), clip, p.x, p.y, color, PaintMode::Replace);
-            self.pen_pp.push((p, orig));
+        } else {
+            match self.cursor_paint() {
+                Some((mode, color)) => self.stamp_active(p, mode, color),
+                None if self.tool == ToolKind::Airbrush => self.airbrush_active(p),
+                None if matches!(self.tool, ToolKind::Dodge | ToolKind::Burn) => {
+                    self.dodge_burn_active(p, self.dodge_dv(self.tool == ToolKind::Dodge));
+                }
+                None => {}
+            }
+        }
+        self.commit_edit(before);
+    }
+
+    /// One drag segment of a held pen begins (finger down while Hold is on): open the undo edit
+    /// the segment's `move_cursor` calls paint into; `cursor_stroke_end` commits it as ONE step.
+    /// No-op unless the pen is held (a plain reticle drag paints nothing).
+    pub fn cursor_stroke_begin(&mut self) {
+        if !self.pen_held || self.precision_before.is_some() || !self.active_editable() {
             return;
         }
-        match self.cursor_paint() {
-            Some((mode, color)) => self.stamp_active(p, mode, color),
-            None if self.tool == ToolKind::Airbrush => self.airbrush_active(p),
-            None if matches!(self.tool, ToolKind::Dodge | ToolKind::Burn) => {
-                self.dodge_burn_active(p, self.dodge_dv(self.tool == ToolKind::Dodge));
-            }
-            None => {}
+        self.precision_before = Some(self.begin_edit());
+        self.paint_acc = 0.0; // fresh segment → reset Brush/Airbrush spacing
+        self.pen_pp.clear();
+        if self.tool == ToolKind::Pencil && self.pixel_perfect_active() {
+            // Seed the corner filter with the reticle pixel — already painted by the Hold dab or
+            // the previous segment, so seeding with its current colour is visually a no-op.
+            let p = self.cursor_storage();
+            let c = self.doc.active_frame().active_layer().pixels.get(p.x, p.y);
+            self.pen_pp.push((p, c));
         }
     }
 
-    /// Lift the pen, committing the precision stroke as one undo edit.
+    /// The drag segment ends (finger up, Hold still on): commit its pixels as ONE undo step.
+    pub fn cursor_stroke_end(&mut self) {
+        if let Some(before) = self.precision_before.take() {
+            self.commit_edit(before);
+        }
+        self.pen_pp.clear();
+    }
+
+    /// Lift the pen: exit Hold. Adds NO undo step of its own — the entering dab and every drag
+    /// segment already committed theirs; a segment still open (finger down as Hold flips off)
+    /// commits here as its final step.
     pub fn cursor_pen_up(&mut self) {
         if let Some(before) = self.precision_before.take() {
             self.commit_edit(before);
         }
+        self.pen_held = false;
         self.pen_pp.clear();
     }
 
@@ -2842,20 +2877,34 @@ mod tests {
     }
 
     #[test]
-    fn precision_pen_draws_line_as_one_edit() {
+    fn precision_pen_hold_dab_and_each_drag_are_separate_undo_steps() {
         let mut s = Session::new(16, 16);
         s.settings.primary = Rgba8::WHITE;
         s.tool = ToolKind::Pencil;
         s.set_cursor(2, 2);
-        s.cursor_pen_down();
-        s.move_cursor(5, 0); // drag the reticle → draws a horizontal line
-        s.cursor_pen_up();
+        s.cursor_pen_down(); // entering Hold stamps (2,2) and commits it immediately
         assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::WHITE);
+        s.cursor_stroke_begin(); // finger down …
+        s.move_cursor(5, 0); // … drag the reticle → draws a horizontal line …
+        s.cursor_stroke_end(); // … finger up: the drag is ONE undo step
         assert_eq!(s.pixel(0, 0, 7, 2), Rgba8::WHITE);
         assert_eq!(s.pixel(0, 0, 4, 2), Rgba8::WHITE); // interpolated
-        // entire line is a single undo step
+        s.cursor_stroke_begin(); // a second drag while still holding
+        s.move_cursor(0, 3); // down to (7,5)
+        s.cursor_stroke_end();
+        assert_eq!(s.pixel(0, 0, 7, 5), Rgba8::WHITE);
+        s.cursor_pen_up(); // exiting Hold adds NO step of its own
+        // Undo #1: only the second drag.
+        assert!(s.doc.undo());
+        assert_eq!(s.pixel(0, 0, 7, 5), Rgba8::TRANSPARENT);
+        assert_eq!(s.pixel(0, 0, 4, 2), Rgba8::WHITE);
+        // Undo #2: the first drag; the Hold dab survives.
         assert!(s.doc.undo());
         assert_eq!(s.pixel(0, 0, 4, 2), Rgba8::TRANSPARENT);
+        assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::WHITE);
+        // Undo #3: the Hold dab itself.
+        assert!(s.doc.undo());
+        assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::TRANSPARENT);
         assert!(!s.doc.undo()); // nothing else to undo
     }
 
@@ -2867,16 +2916,20 @@ mod tests {
         s.tool = ToolKind::Pencil;
         s.set_cursor(2, 2);
         s.cursor_pen_down();
+        s.cursor_stroke_begin();
         s.move_cursor(5, 0);
+        s.cursor_stroke_end();
         s.cursor_pen_up();
         // now erase along it in precision mode
         s.tool = ToolKind::Eraser;
         s.set_cursor(2, 2);
         s.cursor_pen_down();
+        s.cursor_stroke_begin();
         s.move_cursor(5, 0);
+        s.cursor_stroke_end();
         s.cursor_pen_up();
         assert_eq!(s.pixel(0, 0, 4, 2), Rgba8::TRANSPARENT); // erased back to transparent
-        assert!(s.doc.undo()); // erase is its own single undo step
+        assert!(s.doc.undo()); // the erase DRAG is its own undo step
         assert_eq!(s.pixel(0, 0, 4, 2), Rgba8::WHITE);
     }
 
@@ -2900,15 +2953,18 @@ mod tests {
         s.settings.brush_size = 4;
         s.tool = ToolKind::Airbrush;
         s.set_cursor(8, 8);
-        // a continuous precision spray: pen down, drag, pen up — one undo edit
+        // a continuous precision spray: Hold (dab step) + one drag segment (drag step)
         s.cursor_pen_down();
+        s.cursor_stroke_begin();
         s.move_cursor(2, 0);
         s.move_cursor(2, 0);
+        s.cursor_stroke_end();
         s.cursor_pen_up();
         let h = s.doc.active_frame().active_layer().pixels.content_hash();
         assert_ne!(h, RgbaBuffer::new(16, 16).content_hash(), "airbrush should have painted something");
-        assert!(s.doc.undo());
-        assert!(!s.doc.undo(), "the whole precision spray is a single undo step");
+        assert!(s.doc.undo()); // the drag
+        assert!(s.doc.undo()); // the Hold dab
+        assert!(!s.doc.undo(), "dab + drag are exactly two undo steps");
     }
 
     #[test]

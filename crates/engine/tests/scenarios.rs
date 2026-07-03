@@ -110,10 +110,10 @@ fn pencil_pixel_perfect_undo_restores_blank() {
     }
 }
 
-// The same staircase drawn with the precision pen (off-finger reticle, pen held): step the
-// reticle through (1,1)→(2,1)→(2,2)→(3,2)→(3,3) while the pen is down.
-const PEN_STAIRCASE: &str =
-    "SetCursor(1,1); CursorPenDown(); MoveCursor(1,0); MoveCursor(0,1); MoveCursor(1,0); MoveCursor(0,1); CursorPenUp()";
+// The same staircase drawn with the precision pen (off-finger reticle, Hold on): entering Hold
+// stamps + commits (1,1), then ONE drag segment steps the reticle through (2,1)→(2,2)→(3,2)→(3,3).
+const PEN_STAIRCASE: &str = "SetCursor(1,1); CursorPenDown(); CursorStrokeBegin(); \
+    MoveCursor(1,0); MoveCursor(0,1); MoveCursor(1,0); MoveCursor(0,1); CursorStrokeEnd(); CursorPenUp()";
 
 #[test]
 fn pencil_pixel_perfect_applies_to_precision_pen_line() {
@@ -136,8 +136,9 @@ fn pencil_pixel_perfect_applies_to_precision_pen_line() {
 }
 
 #[test]
-fn pencil_pixel_perfect_pen_line_restores_underlying_and_undoes_as_one() {
-    // A removed corner restores the pre-line pixel (green), and the whole pen line is one undo step.
+fn pencil_pixel_perfect_pen_line_restores_underlying_and_undo_splits_dab_and_drag() {
+    // A removed corner restores the pre-line pixel (green); the Hold dab and the drag segment
+    // are SEPARATE undo steps — undo mid-Hold reverts the last drag, not everything.
     let mut s = run(&format!(
         r#"
         NewDocument(8,8)
@@ -149,9 +150,12 @@ fn pencil_pixel_perfect_pen_line_restores_underlying_and_undoes_as_one() {
     ));
     assert_eq!(s.pixel(0, 0, 2, 1), Rgba8::rgb(0, 255, 0));
     assert_eq!(s.pixel(0, 0, 2, 2), RED); // rest of the line still drawn
-    assert!(s.doc.undo()); // one undo removes the whole pen line…
+    assert!(s.doc.undo()); // undo the drag segment: the Hold dab at (1,1) survives
     assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::TRANSPARENT);
-    assert_eq!(s.pixel(0, 0, 2, 1), Rgba8::rgb(0, 255, 0)); // …leaving the earlier green dot
+    assert_eq!(s.pixel(0, 0, 1, 1), RED);
+    assert_eq!(s.pixel(0, 0, 2, 1), Rgba8::rgb(0, 255, 0)); // the earlier green dot is intact
+    assert!(s.doc.undo()); // undo the Hold dab
+    assert_eq!(s.pixel(0, 0, 1, 1), Rgba8::TRANSPARENT);
 }
 
 #[test]
