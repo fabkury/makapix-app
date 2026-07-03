@@ -72,7 +72,7 @@ const toolTips = <String, String>{
   'SelectFree': 'Lasso freely around pixels to select them.',
   'SelectByColor': 'Tap to select similar colours. Threshold sets tolerance.',
   'SelectLayer': 'Turn the layer\'s opaque pixels into a selection. Tap a mode to apply.',
-  'HsvShift': 'Shift hue, saturation and value with a live preview. Acts on the selection, or the whole layer without one. Apply to commit.',
+  'HsvShift': 'Shift hue, saturation and value.',
   'Flip': 'Mirror the layer horizontally or vertically. Acts on the selection if any.',
   'Rotate': 'Rotate the layer 90° or 180°, or by a free Angle. Acts on the selection if any. (Whole canvas: ☰ menu.)',
   'Invert': 'Invert the image colours.',
