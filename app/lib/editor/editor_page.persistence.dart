@@ -7,6 +7,9 @@ part of 'editor_page.dart';
 // autosave of the current drawing, recovery on launch, and switching between drawings. The Rust
 // engine is untouched — this is all shell-side over the existing `.mkpx` save/load FFI.
 // Plan + rationale: docs/plans/persistence-autosave.md.
+// The user's decision for the current drawing when new artwork is about to replace the canvas.
+enum _OutgoingChoice { discard, save }
+
 extension _EditorPersistence on _EditorPageState {
   // ---- startup ----------------------------------------------------------------
 
@@ -23,30 +26,25 @@ extension _EditorPersistence on _EditorPageState {
     }
     if (!mounted) return;
 
-    final pending = ref.read(pendingClubEditProvider);
-    if (pending != null) {
-      await _consumeClubEdit(pending); // opens the artwork as a new library drawing
-      return;
-    }
-
     final curId = _prefs?.getString(_kCurrentDrawing);
     if (curId != null && await _store!.exists(curId) && await _loadDrawingIntoEngine(curId)) {
       final meta = await _store!.readMeta(curId);
       _adopt(curId, meta?.title ?? 'Untitled', meta?.createdAt ?? DateTime.now());
-      if (mounted) {
-        _refreshState();
-        _redraw();
-        setState(() {});
-      }
     } else {
       // No restorable current drawing → track the default 64×64 doc as a fresh one.
       await _createFreshDrawing(title: 'Untitled');
-      if (mounted) {
-        _refreshState();
-        _redraw();
-        setState(() {});
-      }
     }
+    if (mounted) {
+      _refreshState();
+      _redraw();
+      setState(() {});
+    }
+
+    // Consume any pending Club "Edit in Makapix" request only AFTER the real current drawing is
+    // back in the engine, so the replace-ask judges (and can save/discard) the actual document —
+    // not the placeholder 64×64 the engine boots with.
+    final pending = ref.read(pendingClubEditProvider);
+    if (pending != null && mounted) await _consumeClubEdit(pending);
   }
 
   // ---- the autosave wiring ----------------------------------------------------
@@ -109,11 +107,9 @@ extension _EditorPersistence on _EditorPageState {
     return bytes != null;
   }
 
-  // Stop tracking the outgoing drawing before a switch. A blank drawing (single never-painted
-  // layer — see _isBlankDocument) is deleted from the library instead of flushed, so switching
-  // away never accumulates empty Untitled entries; anything else is saved as before.
-  Future<void> _releaseOutgoingDrawing() async {
-    final discard = _engineReady && _isBlankDocument();
+  // Stop tracking the outgoing drawing before a switch: either flush-and-keep it in the library,
+  // or delete it (the caller decided — blank auto-discard or the user's explicit choice).
+  Future<void> _releaseOutgoing({required bool discard}) async {
     if (!discard) await _autosave?.flushNow();
     await _autosave?.stop(); // waits for any in-flight write before a delete pulls the folder
     _autosave = null;
@@ -121,8 +117,48 @@ extension _EditorPersistence on _EditorPageState {
     if (discard && id != null) {
       try {
         await _store?.delete(id);
-      } catch (_) {/* best-effort: an orphaned blank folder is harmless */}
+      } catch (_) {/* best-effort: an orphaned folder is harmless */}
     }
+  }
+
+  // Silent release: a blank drawing (single never-painted layer — see _isBlankDocument) is
+  // deleted from the library instead of flushed, so switching away never accumulates empty
+  // Untitled entries; anything else is saved as before.
+  Future<void> _releaseOutgoingDrawing() =>
+      _releaseOutgoing(discard: _engineReady && _isBlankDocument());
+
+  // Interactive release, for every path that LOADS artwork over the canvas (Club edit, Open,
+  // gallery). A blank canvas has nothing to protect and releases silently; otherwise the user
+  // chooses: keep the current drawing in My Drawings, discard it, or cancel the load.
+  // Returns false when cancelled — the caller must abort.
+  Future<bool> _releaseOutgoingDrawingInteractive(String incoming) async {
+    if (!_engineReady || !mounted) return false;
+    if (_isBlankDocument()) {
+      await _releaseOutgoing(discard: true);
+      return true;
+    }
+    final choice = await showDialog<_OutgoingChoice>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Open $incoming?'),
+        content: Text('What should happen to your current drawing, "$_drawingTitle"?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: const Color(0xFFE06060)),
+            onPressed: () => Navigator.pop(ctx, _OutgoingChoice.discard),
+            child: const Text('Discard it'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, _OutgoingChoice.save),
+            child: const Text('Keep in My Drawings'),
+          ),
+        ],
+      ),
+    );
+    if (choice == null) return false;
+    await _releaseOutgoing(discard: choice == _OutgoingChoice.discard);
+    return true;
   }
 
   // Save the outgoing drawing, mutate the engine to new content (NewDocument / a loaded Club
@@ -137,14 +173,15 @@ extension _EditorPersistence on _EditorPageState {
     await _createFreshDrawing(title: title);
   }
 
-  // Open an existing library drawing (from the gallery): save+stop the current one, load the target,
-  // and adopt it.
+  // Open an existing library drawing (from the gallery): ask keep/discard/cancel for a non-blank
+  // current one, release it accordingly, then load the target and adopt it.
   Future<void> _openExistingDrawing(String id) async {
     if (id == _drawingId) return;
-    await _releaseOutgoingDrawing();
+    final meta = await _store?.readMeta(id);
+    if (!mounted) return;
+    if (!await _releaseOutgoingDrawingInteractive('"${meta?.title ?? 'Untitled'}"')) return;
     final ok = await _loadDrawingIntoEngine(id);
     if (!ok && mounted) _toast('Could not open that drawing (file missing or corrupt)');
-    final meta = await _store?.readMeta(id);
     _clubSource = null;
     _adopt(id, meta?.title ?? 'Untitled', meta?.createdAt ?? DateTime.now());
     if (mounted) {

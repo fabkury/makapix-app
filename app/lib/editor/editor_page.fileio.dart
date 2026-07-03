@@ -38,12 +38,12 @@ extension _EditorFileIo on _EditorPageState {
     if (res == null || res.files.single.path == null) return;
     final name = res.files.single.name;
     final bytes = await File(res.files.single.path!).readAsBytes();
-    // Opening an external file is a NEW library drawing (never overwrites the current one). Save +
-    // stop the current drawing first, then load; only adopt a new drawing if the load succeeds, so
-    // a corrupt file leaves the current drawing intact.
-    await _autosave?.flushNow();
-    await _autosave?.stop();
-    _autosave = null;
+    if (!mounted) return;
+    // Opening an external file is a NEW library drawing (never overwrites the current one). Ask
+    // keep/discard/cancel for a non-blank canvas, release the current drawing accordingly, then
+    // load; only adopt a new drawing if the load succeeds, so a corrupt file leaves the current
+    // drawing intact.
+    if (!await _releaseOutgoingDrawingInteractive('"$name"')) return;
     if (engine.load(bytes)) {
       _clubSource = null;
       await _createFreshDrawing(title: name.replaceAll(RegExp(r'\.mkpx$', caseSensitive: false), ''));
@@ -183,41 +183,25 @@ extension _EditorFileIo on _EditorPageState {
     }
   }
 
-  // club → editor: load a downloaded Club artwork as a NEW library drawing (the user's current
-  // drawing is preserved in My Drawings, never clobbered) and record its provenance so publishing
-  // can offer Replace / remix. A blank canvas has nothing to protect, so it is replaced silently.
+  // club → editor: load a downloaded Club artwork as a NEW library drawing and record its
+  // provenance so publishing can offer Replace / remix. A non-blank canvas first asks
+  // keep/discard/cancel for the current drawing (_releaseOutgoingDrawingInteractive); a blank
+  // one is replaced silently.
   Future<void> _consumeClubEdit(ClubEditRequest req) async {
     ref.read(pendingClubEditProvider.notifier).state = null; // clear so it doesn't re-fire
     if (!_engineReady) return;
-    if (!_isBlankDocument()) {
-      final go = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Open in editor'),
-          content: Text('Open "${req.sourceTitle}" as a new drawing? Your current drawing is kept in My Drawings.'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Open')),
-          ],
-        ),
-      );
-      if (go != true) return;
-    }
+    if (!await _releaseOutgoingDrawingInteractive('"${req.sourceTitle}"')) return;
     var ok = true;
-    await _switchToNewDrawing(
-      title: req.sourceTitle,
-      mutateEngine: () {
-        if (req.isMkpx) {
-          // A layers (.mkpx) file: load as a full document — layers, frames,
-          // palettes intact. The engine auto-detects plain vs compact profile.
-          ok = engine.load(req.bytes);
-        } else {
-          _send('NewDocument(${req.width},${req.height})');
-          ok = engine.importImage(req.bytes, mode: 1, asLayer: false, startFrame: 0);
-        }
-        _send('SelectTool($_tool)');
-      },
-    );
+    if (req.isMkpx) {
+      // A layers (.mkpx) file: load as a full document — layers, frames,
+      // palettes intact. The engine auto-detects plain vs compact profile.
+      ok = engine.load(req.bytes);
+    } else {
+      _send('NewDocument(${req.width},${req.height})');
+      ok = engine.importImage(req.bytes, mode: 1, asLayer: false, startFrame: 0);
+    }
+    _send('SelectTool($_tool)');
+    await _createFreshDrawing(title: req.sourceTitle);
     if (!mounted) return;
     if (!ok) _toast('Could not load this artwork into the editor.');
     setState(() {
