@@ -25,7 +25,9 @@ class _PublishPageState extends ConsumerState<PublishPage> {
   final _tags = TextEditingController();
   int? _licenseId;
   bool _hidden = false;
-  bool _shareLayers = false;
+  // Sharing the layers file is opt-out: editor publishes default to attaching it. _submit
+  // re-checks the capability/size gates so the hidden-tile cases can't send it anyway.
+  bool _shareLayers = true;
 
   @override
   void initState() {
@@ -263,6 +265,11 @@ class _PublishPageState extends ConsumerState<PublishPage> {
 
   void _submit() {
     final d = widget.draft;
+    // Mirror the tile's visibility/size gates: with the opt-out default, _shareLayers can be
+    // true while the tile never showed (capability off) — never send the file in those cases.
+    final rules = (ref.read(serverConfigProvider).valueOrNull ?? ClubServerConfig.fallback).upload.mkpx;
+    final mkpx = d.mkpxBytes;
+    final sendMkpx = _shareLayers && rules.enabled && mkpx != null && mkpx.length <= rules.maxFileBytes;
     ref.read(publishControllerProvider.notifier).submit(
           bytes: d.bytes,
           filename: d.filename,
@@ -271,7 +278,7 @@ class _PublishPageState extends ConsumerState<PublishPage> {
           hashtags: _tags.text.trim(),
           hidden: _hidden,
           licenseId: _licenseId,
-          mkpxBytes: _shareLayers ? d.mkpxBytes : null,
+          mkpxBytes: sendMkpx ? mkpx : null,
         );
   }
 }
