@@ -121,16 +121,11 @@ extension _EditorPersistence on _EditorPageState {
     }
   }
 
-  // Silent release: a blank drawing (single never-painted layer — see _isBlankDocument) is
-  // deleted from the library instead of flushed, so switching away never accumulates empty
-  // Untitled entries; anything else is saved as before.
-  Future<void> _releaseOutgoingDrawing() =>
-      _releaseOutgoing(discard: _engineReady && _isBlankDocument());
-
-  // Interactive release, for every path that LOADS artwork over the canvas (Club edit, Open,
-  // gallery). A blank canvas has nothing to protect and releases silently; otherwise the user
-  // chooses: keep the current drawing in My Drawings, discard it, or cancel the load.
-  // Returns false when cancelled — the caller must abort.
+  // Interactive release, for every path that replaces the canvas (Club edit, Open, gallery,
+  // New). A blank canvas has nothing to protect and releases silently (deleted, so empty
+  // Untitled entries never accumulate); otherwise the user chooses: keep the current drawing
+  // in My Drawings, discard it (re-confirmed), or cancel. Returns false when cancelled — the
+  // caller must abort.
   Future<bool> _releaseOutgoingDrawingInteractive(String incoming) async {
     if (!_engineReady || !mounted) return false;
     if (_isBlankDocument()) {
@@ -186,14 +181,14 @@ extension _EditorPersistence on _EditorPageState {
     return true;
   }
 
-  // Save the outgoing drawing, mutate the engine to new content (NewDocument / a loaded Club
-  // artwork), then track that content as a brand-new library drawing. The old drawing stays in the
-  // library (blank ones are discarded), so switching never clobbers work.
+  // Create a New drawing: a non-blank canvas gets the same keep/discard/cancel ask as loading
+  // artwork (see _releaseOutgoingDrawingInteractive; a blank one is replaced silently), then the
+  // engine is mutated to the new content and tracked as a brand-new library drawing.
   Future<void> _switchToNewDrawing({
     required String title,
     required void Function() mutateEngine,
   }) async {
-    await _releaseOutgoingDrawing();
+    if (!await _releaseOutgoingDrawingInteractive('a new drawing')) return;
     mutateEngine();
     await _createFreshDrawing(title: title);
   }
