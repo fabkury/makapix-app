@@ -167,24 +167,42 @@ extension _EditorFileIo on _EditorPageState {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => PublishPage(draft: draft)));
   }
 
+  // True when the document is pristine: a single frame with a single layer that has never been
+  // painted (no allocated tiles). A layer whose pixels were all erased still has tiles, so that
+  // counts as non-blank — conservative on purpose.
+  bool _isBlankDocument() {
+    try {
+      final st = json.decode(engine.stateJson()) as Map<String, dynamic>;
+      final frames = st['frame_detail'] as List? ?? const [];
+      if (frames.length != 1) return false;
+      final layers = (frames[0] as Map)['layers'] as List? ?? const [];
+      if (layers.length != 1) return false;
+      return ((layers[0] as Map)['present_tiles'] as num? ?? 1) == 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // club → editor: load a downloaded Club artwork as a NEW library drawing (the user's current
   // drawing is preserved in My Drawings, never clobbered) and record its provenance so publishing
-  // can offer Replace / remix.
+  // can offer Replace / remix. A blank canvas has nothing to protect, so it is replaced silently.
   Future<void> _consumeClubEdit(ClubEditRequest req) async {
     ref.read(pendingClubEditProvider.notifier).state = null; // clear so it doesn't re-fire
     if (!_engineReady) return;
-    final go = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Open in editor'),
-        content: Text('Open "${req.sourceTitle}" as a new drawing? Your current drawing is kept in My Drawings.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Open')),
-        ],
-      ),
-    );
-    if (go != true) return;
+    if (!_isBlankDocument()) {
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Open in editor'),
+          content: Text('Open "${req.sourceTitle}" as a new drawing? Your current drawing is kept in My Drawings.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Open')),
+          ],
+        ),
+      );
+      if (go != true) return;
+    }
     var ok = true;
     await _switchToNewDrawing(
       title: req.sourceTitle,
@@ -214,7 +232,6 @@ extension _EditorFileIo on _EditorPageState {
     });
     _refreshState();
     _redraw();
-    if (mounted) _toast('Loaded "${req.sourceTitle}" — edit, then Post to Club');
   }
 
   // Save already-encoded export bytes to a user-chosen file. Mirrors _save(): `bytes` must go to
