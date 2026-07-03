@@ -155,6 +155,9 @@ pub struct ToolSettings {
     pub fill_all_layers: bool,
     pub gradient: GradientSpec,
     pub hsv: (f32, f32, f32),
+    /// HSV tool "Frame" scope: the shift (preview + apply) hits every layer of the active frame,
+    /// ignoring the selection, instead of the active layer / selection.
+    pub hsv_frame: bool,
     pub shape_fill: bool,
     pub line_width: u16,
     /// When true, a layer Move refuses to push any opaque pixel off-canvas (non-destructive).
@@ -186,6 +189,7 @@ impl Default for ToolSettings {
             fill_all_layers: false,
             gradient: GradientSpec::default(),
             hsv: (0.0, 0.0, 0.0),
+            hsv_frame: false,
             shape_fill: true,
             line_width: 1,
             protect_pixels: false,

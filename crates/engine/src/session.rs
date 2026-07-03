@@ -1903,11 +1903,21 @@ impl Session {
     }
 
     pub fn apply_hsv_shift(&mut self) {
+        let (dh, ds, dv) = self.settings.hsv;
+        // "Frame" scope: shift every layer of the active frame, ignoring the selection — frame
+        // mode acts on everything, like flip_frame/rotate_frame/map_frame. One undo step.
+        if self.settings.hsv_frame {
+            self.edit_doc("hsv_frame", |s| {
+                for l in &mut s.doc.active_frame_mut().layers {
+                    tool::hsv_shift_region(&mut l.pixels, None, dh, ds, dv);
+                }
+            });
+            return;
+        }
         if !self.active_editable() {
             return;
         }
         let before = self.begin_edit();
-        let (dh, ds, dv) = self.settings.hsv;
         let sel = self.selection_clone();
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
         tool::hsv_shift_region(buf, sel.as_ref(), dh, ds, dv);
@@ -1915,11 +1925,11 @@ impl Session {
     }
 
     /// Live HSV preview: while the HSV tool is active with a non-zero shift pending, the display
-    /// composites a clone of the active frame with the shift applied to the active layer
-    /// (selection-clipped, or the whole layer with no selection) — the document itself is
-    /// untouched until `ApplyHsvShift` commits.
+    /// composites a clone of the active frame with the shift applied per the scope — the active
+    /// layer (selection-clipped, or whole with no selection), or every layer in "Frame" scope.
+    /// The document itself is untouched until `ApplyHsvShift` commits.
     fn hsv_preview_frame(&self) -> Option<Frame> {
-        if self.tool != ToolKind::HsvShift || !self.active_editable() {
+        if self.tool != ToolKind::HsvShift {
             return None;
         }
         let (dh, ds, dv) = self.settings.hsv;
@@ -1927,9 +1937,18 @@ impl Session {
             return None;
         }
         let mut frame = self.doc.active_frame().clone();
-        let li = frame.active_layer;
-        let sel = self.selection_clone();
-        tool::hsv_shift_region(&mut frame.layers[li].pixels, sel.as_ref(), dh, ds, dv);
+        if self.settings.hsv_frame {
+            for l in &mut frame.layers {
+                tool::hsv_shift_region(&mut l.pixels, None, dh, ds, dv);
+            }
+        } else {
+            if !self.active_editable() {
+                return None;
+            }
+            let li = frame.active_layer;
+            let sel = self.selection_clone();
+            tool::hsv_shift_region(&mut frame.layers[li].pixels, sel.as_ref(), dh, ds, dv);
+        }
         Some(frame)
     }
 
@@ -3082,6 +3101,28 @@ mod tests {
         assert!(s.doc.undo()); // ONE step restores both layers
         assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::WHITE);
         assert_eq!(s.pixel(0, 1, 1, 0), Rgba8::new(255, 0, 0, 255));
+    }
+
+    #[test]
+    fn hsv_frame_scope_previews_and_applies_to_all_layers() {
+        let mut s = Session::new(8, 8);
+        s.settings.primary = Rgba8::new(255, 0, 0, 255);
+        s.tap(0, 0); // layer 0
+        s.add_layer();
+        s.settings.primary = Rgba8::new(0, 255, 0, 255);
+        s.tap(1, 0); // layer 1
+        s.run_script("SelectTool(HsvShift)\nSetHsvShift(120, 0, 0)\nSetHsvScope(Frame)").unwrap();
+        // The display previews BOTH layers shifted; the document still holds the originals.
+        let px = s.display_bytes(false, false, false);
+        assert_eq!(&px[0..4], &[0, 255, 0, 255]); // layer 0 at (0,0): red → green
+        assert_eq!(&px[4..8], &[0, 0, 255, 255]); // layer 1 at (1,0): green → blue
+        assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::new(255, 0, 0, 255));
+        s.run_script("ApplyHsvShift()").unwrap();
+        assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::new(0, 255, 0, 255));
+        assert_eq!(s.pixel(0, 1, 1, 0), Rgba8::new(0, 0, 255, 255));
+        assert!(s.doc.undo()); // ONE step restores both layers
+        assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::new(255, 0, 0, 255));
+        assert_eq!(s.pixel(0, 1, 1, 0), Rgba8::new(0, 255, 0, 255));
     }
 
     #[test]

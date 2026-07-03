@@ -491,6 +491,12 @@ extension _EditorControls on _EditorPageState {
         _redraw();
       }
 
+      // The scope lives in the engine too (SetHsvScope) so the live preview honours it.
+      children.add(_toggle(const ['Layer', 'Frame'], _hsvFrame ? 1 : 0, (i) {
+        setState(() => _hsvFrame = i == 1);
+        _send('SetHsvScope(${_hsvFrame ? 'Frame' : 'Layer'})');
+        _redraw();
+      }));
       _labeledSlider(children, 'H', _hsvH, -180, 180, (v) => syncHsv(() => _hsvH = v));
       _labeledSlider(children, 'S', _hsvS, -1, 1, (v) => syncHsv(() => _hsvS = v), integer: false);
       _labeledSlider(children, 'V', _hsvV, -1, 1, (v) => syncHsv(() => _hsvV = v), integer: false);

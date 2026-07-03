@@ -51,6 +51,7 @@ pub enum Action {
     SetGradientStops(Vec<Stop>),
     SetGradientSmoothstep(bool),
     SetHsvShift(f32, f32, f32),
+    SetHsvScope(bool), // true = the whole active frame, false = the active layer / selection
     SetSelectionMode(CombineMode),
     SetShapeFill(bool),
     SetLineWidth(u16),
@@ -192,6 +193,7 @@ impl Session {
             SetGradientStops(s) => self.settings.gradient.stops = s,
             SetGradientSmoothstep(b) => self.settings.gradient.smoothstep = b,
             SetHsvShift(dh, ds, dv) => self.settings.hsv = (dh, ds, dv),
+            SetHsvScope(frame) => self.settings.hsv_frame = frame,
             SetSelectionMode(m) => self.selection_mode = m,
             SetShapeFill(b) => self.settings.shape_fill = b,
             SetLineWidth(w) => self.settings.line_width = w.max(1),
@@ -501,6 +503,7 @@ fn parse_line(line: &str) -> Result<Action, String> {
         }),
         "SetGradientSmoothstep" => SetGradientSmoothstep(boola(0)?),
         "SetHsvShift" => SetHsvShift(f32a(0)?, f32a(1)?, f32a(2)?),
+        "SetHsvScope" => SetHsvScope(args.first().map(|s| s.eq_ignore_ascii_case("frame")).unwrap_or(false)),
         "SetSelectionMode" => SetSelectionMode(match args.first().copied().unwrap_or("") {
             "Replace" => CombineMode::Replace,
             "Add" => CombineMode::Add,
