@@ -563,6 +563,10 @@ extension _EditorFileIo on _EditorPageState {
             Row(children: [const SizedBox(width: 20, child: Text('H')), Expanded(child: Slider(value: h.clamp(1, 256), min: 1, max: 256, divisions: 255, label: '${h.toInt()}', onChanged: (v) => setS(() => h = v))), SizedBox(width: 36, child: Text('${h.toInt()}'))]),
             SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, title: const Text('Anchor center'), subtitle: const Text('(off = top-left)', style: TextStyle(fontSize: 11)), value: center, onChanged: (v) => setS(() => center = v)),
             Wrap(spacing: 6, children: [for (final p in [16, 32, 64, 128, 256]) ActionChip(label: Text('$p²'), onPressed: () => setS(() { w = p.toDouble(); h = p.toDouble(); }))]),
+            if (!ClubSizeRules.accepted(w.toInt(), h.toInt())) ...[
+              const SizedBox(height: 10),
+              _ClubSizeAlert(w.toInt(), h.toInt()),
+            ],
           ]),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),

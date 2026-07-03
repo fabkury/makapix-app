@@ -359,7 +359,6 @@ class _NewDocumentDialogState extends State<_NewDocumentDialog> {
     final w = _dim(_w), h = _dim(_h);
     final valid = w != null && h != null;
     final clubOk = !valid || ClubSizeRules.accepted(w, h);
-    final nearest = clubOk ? null : ClubSizeRules.nearest(w, h);
     return AlertDialog(
       title: const Text('New document'),
       content: SizedBox(
@@ -387,26 +386,7 @@ class _NewDocumentDialogState extends State<_NewDocumentDialog> {
           ],
           if (valid && !clubOk) ...[
             const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.red.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: Colors.redAccent),
-              ),
-              child: Row(children: [
-                const Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Makapix Club doesn\'t accept $w × $h artworks, so this one couldn\'t be '
-                    'posted at this size. You can still create and edit it.'
-                    '${nearest != null ? '\nNearest accepted size: ${nearest[0]} × ${nearest[1]}.' : ''}',
-                    style: const TextStyle(fontSize: 12, color: Colors.redAccent),
-                  ),
-                ),
-              ]),
-            ),
+            _ClubSizeAlert(w, h),
           ],
         ]),
       ),
@@ -417,6 +397,38 @@ class _NewDocumentDialogState extends State<_NewDocumentDialog> {
           child: const Text('Create'),
         ),
       ],
+    );
+  }
+}
+
+// Red informational alert: the given size isn't accepted by Makapix Club (the hardcoded
+// ClubSizeRules). Shown in the New-document and Resize-canvas dialogs; never blocks either —
+// the editor deliberately allows non-publishable sizes.
+class _ClubSizeAlert extends StatelessWidget {
+  final int width, height;
+  const _ClubSizeAlert(this.width, this.height);
+
+  @override
+  Widget build(BuildContext context) {
+    final nearest = ClubSizeRules.nearest(width, height);
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.red.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: Colors.redAccent),
+      ),
+      child: Row(children: [
+        const Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 20),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            'Makapix Club doesn\'t accept $width × $height artworks, so it can\'t be posted '
+            'to the Club at this size.\nNearest accepted size: ${nearest[0]} × ${nearest[1]}.',
+            style: const TextStyle(fontSize: 12, color: Colors.redAccent),
+          ),
+        ),
+      ]),
     );
   }
 }
