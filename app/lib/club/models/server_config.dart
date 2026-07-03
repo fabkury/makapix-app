@@ -16,21 +16,17 @@ class MkpxRules {
       MkpxRules(enabled: false, maxFileBytes: 52428800);
 }
 
-/// Upload conformance rules from `GET /api/v1/config` → `upload`.
+/// Upload rules from `GET /api/v1/config` → `upload`. Accepted artwork **sizes** are NOT
+/// here — they are hardcoded in `ClubSizeRules` (conformance.dart) by decision; the server
+/// re-checks on upload either way.
 class UploadRules {
   final List<String> formats;
   final int maxFileBytes;
-  final int freeFormMin;
-  final int freeFormMax;
-  final List<List<int>> smallWhitelist; // already includes both orientations
   final MkpxRules mkpx;
 
   const UploadRules({
     required this.formats,
     required this.maxFileBytes,
-    required this.freeFormMin,
-    required this.freeFormMax,
-    required this.smallWhitelist,
     this.mkpx = MkpxRules.disabled,
   });
 
@@ -38,11 +34,6 @@ class UploadRules {
         formats: (j['formats'] as List?)?.map((e) => e.toString()).toList() ??
             const ['png', 'gif', 'webp', 'bmp'],
         maxFileBytes: (j['max_file_bytes'] as num?)?.toInt() ?? 5242880,
-        freeFormMin: (j['free_form_min'] as num?)?.toInt() ?? 128,
-        freeFormMax: (j['free_form_max'] as num?)?.toInt() ?? 256,
-        smallWhitelist: ((j['small_whitelist'] as List?) ?? const [])
-            .map((e) => (e as List).map((n) => (n as num).toInt()).toList())
-            .toList(),
         mkpx: MkpxRules.fromJson((j['mkpx'] as Map?)?.cast<String, dynamic>()),
       );
 }
@@ -76,12 +67,6 @@ class ClubServerConfig {
     upload: UploadRules(
       formats: ['png', 'gif', 'webp', 'bmp'],
       maxFileBytes: 5242880,
-      freeFormMin: 128,
-      freeFormMax: 256,
-      smallWhitelist: [
-        [8, 8], [8, 16], [16, 8], [8, 32], [32, 8], [16, 16], [16, 32], [32, 16],
-        [32, 32], [32, 64], [64, 32], [64, 64], [64, 128], [128, 64],
-      ],
     ),
   );
 }

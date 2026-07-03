@@ -316,16 +316,16 @@ extension _EditorToolgrid on _EditorPageState {
 }
 
 // The New-document dialog: free-form width × height in the engine's full 1–256 range, with
-// square presets as shortcuts. Sizes Makapix Club won't accept (server UploadRules: the
-// free-form band + the small-size whitelist) get a red alert but remain creatable — the
-// editor is deliberately not limited to publishable sizes. Pops `(w, h)` on Create.
-class _NewDocumentDialog extends ConsumerStatefulWidget {
+// square presets as shortcuts. Sizes Makapix Club won't accept (the hardcoded ClubSizeRules:
+// free-form band + small-size whitelist) get a red alert but remain creatable — the editor
+// is deliberately not limited to publishable sizes. Pops `(w, h)` on Create.
+class _NewDocumentDialog extends StatefulWidget {
   const _NewDocumentDialog();
   @override
-  ConsumerState<_NewDocumentDialog> createState() => _NewDocumentDialogState();
+  State<_NewDocumentDialog> createState() => _NewDocumentDialogState();
 }
 
-class _NewDocumentDialogState extends ConsumerState<_NewDocumentDialog> {
+class _NewDocumentDialogState extends State<_NewDocumentDialog> {
   final _w = TextEditingController(text: '64');
   final _h = TextEditingController(text: '64');
 
@@ -358,11 +358,8 @@ class _NewDocumentDialogState extends ConsumerState<_NewDocumentDialog> {
   Widget build(BuildContext context) {
     final w = _dim(_w), h = _dim(_h);
     final valid = w != null && h != null;
-    // Live server rules when already fetched; the baked-in fallback otherwise (offline-safe).
-    final cfg = ref.watch(serverConfigProvider).valueOrNull ?? ClubServerConfig.fallback;
-    final conformance = ClubConformance(cfg);
-    final clubOk = !valid || conformance.dimensionsAccepted(w, h);
-    final nearest = clubOk ? null : conformance.nearestConformantSize(w, h);
+    final clubOk = !valid || ClubSizeRules.accepted(w, h);
+    final nearest = clubOk ? null : ClubSizeRules.nearest(w, h);
     return AlertDialog(
       title: const Text('New document'),
       content: SizedBox(
