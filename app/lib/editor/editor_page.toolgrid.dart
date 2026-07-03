@@ -372,7 +372,7 @@ class _NewDocumentDialogState extends State<_NewDocumentDialog> {
           ]),
           const SizedBox(height: 10),
           Wrap(spacing: 6, children: [
-            for (final p in [16, 32, 48, 64, 128, 256])
+            for (final p in [16, 32, 64, 128, 256])
               ActionChip(
                 label: Text('$p²'),
                 onPressed: () => setState(() {
