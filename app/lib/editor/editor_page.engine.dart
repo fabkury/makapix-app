@@ -250,12 +250,16 @@ extension _EditorEngine on _EditorPageState {
       final rd = _state['rotate_draft'];
       if (rd is Map) {
         _hasRotateDraft = true;
+        // A whole-layer rotate lifts the entire STORAGE (canvas + overscan gutter), so the engine's
+        // rect can extend past the canvas. The handle should relate to the visible canvas — clamp.
+        // The centre is unaffected: the gutter is centred, so the storage centre (the engine's
+        // pivot) and the clamped rect's centre are both the canvas centre.
         _rotDraftRect = Rect.fromLTWH(
           (rd['x'] as num).toDouble(),
           (rd['y'] as num).toDouble(),
           (rd['w'] as num).toDouble(),
           (rd['h'] as num).toDouble(),
-        );
+        ).intersect(Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()));
         _rotDraftAngle = ((rd['angle_mrad'] as num?)?.toDouble() ?? 0) / 1000.0;
       } else {
         _hasRotateDraft = false;

@@ -293,7 +293,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // Commit. `_hasRotateDraft`/`_rotDraftRect`/`_rotDraftAngle` come from the engine state JSON
   // ("rotate_draft"). The whole-canvas rotation lives in the timeline ☰ menu instead.
   bool _hasRotateDraft = false;
-  Rect? _rotDraftRect; // involved-region bbox in canvas pixels (pre-rotation)
+  Rect? _rotDraftRect; // involved-region bbox in canvas pixels (pre-rotation), clamped to the canvas
   double _rotDraftAngle = 0; // current draft angle (radians, clockwise)
   bool _rotateDragging = false; // a finger is currently dragging the rotate handle
   bool get _isRotateHandleActive => _tool == 'Rotate' && _hasRotateDraft;
