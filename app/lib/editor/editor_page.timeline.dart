@@ -374,11 +374,14 @@ extension _EditorTimeline on _EditorPageState {
   }
 
   void _layerOptions(int i, Map<String, dynamic> l, int count) {
+    // Sheet-local state must live outside the StatefulBuilder's builder:
+    // setS re-runs the builder, and locals declared inside it would reset
+    // to the values captured when the sheet opened.
+    int opacity = l['opacity'] ?? 255;
+    bool locked = l['locked'] ?? false;
     showModalBottomSheet(
       context: context,
       builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
-        int opacity = l['opacity'] ?? 255;
-        bool locked = l['locked'] ?? false;
         bool inGroup = _selLayers.contains(i);
         return SafeArea(
           child: Padding(
