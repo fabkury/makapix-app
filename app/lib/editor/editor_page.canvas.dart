@@ -246,7 +246,7 @@ extension _EditorCanvas on _EditorPageState {
                   // _rotDraftReticle, the drag hit-test).
                   CustomPaint(
                     painter: ShapeRotateHandlePainter(_rotDraftCenter, _rotDraftCorner, _rotDraftAngle, vScale, vOff,
-                        arm: _rotDraftRect!.width / 2 * vScale),
+                        arm: _rotDraftArm(vScale)),
                     size: Size.infinite,
                   ),
                 if (_isSelShapeTool && _hasSelDraft) ...[
@@ -1014,16 +1014,18 @@ extension _EditorCanvas on _EditorPageState {
     setState(() {});
   }
 
-  // The Rotate handle's reticle (screen px): on the circle through the bbox's right-border
-  // midpoint, so at angle 0 the handle sits exactly ON the right border of the un-rotated
-  // bbox (arm = half the bbox width) rather than out past the corner. Must match the painter
-  // call's `arm:` above.
+  // The Rotate handle's arm length (screen px): half the bbox width, so at angle 0 the reticle
+  // sits exactly ON the right border of the un-rotated bbox rather than out past the corner.
+  // Clamped to a small minimum so the knob (radius 11) never covers the centre on very narrow
+  // regions. Shared by the painter and the drag hit-test so they can never disagree.
+  double _rotDraftArm(double s) => math.max(28.0, _rotDraftRect!.width / 2 * s);
+
+  // The Rotate handle's reticle (screen px): on the _rotDraftArm circle at the draft angle.
   Offset _rotDraftReticle(Size box) {
     final (s, off) = _view(box);
     Offset sc(Offset cc) => Offset(off.dx + (cc.dx + 0.5) * s, off.dy + (cc.dy + 0.5) * s);
     final cs = sc(_rotDraftCenter);
-    final arm = _rotDraftRect!.width / 2 * s;
-    return cs + Offset(math.cos(_rotDraftAngle), math.sin(_rotDraftAngle)) * arm;
+    return cs + Offset(math.cos(_rotDraftAngle), math.sin(_rotDraftAngle)) * _rotDraftArm(s);
   }
 
   // Engage the handle only when the press lands near its reticle (the rest of the canvas is inert
