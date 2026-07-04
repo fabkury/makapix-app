@@ -1,1 +1,1 @@
-Canvas sizes now go from 1×1 up to 256×256, with resize anchoring in any of 9 directions. New floating commit/cancel pill for shape, gradient, paste, move and rotate drafts. Live HSV preview and Layer/Frame scope on the HSV, Flip, Rotate and Invert tools. The editor now asks keep/discard/cancel before anything replaces a non-blank canvas.
+Fixed the layer opacity slider (long-press a layer thumbnail): it now follows your finger instead of snapping back while the layer visibly changed. The Locked switch in the same menu had the same glitch and is fixed too.
