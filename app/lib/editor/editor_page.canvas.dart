@@ -992,7 +992,9 @@ extension _EditorCanvas on _EditorPageState {
   // ---- Rotate tool "Angle" draft: open/commit/cancel + the on-canvas handle drag ----
 
   void _beginRotateDraft() {
-    _send('RotateDraftBegin()');
+    // Frame scope lifts every layer of the active frame; layer scope the active layer (or the
+    // selected pixels). Same handle, preview, and commit either way.
+    _send(_rotateFrame ? 'RotateDraftBeginFrame()' : 'RotateDraftBegin()');
     _refreshState();
     _redraw();
     setState(() {});

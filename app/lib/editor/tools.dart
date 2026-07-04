@@ -74,7 +74,7 @@ const toolTips = <String, String>{
   'SelectLayer': 'Turn the layer\'s opaque pixels into a selection. Tap a mode to apply.',
   'HsvShift': 'Shift hue, saturation and value.',
   'Flip': 'Mirror the layer horizontally or vertically. Acts on the selection if any.',
-  'Rotate': 'Rotate the layer 90° or 180°, or by a free Angle. Acts on the selection if any. (Whole canvas: ☰ menu.)',
+  'Rotate': 'Rotate the layer or the whole frame 90°, 180°, or by a free Angle. Acts on the selection if any. (Whole canvas: ☰ menu.)',
   'Invert': 'Invert the image colours.',
   'PlayPause': 'Play or pause the animation. Step to the previous or next frame, or jump to one.',
 };

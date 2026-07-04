@@ -70,25 +70,36 @@ struct MoveDraft {
     offset: Point,
 }
 
-/// An in-progress free-angle rotation of the active layer (or the selected pixels within it) — the
-/// Rotate tool's "Angle" mode. Like [`MoveDraft`] it is **non-destructive**: the document is never
-/// touched while the draft is open (the rotation shows only as a *display-time* preview, nearest-
+/// An in-progress free-angle rotation — the Rotate tool's "Angle" mode, in either scope: the
+/// active layer (or the selected pixels within it), or every layer of the active frame
+/// (`frame_scope`). Like [`MoveDraft`] it is **non-destructive**: the document is never touched
+/// while the draft is open (the rotation shows only as a *display-time* preview, nearest-
 /// neighbour resampled about `pivot`); only `rotate_draft_commit` materializes it as one undo step.
-/// The lifted source (`src`) is captured at begin so the preview, the commit, and the instant
+/// The lifted sources (`layers`) are captured at begin so the preview, the commit, and the instant
 /// quarter-turn buttons all rotate the exact same pixels. See `session/canvas.rs`.
 struct RotateDraft {
     fid: u32,
-    lid: u32,
     is_selection: bool,
+    /// Frame scope: every layer of the frame was lifted. Mirrors `rotate_frame`'s quarter-turn
+    /// policy — acts on everything, and commit clears the selection.
+    frame_scope: bool,
     /// Selection at begin: drives clearing the origin pixels on commit and the undo `sel_before`.
     sel_before: Option<Arc<Mask>>,
-    src: RgbaBuffer, // lifted source pixels: a bbox-sized lift (selection) or the whole layer
+    /// The lifted sources, one per involved layer (exactly one except in frame scope): a
+    /// bbox-sized lift (selection) or the whole layer.
+    layers: Vec<RotateDraftLayer>,
     sw: i32,
     sh: i32,
     src_origin: Point, // where src(0,0) sits in canvas coords: bbox top-left, or (0,0) for a layer
     src_mask: Option<Mask>, // bbox-sized mask of the lifted pixels (selection only; None = whole layer)
     pivot: PointF, // continuous canvas coords to rotate about: bbox centre, or canvas centre
     angle: f32,    // radians, clockwise (matches the Shape rotate handle's convention)
+}
+
+/// One lifted layer of a [`RotateDraft`].
+struct RotateDraftLayer {
+    lid: u32,
+    src: RgbaBuffer,
 }
 
 /// Stamp positions along `a`→`b`, one every `step` px of arc length. `acc` is the distance already
@@ -3306,6 +3317,73 @@ mod tests {
         s.rotate_draft_cancel();
         assert_eq!(s.doc.content_hash(), h0, "cancel leaves the document exactly as it was");
         assert!(s.rotate_draft_rect().is_none(), "no draft remains after cancel");
+    }
+
+    #[test]
+    fn rotate_draft_frame_scope_rotates_all_layers_one_undo() {
+        let mut s = Session::new(8, 8);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(0, 0); // layer 0
+        s.add_layer();
+        s.settings.primary = Rgba8::new(255, 0, 0, 255);
+        s.tap(7, 0); // layer 1
+        let h0 = s.doc.content_hash();
+        s.rotate_draft_begin_frame();
+        assert_eq!(s.doc.content_hash(), h0, "the draft is non-destructive while open");
+        s.rotate_draft_set_angle((std::f32::consts::PI * 1000.0) as i32); // 180°
+        s.rotate_draft_commit();
+        assert_eq!(s.pixel(0, 0, 7, 7), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 1, 0, 7), Rgba8::new(255, 0, 0, 255));
+        assert!(s.doc.undo(), "the commit is one undo step");
+        assert_eq!(s.doc.content_hash(), h0, "a single undo restores both layers");
+    }
+
+    #[test]
+    fn rotate_draft_frame_scope_dsl_ignores_selection_and_clears_it_on_commit() {
+        let mut s = Session::new(8, 8);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(0, 0);
+        s.add_layer();
+        s.settings.primary = Rgba8::new(255, 0, 0, 255);
+        s.tap(7, 0);
+        s.tool = ToolKind::SelectRect;
+        s.stroke_path(&[(1, 1), (3, 3)]);
+        assert!(s.doc.selection.is_some());
+        let h0 = s.doc.content_hash();
+
+        // Cancel is non-destructive and keeps the selection.
+        s.run_script("RotateDraftBeginFrame()\nRotateDraftSetAngle(785)\nRotateDraftCancel()").unwrap();
+        assert_eq!(s.doc.content_hash(), h0, "cancel leaves the document exactly as it was");
+        assert!(s.doc.selection.is_some(), "cancel keeps the selection");
+
+        // Commit rotates ALL layers (not just the selected pixels) and clears the selection,
+        // matching the quarter-turn RotateFrame policy. (3141 mrad ≈ 180°.)
+        s.run_script("RotateDraftBeginFrame()\nRotateDraftSetAngle(3141)\nRotateDraftCommit()").unwrap();
+        assert_eq!(s.pixel(0, 0, 7, 7), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 1, 0, 7), Rgba8::new(255, 0, 0, 255));
+        assert!(s.doc.selection.is_none(), "frame-scope commit clears the selection");
+        assert!(s.doc.undo(), "one undo step");
+        assert!(s.doc.selection.is_some(), "undo restores the pre-commit selection");
+    }
+
+    #[test]
+    fn rotate_frame_quarter_turn_matches_frame_scope_draft() {
+        let build = || {
+            let mut s = Session::new(8, 8);
+            s.settings.primary = Rgba8::WHITE;
+            s.tap(0, 0);
+            s.add_layer();
+            s.settings.primary = Rgba8::new(255, 0, 0, 255);
+            s.tap(7, 0);
+            s
+        };
+        let mut quarter = build();
+        quarter.rotate_frame(1);
+        let mut draft = build();
+        draft.rotate_draft_begin_frame();
+        draft.rotate_draft_set_angle((std::f32::consts::FRAC_PI_2 * 1000.0) as i32);
+        draft.rotate_draft_commit();
+        assert_eq!(quarter.doc.content_hash(), draft.doc.content_hash(), "90° frame draft == RotateFrame(1)");
     }
 
     #[test]

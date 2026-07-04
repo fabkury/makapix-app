@@ -433,18 +433,16 @@ extension _EditorControls on _EditorPageState {
         // the 90°/180° controls hide until it resolves. Row-1 just teaches the gesture.
         label('Drag the on-canvas handle to set the angle');
       } else {
-        // 90°/180° act on the active layer (or the selected pixels), or on every layer of the
-        // active frame in Frame scope. The free-angle draft is layer-only, so Angle hides there.
+        // 90°/180° and the free-angle draft act on the active layer (or the selected pixels), or
+        // on every layer of the active frame in Frame scope.
         label(_rotateFrame ? 'Rotate frame' : (_outlineEdges.isNotEmpty ? 'Rotate selection' : 'Rotate layer'));
         children.add(_toggle(const ['Layer', 'Frame'], _rotateFrame ? 1 : 0, (i) => setState(() => _rotateFrame = i == 1)));
         final verb = _rotateFrame ? 'RotateFrame' : 'RotateLayer';
         children.add(IconButton(iconSize: 18, tooltip: 'Rotate 90° CW', onPressed: () => _act('$verb(1)'), icon: const Icon(Icons.rotate_right)));
         children.add(IconButton(iconSize: 18, tooltip: 'Rotate 90° CCW', onPressed: () => _act('$verb(3)'), icon: const Icon(Icons.rotate_left)));
         children.add(_miniBtn('180°', () => _act('$verb(2)')));
-        if (!_rotateFrame) {
-          children.add(const SizedBox(width: 6));
-          children.add(_miniBtn('Angle', _beginRotateDraft));
-        }
+        children.add(const SizedBox(width: 6));
+        children.add(_miniBtn('Angle', _beginRotateDraft));
       }
     }
     if (_tool == 'Invert') {

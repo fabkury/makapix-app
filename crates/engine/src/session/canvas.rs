@@ -2,7 +2,7 @@
 //! `session` god-file along the same `impl Session` seam `mod parse` already uses, so the methods
 //! still share `Session`'s private state (begin_edit/commit_edit/edit_doc, doc, selection). [audit F-17]
 
-use super::{RotateDraft, Session};
+use super::{RotateDraft, RotateDraftLayer, Session};
 use crate::buffer::RgbaBuffer;
 use crate::color::Rgba8;
 use crate::document::Frame;
@@ -216,40 +216,21 @@ impl Session {
     /// centre (the Rotate tool's "Frame" scope) — canvas dimensions unchanged, content clips on a
     /// non-square canvas exactly like `rotate_layer`. Ignores the selection scope (frame mode acts
     /// on everything); the mask is cleared like the document-wide rotate. One undo step.
+    ///
+    /// Implemented by lifting → rotating → committing through the same frame-scope draft machinery
+    /// the "Angle" mode uses (mirroring `rotate_layer`), so the instant buttons, the live preview,
+    /// and the commit all rotate identically.
     pub fn rotate_frame(&mut self, quarter_turns: u8) {
         let q = quarter_turns % 4;
         if q == 0 {
             return;
         }
         self.rotate_draft = None; // never stack on a half-open Angle draft
-        let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
-        let angle = q as f32 * std::f32::consts::FRAC_PI_2;
-        self.edit_doc("rotate_frame", |s| {
-            let fi = s.doc.active_frame;
-            let fid = s.doc.frames[fi].id;
-            let lids: Vec<_> = s.doc.frames[fi].layers.iter().map(|l| l.id).collect();
-            for lid in lids {
-                let li = match s.doc.frames[fi].layer_index_by_id(lid) {
-                    Some(i) => i,
-                    None => continue,
-                };
-                let d = RotateDraft {
-                    fid,
-                    lid,
-                    is_selection: false,
-                    sel_before: None,
-                    src: s.doc.frames[fi].layers[li].pixels.clone(),
-                    sw: cw,
-                    sh: ch,
-                    src_origin: Point::new(0, 0),
-                    src_mask: None,
-                    pivot: PointF::new(cw as f32 / 2.0, ch as f32 / 2.0),
-                    angle,
-                };
-                apply_rotation_to_frame(&d, &mut s.doc.frames[fi], cw, ch);
-            }
-            s.doc.selection = None; // ambiguous across a whole frame; cleared like the canvas rotate
-        });
+        self.rotate_draft_begin_frame();
+        if self.rotate_draft.is_some() {
+            self.rotate_draft_set_angle((q as f32 * std::f32::consts::FRAC_PI_2 * 1000.0).round() as i32);
+            self.rotate_draft_commit();
+        }
     }
 
     /// Resize the canvas, pinning existing content to an anchor (SPEC §28.1): `ax`/`ay` pick
@@ -391,10 +372,10 @@ impl Session {
                 }
                 self.rotate_draft = Some(RotateDraft {
                     fid,
-                    lid,
                     is_selection: true,
+                    frame_scope: false,
                     sel_before,
-                    src,
+                    layers: vec![RotateDraftLayer { lid, src }],
                     sw: bb.w as i32,
                     sh: bb.h as i32,
                     src_origin: Point::new(bb.x, bb.y),
@@ -410,10 +391,44 @@ impl Session {
         let src = self.doc.frames[fi].active_layer().pixels.clone();
         self.rotate_draft = Some(RotateDraft {
             fid,
-            lid,
             is_selection: false,
+            frame_scope: false,
             sel_before,
-            src,
+            layers: vec![RotateDraftLayer { lid, src }],
+            sw: cw,
+            sh: ch,
+            src_origin: Point::new(0, 0),
+            src_mask: None,
+            pivot: PointF::new(cw as f32 / 2.0, ch as f32 / 2.0),
+            angle: 0.0,
+        });
+    }
+
+    /// Begin a frame-scope rotate draft: lift EVERY layer of the active frame so the whole frame
+    /// can be previewed rotating non-destructively about the canvas centre — the Rotate tool's
+    /// "Angle" mode in Frame scope. Matches `rotate_frame`'s quarter-turn policy: acts on
+    /// everything (locks/visibility are not consulted) and ignores the selection, which commit
+    /// clears. No-op if a draft is already open.
+    pub fn rotate_draft_begin_frame(&mut self) {
+        if self.rotate_draft.is_some() {
+            return;
+        }
+        let fi = self.doc.active_frame;
+        let fid = self.doc.frames[fi].id;
+        // Rotate over the whole storage about its centre (= the canvas centre for a centred gutter),
+        // so the canvas rotates in place and the gutter rotates with it. [SPEC §8]
+        let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
+        let layers = self.doc.frames[fi]
+            .layers
+            .iter()
+            .map(|l| RotateDraftLayer { lid: l.id, src: l.pixels.clone() })
+            .collect();
+        self.rotate_draft = Some(RotateDraft {
+            fid,
+            is_selection: false,
+            frame_scope: true,
+            sel_before: self.doc.selection.clone(),
+            layers,
             sw: cw,
             sh: ch,
             src_origin: Point::new(0, 0),
@@ -455,6 +470,10 @@ impl Session {
         if let Some(m) = rotated_mask {
             // The marquee follows the rotated pixels; rotated fully out of storage ⇒ empty ⇒ None.
             self.doc.selection = m.nonempty().map(Arc::new);
+        } else if d.frame_scope {
+            // Ambiguous across a whole frame; cleared like the quarter-turn `rotate_frame` (undo
+            // restores it via `sel_before`).
+            self.doc.selection = None;
         }
         let after = self.doc.frames[fi].clone();
         self.doc.record_frame_content(d.fid, before, after, d.sel_before);
@@ -492,11 +511,23 @@ impl Session {
         // Rotate over the whole storage about its centre (= the canvas centre for a centred gutter),
         // so the canvas rotates in place and the gutter rotates with it. [SPEC §8]
         let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
-        let (out, _mask) = rotate_resample(d, cw, ch);
+        // Union the rotated footprints first, so pixels covered by several layers (frame scope)
+        // wash once — not once per layer, which would read as a darker tint.
+        let mut footprint = Mask::new(cw as u32, ch as u32);
+        for entry in &d.layers {
+            let (out, _mask) = rotate_resample(d, &entry.src, cw, ch);
+            for y in 0..ch {
+                for x in 0..cw {
+                    if out.get(x, y).a != 0 {
+                        footprint.set(x, y, true);
+                    }
+                }
+            }
+        }
         let wash = Rgba8::new(0, 200, 255, 60); // soft cyan "draft" wash (matches move/paste)
         for y in 0..ch {
             for x in 0..cw {
-                if out.get(x, y).a != 0 {
+                if footprint.get(x, y) {
                     buf.blend_over(x, y, wash);
                 }
             }
@@ -510,7 +541,9 @@ impl Session {
         // Rotate over the whole storage about its centre (= the canvas centre for a centred gutter),
         // so the canvas rotates in place and the gutter rotates with it. [SPEC §8]
         let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
-        let (_out, mask) = rotate_resample(d, cw, ch);
+        // A selection draft lifts exactly one layer.
+        let entry = d.layers.first()?;
+        let (_out, mask) = rotate_resample(d, &entry.src, cw, ch);
         Some(mask)
     }
 
@@ -528,14 +561,14 @@ impl Session {
     }
 }
 
-/// Nearest-neighbour rotation of the draft's lifted source (a `sw`×`sh` region whose pixel (0,0) sits
+/// Nearest-neighbour rotation of one lifted source `src` (a `sw`×`sh` region whose pixel (0,0) sits
 /// at `src_origin` in canvas coords; optionally masked by `src_mask`) by `angle` radians clockwise
 /// about `pivot`, into a `cw`×`ch` canvas-sized buffer, clipped to the canvas. Returns the placed
 /// pixels and a matching 1-bit mask of where they landed. Integer-exact and deterministic: at exact
 /// multiples of 90° on a square region it reproduces the lossless quarter-turn.
-fn rotate_resample(d: &RotateDraft, cw: i32, ch: i32) -> (RgbaBuffer, Mask) {
-    let (src, sw, sh, src_origin, src_mask, pivot, angle) =
-        (&d.src, d.sw, d.sh, d.src_origin, d.src_mask.as_ref(), d.pivot, d.angle);
+fn rotate_resample(d: &RotateDraft, src: &RgbaBuffer, cw: i32, ch: i32) -> (RgbaBuffer, Mask) {
+    let (sw, sh, src_origin, src_mask, pivot, angle) =
+        (d.sw, d.sh, d.src_origin, d.src_mask.as_ref(), d.pivot, d.angle);
     let mut out = RgbaBuffer::new(cw as u32, ch as u32);
     let mut out_mask = Mask::new(cw as u32, ch as u32);
     let (cos, sin) = (angle.cos(), angle.sin());
@@ -593,40 +626,45 @@ fn rotate_resample(d: &RotateDraft, cw: i32, ch: i32) -> (RgbaBuffer, Mask) {
     (out, out_mask)
 }
 
-/// Apply a rotate draft to `frame`: clear the origin pixels (the selected pixels, or the whole layer
-/// for a layer rotation) and blit the resampled, rotated content alpha-over. Shared by the display
-/// preview (on a throwaway clone) and `rotate_draft_commit` (on the real frame) so both render
-/// identically. Returns the rotated selection mask for a selection rotation, else `None`.
+/// Apply a rotate draft to `frame`: for each lifted layer, clear the origin pixels (the selected
+/// pixels, or the whole layer) and blit the resampled, rotated content alpha-over. Shared by the
+/// display preview (on a throwaway clone) and `rotate_draft_commit` (on the real frame) so both
+/// render identically. Returns the rotated selection mask for a selection rotation, else `None`.
 fn apply_rotation_to_frame(d: &RotateDraft, frame: &mut Frame, cw: i32, ch: i32) -> Option<Mask> {
-    let li = frame.layer_index_by_id(d.lid)?;
-    let (out, out_mask) = rotate_resample(d, cw, ch);
-    let buf = &mut frame.layers[li].pixels;
-    // Clear the origin: the masked pixels for a selection rotation, the whole layer otherwise.
-    if d.is_selection {
-        if let Some(m) = d.sel_before.as_deref() {
-            for y in 0..ch {
-                for x in 0..cw {
-                    if m.get(x, y) {
-                        buf.set(x, y, Rgba8::TRANSPARENT);
+    let mut rotated_mask = None;
+    for entry in &d.layers {
+        let li = match frame.layer_index_by_id(entry.lid) {
+            Some(i) => i,
+            None => continue,
+        };
+        let (out, out_mask) = rotate_resample(d, &entry.src, cw, ch);
+        let buf = &mut frame.layers[li].pixels;
+        // Clear the origin: the masked pixels for a selection rotation, the whole layer otherwise.
+        if d.is_selection {
+            if let Some(m) = d.sel_before.as_deref() {
+                for y in 0..ch {
+                    for x in 0..cw {
+                        if m.get(x, y) {
+                            buf.set(x, y, Rgba8::TRANSPARENT);
+                        }
                     }
                 }
             }
+        } else {
+            buf.clear();
         }
-    } else {
-        buf.clear();
-    }
-    // Place the rotated content (alpha-over, so it composites onto any pixels left behind).
-    for y in 0..ch {
-        for x in 0..cw {
-            let c = out.get(x, y);
-            if c.a != 0 {
-                buf.blend_over(x, y, c);
+        // Place the rotated content (alpha-over, so it composites onto any pixels left behind).
+        for y in 0..ch {
+            for x in 0..cw {
+                let c = out.get(x, y);
+                if c.a != 0 {
+                    buf.blend_over(x, y, c);
+                }
             }
         }
+        if d.is_selection {
+            rotated_mask = Some(out_mask);
+        }
     }
-    if d.is_selection {
-        Some(out_mask)
-    } else {
-        None
-    }
+    rotated_mask
 }
