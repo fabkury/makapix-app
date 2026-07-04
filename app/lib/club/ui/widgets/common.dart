@@ -1,4 +1,7 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+
+import '../../cache/artwork_cache.dart';
 
 /// Compact relative time, e.g. "3h", "2d".
 String timeAgo(DateTime? t) {
@@ -78,18 +81,21 @@ class PixelArtImage extends StatelessWidget {
         child: Center(child: Icon(Icons.image_not_supported, color: Colors.white24)),
       );
     }
-    return Image.network(
-      url,
+    return CachedNetworkImage(
+      imageUrl: url,
+      cacheManager: artImageCache,
       fit: fit,
       filterQuality: FilterQuality.none,
-      gaplessPlayback: true,
-      errorBuilder: (_, _, _) => const ColoredBox(
+      // No fades: cached pixel art should pop in crisp, like the old gapless Image.network did.
+      fadeInDuration: Duration.zero,
+      fadeOutDuration: Duration.zero,
+      useOldImageOnUrlChange: true,
+      errorWidget: (_, _, _) => const ColoredBox(
         color: Color(0xFF15171A),
         child: Center(child: Icon(Icons.broken_image, color: Colors.white24)),
       ),
-      loadingBuilder: (c, child, p) => p == null
-          ? child
-          : const Center(child: SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))),
+      placeholder: (_, _) => const Center(
+          child: SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))),
     );
   }
 }
@@ -106,7 +112,7 @@ class HandleAvatar extends StatelessWidget {
     return CircleAvatar(
       radius: radius,
       backgroundColor: const Color(0xFF2A2D31),
-      backgroundImage: has ? NetworkImage(url!) : null,
+      backgroundImage: has ? CachedNetworkImageProvider(url!, cacheManager: avatarImageCache) : null,
       child: has ? null : Text(handle.isNotEmpty ? handle[0].toUpperCase() : '?', style: TextStyle(fontSize: radius)),
     );
   }

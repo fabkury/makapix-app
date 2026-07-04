@@ -45,7 +45,11 @@ typedef PageFetcher<T> = Future<Page<T>> Function(String? cursor);
 /// A null `next_cursor` (or an unimplemented server cursor) means `atEnd`.
 class PagedNotifier<T> extends StateNotifier<PagedState<T>> {
   final PageFetcher<T> fetch;
-  PagedNotifier(this.fetch) : super(PagedState<T>());
+
+  /// Called with each successfully fetched page's items (post feeds prefetch artwork here).
+  final void Function(List<T> items)? onPage;
+
+  PagedNotifier(this.fetch, {this.onPage}) : super(PagedState<T>());
 
   Future<void> loadInitial() async {
     if (state.initialized && state.items.isNotEmpty) return;
@@ -67,6 +71,7 @@ class PagedNotifier<T> extends StateNotifier<PagedState<T>> {
   Future<void> _load({required bool reset}) async {
     try {
       final page = await fetch(reset ? null : state.cursor);
+      if (page.items.isNotEmpty) onPage?.call(page.items);
       final items = reset ? page.items : <T>[...state.items, ...page.items];
       state = PagedState<T>(
         items: items,

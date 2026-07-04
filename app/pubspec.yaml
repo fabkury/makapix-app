@@ -49,6 +49,8 @@ dependencies:
   flutter_web_auth_2: ^4.1.0      # in-app browser for the server-brokered GitHub OAuth return leg
   crypto: ^3.0.5                  # PKCE S256 challenge
   share_plus: ^12.0.2
+  cached_network_image: ^3.4.1    # persistent artwork/avatar image cache (vault URLs are immutable)
+  flutter_cache_manager: ^3.4.1   # cache configs + feed-page prefetch (backs cached_network_image)
 
 dev_dependencies:
   flutter_test:

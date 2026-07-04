@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../cache/artwork_cache.dart';
 import '../models/post.dart';
 import 'api_providers.dart';
 import 'paged.dart';
@@ -12,11 +13,13 @@ enum FeedKind { recent, promoted, following }
 final feedProvider =
     StateNotifierProvider.family<PagedNotifier<Post>, PagedState<Post>, FeedKind>((ref, kind) {
   final api = ref.watch(feedApiProvider);
-  final n = PagedNotifier<Post>((cursor) => switch (kind) {
-        FeedKind.recent => api.recent(cursor: cursor),
-        FeedKind.promoted => api.promoted(cursor: cursor),
-        FeedKind.following => api.following(cursor: cursor),
-      });
+  final n = PagedNotifier<Post>(
+      (cursor) => switch (kind) {
+            FeedKind.recent => api.recent(cursor: cursor),
+            FeedKind.promoted => api.promoted(cursor: cursor),
+            FeedKind.following => api.following(cursor: cursor),
+          },
+      onPage: precacheArtworks);
   n.loadInitial();
   return n;
 });
@@ -25,7 +28,7 @@ final feedProvider =
 final hashtagFeedProvider =
     StateNotifierProvider.autoDispose.family<PagedNotifier<Post>, PagedState<Post>, String>((ref, tag) {
   final api = ref.watch(feedApiProvider);
-  final n = PagedNotifier<Post>((cursor) => api.hashtag(tag, cursor: cursor));
+  final n = PagedNotifier<Post>((cursor) => api.hashtag(tag, cursor: cursor), onPage: precacheArtworks);
   n.loadInitial();
   return n;
 });
@@ -34,7 +37,7 @@ final hashtagFeedProvider =
 final ownerFeedProvider =
     StateNotifierProvider.autoDispose.family<PagedNotifier<Post>, PagedState<Post>, String>((ref, userKey) {
   final api = ref.watch(feedApiProvider);
-  final n = PagedNotifier<Post>((cursor) => api.byOwner(userKey, cursor: cursor));
+  final n = PagedNotifier<Post>((cursor) => api.byOwner(userKey, cursor: cursor), onPage: precacheArtworks);
   n.loadInitial();
   return n;
 });

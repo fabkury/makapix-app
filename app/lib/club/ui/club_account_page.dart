@@ -1,6 +1,8 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../cache/artwork_cache.dart';
 import '../models/club_user.dart';
 import '../state/auth_controller.dart';
 import 'auth/account_management_page.dart';
@@ -206,7 +208,7 @@ class _AccountView extends ConsumerWidget {
           child: CircleAvatar(
             radius: 40,
             backgroundColor: const Color(0xFF2A2D31),
-            backgroundImage: hasAvatar ? NetworkImage(u.avatarUrl!) : null,
+            backgroundImage: hasAvatar ? CachedNetworkImageProvider(u.avatarUrl!, cacheManager: avatarImageCache) : null,
             child: hasAvatar
                 ? null
                 : Text(u.handle.isNotEmpty ? u.handle[0].toUpperCase() : '?',
