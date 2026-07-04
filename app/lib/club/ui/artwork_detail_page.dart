@@ -466,7 +466,6 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
   Future<void> _openInEditor(BuildContext context, Post post) async {
     final messenger = ScaffoldMessenger.of(context);
     final nav = Navigator.of(context);
-    messenger.showSnackBar(const SnackBar(content: Text('Loading artwork into the editor…')));
     try {
       final bytes = await ref.read(editApiProvider).downloadArtwork(post.artUrl);
       final mySub = ref.read(authControllerProvider).me?.user.sub;
