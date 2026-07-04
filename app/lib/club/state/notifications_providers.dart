@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/club_notification.dart';
 import 'api_providers.dart';
-import 'auth_controller.dart' show authControllerProvider;
+import 'auth_controller.dart' show authControllerProvider, currentUserSubProvider;
 import 'paged.dart';
 
 /// Unread badge count, polled every 60 s while signed in (real-time MQTT in C5).
@@ -35,12 +35,17 @@ class UnreadCountNotifier extends StateNotifier<int> {
   }
 }
 
-final unreadCountProvider =
-    StateNotifierProvider<UnreadCountNotifier, int>((ref) => UnreadCountNotifier(ref));
+final unreadCountProvider = StateNotifierProvider<UnreadCountNotifier, int>((ref) {
+  // Rebuild on account switch so user B doesn't briefly see user A's badge count.
+  ref.watch(currentUserSubProvider);
+  return UnreadCountNotifier(ref);
+});
 
-/// The notifications list (paged).
+/// The notifications list (paged). Watches the signed-in identity: notifications are the
+/// viewer's own, so an account switch must drop and refetch the list.
 final notificationsFeedProvider =
     StateNotifierProvider<PagedNotifier<ClubNotification>, PagedState<ClubNotification>>((ref) {
+  ref.watch(currentUserSubProvider);
   final api = ref.watch(notificationsApiProvider);
   final n = PagedNotifier<ClubNotification>((cursor) => api.list(cursor: cursor));
   n.loadInitial();

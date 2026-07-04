@@ -28,6 +28,14 @@ final authControllerProvider = StateNotifierProvider<AuthController, AuthState>(
   )..init();
 });
 
+/// The signed-in user's stable id (`sub`), or null when signed out. Viewer-scoped keep-alive
+/// providers (home feeds, grid-like overrides, notifications) watch this so an account switch
+/// (A → signed out → B) rebuilds them, instead of leaking user A's server-filtered feed content
+/// (e.g. monitored-hashtag posts), likes, or notifications into user B's session. The `select`
+/// means token refreshes and same-user profile edits (`reloadMe`) rebuild nothing.
+final currentUserSubProvider =
+    Provider<String?>((ref) => ref.watch(authControllerProvider.select((s) => s.me?.user.sub)));
+
 // ---- state ----
 
 enum AuthStatus { loading, signedOut, signingIn, signedIn, error }

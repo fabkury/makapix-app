@@ -138,7 +138,11 @@ class GridLikesController extends StateNotifier<Map<int, GridLikeState>> {
 }
 
 final gridLikesProvider =
-    StateNotifierProvider<GridLikesController, Map<int, GridLikeState>>((ref) => GridLikesController(ref));
+    StateNotifierProvider<GridLikesController, Map<int, GridLikeState>>((ref) {
+  // Like overrides are the viewer's own; drop them all when the signed-in account changes.
+  ref.watch(currentUserSubProvider);
+  return GridLikesController(ref);
+});
 
 // ---- Comments ----
 
