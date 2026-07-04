@@ -303,6 +303,16 @@ class _EditorPageState extends ConsumerState<EditorPage>
       Offset(_rotDraftRect!.left + _rotDraftRect!.width / 2 - 0.5, _rotDraftRect!.top + _rotDraftRect!.height / 2 - 0.5);
   Offset get _rotDraftCorner => Offset(_rotDraftRect!.right - 1, _rotDraftRect!.bottom - 1);
 
+  // Whether ANY draft is pending — drives the floating commit-menu over the canvas's bottom-left
+  // corner. Mirrors the per-tool guards in _commitActiveDraft/_cancelActiveDraft; at most one draft
+  // can exist at a time because every tool switch cancels the outgoing tool's draft.
+  bool get _hasAnyDraft =>
+      (_isDraftTool && _hasShapeDraft) ||
+      (_isSelShapeTool && _hasSelDraft) ||
+      (_isCopyPaste && _hasPasteDraft) ||
+      (_tool == 'Move' && _hasMoveDraft) ||
+      (_tool == 'Rotate' && _hasRotateDraft);
+
   bool get _engineReady => _error == null;
 
   @override
@@ -396,14 +406,17 @@ class _EditorPageState extends ConsumerState<EditorPage>
             _buildFilmRoll(), // frame film-strip + ☰ menu — the topmost area
             // ClipRect so a zoomed canvas can't paint outside its region (the CustomPaint draws the
             // scaled image past its box otherwise) — it stays behind the film-strip and bottom rows.
-            // The selection-menu pill floats over the canvas area's bottom-right corner, ABOVE the
-            // canvas Listener, so its taps never fall through and start a draw gesture beneath it.
+            // Two compact pills float over the canvas area, ABOVE the canvas Listener, so their taps
+            // never fall through and start a draw gesture beneath them: the selection-menu on the
+            // bottom-right and the commit-menu (cancel/commit of the pending draft) on the bottom-left.
             Expanded(
               child: ClipRect(
                 child: Stack(fit: StackFit.expand, children: [
                   _buildCanvas(),
                   if (_selectionEdges.isNotEmpty)
                     Positioned(right: 10, bottom: 10, child: _selectionMenu()),
+                  if (_hasAnyDraft)
+                    Positioned(left: 10, bottom: 10, child: _commitMenu()),
                 ]),
               ),
             ),

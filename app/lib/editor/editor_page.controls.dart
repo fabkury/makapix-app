@@ -12,75 +12,9 @@ extension _EditorControls on _EditorPageState {
         padding: const EdgeInsets.only(left: 8, right: 4),
         child: Text(s, style: const TextStyle(fontSize: 11, color: Colors.white60))));
 
-    if (_isDraftTool && _hasShapeDraft) {
-      // Commit / cancel the uncommitted figure. Drag the on-canvas handles to fine-tune first.
-      children.add(Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF30A050)),
-          onPressed: _commitShape,
-          icon: const Icon(Icons.check, size: 16),
-          label: const Text('Commit'),
-        ),
-      ));
-      children.add(Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: OutlinedButton.icon(
-          style: OutlinedButton.styleFrom(minimumSize: const Size(0, 34), foregroundColor: const Color(0xFFE06060)),
-          onPressed: _cancelShapeDraft,
-          icon: const Icon(Icons.close, size: 16),
-          label: const Text('Cancel'),
-        ),
-      ));
-      children.add(const SizedBox(width: 8));
-    }
-
-    if (_isSelShapeTool && _hasSelDraft) {
-      // Commit the selection draft into the real selection (per the active mode) / discard it. Drag
-      // the on-canvas reticles to fine-tune first.
-      children.add(Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF30A050)),
-          onPressed: _commitSelDraft,
-          icon: const Icon(Icons.check, size: 16),
-          label: const Text('Commit'),
-        ),
-      ));
-      children.add(Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: OutlinedButton.icon(
-          style: OutlinedButton.styleFrom(minimumSize: const Size(0, 34), foregroundColor: const Color(0xFFE06060)),
-          onPressed: _cancelSelDraft,
-          icon: const Icon(Icons.close, size: 16),
-          label: const Text('Cancel'),
-        ),
-      ));
-      children.add(const SizedBox(width: 8));
-    }
-
-    if (_isCopyPaste && _hasPasteDraft) {
-      // Commit / cancel the floating paste. Drag anywhere on the canvas to position it first.
-      children.add(Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF30A050)),
-          onPressed: () => _act('PasteCommit()'),
-          icon: const Icon(Icons.check, size: 16),
-          label: const Text('Commit'),
-        ),
-      ));
-      children.add(Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: OutlinedButton.icon(
-          style: OutlinedButton.styleFrom(minimumSize: const Size(0, 34), foregroundColor: const Color(0xFFE06060)),
-          onPressed: () => _act('PasteCancel()'),
-          icon: const Icon(Icons.close, size: 16),
-          label: const Text('Cancel'),
-        ),
-      ));
-      children.add(const SizedBox(width: 8));
-    }
+    // NOTE: no per-tool Commit/Cancel buttons here — a pending draft (shape/gradient figure,
+    // selection-shape draft, floating paste, move draft, free-angle rotate) is resolved via the
+    // floating commit-menu pill over the canvas's bottom-left corner (see _commitMenu).
 
     if (_precisionCapable) {
       // The Precision toggle: turns the active paint tool into its off-finger reticle mode.
@@ -158,30 +92,6 @@ extension _EditorControls on _EditorPageState {
         ));
       }
     }
-    if (_tool == 'Move' && _hasMoveDraft) {
-      // Commit / cancel the relocatable move draft. Drag anywhere on the canvas to reposition it
-      // first; the moved pixels show softly washed until committed.
-      children.add(Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF30A050)),
-          onPressed: _commitMoveDraft,
-          icon: const Icon(Icons.check, size: 16),
-          label: const Text('Commit'),
-        ),
-      ));
-      children.add(Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: OutlinedButton.icon(
-          style: OutlinedButton.styleFrom(minimumSize: const Size(0, 34), foregroundColor: const Color(0xFFE06060)),
-          onPressed: _cancelMoveDraft,
-          icon: const Icon(Icons.close, size: 16),
-          label: const Text('Cancel'),
-        ),
-      ));
-      children.add(const SizedBox(width: 8));
-    }
-
     if (_tool == 'Move') {
       // Mode: move the layer/pixels (default) or ONLY the selection mask (the marquee, not the
       // pixels). In "layer/pixels", a selection moves the selected pixels and none moves the
@@ -519,26 +429,9 @@ extension _EditorControls on _EditorPageState {
     }
     if (_tool == 'Rotate') {
       if (_hasRotateDraft) {
-        // Free-angle "Angle" mode: Commit bakes the rotation as one undo step; Cancel discards it.
-        // Drag the on-canvas handle to set the angle first.
-        children.add(Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 3),
-          child: ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF30A050)),
-            onPressed: _commitRotateDraft,
-            icon: const Icon(Icons.check, size: 16),
-            label: const Text('Commit'),
-          ),
-        ));
-        children.add(Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 3),
-          child: OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(minimumSize: const Size(0, 34), foregroundColor: const Color(0xFFE06060)),
-            onPressed: _cancelRotateDraft,
-            icon: const Icon(Icons.close, size: 16),
-            label: const Text('Cancel'),
-          ),
-        ));
+        // Free-angle "Angle" mode in progress: the floating commit-menu bakes/discards the draft;
+        // the 90°/180° controls hide until it resolves. Row-1 just teaches the gesture.
+        label('Drag the on-canvas handle to set the angle');
       } else {
         // 90°/180° act on the active layer (or the selected pixels), or on every layer of the
         // active frame in Frame scope. The free-angle draft is layer-only, so Angle hides there.

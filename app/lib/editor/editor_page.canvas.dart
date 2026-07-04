@@ -67,11 +67,12 @@ extension _EditorCanvas on _EditorPageState {
 
   // A round icon button sized for the compact pill (deliberately smaller than the usual touch
   // target — the menu must cover as little of the canvas as possible).
-  Widget _selMenuButton(IconData icon, String tooltip, VoidCallback onTap) {
+  Widget _selMenuButton(IconData icon, String tooltip, VoidCallback onTap,
+      {Color color = const Color(0xFF2A2D33), Color iconColor = Colors.white70}) {
     return Tooltip(
       message: tooltip,
       child: Material(
-        color: const Color(0xFF2A2D33),
+        color: color,
         shape: const CircleBorder(),
         child: InkWell(
           customBorder: const CircleBorder(),
@@ -79,11 +80,66 @@ extension _EditorCanvas on _EditorPageState {
           child: SizedBox(
             width: 34,
             height: 34,
-            child: Icon(icon, size: 18, color: Colors.white70),
+            child: Icon(icon, size: 18, color: iconColor),
           ),
         ),
       ),
     );
+  }
+
+  // ---- commit-menu: the compact floating pill over the canvas's bottom-left corner ----
+
+  // Shown whenever a draft of any kind is pending (`_hasAnyDraft`: shape/gradient figure,
+  // selection-shape draft, floating paste, move draft, free-angle rotate). It is the ONLY
+  // commit/cancel surface — row-1 no longer carries per-tool Commit/Cancel buttons — and it
+  // vanishes with the draft, however it resolves (commit, cancel, or the implicit cancel when
+  // switching tools in row-3).
+  Widget _commitMenu() {
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: const Color(0xE0141618),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        _selMenuButton(Icons.close, 'Cancel', _cancelActiveDraft,
+            color: const Color(0xFFB03A3A), iconColor: Colors.white),
+        const SizedBox(width: 3),
+        _selMenuButton(Icons.check, 'Commit', _commitActiveDraft,
+            color: const Color(0xFF30A050), iconColor: Colors.white),
+      ]),
+    );
+  }
+
+  // Commit / cancel whichever draft is pending. At most one draft can exist at a time (every tool
+  // switch cancels the outgoing tool's draft), so a first-match dispatch is exact.
+  void _commitActiveDraft() {
+    if (_isDraftTool && _hasShapeDraft) {
+      _commitShape();
+    } else if (_isSelShapeTool && _hasSelDraft) {
+      _commitSelDraft();
+    } else if (_isCopyPaste && _hasPasteDraft) {
+      _act('PasteCommit()');
+    } else if (_tool == 'Move' && _hasMoveDraft) {
+      _commitMoveDraft();
+    } else if (_tool == 'Rotate' && _hasRotateDraft) {
+      _commitRotateDraft();
+    }
+  }
+
+  void _cancelActiveDraft() {
+    if (_isDraftTool && _hasShapeDraft) {
+      _cancelShapeDraft();
+    } else if (_isSelShapeTool && _hasSelDraft) {
+      _cancelSelDraft();
+    } else if (_isCopyPaste && _hasPasteDraft) {
+      _act('PasteCancel()');
+    } else if (_tool == 'Move' && _hasMoveDraft) {
+      _cancelMoveDraft();
+    } else if (_tool == 'Rotate' && _hasRotateDraft) {
+      _cancelRotateDraft();
+    }
   }
 
   Widget _buildCanvas() {
