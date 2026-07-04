@@ -1,1 +1,1 @@
-New compact .mkpx save format (smaller project files), Dodge/Burn spacing control, overscan view for drawing near the canvas edge, and a redesigned Contribute page.
+Canvas sizes now go from 1×1 up to 256×256, with resize anchoring in any of 9 directions. New floating commit/cancel pill for shape, gradient, paste, move and rotate drafts. Live HSV preview and Layer/Frame scope on the HSV, Flip, Rotate and Invert tools. The editor now asks keep/discard/cancel before anything replaces a non-blank canvas.
