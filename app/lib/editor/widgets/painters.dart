@@ -174,21 +174,24 @@ class HandlePainter extends CustomPainter {
 }
 
 /// The Shape tool's rotate handle: a line from the box centre out to a draggable reticle, drawn in
-/// SCREEN space. The arm reaches just beyond the box corner so it never sits under the shape.
+/// SCREEN space. By default the arm reaches just beyond the box corner so it never sits under the
+/// shape; an explicit [arm] (screen px) overrides that — the Rotate tool's draft uses it to pin the
+/// reticle to the bbox's right border when un-rotated.
 class ShapeRotateHandlePainter extends CustomPainter {
   final Offset center, corner; // canvas-pixel coords
   final double rotation; // radians
   final double scale;
   final Offset off;
-  const ShapeRotateHandlePainter(this.center, this.corner, this.rotation, this.scale, this.off);
+  final double? arm; // screen-px arm length; null = just beyond the corner (min 56)
+  const ShapeRotateHandlePainter(this.center, this.corner, this.rotation, this.scale, this.off, {this.arm});
 
   @override
   void paint(Canvas canvas, Size size) {
     if (scale <= 0) return;
     Offset sc(Offset c) => Offset(off.dx + (c.dx + 0.5) * scale, off.dy + (c.dy + 0.5) * scale);
     final cs = sc(center), bs = sc(corner);
-    final arm = (bs - cs).distance + 24.0;
-    final ret = cs + Offset(math.cos(rotation), math.sin(rotation)) * (arm < 56.0 ? 56.0 : arm);
+    final auto = (bs - cs).distance + 24.0;
+    final ret = cs + Offset(math.cos(rotation), math.sin(rotation)) * (arm ?? (auto < 56.0 ? 56.0 : auto));
     canvas.drawLine(cs, ret, Paint()..color = Colors.black..strokeWidth = 4..isAntiAlias = true);
     canvas.drawLine(cs, ret, Paint()..color = const Color(0xFF4DA3FF)..strokeWidth = 2..isAntiAlias = true);
     canvas.drawCircle(ret, 11, Paint()..color = Colors.black..style = PaintingStyle.stroke..strokeWidth = 4..isAntiAlias = true);
@@ -222,7 +225,7 @@ class ShapeRotateHandlePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(ShapeRotateHandlePainter o) =>
-      o.center != center || o.corner != corner || o.rotation != rotation || o.scale != scale || o.off != off;
+      o.center != center || o.corner != corner || o.rotation != rotation || o.scale != scale || o.off != off || o.arm != arm;
 }
 
 /// The Triangle's apex-skew handle: a faint rail along the (rotated) top edge with a diamond reticle

@@ -298,7 +298,8 @@ class _EditorPageState extends ConsumerState<EditorPage>
   bool _rotateDragging = false; // a finger is currently dragging the rotate handle
   bool get _isRotateHandleActive => _tool == 'Rotate' && _hasRotateDraft;
   // Handle geometry in the painter's cell-index space (sc() adds +0.5 to reach the cell centre, so
-  // the geometric bbox centre is bbox-centre − 0.5; the arm reaches the far corner cell).
+  // the geometric bbox centre is bbox-centre − 0.5). The handle's arm is half the bbox width, so
+  // at angle 0 the reticle sits on the bbox's right border (see _rotDraftReticle).
   Offset get _rotDraftCenter =>
       Offset(_rotDraftRect!.left + _rotDraftRect!.width / 2 - 0.5, _rotDraftRect!.top + _rotDraftRect!.height / 2 - 0.5);
   Offset get _rotDraftCorner => Offset(_rotDraftRect!.right - 1, _rotDraftRect!.bottom - 1);

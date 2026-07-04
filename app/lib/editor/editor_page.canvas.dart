@@ -241,9 +241,12 @@ extension _EditorCanvas on _EditorPageState {
                 if (_isRotateHandleActive && _rotDraftRect != null)
                   // Rotate "Angle" handle: drag the reticle to rotate the involved pixels (the
                   // semitransparent draft preview lives in the composited image). Reuses the Shape
-                  // tool's rotate-handle painter for a consistent look + live degree readout.
+                  // tool's rotate-handle painter for a consistent look + live degree readout, with
+                  // the arm pinned to the bbox's right border when un-rotated (must match
+                  // _rotDraftReticle, the drag hit-test).
                   CustomPaint(
-                    painter: ShapeRotateHandlePainter(_rotDraftCenter, _rotDraftCorner, _rotDraftAngle, vScale, vOff),
+                    painter: ShapeRotateHandlePainter(_rotDraftCenter, _rotDraftCorner, _rotDraftAngle, vScale, vOff,
+                        arm: _rotDraftRect!.width / 2 * vScale),
                     size: Size.infinite,
                   ),
                 if (_isSelShapeTool && _hasSelDraft) ...[
@@ -1011,12 +1014,15 @@ extension _EditorCanvas on _EditorPageState {
     setState(() {});
   }
 
-  // The Rotate handle's reticle (screen px): mirrors `_shapeRotReticle` but for the draft's bbox.
+  // The Rotate handle's reticle (screen px): on the circle through the bbox's right-border
+  // midpoint, so at angle 0 the handle sits exactly ON the right border of the un-rotated
+  // bbox (arm = half the bbox width) rather than out past the corner. Must match the painter
+  // call's `arm:` above.
   Offset _rotDraftReticle(Size box) {
     final (s, off) = _view(box);
     Offset sc(Offset cc) => Offset(off.dx + (cc.dx + 0.5) * s, off.dy + (cc.dy + 0.5) * s);
-    final cs = sc(_rotDraftCenter), bs = sc(_rotDraftCorner);
-    final arm = math.max(56.0, (bs - cs).distance + 24.0);
+    final cs = sc(_rotDraftCenter);
+    final arm = _rotDraftRect!.width / 2 * s;
     return cs + Offset(math.cos(_rotDraftAngle), math.sin(_rotDraftAngle)) * arm;
   }
 
