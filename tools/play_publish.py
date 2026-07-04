@@ -12,6 +12,10 @@ for the one-time Play Console / GCP setup):
   publish     Upload an .aab to a track and roll it out (status=completed), with
               optional release notes. Prints the resolved versionCode on success.
 
+  promote     Copy the current release of one track onto another (no re-upload;
+              the exact same versionCodes roll out on the destination track).
+              e.g.  promote --from-track internal --to-track alpha
+
 Normally invoked by release_android.ps1, not by hand.
 
 Deps (not in the repo; install once):  pip install google-api-python-client google-auth
@@ -125,6 +129,50 @@ def cmd_publish(args) -> None:
     print(code)
 
 
+def cmd_promote(args) -> None:
+    svc = service(args.key)
+    edit = svc.edits().insert(packageName=args.package, body={}).execute()
+    edit_id = edit["id"]
+
+    src = (
+        svc.edits()
+        .tracks()
+        .get(packageName=args.package, editId=edit_id, track=args.from_track)
+        .execute()
+    )
+    releases = [r for r in src.get("releases", []) if r.get("status") == "completed"]
+    if not releases:
+        die(f"no completed release found on track '{args.from_track}'")
+    # Newest release = the one with the highest versionCode.
+    source = max(releases, key=lambda r: max(int(vc) for vc in r.get("versionCodes", ["0"])))
+
+    release = {
+        "versionCodes": source["versionCodes"],
+        # A "draft app" (no published release yet) only accepts draft releases; the
+        # first rollout must then be started in the Play Console, which also sends
+        # the app for its first review.
+        "status": "draft" if args.draft else "completed",
+    }
+    if source.get("name"):
+        release["name"] = source["name"]
+    notes = read_notes(args.notes_file) if args.notes_file else None
+    if notes:
+        release["releaseNotes"] = [{"language": args.notes_language, "text": notes}]
+    elif source.get("releaseNotes"):
+        release["releaseNotes"] = source["releaseNotes"]
+
+    svc.edits().tracks().update(
+        packageName=args.package,
+        editId=edit_id,
+        track=args.to_track,
+        body={"track": args.to_track, "releases": [release]},
+    ).execute()
+    svc.edits().commit(packageName=args.package, editId=edit_id).execute()
+    codes = ", ".join(release["versionCodes"])
+    how = "as a draft release" if args.draft else "and rolled out"
+    print(f"Promoted versionCode(s) {codes} from '{args.from_track}' to '{args.to_track}' {how}.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--package", default=PACKAGE)
@@ -140,9 +188,18 @@ def main() -> None:
     pub.add_argument("--notes-language", default="en-US")
     pub.add_argument("--release-name", default=None, help="defaults to the versionName on Play")
 
+    pro = sub.add_parser("promote", help="copy a track's current release onto another track")
+    pro.add_argument("--from-track", required=True, dest="from_track")
+    pro.add_argument("--to-track", required=True, dest="to_track")
+    pro.add_argument("--notes-file", default=None, help="override notes; default: keep source notes")
+    pro.add_argument("--notes-language", default="en-US")
+    pro.add_argument("--draft", action="store_true", help="create as draft (required on a draft app)")
+
     args = parser.parse_args()
     if args.command == "next-code":
         cmd_next_code(args)
+    elif args.command == "promote":
+        cmd_promote(args)
     else:
         cmd_publish(args)
 
