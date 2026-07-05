@@ -26,9 +26,11 @@ contract v1 unchanged. Implemented per PLAN.md:
       normalization, controller rules, notification) — full suite 131/131,
       `flutter analyze` clean
 - [x] Docs: STATUS.md row, SPEC-CLUB.md §29 parity row
-- [ ] Reply `0003-app-…` committed to server repo `develop`
-- [ ] **Manual verification matrix (PLAN.md) against development.makapix.club**
-      — needs a `-Dev` build + a moderator account + a second regular account;
-      owner-driven
-- [ ] Prod flip coordination (config key on makapix.club is the launch signal)
-      + Play release
+- [x] Reply `0003-app-…` committed to server repo `develop` (`f7d71e9`)
+- [x] **Manual verification matrix vs development.makapix.club — CLEAN**
+      (2026-07-05, owner-run on an Android device dev build; Windows dev build
+      also launched and sanity-checked)
+- [x] Prod-flip **go** sent to the server team (`0004-app-mod-hashtags-go.md`)
+- [ ] Server flips prod (`max_mod_hashtags_per_post` on makapix.club = live)
+- [ ] Play release containing the feature (`release_android.ps1`, normal
+      cadence — order vs the flip is irrelevant, config-key gated)
