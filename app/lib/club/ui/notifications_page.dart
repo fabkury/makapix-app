@@ -54,7 +54,11 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
   Widget _tile(ClubNotification x) {
     final hasThumb = x.contentArtUrl != null && x.contentArtUrl!.isNotEmpty;
     return ListTile(
-      leading: HandleAvatar(url: x.actorAvatarUrl, handle: x.actorHandle ?? '?', radius: 18),
+      // Moderation is presented impersonally ("A moderator…"): a shield avatar,
+      // never the acting moderator's identity, keeping both tile halves consistent.
+      leading: x.type == 'mod_hashtags_updated'
+          ? const CircleAvatar(radius: 18, child: Icon(Icons.shield, size: 18))
+          : HandleAvatar(url: x.actorAvatarUrl, handle: x.actorHandle ?? '?', radius: 18),
       title: Text(_text(x), maxLines: 2, overflow: TextOverflow.ellipsis),
       subtitle: Text(timeAgo(x.createdAt), style: const TextStyle(fontSize: 11)),
       trailing: hasThumb
@@ -82,6 +86,10 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
         return '$who started following you';
       case 'post_promoted':
         return 'Your post was promoted${x.contentTitle != null ? ': ${x.contentTitle}' : ''}';
+      case 'mod_hashtags_updated':
+        // The +tag −tag diff arrives pre-formatted in comment_preview (contract §7).
+        return 'A moderator changed the hashtags on ${x.contentTitle ?? 'your artwork'}'
+            '${x.commentPreview != null ? ': ${x.commentPreview}' : ''}';
       case 'reputation_change':
         return 'Your reputation changed';
       default:

@@ -7,6 +7,7 @@ class Post {
   final String title;
   final String? description;
   final List<String> hashtags;
+  final List<String> modHashtags; // moderator-owned subset of [hashtags] (server invariant)
   final String artUrl; // full display URL (animated webp/gif render directly)
   final int width;
   final int height;
@@ -36,6 +37,7 @@ class Post {
     required this.title,
     required this.description,
     required this.hashtags,
+    this.modHashtags = const [],
     required this.artUrl,
     required this.width,
     required this.height,
@@ -60,6 +62,7 @@ class Post {
 
   bool get isAnimated => frameCount > 1;
   bool get isPlaylist => kind == 'playlist';
+  bool isModTag(String tag) => modHashtags.contains(tag);
 
   factory Post.fromJson(Map<String, dynamic> j) => Post(
         id: (j['id'] as num?)?.toInt() ?? 0,
@@ -69,6 +72,8 @@ class Post {
         title: (j['title'] ?? '').toString(),
         description: j['description'] as String?,
         hashtags: (j['hashtags'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+        modHashtags:
+            (j['mod_hashtags'] as List?)?.map((e) => e.toString()).toList() ?? const [],
         artUrl: (j['art_url'] ?? '').toString(),
         width: (j['width'] as num?)?.toInt() ?? 0,
         height: (j['height'] as num?)?.toInt() ?? 0,

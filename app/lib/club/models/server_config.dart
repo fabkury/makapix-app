@@ -46,13 +46,22 @@ class ClubServerConfig {
   final int maxEmojisPerUserPerPost;
   final int maxHashtagsPerPost;
 
+  /// Moderator-hashtags cap — nullable **on purpose**: `null` means the server
+  /// does not have the feature (key absent from `GET /config`), and every
+  /// mod-hashtag editor affordance stays hidden. Presence of the key is the
+  /// launch signal (contract §2 / D19), same mechanism as `upload.mkpx`.
+  final int? maxModHashtagsPerPost;
+
   const ClubServerConfig({
     required this.upload,
     this.maxCommentDepth = 2,
     this.maxCommentsPerPost = 1000,
     this.maxEmojisPerUserPerPost = 5,
     this.maxHashtagsPerPost = 64,
+    this.maxModHashtagsPerPost,
   });
+
+  bool get modHashtagsEnabled => maxModHashtagsPerPost != null;
 
   factory ClubServerConfig.fromJson(Map<String, dynamic> j) => ClubServerConfig(
         upload: UploadRules.fromJson((j['upload'] as Map?)?.cast<String, dynamic>() ?? const {}),
@@ -60,6 +69,8 @@ class ClubServerConfig {
         maxCommentsPerPost: (j['max_comments_per_post'] as num?)?.toInt() ?? 1000,
         maxEmojisPerUserPerPost: (j['max_emojis_per_user_per_post'] as num?)?.toInt() ?? 5,
         maxHashtagsPerPost: (j['max_hashtags_per_post'] as num?)?.toInt() ?? 64,
+        // No default: absent key must stay null (feature-off), per contract §2.
+        maxModHashtagsPerPost: (j['max_mod_hashtags_per_post'] as num?)?.toInt(),
       );
 
   /// Baked-in fallback (mirrors vault.py) for offline / fetch failure.

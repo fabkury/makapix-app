@@ -4,6 +4,7 @@ import '../api/auth_api.dart';
 import '../api/edit_api.dart';
 import '../api/feed_api.dart';
 import '../api/mkpx_api.dart';
+import '../api/moderation_api.dart';
 import '../api/notifications_api.dart';
 import '../api/player_api.dart';
 import '../api/post_api.dart';
@@ -31,3 +32,5 @@ final settingsApiProvider =
 final statsApiProvider =
     Provider<StatsApi>((ref) => StatsApi(ref.watch(clubApiClientProvider)));
 final pmdApiProvider = Provider<PmdApi>((ref) => PmdApi(ref.watch(clubApiClientProvider)));
+final moderationApiProvider =
+    Provider<ModerationApi>((ref) => ModerationApi(ref.watch(clubApiClientProvider)));

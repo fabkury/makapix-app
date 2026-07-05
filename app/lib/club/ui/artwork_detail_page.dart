@@ -20,6 +20,7 @@ import 'profile_page.dart';
 import 'reactions_page.dart';
 import 'widgets/comments_section.dart';
 import 'widgets/common.dart';
+import 'widgets/mod_hashtags_sheet.dart';
 import 'widgets/reactions_bar.dart';
 import 'widgets/send_target_binder.dart';
 
@@ -176,7 +177,7 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
                     style: Theme.of(context).textTheme.titleLarge),
               ),
               _editButton(context, post),
-              ..._mkpxMenu(context, post),
+              ..._overflowMenu(context, post),
             ]),
             const SizedBox(height: 4),
             _meta(post),
@@ -188,19 +189,7 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
             ],
             if (post.hashtags.isNotEmpty) ...[
               const SizedBox(height: 12),
-              Wrap(spacing: 10, runSpacing: 6, children: [
-                // Borderless, vivid-coloured text — reads as a tappable link, not a badge.
-                for (final tag in post.hashtags)
-                  GestureDetector(
-                    onTap: () => Navigator.push(
-                        context, MaterialPageRoute(builder: (_) => HashtagFeedPage(tag: tag))),
-                    child: Text('#$tag',
-                        style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Theme.of(context).colorScheme.primary)),
-                  ),
-              ]),
+              ..._hashtagWrap(context, post),
             ],
             const Divider(height: 24),
             Container(key: _commentsKey, child: CommentsSection(postId: post.id)),
@@ -208,6 +197,55 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
         ),
       ],
     );
+  }
+
+  /// The tappable hashtag row + (for moderators and the artist) the mod-tag
+  /// shield markers and a persistent legend. Public/other users see mod tags
+  /// as perfectly normal tags (contract D2) — the marker branch never runs
+  /// for them.
+  List<Widget> _hashtagWrap(BuildContext context, Post post) {
+    final tagStyle = TextStyle(
+        fontSize: 14, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.primary);
+    final canModerate = ref.watch(authControllerProvider).me?.canModerate ?? false;
+    final showModMarker = post.modHashtags.isNotEmpty && (canModerate || _isOwner(post));
+    return [
+      Wrap(spacing: 10, runSpacing: 6, children: [
+        // Borderless, vivid-coloured text — reads as a tappable link, not a badge.
+        for (final tag in post.hashtags)
+          GestureDetector(
+            onTap: () => Navigator.push(
+                context, MaterialPageRoute(builder: (_) => HashtagFeedPage(tag: tag))),
+            child: (showModMarker && post.isModTag(tag))
+                ? Tooltip(
+                    message: 'Added by moderators',
+                    child: Semantics(
+                      // Keep the tag itself the primary label for screen readers.
+                      label: '#$tag, added by moderators',
+                      excludeSemantics: true,
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.shield,
+                            size: 13, color: Theme.of(context).colorScheme.primary),
+                        const SizedBox(width: 2),
+                        Text('#$tag', style: tagStyle),
+                      ]),
+                    ),
+                  )
+                : Text('#$tag', style: tagStyle),
+          ),
+      ]),
+      // Long-press tooltips are undiscoverable; give the artist an always-visible
+      // explanation of why those tags exist (and, implicitly, who controls them).
+      if (showModMarker)
+        const Padding(
+          padding: EdgeInsets.only(top: 6),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.shield, size: 12, color: Colors.white38),
+            SizedBox(width: 4),
+            Text('Tagged by a moderator',
+                style: TextStyle(fontSize: 11, color: Colors.white38)),
+          ]),
+        ),
+    ];
   }
 
   /// Above the artwork: owner (avatar + handle + tagline) on the left; views, reactions, comments
@@ -339,26 +377,55 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
     );
   }
 
-  /// Author-only overflow menu: attach / replace / remove the layers file.
-  List<Widget> _mkpxMenu(BuildContext context, Post post) {
-    if (!_mkpxRules.enabled || post.isPlaylist || !_isOwner(post)) return const [];
+  /// Single combined overflow menu: the author's layers-file entries plus the
+  /// moderator's mod-hashtags entry — merged so a moderator viewing their own
+  /// post gets one kebab, not two. No applicable entries → no button.
+  List<Widget> _overflowMenu(BuildContext context, Post post) {
+    final showMkpx = _mkpxRules.enabled && !post.isPlaylist && _isOwner(post);
+    // ref.watch (not read): the entry must appear when the config future
+    // resolves. Null while loading / on fallback keeps it hidden — correct
+    // failure mode against a server without the feature (contract §2).
+    final modEnabled =
+        ref.watch(serverConfigProvider).valueOrNull?.modHashtagsEnabled ?? false;
+    final canModerate = ref.watch(authControllerProvider).me?.canModerate ?? false;
+    final showMod = modEnabled && canModerate && !post.isPlaylist;
+    if (!showMkpx && !showMod) return const [];
     return [
       PopupMenuButton<String>(
-        tooltip: 'Layers file',
+        tooltip: 'More actions',
         onSelected: (v) {
           if (v == 'attach') _attachMkpx(context, post);
           if (v == 'detach') _detachMkpx(context, post);
+          if (v == 'mod_hashtags') _editModHashtags(context, post);
         },
         itemBuilder: (_) => [
-          PopupMenuItem(
-            value: 'attach',
-            child: Text(post.hasMkpx ? 'Replace layers file…' : 'Attach layers file…'),
-          ),
-          if (post.hasMkpx)
+          if (showMkpx)
+            PopupMenuItem(
+              value: 'attach',
+              child: Text(post.hasMkpx ? 'Replace layers file…' : 'Attach layers file…'),
+            ),
+          if (showMkpx && post.hasMkpx)
             const PopupMenuItem(value: 'detach', child: Text('Remove layers file')),
+          if (showMkpx && showMod) const PopupMenuDivider(),
+          if (showMod)
+            const PopupMenuItem(
+              value: 'mod_hashtags',
+              child: Row(children: [
+                Icon(Icons.shield, size: 16),
+                SizedBox(width: 8),
+                Text('Edit mod hashtags…'),
+              ]),
+            ),
         ],
       ),
     ];
+  }
+
+  void _editModHashtags(BuildContext context, Post post) {
+    // ref.read: event handler. The 16 fallback is unreachable in practice —
+    // the entry only renders when the config key is present.
+    final cap = ref.read(serverConfigProvider).valueOrNull?.maxModHashtagsPerPost ?? 16;
+    showModHashtagsSheet(context, post: post, cap: cap);
   }
 
   /// Golden-button action: download the post's .mkpx and open it in the editor

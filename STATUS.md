@@ -78,6 +78,7 @@ Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending)
 | **C4** Settings — monitored hashtags | ✅ | `ui/settings_page.dart`; content-filter opt-in via `PATCH /user/{key}{approved_hashtags}` (§21); feeds re-filter server-side on save |
 | **C4** Artist dashboard (aggregate) | ✅ | `ui/artist_dashboard_page.dart`; totals + country/device/emoji breakdowns + per-post table + authenticated-only toggle (§19). Per-post `/post/{id}/stats` drill-in deferred |
 | **C4** Post management + ZIP export | ✅ | `ui/post_management_page.dart`; bulk hide/unhide/delete + license + async ZIP data export (§20) via the unversioned `/api/pmd/*` (`ClubApiClient.dioRoot`) |
+| **mod-hashtags** Moderator hashtags | ✅ | moderator-owned tags on posts: shield-marked display + "Tagged by a moderator" legend for artist/mods, "Edit mod hashtags" in the detail-page overflow menu (monitored quick-picks, optional audit note — `api/moderation_api.dart`), `mod_hashtags_updated` notification. Editor UI gated on `GET /config` → `max_mod_hashtags_per_post`; **dev-live 2026-07-05, prod flip pending** (contract: `reference/makapix-club/docs/mod-hashtags/API-CONTRACT.md`; plan: `docs/mod-hashtags/`) |
 | **C4 (rest)** playlists · highlights · categories · reporting · **C5–C6** | ○ | not yet started |
 
 ## App shell
