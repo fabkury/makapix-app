@@ -119,9 +119,12 @@ class ClubApiClient {
             '/auth/providers/${Uri.encodeComponent(provider)}/${Uri.encodeComponent(identityId)}');
       });
 
-  /// `PATCH /user/{user_key} { bio }` (path resolves by UUID only).
-  Future<void> updateBio(String userKey, String bio) => guard(() async {
-        await dio.patch('/user/${Uri.encodeComponent(userKey)}', data: {'bio': bio});
+  /// `PATCH /user/{user_key}` (path resolves by UUID only). Only non-null
+  /// arguments are sent; `''` clears a field server-side (stored as an empty
+  /// string, not NULL), while an omitted field is left unchanged.
+  Future<void> updateProfile(String userKey, {String? bio, String? tagline}) => guard(() async {
+        await dio.patch('/user/${Uri.encodeComponent(userKey)}',
+            data: {'bio': ?bio, 'tagline': ?tagline});
       });
 
   /// `POST /user/{user_key}/avatar` (multipart) → the new avatar URL, if returned.
@@ -131,5 +134,11 @@ class ClubApiClient {
             {'image': MultipartFile.fromBytes(bytes, filename: filename)});
         final resp = await dio.post('/user/${Uri.encodeComponent(userKey)}/avatar', data: form);
         return (resp.data as Map?)?['avatar_url'] as String?;
+      });
+
+  /// `DELETE /user/{user_key}/avatar` — clears the avatar (server also
+  /// best-effort deletes the stored file).
+  Future<void> deleteAvatar(String userKey) => guard(() async {
+        await dio.delete('/user/${Uri.encodeComponent(userKey)}/avatar');
       });
 }

@@ -103,7 +103,7 @@ class OnboardingController extends StateNotifier<OnboardingState> {
           await client.uploadAvatar(userKey, avatarBytes, avatarFilename ?? 'avatar.png');
         }
         if (bio != null) {
-          await client.updateBio(userKey, bio.trim());
+          await client.updateProfile(userKey, bio: bio.trim());
         }
         await _ref.read(authControllerProvider.notifier).reloadMe();
       });
