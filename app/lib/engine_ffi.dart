@@ -6,6 +6,29 @@ import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
+/// Premultiply straight-RGBA bytes in place, for handing to `ui.decodeImageFromPixels`.
+///
+/// The engine's FFI buffers are STRAIGHT alpha (`RgbaBuffer::to_rgba_bytes`), but Flutter's
+/// `PixelFormat.rgba8888` raw decode treats the data as PREMULTIPLIED — feeding it straight
+/// bytes renders translucent pixels too bright (pinned by canvas_checker_test.dart). Call this
+/// on any engine pixel buffer before decoding it. Safe on the getters here: they all return
+/// fresh copies.
+void premultiplyRgbaInPlace(Uint8List bytes) {
+  for (var i = 0; i + 3 < bytes.length; i += 4) {
+    final a = bytes[i + 3];
+    if (a == 255) continue;
+    if (a == 0) {
+      bytes[i] = 0;
+      bytes[i + 1] = 0;
+      bytes[i + 2] = 0;
+    } else {
+      bytes[i] = (bytes[i] * a) ~/ 255;
+      bytes[i + 1] = (bytes[i + 1] * a) ~/ 255;
+      bytes[i + 2] = (bytes[i + 2] * a) ~/ 255;
+    }
+  }
+}
+
 // ---- native signatures ----
 typedef _NewC = Pointer<Void> Function(Uint16, Uint16);
 typedef _NewD = Pointer<Void> Function(int, int);

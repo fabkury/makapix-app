@@ -198,7 +198,10 @@ extension _EditorEngine on _EditorPageState {
         ? engine.compositeFrame(frame)
         // grid:false — the pixel grid is drawn as a thin screen-space overlay (GridPainter), not
         // baked into the upscaled canvas where it would render as thick lines.
-        : engine.display(onion: _onion, grid: false, checker: true);
+        // checker:false — likewise the transparency checker: CanvasPainter draws it in screen
+        // space at a fixed cell size, so it does not zoom with the artwork (which is what lets
+        // painted grey checkers be distinguished from true transparency).
+        : engine.display(onion: _onion, grid: false, checker: false);
     final (w, h) = _playing ? (engine.width, engine.height) : (engine.displayWidth, engine.displayHeight);
     final img = await _decode(bytes, w, h);
     if (!mounted) {
@@ -275,6 +278,9 @@ extension _EditorEngine on _EditorPageState {
 
   Future<ui.Image> _decode(Uint8List bytes, int w, int h) {
     final c = Completer<ui.Image>();
+    // The engine emits straight alpha; the raw decode expects premultiplied. Matters now that
+    // the display buffer carries real transparency (the checker is no longer baked into it).
+    premultiplyRgbaInPlace(bytes);
     ui.decodeImageFromPixels(bytes, w, h, ui.PixelFormat.rgba8888, c.complete);
     return c.future;
   }

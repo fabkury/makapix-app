@@ -8,11 +8,46 @@ class CanvasPainter extends CustomPainter {
   final double scale; // screen px per canvas px (view transform)
   final Offset off; // canvas top-left in screen px
   CanvasPainter(this.image, this.scale, this.off);
+
+  /// Checkerboard cell size in SCREEN (logical) pixels. Deliberately independent of [scale]:
+  /// pixels the user paints grow and shrink with the zoom while true transparency always shows
+  /// the same-sized checker — that contrast is what lets a painted grey checker pattern be told
+  /// apart from actual transparent pixels.
+  static const double checkerCell = 8;
+
+  // One 2×2-cell tile, tiled by an ImageShader. Same two greys the engine used when it baked
+  // the checker into the display buffer, for visual continuity.
+  static final ui.Image _checkerTile = _buildCheckerTile();
+
+  static ui.Image _buildCheckerTile() {
+    const c = checkerCell;
+    final rec = ui.PictureRecorder();
+    final canvas = Canvas(rec);
+    canvas.drawRect(const Rect.fromLTWH(0, 0, c * 2, c * 2), Paint()..color = const Color(0xFFC8C8C8));
+    final dark = Paint()..color = const Color(0xFFA0A0A0);
+    canvas.drawRect(const Rect.fromLTWH(c, 0, c, c), dark);
+    canvas.drawRect(const Rect.fromLTWH(0, c, c, c), dark);
+    return rec.endRecording().toImageSync((c * 2).toInt(), (c * 2).toInt());
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     if (image == null) return;
     final iw = image!.width.toDouble(), ih = image!.height.toDouble();
     final dst = Rect.fromLTWH(off.dx, off.dy, iw * scale, ih * scale);
+    // The transparency checker, under the artwork. Anchored to the image's top-left (it pans
+    // with the artwork rather than swimming beneath it) but NOT multiplied by the zoom scale.
+    canvas.drawRect(
+      dst,
+      Paint()
+        ..shader = ui.ImageShader(
+          _checkerTile,
+          TileMode.repeated,
+          TileMode.repeated,
+          Matrix4.translationValues(off.dx, off.dy, 0).storage,
+          filterQuality: FilterQuality.none,
+        ),
+    );
     final paint = Paint()
       ..filterQuality = FilterQuality.none
       ..isAntiAlias = false;

@@ -91,6 +91,8 @@ class _GalleryPageState extends State<GalleryPage> {
 
   Future<ui.Image> _decodeRgba(Uint8List bytes, int w, int h) {
     final c = Completer<ui.Image>();
+    // The engine emits straight alpha; the raw decode expects premultiplied (see engine_ffi).
+    premultiplyRgbaInPlace(bytes);
     ui.decodeImageFromPixels(bytes, w, h, ui.PixelFormat.rgba8888, c.complete);
     return c.future;
   }
