@@ -283,91 +283,17 @@ extension _EditorFileIo on _EditorPageState {
     String action = 'Export',
     List<String> formats = const [],
     String initialFormat = '',
-  }) {
-    final w = engine.width, h = engine.height;
-    var scale = 1;
-    var format = formats.contains(initialFormat) ? initialFormat : (formats.isEmpty ? '' : formats.first);
-    var warned = false;
-    return showDialog<(int, String)>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
-        final ow = w * scale, oh = h * scale;
-        final totalPx = ow * oh * frames;
-        final big = totalPx > _kExportWarnPixels;
-        return AlertDialog(
-          title: Text(title),
-          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            if (formats.isNotEmpty) ...[
-              Wrap(spacing: 6, children: [
-                for (final f in formats)
-                  ChoiceChip(
-                    label: Text(f),
-                    selected: format == f,
-                    selectedColor: const Color(0xFF30A050),
-                    onSelected: (_) => setS(() => format = f),
-                  ),
-              ]),
-              const SizedBox(height: 6),
-            ],
-            Wrap(spacing: 6, children: [
-              for (final s in const [1, 4, 8, 16, 32])
-                ChoiceChip(
-                  label: Text('$s×'),
-                  selected: scale == s,
-                  selectedColor: const Color(0xFF30A050),
-                  onSelected: (_) => setS(() {
-                    scale = s;
-                    warned = false; // a newly chosen size gets its own re-confirmation
-                  }),
-                ),
-            ]),
-            const SizedBox(height: 10),
-            Text(
-              frames > 1 ? 'Output: $ow × $oh px, $frames frames' : 'Output: $ow × $oh px',
-              style: const TextStyle(fontSize: 12, color: Colors.white60),
-            ),
-            if (warned)
-              Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0x33E05050),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: const Color(0xFFE05050)),
-                  ),
-                  child: Row(children: [
-                    const Icon(Icons.warning_amber, color: Color(0xFFE05050), size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Very large export: ${(totalPx / 1e6).toStringAsFixed(0)} million pixels. '
-                        'This can take a long time and a lot of memory. $action anyway?',
-                        style: const TextStyle(fontSize: 12, color: Color(0xFFE05050)),
-                      ),
-                    ),
-                  ]),
-                ),
-              ),
-          ]),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(
-              style: warned ? FilledButton.styleFrom(backgroundColor: const Color(0xFFE05050)) : null,
-              onPressed: () {
-                if (big && !warned) {
-                  setS(() => warned = true); // first press on a huge size only raises the alert
-                  return;
-                }
-                Navigator.pop(ctx, (scale, format));
-              },
-              child: Text(warned ? '$action anyway' : action),
-            ),
-          ],
-        );
-      }),
-    );
-  }
+  }) =>
+      showExportScaleDialog(
+        context: context,
+        width: engine.width,
+        height: engine.height,
+        frames: frames,
+        title: title,
+        action: action,
+        formats: formats,
+        initialFormat: initialFormat,
+      );
 
   // Encode the document to `format` off the UI thread behind a modal progress dialog. The dialog
   // polls the engine library's process-wide export progress (one step per frame composited + one
@@ -375,57 +301,13 @@ extension _EditorFileIo on _EditorPageState {
   // which asks the encoder to stop at the next frame boundary. Returns (bytes, cancelled):
   // bytes is empty on failure or cancellation.
   Future<(Uint8List, bool)> _encodeWithProgress(String format,
-      {required String title, int frame = 0, int layer = 0, int scale = 1}) async {
-    engine.resetExportProgress(); // the dialog must not briefly show the PREVIOUS export's bar
-    var cancelled = false;
-    final future = Engine.encodeInBackground(engine.save(), format: format, frame: frame, layer: layer, scale: scale); // [F-12]
-    if (mounted) {
-      var dialogOpen = true;
-      Timer? poll;
-      var cancelling = false;
-      unawaited(showDialog<void>(
+          {required String title, int frame = 0, int layer = 0, int scale = 1}) =>
+      encodeWithProgress(
         context: context,
-        barrierDismissible: false,
-        builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
-          // ~10 polls/s; each is one cheap FFI read of the packed (total<<32)|done atomic.
-          poll ??= Timer.periodic(const Duration(milliseconds: 100), (_) {
-            if (ctx.mounted) setS(() {});
-          });
-          final (done, total) = engine.exportProgress;
-          return AlertDialog(
-            title: Text(title),
-            content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              LinearProgressIndicator(value: total > 0 ? done / total : null),
-              const SizedBox(height: 10),
-              Text(
-                total > 0 ? '${(100 * done / total).floor()}%' : 'Preparing…',
-                style: const TextStyle(fontSize: 12, color: Colors.white60),
-              ),
-            ]),
-            actions: [
-              TextButton(
-                onPressed: cancelling
-                    ? null
-                    : () => setS(() {
-                          cancelling = true;
-                          cancelled = true;
-                          engine.cancelExport(); // honoured at the next frame boundary
-                        }),
-                child: Text(cancelling ? 'Cancelling…' : 'Cancel'),
-              ),
-            ],
-          );
-        }),
-      ).whenComplete(() {
-        poll?.cancel();
-        dialogOpen = false;
-      }));
-      final bytes = await future;
-      if (dialogOpen && mounted) Navigator.of(context, rootNavigator: true).pop();
-      return (bytes, cancelled);
-    }
-    return (await future, false);
-  }
+        title: title,
+        encode: () => Engine.encodeInBackground(engine.save(), // [F-12]
+            format: format, frame: frame, layer: layer, scale: scale),
+      );
 
   // A single-frame export — the active composited frame, or (layerOnly) the ACTIVE layer of it
   // alone (straight alpha, canvas-sized) — as PNG or lossless static WebP; the dialog's format
@@ -563,16 +445,7 @@ extension _EditorFileIo on _EditorPageState {
     }
 
     try {
-      // A fresh per-share subdir of the cache: deleting a shared file right after the sheet
-      // closes can race a receiver that reads lazily, so the PREVIOUS share is pruned here
-      // instead, and the OS may reclaim the cache dir at will.
-      final dir = Directory('${(await getTemporaryDirectory()).path}/share');
-      if (dir.existsSync()) dir.deleteSync(recursive: true);
-      dir.createSync(recursive: true);
-      final title = _drawingTitle.replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '_');
-      final f = File('${dir.path}/${title.isEmpty ? 'makapix' : title}.$ext');
-      await f.writeAsBytes(bytes);
-      await SharePlus.instance.share(ShareParams(files: [XFile(f.path, mimeType: mime)]));
+      await shareImageBytes(bytes: bytes, filenameBase: _drawingTitle, ext: ext, mime: mime);
     } catch (e) {
       if (mounted) _toast('Could not share: $e');
     }

@@ -13,7 +13,6 @@ import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:makapix_club/club/edit/club_edit_request.dart';
@@ -22,6 +21,7 @@ import 'package:makapix_club/club/publish/publish_draft.dart';
 import 'package:makapix_club/club/state/edit_bridge.dart';
 import 'package:makapix_club/club/ui/publish_page.dart';
 import 'package:makapix_club/engine_ffi.dart';
+import 'package:makapix_club/share/image_share.dart';
 
 import 'gallery/gallery_page.dart';
 import 'persistence/autosave_controller.dart';
@@ -45,11 +45,6 @@ part 'editor_page.toolgrid.dart';
 part 'editor_page.persistence.dart';
 
 const double _kMinZoom = 0.25, _kMaxZoom = 32.0;
-// export-dialog: warn (red alert + explicit re-confirmation) when an export's total output —
-// width × height × scale² × frames — exceeds this. ~64 million pixels ≈ 256 MB of RGBA work per
-// pass, about where a mid-to-upper-range Android phone starts to struggle: 256² at 32× (67 MP)
-// is just over the line; a 64² × 8-frame animation at 32× (34 MP) is comfortably under it.
-const _kExportWarnPixels = 64 * 1000 * 1000;
 const _prefsKey = 'tool_order_v1';
 const _kCurrentDrawing = 'editor.currentDrawingId'; // last-open library drawing (silent restore)
 const _kShareFormatPref = 'editor.shareFormat_v1'; // last-used Share format for animations (GIF/WebP)

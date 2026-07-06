@@ -1,6 +1,5 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/mkpx_api.dart';
@@ -25,6 +24,7 @@ import 'widgets/common.dart';
 import 'widgets/mod_hashtags_sheet.dart';
 import 'widgets/reactions_bar.dart';
 import 'widgets/send_target_binder.dart';
+import 'package:makapix_club/share/image_share.dart';
 
 /// The grid an artwork detail was opened from, so the page can swipe to its neighbours and
 /// "inherit" its position. Built with [ArtworkFeedSource.fixed] for a flat list (search) or
@@ -288,13 +288,9 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
         _stat(Icons.mode_comment_outlined, commentTotal, onTap: _scrollToComments),
         IconButton(
           icon: const Icon(Icons.share),
-          tooltip: 'Copy link',
+          tooltip: 'Share',
           visualDensity: VisualDensity.compact,
-          onPressed: () {
-            Clipboard.setData(ClipboardData(text: '$base/p/${post.sqid}'));
-            ScaffoldMessenger.of(context)
-                .showSnackBar(const SnackBar(content: Text('Link copied')));
-          },
+          onPressed: () => _shareArtwork(context, post, base),
         ),
       ]),
     );
@@ -546,6 +542,24 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
     } catch (_) {
       messenger.showSnackBar(const SnackBar(content: Text('Could not remove the layers file.')));
     }
+  }
+
+  /// Share the artwork's PIXELS (not just its link): the scale/format dialog and progress UI are the
+  /// same as the editor's ☰ → Share, and the post's URL rides along as the caption. Downloading the
+  /// render + re-encoding happen under the shared flow's progress dialog. The engine work lives in
+  /// the neutral lib/share module, keeping this social code engine-free.
+  Future<void> _shareArtwork(BuildContext context, Post post, String base) async {
+    final messenger = ScaffoldMessenger.of(context);
+    await shareRasterArtwork(
+      context: context,
+      fetchRaster: () => ref.read(editApiProvider).downloadArtwork(post.artUrl),
+      width: post.width,
+      height: post.height,
+      frameCount: post.frameCount,
+      title: post.title,
+      linkUrl: '$base/p/${post.sqid}',
+      onError: (m) => messenger.showSnackBar(SnackBar(content: Text(m))),
+    );
   }
 
   /// Download the artwork and hand it to the editor (root) for remix/replace.

@@ -360,6 +360,57 @@ class Engine {
 
   void dispose() => _freeS(_s);
 
+  // ---- process-wide export progress, readable without owning an Engine ----
+  // The GIF/WebP export counters live in the DLL's process memory (not per-session), so the shared
+  // share flow (lib/share) can drive its progress dialog without holding an Engine instance.
+  static final DynamicLibrary _staticLib = _open();
+  static final _ExportProgressD _sProgress =
+      _staticLib.lookupFunction<_ExportProgressC, _ExportProgressD>('mkpx_export_progress');
+  static final _ExportVoidD _sProgressReset =
+      _staticLib.lookupFunction<_ExportVoidC, _ExportVoidD>('mkpx_export_progress_reset');
+  static final _ExportVoidD _sCancel =
+      _staticLib.lookupFunction<_ExportVoidC, _ExportVoidD>('mkpx_export_cancel');
+
+  static (int, int) get exportProgressStatic {
+    final v = _sProgress();
+    return (v & 0xFFFFFFFF, v >>> 32);
+  }
+
+  static void resetExportProgressStatic() => _sProgressReset();
+  static void cancelExportStatic() => _sCancel();
+
+  /// Build a throwaway document from a decoded raster (`width`×`height`, any supported still or
+  /// animation) and encode it to `format` ('gif' | 'webp' | 'png') at `scale`, **off the UI thread**.
+  /// Used by the shared share flow to re-render a Club artwork's downloaded pixels to a shareable
+  /// GIF / lossless WebP / PNG. Progress is reported via [exportProgressStatic]. Empty on failure.
+  static Future<Uint8List> encodeRasterInBackground(Uint8List raster,
+      {required int width, required int height, required String format, int scale = 1}) async {
+    try {
+      return await Isolate.run(() => _encodeRaster(raster, width, height, format, scale));
+    } catch (_) {
+      return _encodeRaster(raster, width, height, format, scale);
+    }
+  }
+
+  static Uint8List _encodeRaster(Uint8List raster, int width, int height, String format, int scale) {
+    final e = Engine(width, height);
+    try {
+      // Stretch the whole render onto a native-sized canvas (integer nearest → exact native pixels
+      // when the render is a clean integer upscale), pulling in every animation frame.
+      if (!e.importImage(raster, mode: 1, asLayer: false, startFrame: 0)) return Uint8List(0);
+      switch (format) {
+        case 'webp':
+          return e.exportWebp(scale: scale);
+        case 'gif':
+          return e.exportGif(scale: scale);
+        default:
+          return e.exportPng(0, scale: scale); // static → PNG of the single frame
+      }
+    } finally {
+      e.dispose();
+    }
+  }
+
   /// Encode `docBytes` (a `.mkpx` snapshot) to the given `format` ('webp' | 'gif' | 'png' |
   /// 'frame-webp' | 'layer-png' | 'layer-webp') **off the UI thread**: a background isolate builds its own engine from the
   /// snapshot and runs the (potentially slow, multi-frame) encode, so the editor stays responsive.
