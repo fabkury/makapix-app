@@ -131,7 +131,7 @@ void main() {
             'user_key': 'u',
             'public_sqid': 's',
             'handle': 'h',
-            if (v != null) 'is_blocked_by_viewer': v,
+            'is_blocked_by_viewer': ?v,
           });
       expect(parse(true).isBlockedByViewer, isTrue);
       expect(parse(false).isBlockedByViewer, isFalse);

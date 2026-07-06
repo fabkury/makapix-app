@@ -38,13 +38,25 @@ green (174 total, 27 new in `test/ugc_safety_test.dart`).
   now reads config to arm the gate).
 - [x] **Docs** — `SPEC-CLUB.md` §22 + §29 matrix; `STATUS.md` row.
 
-## Pending (needs the server's dev flip)
+## Dev live + server answers (message 0003, 2026-07-06)
 
-- [ ] Manual verification matrix (`PLAN.md` "Manual verification") on
-  development.makapix.club — the `moderation` config key must be live.
-- [ ] Server team answers (from reply `0002`): playlist report targets;
-  `new_report` payload (to enable its tap deep-link).
-- [ ] Prod build + joint prod flip; Play Console UGC questionnaire update.
+The `moderation` key is live on development.makapix.club; server + website
+shipped per the frozen contract (no changes). Their answers to our `0002`:
+
+- [x] **Playlist targets** — server accepts playlist posts as `post`, but
+  keeping our exclusion (A14) is explicitly fine → **kept as-is**.
+- [x] **`new_report` payload** — `post_id`/`content_sqid`/`content_art_url`
+  are always null; the summary rides in `content_title`. The tile now renders
+  `content_title` and stays **no-tap** (there is no in-app mod queue).
+
+## Pending
+
+- [~] Manual E2E on dev (Android build): Blocked-users management screen
+  verified on device; remaining matrix items accepted on the strength of the
+  contract-level match + green unit suite rather than exhaustive manual runs.
+- [ ] Prod build + joint prod flip (server PR `develop`→`main`; the
+  `moderation` key on makapix.club is the launch signal); Play Console UGC
+  questionnaire update. Reply `0004` sent (E2E summary + prod go).
 
 ## Notes
 

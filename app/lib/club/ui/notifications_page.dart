@@ -99,7 +99,10 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
       case 'reputation_change':
         return 'Your reputation changed';
       case 'new_report':
-        return 'New content report — open the moderation queue';
+        // Server puts the summary ("New {target_type} report: {reason_code}")
+        // in content_title; post_id/content_sqid are null (no in-app queue to
+        // link to), so the tile stays no-tap (message 0003 §4b).
+        return x.contentTitle ?? 'New content report';
       case 'report_resolved':
         return "Thanks — we've reviewed your report.";
       default:
