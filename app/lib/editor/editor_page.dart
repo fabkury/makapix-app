@@ -180,10 +180,13 @@ class _EditorPageState extends ConsumerState<EditorPage>
   ];
   // HSV-shift sliders: zero = no change, so entering the tool previews the document as-is.
   double _hsvH = 0, _hsvS = 0, _hsvV = 0;
-  // Flip/Rotate/Invert/HSV scope toggles: false = the active layer (or selection), true = every
-  // layer of the active frame (FlipFrame*/RotateFrame/InvertFrame/SetHsvScope in the engine).
-  // Layer is the default.
-  bool _flipFrame = false, _rotateFrame = false, _invertFrame = false, _hsvFrame = false;
+  // Brightness/Contrast sliders: zero = no change too (the contrast slider is ±% around the 1.0×
+  // factor, mapped to the engine's cf = 1 + v/100).
+  double _bcBright = 0, _bcContrast = 0;
+  // Flip/Rotate/Invert/HSV/BC scope toggles: false = the active layer (or selection), true = every
+  // layer of the active frame (FlipFrame*/RotateFrame/InvertFrame/SetHsvScope/SetBcScope in the
+  // engine). Layer is the default.
+  bool _flipFrame = false, _rotateFrame = false, _invertFrame = false, _hsvFrame = false, _bcFrame = false;
   // Move tool layer-move edge modes (mutually exclusive; both off = Regular = pixels clip off):
   bool _protectPixels = false; // keep opaque pixels on-canvas (non-destructive)
   bool _wrap = false; // pixels leaving one edge re-enter the opposite edge

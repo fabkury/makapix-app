@@ -31,6 +31,7 @@ const tools = <ToolDef>[
   ToolDef('SelectByColor', Icons.colorize_outlined, 'Sel Color'),
   ToolDef('SelectLayer', Icons.opacity, 'Sel Lyr'),
   ToolDef('HsvShift', Icons.palette, 'HSV'),
+  ToolDef('BrightnessContrast', Icons.brightness_6, 'Bright'),
   // Transform actions: UI-only groups (no engine draw tool). Selecting one reveals its
   // action button(s) in row-1; the canvas is inert while one is selected.
   ToolDef('Flip', Icons.flip, 'Flip'),
@@ -73,6 +74,7 @@ const toolTips = <String, String>{
   'SelectByColor': 'Tap to select similar colours. Threshold sets tolerance.',
   'SelectLayer': 'Turn the layer\'s opaque pixels into a selection. Tap a mode to apply.',
   'HsvShift': 'Shift hue, saturation and value.',
+  'BrightnessContrast': 'Adjust brightness and contrast, then Apply.',
   'Flip': 'Mirror the layer horizontally or vertically. Acts on the selection if any.',
   'Rotate': 'Rotate the layer or the whole frame 90°, 180°, or by a free Angle. Acts on the selection if any. (Whole canvas: ☰ menu.)',
   'Invert': 'Invert the image colours.',

@@ -34,6 +34,9 @@ pub enum ToolKind {
     /// Select Layer: turn the active layer's alpha channel into a selection (alpha > cutoff).
     SelectLayer,
     HsvShift,
+    /// Brightness/Contrast: like HsvShift, a pointer-inert adjustment tool — the pending
+    /// (brightness, contrast) in `ToolSettings::bc` previews live and bakes on Apply.
+    BrightnessContrast,
     /// Copy & Paste: hosts the clipboard ops (Copy/Cut/Paste/Clear). Paste shows a movable, semi-
     /// transparent draft that is dragged into place then committed. No drawing of its own.
     CopyPaste,
@@ -158,6 +161,11 @@ pub struct ToolSettings {
     /// HSV tool "Frame" scope: the shift (preview + apply) hits every layer of the active frame,
     /// ignoring the selection, instead of the active layer / selection.
     pub hsv_frame: bool,
+    /// Brightness/Contrast pending adjustment: (brightness delta in [-255, 255], contrast factor
+    /// around the 128 pivot — 1.0 = no change). Previewed live, baked by ApplyBrightnessContrast.
+    pub bc: (i32, f32),
+    /// Brightness/Contrast "Frame" scope (same semantics as `hsv_frame`).
+    pub bc_frame: bool,
     pub shape_fill: bool,
     pub line_width: u16,
     /// When true, a layer Move refuses to push any opaque pixel off-canvas (non-destructive).
@@ -190,6 +198,8 @@ impl Default for ToolSettings {
             gradient: GradientSpec::default(),
             hsv: (0.0, 0.0, 0.0),
             hsv_frame: false,
+            bc: (0, 1.0),
+            bc_frame: false,
             shape_fill: true,
             line_width: 1,
             protect_pixels: false,

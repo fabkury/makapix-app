@@ -485,12 +485,14 @@ impl Session {
             // (not baked into canvas pixels), so the engine no longer renders it.
             cursor: None,
         };
-        // A move/rotate draft or a pending HSV shift renders as a display-only preview: composite
-        // a clone of the active frame with it applied (the document is untouched until Commit).
+        // A move/rotate draft or a pending HSV / brightness-contrast adjustment renders as a
+        // display-only preview: composite a clone of the active frame with it applied (the
+        // document is untouched until Commit).
         let preview = self
             .move_draft_preview_frame()
             .or_else(|| self.rotate_draft_preview_frame())
-            .or_else(|| self.hsv_preview_frame());
+            .or_else(|| self.hsv_preview_frame())
+            .or_else(|| self.bc_preview_frame());
         let frame = preview.as_ref().unwrap_or_else(|| self.doc.active_frame());
         // Render the whole storage area so the tool previews (which draw in storage coordinates) need
         // no offset; then crop to the canvas for the normal view, or emit the whole thing (gutter
@@ -1998,6 +2000,58 @@ impl Session {
         Some(frame)
     }
 
+    /// Bake the pending Brightness/Contrast adjustment (`settings.bc`) into the document — the
+    /// active layer (selection-clipped), or every layer of the active frame in "Frame" scope
+    /// (ignoring the selection, like `apply_hsv_shift`). One undo step.
+    pub fn apply_brightness_contrast(&mut self) {
+        let (db, cf) = self.settings.bc;
+        if self.settings.bc_frame {
+            self.edit_doc("bc_frame", |s| {
+                for l in &mut s.doc.active_frame_mut().layers {
+                    tool::map_region(&mut l.pixels, None, |c| crate::color::brightness_contrast(c, db, cf));
+                }
+            });
+            return;
+        }
+        if !self.active_editable() {
+            return;
+        }
+        let before = self.begin_edit();
+        let sel = self.selection_clone();
+        let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
+        tool::map_region(buf, sel.as_ref(), |c| crate::color::brightness_contrast(c, db, cf));
+        self.commit_edit(before);
+    }
+
+    /// Live Brightness/Contrast preview (the HSV preview's twin): while the tool is active with a
+    /// non-identity adjustment pending, the display composites a clone of the active frame with it
+    /// applied per the scope. The document is untouched until `ApplyBrightnessContrast` commits.
+    fn bc_preview_frame(&self) -> Option<Frame> {
+        if self.tool != ToolKind::BrightnessContrast {
+            return None;
+        }
+        let (db, cf) = self.settings.bc;
+        if db == 0 && cf == 1.0 {
+            return None;
+        }
+        let mut frame = self.doc.active_frame().clone();
+        if self.settings.bc_frame {
+            for l in &mut frame.layers {
+                tool::map_region(&mut l.pixels, None, |c| crate::color::brightness_contrast(c, db, cf));
+            }
+        } else {
+            if !self.active_editable() {
+                return None;
+            }
+            let li = frame.active_layer;
+            let sel = self.selection_clone();
+            tool::map_region(&mut frame.layers[li].pixels, sel.as_ref(), |c| {
+                crate::color::brightness_contrast(c, db, cf)
+            });
+        }
+        Some(frame)
+    }
+
     pub fn map_active(&mut self, f: impl Fn(Rgba8) -> Rgba8) {
         if !self.active_editable() {
             return;
@@ -3207,6 +3261,57 @@ mod tests {
         assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::new(0, 255, 0, 255));
         let px = s.display_bytes(false, false, false);
         assert_eq!(&px[0..4], &[0, 255, 0, 255]);
+    }
+
+    // ---- Brightness/Contrast tool (the HSV tool's twin; closed-form oracle in color.rs) ----
+
+    #[test]
+    fn brightness_contrast_preview_is_display_only_until_apply() {
+        let mut s = Session::new(8, 8);
+        let orig = Rgba8::new(100, 150, 200, 255);
+        s.settings.primary = orig;
+        s.tap(0, 0);
+        s.run_script("SelectTool(BrightnessContrast)\nSetBrightnessContrast(10, 1.5)").unwrap();
+        // The display previews the adjustment while the document still holds the original.
+        let want = crate::color::brightness_contrast(orig, 10, 1.5);
+        assert_ne!(want, orig);
+        let px = s.display_bytes(false, false, false);
+        assert_eq!(&px[0..4], &[want.r, want.g, want.b, want.a]);
+        assert_eq!(s.pixel(0, 0, 0, 0), orig);
+        // Apply commits it (one undo step); with the sliders reset the display matches the document.
+        s.run_script("ApplyBrightnessContrast()\nSetBrightnessContrast(0, 1)").unwrap();
+        assert_eq!(s.pixel(0, 0, 0, 0), want);
+        let px = s.display_bytes(false, false, false);
+        assert_eq!(&px[0..4], &[want.r, want.g, want.b, want.a]);
+        assert!(s.doc.undo());
+        assert_eq!(s.pixel(0, 0, 0, 0), orig);
+    }
+
+    #[test]
+    fn brightness_contrast_frame_scope_previews_and_applies_to_all_layers() {
+        let mut s = Session::new(8, 8);
+        let c0 = Rgba8::new(100, 150, 200, 255);
+        let c1 = Rgba8::new(30, 60, 90, 255);
+        s.settings.primary = c0;
+        s.tap(0, 0); // layer 0
+        s.add_layer();
+        s.settings.primary = c1;
+        s.tap(1, 0); // layer 1
+        s.run_script("SelectTool(BrightnessContrast)\nSetBrightnessContrast(-20, 0.5)\nSetBcScope(Frame)")
+            .unwrap();
+        let w0 = crate::color::brightness_contrast(c0, -20, 0.5);
+        let w1 = crate::color::brightness_contrast(c1, -20, 0.5);
+        // The display previews BOTH layers adjusted; the document still holds the originals.
+        let px = s.display_bytes(false, false, false);
+        assert_eq!(&px[0..4], &[w0.r, w0.g, w0.b, w0.a]);
+        assert_eq!(&px[4..8], &[w1.r, w1.g, w1.b, w1.a]);
+        assert_eq!(s.pixel(0, 0, 0, 0), c0);
+        s.run_script("ApplyBrightnessContrast()").unwrap();
+        assert_eq!(s.pixel(0, 0, 0, 0), w0);
+        assert_eq!(s.pixel(0, 1, 1, 0), w1);
+        assert!(s.doc.undo()); // ONE step restores both layers
+        assert_eq!(s.pixel(0, 0, 0, 0), c0);
+        assert_eq!(s.pixel(0, 1, 1, 0), c1);
     }
 
     // ---- Rotate tool: layer/selection-scoped rotation + free-angle draft (session/canvas.rs) ----

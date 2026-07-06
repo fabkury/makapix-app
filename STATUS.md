@@ -45,6 +45,7 @@ Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending)
 | Select rectangle / ellipse / circle / freeform | ✅ | polygon via freeform lasso path |
 | Selection ops Add / Subtract / Union / Intersect / Invert | ✅ | set-algebra tested |
 | HSV-shift selected pixels | ✅ | closed-form oracle |
+| Brightness/Contrast (layer/selection, Frame scope) | ✅ | HSV-style tool: live engine preview, ±255 brightness + ±100% contrast around the 128 pivot, Apply = one undo step; closed-form oracle |
 | Gradient (2/3 colors, positions, alpha) | ✅ | linear + radial; tri-color; alpha; optional seeded dither |
 | Darkener / Lightener brush (intensity, size) | ✅ | dodge/burn via HSV-V |
 | Selected pixels move / copy / cut / paste | ✅ | |
@@ -106,23 +107,21 @@ through C3 plus most of C4. Verified against the code 2026-07-05:
    offers PNG/GIF/WebP only (animated WebP, the nice-to-have, *is* done).
 3. **Sprite-sheet export UI** — supported in `crates/codec`, not wired into the export dialog.
 4. **Trim to non-transparent bounds** (§28.1) — resize + crop-to-selection exist; Trim doesn't.
-5. **Brightness/Contrast UI** (§28.1) — `color::brightness_contrast` exists in the engine but no UI/tool
-   exposes it (Invert, HSV-shift, Dodge/Burn are done).
-6. **Reference image underlay** (§28.3) — not implemented.
-7. **Keyboard shortcuts** (§28.5) — no key handling in the editor (tools, undo/redo, save, play/pause,
+5. **Reference image underlay** (§28.3) — not implemented.
+6. **Keyboard shortcuts** (§28.5) — no key handling in the editor (tools, undo/redo, save, play/pause,
    zoom, frame prev/next).
-8. **Preferences screen** (§28.5) — individual settings persist ad-hoc via `shared_preferences`; no
+7. **Preferences screen** (§28.5) — individual settings persist ad-hoc via `shared_preferences`; no
    preferences UI (default canvas size, grid/onion defaults, theme, autosave interval, haptics,
    confirm-before-destructive).
 
 **Editor — partial:**
-9. **Onion skin** is an on/off toggle only — configurable range/opacity (§28.3) missing.
-10. **Action journal** (§28.2) — autosave + crash recovery are fully built
-    (`editor_page.persistence.dart`); the append-only action journal (bug-repro format) was never added.
-11. **Gradient per-stop position UI** — engine supports stop positions; the UI doesn't expose them.
+8. **Onion skin** is an on/off toggle only — configurable range/opacity (§28.3) missing.
+9. **Action journal** (§28.2) — autosave + crash recovery are fully built
+   (`editor_page.persistence.dart`); the append-only action journal (bug-repro format) was never added.
+10. **Gradient per-stop position UI** — engine supports stop positions; the UI doesn't expose them.
 
 **Club:**
-12. **C4 remainder** — playlists, highlights, categories, reporting; **C5** real-time & players; **C6**
+11. **C4 remainder** — playlists, highlights, categories, reporting; **C5** real-time & players; **C6**
     moderation & extras (mod-hashtags already shipped; see `SPEC-CLUB.md` §28).
 
 **Deferred by decision, not omission:**

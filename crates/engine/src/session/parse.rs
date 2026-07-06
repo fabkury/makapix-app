@@ -52,6 +52,8 @@ pub enum Action {
     SetGradientSmoothstep(bool),
     SetHsvShift(f32, f32, f32),
     SetHsvScope(bool), // true = the whole active frame, false = the active layer / selection
+    SetBrightnessContrast(i32, f32), // brightness delta [-255,255], contrast factor around 128
+    SetBcScope(bool),                // scope flag, same semantics as SetHsvScope
     SetSelectionMode(CombineMode),
     SetShapeFill(bool),
     SetLineWidth(u16),
@@ -100,6 +102,7 @@ pub enum Action {
     FillSelection,
     ClearSelection,
     ApplyHsvShift,
+    ApplyBrightnessContrast,
     FlipH,
     FlipV,
     FlipFrameH,
@@ -197,6 +200,8 @@ impl Session {
             SetGradientSmoothstep(b) => self.settings.gradient.smoothstep = b,
             SetHsvShift(dh, ds, dv) => self.settings.hsv = (dh, ds, dv),
             SetHsvScope(frame) => self.settings.hsv_frame = frame,
+            SetBrightnessContrast(db, cf) => self.settings.bc = (db, cf),
+            SetBcScope(frame) => self.settings.bc_frame = frame,
             SetSelectionMode(m) => self.selection_mode = m,
             SetShapeFill(b) => self.settings.shape_fill = b,
             SetLineWidth(w) => self.settings.line_width = w.max(1),
@@ -245,6 +250,7 @@ impl Session {
             FillSelection => self.fill_selection(),
             ClearSelection => self.clear_selection_pixels(),
             ApplyHsvShift => self.apply_hsv_shift(),
+            ApplyBrightnessContrast => self.apply_brightness_contrast(),
             FlipH => self.flip_horizontal(),
             FlipV => self.flip_vertical(),
             FlipFrameH => self.flip_frame(true),
@@ -340,6 +346,7 @@ fn parse_tool(s: &str) -> Result<ToolKind, String> {
         "SelectByColor" => SelectByColor,
         "SelectLayer" => SelectLayer,
         "HsvShift" => HsvShift,
+        "BrightnessContrast" => BrightnessContrast,
         "CopyPaste" => CopyPaste,
         other => return Err(format!("unknown tool '{}'", other)),
     })
@@ -510,6 +517,8 @@ fn parse_line(line: &str) -> Result<Action, String> {
         "SetGradientSmoothstep" => SetGradientSmoothstep(boola(0)?),
         "SetHsvShift" => SetHsvShift(f32a(0)?, f32a(1)?, f32a(2)?),
         "SetHsvScope" => SetHsvScope(args.first().map(|s| s.eq_ignore_ascii_case("frame")).unwrap_or(false)),
+        "SetBrightnessContrast" => SetBrightnessContrast(i32a(0)?, f32a(1)?),
+        "SetBcScope" => SetBcScope(args.first().map(|s| s.eq_ignore_ascii_case("frame")).unwrap_or(false)),
         "SetSelectionMode" => SetSelectionMode(match args.first().copied().unwrap_or("") {
             "Replace" => CombineMode::Replace,
             "Add" => CombineMode::Add,
@@ -572,6 +581,7 @@ fn parse_line(line: &str) -> Result<Action, String> {
         "FillSelection" => FillSelection,
         "ClearSelection" => ClearSelection,
         "ApplyHsvShift" => ApplyHsvShift,
+        "ApplyBrightnessContrast" => ApplyBrightnessContrast,
         "FlipH" => FlipH,
         "FlipV" => FlipV,
         "FlipFrameH" => FlipFrameH,

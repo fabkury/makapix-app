@@ -421,6 +421,33 @@ extension _EditorControls on _EditorPageState {
         });
       }));
     }
+    if (_tool == 'BrightnessContrast') {
+      // The HSV block's twin: slider changes sync the pending adjustment into the engine, whose
+      // display composites a live preview per the scope; the document is untouched until Apply
+      // (see bc_preview_frame). Contrast is a ±100% slider around the engine's 1.0× factor.
+      void syncBc(void Function() set) {
+        setState(set);
+        _send('SetBrightnessContrast(${_bcBright.round()}, ${1.0 + _bcContrast / 100})');
+        _redraw();
+      }
+
+      children.add(_toggle(const ['Layer', 'Frame'], _bcFrame ? 1 : 0, (i) {
+        setState(() => _bcFrame = i == 1);
+        _send('SetBcScope(${_bcFrame ? 'Frame' : 'Layer'})');
+        _redraw();
+      }));
+      _labeledSlider(children, 'B', _bcBright, -255, 255, (v) => syncBc(() => _bcBright = v));
+      _labeledSlider(children, 'C', _bcContrast, -100, 100, (v) => syncBc(() => _bcContrast = v));
+      children.add(_miniBtn('Apply', () {
+        _send('SetBrightnessContrast(${_bcBright.round()}, ${1.0 + _bcContrast / 100})');
+        _act('ApplyBrightnessContrast()');
+        // The adjustment is baked in now; zero the sliders so the preview matches the document.
+        syncBc(() {
+          _bcBright = 0;
+          _bcContrast = 0;
+        });
+      }));
+    }
     if (_tool == 'Flip') {
       label(_flipFrame ? 'Flip frame' : (_outlineEdges.isNotEmpty ? 'Flip selection' : 'Flip layer'));
       children.add(_toggle(const ['Layer', 'Frame'], _flipFrame ? 1 : 0, (i) => setState(() => _flipFrame = i == 1)));
