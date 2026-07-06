@@ -315,7 +315,14 @@ class _EditorPageState extends ConsumerState<EditorPage>
       (_isSelShapeTool && _hasSelDraft) ||
       (_isCopyPaste && _hasPasteDraft) ||
       (_tool == 'Move' && _hasMoveDraft) ||
-      (_tool == 'Rotate' && _hasRotateDraft);
+      (_tool == 'Rotate' && _hasRotateDraft) ||
+      (_tool == 'HsvShift' && _hasHsvDraft) ||
+      (_tool == 'BrightnessContrast' && _hasBcDraft);
+
+  // A non-identity pending HSV / Brightness-Contrast adjustment is that tool's draft: it exists as
+  // a display-only engine preview, and the commit-menu bakes (Commit = the old Apply) or zeroes it.
+  bool get _hasHsvDraft => _hsvH != 0 || _hsvS != 0 || _hsvV != 0;
+  bool get _hasBcDraft => _bcBright != 0 || _bcContrast != 0;
 
   bool get _engineReady => _error == null;
 

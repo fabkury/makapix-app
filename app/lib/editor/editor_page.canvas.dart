@@ -90,7 +90,8 @@ extension _EditorCanvas on _EditorPageState {
   // ---- commit-menu: the compact floating pill over the canvas's bottom-left corner ----
 
   // Shown whenever a draft of any kind is pending (`_hasAnyDraft`: shape/gradient figure,
-  // selection-shape draft, floating paste, move draft, free-angle rotate). It is the ONLY
+  // selection-shape draft, floating paste, move draft, free-angle rotate, pending HSV /
+  // Brightness-Contrast adjustment). It is the ONLY
   // commit/cancel surface — row-1 no longer carries per-tool Commit/Cancel buttons — and it
   // vanishes with the draft, however it resolves (commit, cancel, or the implicit cancel when
   // switching tools in row-3).
@@ -125,6 +126,10 @@ extension _EditorCanvas on _EditorPageState {
       _commitMoveDraft();
     } else if (_tool == 'Rotate' && _hasRotateDraft) {
       _commitRotateDraft();
+    } else if (_tool == 'HsvShift' && _hasHsvDraft) {
+      _commitHsvDraft();
+    } else if (_tool == 'BrightnessContrast' && _hasBcDraft) {
+      _commitBcDraft();
     }
   }
 
@@ -139,6 +144,10 @@ extension _EditorCanvas on _EditorPageState {
       _cancelMoveDraft();
     } else if (_tool == 'Rotate' && _hasRotateDraft) {
       _cancelRotateDraft();
+    } else if (_tool == 'HsvShift' && _hasHsvDraft) {
+      _resetHsvDraft();
+    } else if (_tool == 'BrightnessContrast' && _hasBcDraft) {
+      _resetBcDraft();
     }
   }
 

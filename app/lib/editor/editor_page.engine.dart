@@ -329,21 +329,10 @@ extension _EditorEngine on _EditorPageState {
       _redraw();
     }
     // A pending HSV / Brightness-Contrast adjustment (a display-only preview, like the drafts
-    // above) is zeroed when leaving its tool, so returning starts clean instead of resuming a
-    // stale draft — same as the tools' row-1 Reset button.
-    if (_tool == 'HsvShift' && t != 'HsvShift' && (_hsvH != 0 || _hsvS != 0 || _hsvV != 0)) {
-      _hsvH = 0;
-      _hsvS = 0;
-      _hsvV = 0;
-      _send('SetHsvShift(0, 0, 0)');
-      _redraw();
-    }
-    if (_tool == 'BrightnessContrast' && t != 'BrightnessContrast' && (_bcBright != 0 || _bcContrast != 0)) {
-      _bcBright = 0;
-      _bcContrast = 0;
-      _send('SetBrightnessContrast(0, 1)');
-      _redraw();
-    }
+    // above) is likewise cancelled when leaving its tool, so returning starts clean instead of
+    // resuming a stale draft — same as the commit-menu's Cancel.
+    if (_tool == 'HsvShift' && t != 'HsvShift' && _hasHsvDraft) _resetHsvDraft();
+    if (_tool == 'BrightnessContrast' && t != 'BrightnessContrast' && _hasBcDraft) _resetBcDraft();
     // The Ruler keeps its measurement across tool switches (its overlay just hides while another
     // tool is active and reappears on return); clear it with the Ruler's row-1 "Clear" button.
     _rulerDrag = 0;
@@ -386,6 +375,42 @@ extension _EditorEngine on _EditorPageState {
     }
     // Show Select Layer's overlay immediately on entry; clear it (redraw) when leaving it.
     if (t == 'SelectLayer' || leavingSelectLayer) _redraw();
+  }
+
+  // ---- HSV / Brightness-Contrast drafts (a non-identity pending adjustment) --------------------
+  // Commit bakes the adjustment into the document (one undo step, the row-1 Apply of old); Reset
+  // zeroes it so the display-only preview reverts. Both are driven by the floating commit-menu,
+  // and Reset also fires on the implicit cancel when switching tools in row-3.
+
+  void _commitHsvDraft() {
+    _send('SetHsvShift($_hsvH, $_hsvS, $_hsvV)');
+    _act('ApplyHsvShift()');
+    _resetHsvDraft();
+  }
+
+  void _resetHsvDraft() {
+    setState(() {
+      _hsvH = 0;
+      _hsvS = 0;
+      _hsvV = 0;
+    });
+    _send('SetHsvShift(0, 0, 0)');
+    _redraw();
+  }
+
+  void _commitBcDraft() {
+    _send('SetBrightnessContrast(${_bcBright.round()}, ${1.0 + _bcContrast / 100})');
+    _act('ApplyBrightnessContrast()');
+    _resetBcDraft();
+  }
+
+  void _resetBcDraft() {
+    setState(() {
+      _bcBright = 0;
+      _bcContrast = 0;
+    });
+    _send('SetBrightnessContrast(0, 1)');
+    _redraw();
   }
 
   // Rasterize the pending figure draft into the active layer, then clear the handles/buttons.

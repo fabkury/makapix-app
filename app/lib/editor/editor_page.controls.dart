@@ -394,7 +394,9 @@ extension _EditorControls on _EditorPageState {
     if (_tool == 'HsvShift') {
       // Every slider change syncs the pending shift into the engine, whose display then
       // composites a live preview of the active layer (selection-clipped, or the whole layer
-      // with no selection); the document is untouched until Apply (see hsv_preview_frame).
+      // with no selection); the document is untouched while the draft is pending. A non-zero
+      // shift IS the tool's draft: the floating commit-menu appears (like the shape/move/rotate
+      // drafts) and its Commit bakes the shift, Cancel zeroes it.
       void syncHsv(void Function() set) {
         setState(set);
         _send('SetHsvShift($_hsvH, $_hsvS, $_hsvV)');
@@ -410,29 +412,12 @@ extension _EditorControls on _EditorPageState {
       _labeledSlider(children, 'H', _hsvH, -180, 180, (v) => syncHsv(() => _hsvH = v));
       _labeledSlider(children, 'S', _hsvS, -1, 1, (v) => syncHsv(() => _hsvS = v), integer: false);
       _labeledSlider(children, 'V', _hsvV, -1, 1, (v) => syncHsv(() => _hsvV = v), integer: false);
-      children.add(_miniBtn('Apply', () {
-        _send('SetHsvShift($_hsvH, $_hsvS, $_hsvV)');
-        _act('ApplyHsvShift()');
-        // The shift is baked in now; zero the sliders so the preview matches the document.
-        syncHsv(() {
-          _hsvH = 0;
-          _hsvS = 0;
-          _hsvV = 0;
-        });
-      }));
-      // Discard the pending shift without touching the document (the preview reverts too).
-      children.add(_miniBtn('Reset', () {
-        syncHsv(() {
-          _hsvH = 0;
-          _hsvS = 0;
-          _hsvV = 0;
-        });
-      }));
     }
     if (_tool == 'BrightnessContrast') {
       // The HSV block's twin: slider changes sync the pending adjustment into the engine, whose
-      // display composites a live preview per the scope; the document is untouched until Apply
-      // (see bc_preview_frame). Contrast is a ±100% slider around the engine's 1.0× factor.
+      // display composites a live preview per the scope; a non-identity adjustment IS the tool's
+      // draft, resolved by the floating commit-menu (Commit bakes it, Cancel zeroes it).
+      // Contrast is a ±100% slider around the engine's 1.0× factor.
       void syncBc(void Function() set) {
         setState(set);
         _send('SetBrightnessContrast(${_bcBright.round()}, ${1.0 + _bcContrast / 100})');
@@ -446,22 +431,6 @@ extension _EditorControls on _EditorPageState {
       }));
       _labeledSlider(children, 'B', _bcBright, -255, 255, (v) => syncBc(() => _bcBright = v));
       _labeledSlider(children, 'C', _bcContrast, -100, 100, (v) => syncBc(() => _bcContrast = v));
-      children.add(_miniBtn('Apply', () {
-        _send('SetBrightnessContrast(${_bcBright.round()}, ${1.0 + _bcContrast / 100})');
-        _act('ApplyBrightnessContrast()');
-        // The adjustment is baked in now; zero the sliders so the preview matches the document.
-        syncBc(() {
-          _bcBright = 0;
-          _bcContrast = 0;
-        });
-      }));
-      // Discard the pending adjustment without touching the document (the preview reverts too).
-      children.add(_miniBtn('Reset', () {
-        syncBc(() {
-          _bcBright = 0;
-          _bcContrast = 0;
-        });
-      }));
     }
     if (_tool == 'Flip') {
       label(_flipFrame ? 'Flip frame' : (_outlineEdges.isNotEmpty ? 'Flip selection' : 'Flip layer'));
