@@ -60,9 +60,9 @@ const _transformTools = {'Flip', 'Rotate', 'Invert'};
 // are pinned at the left of row-3 (see _buildToolBar / _pinnedActionTile). Play is NOT here either —
 // it is a selectable tool group whose controls live in row-1 (see _isPlayTool / _buildToolOptions).
 const _actionTools = {'Onion'};
-// Paint tools that support a "Precision" mode (off-finger reticle + draw-by-button). Precision is
+// Tools that support a "Precision" mode (off-finger reticle + act-by-button). Precision is
 // a per-tool toggle, remembered independently per tool — see [_precisionTools].
-const _precisionTools = {'Pencil', 'Brush', 'Airbrush', 'Eraser', 'Dodge', 'Burn', 'Eyedropper'};
+const _precisionTools = {'Pencil', 'Brush', 'Airbrush', 'Eraser', 'Dodge', 'Burn', 'Eyedropper', 'SelectByColor'};
 
 class EditorPage extends ConsumerStatefulWidget {
   const EditorPage({super.key});

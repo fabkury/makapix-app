@@ -1724,6 +1724,18 @@ impl Session {
         }
     }
 
+    /// Apply the colour selection at the reticle (off-finger Select-by-Color, Select button):
+    /// the same mask a tap would build — threshold + contiguous honoured — combined into the
+    /// current selection per the selection mode. One undo step (via `set_selection`).
+    pub fn select_color_cursor(&mut self) {
+        let s = self.doc.storage();
+        let (sw, sh) = (s.w as u32, s.h as u32);
+        let buf = self.doc.active_frame().active_layer().pixels.clone();
+        let p = self.cursor_storage();
+        let shape = Mask::from_color(sw, sh, &buf, p, self.settings.threshold, self.settings.contiguous);
+        self.combine_selection(&shape, self.selection_mode);
+    }
+
     // ---- selection / clipboard ops ----
 
     /// Build a selection from the active layer's alpha (pixels with alpha > the alpha cutoff — the
@@ -3065,6 +3077,31 @@ mod tests {
         s.set_cursor(0, 0);
         s.eyedrop_cursor();
         assert_eq!(s.settings.primary, Rgba8::rgb(0, 200, 0));
+    }
+
+    #[test]
+    fn precision_select_by_color_selects_at_reticle() {
+        let mut s = Session::new(8, 8);
+        s.settings.primary = Rgba8::rgb(0, 200, 0);
+        s.tool = ToolKind::Pencil;
+        s.tap(2, 2);
+        s.tap(5, 5); // same colour, NOT contiguous with (2,2)
+        s.tool = ToolKind::SelectByColor;
+        s.set_cursor(2, 2);
+        s.select_color_cursor(); // contiguous default: only the (2,2) region
+        let sel = SelCanvas(&s);
+        assert!(sel.get(2, 2));
+        assert!(!sel.get(5, 5), "contiguous select stops at the gap");
+        assert!(!sel.get(3, 3), "background isn't selected");
+        // global (non-contiguous) picks up both green pixels — via the DSL to cover the parse path
+        s.settings.contiguous = false;
+        s.run_script("SelectColorCursor()").unwrap();
+        assert!(SelCanvas(&s).get(2, 2) && SelCanvas(&s).get(5, 5));
+        // each press was one undo step over the selection
+        assert!(s.doc.undo());
+        assert!(!SelCanvas(&s).get(5, 5) && SelCanvas(&s).get(2, 2));
+        assert!(s.doc.undo());
+        assert!(s.doc.selection.is_none());
     }
 
     #[test]

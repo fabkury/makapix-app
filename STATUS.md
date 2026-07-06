@@ -37,7 +37,7 @@ Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending)
 | Up to 1024 frames / 64 layers | ✅ | enforced caps |
 | 128 undo/redo per frame + auto compaction | ✅ | global timeline, per-frame cap, absolute tile patches |
 | Pencil / Paintbrush / Airbrush (configurable size) | ✅ | airbrush seeded & reproducible |
-| **Precision mode** (off-finger reticle, draw-by-button) | ✅ | a per-tool toggle on Pencil/Brush/Airbrush/Eraser; drag moves a ✛ reticle off the finger; arrows nudge 1px; DRAW/SPRAY = one dab; PEN toggle = continuous stroke/spray while dragging. Reticle frames the target pixel without covering it |
+| **Precision mode** (off-finger reticle, act-by-button) | ✅ | a per-tool toggle on Pencil/Brush/Airbrush/Eraser/Dodge/Burn/Eyedropper/Select Color; drag moves a ✛ reticle off the finger; arrows nudge 1px; DRAW/SPRAY = one dab, PICK = colour pick, SELECT = colour selection at the reticle; HOLD toggle = continuous stroke/spray while dragging (paint tools only). Reticle frames the target pixel without covering it |
 | Bucket fill (contiguous / discontiguous, threshold) | ✅ | flood oracle-tested |
 | Eraser (square / round, size) | ✅ | |
 | **Figures** Line / Rectangle / Ellipse (draw → adjust → commit) | ✅ | drag previews an uncommitted figure with draggable endpoint handles; re-drag either handle (tap near, not on) to fine-tune; Fill/Outline updates the preview live; Commit ✓ rasterizes (one undo step), Cancel ✗ discards. Engine: `ShapeSet/ShapeCommit/ShapeCancel` |

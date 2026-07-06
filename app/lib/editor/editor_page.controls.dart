@@ -51,6 +51,19 @@ extension _EditorControls on _EditorPageState {
             label: const Text('Pick'),
           ),
         ));
+      } else if (_tool == 'SelectByColor') {
+        // SELECT (one-time colour selection at the reticle, off-finger). Applies the same mask a
+        // tap would — Threshold/Contiguous and the selection mode honoured. Like Pick, no "Hold":
+        // selecting is a single operation, one undo step per press.
+        children.add(Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          child: ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
+            onPressed: () { _send('SelectColorCursor()'); _refreshState(); _redraw(); setState(() {}); },
+            icon: const Icon(Icons.colorize_outlined, size: 16),
+            label: const Text('Select'),
+          ),
+        ));
       } else {
         if (_tool == 'Airbrush') {
           // SPRAY (one airbrush dab at the reticle, off-finger)
