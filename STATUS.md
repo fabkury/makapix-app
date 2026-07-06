@@ -1,4 +1,4 @@
-# Makapix Club app — Implementation Status (2026-06-29)
+# Makapix Club app — Implementation Status (2026-07-05)
 
 Honest coverage of **both** of the app's co-equal pillars. The **Makapix Editor** (editor engine + Flutter
 shell) is built and runnable on this workstation. The **Makapix Club** social layer (see
@@ -78,7 +78,7 @@ Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending)
 | **C4** Settings — monitored hashtags | ✅ | `ui/settings_page.dart`; content-filter opt-in via `PATCH /user/{key}{approved_hashtags}` (§21); feeds re-filter server-side on save |
 | **C4** Artist dashboard (aggregate) | ✅ | `ui/artist_dashboard_page.dart`; totals + country/device/emoji breakdowns + per-post table + authenticated-only toggle (§19). Per-post `/post/{id}/stats` drill-in deferred |
 | **C4** Post management + ZIP export | ✅ | `ui/post_management_page.dart`; bulk hide/unhide/delete + license + async ZIP data export (§20) via the unversioned `/api/pmd/*` (`ClubApiClient.dioRoot`) |
-| **mod-hashtags** Moderator hashtags | ✅ | moderator-owned tags on posts: shield-marked display + "Tagged by a moderator" legend for artist/mods, "Edit mod hashtags" in the detail-page overflow menu (monitored quick-picks, optional audit note — `api/moderation_api.dart`), `mod_hashtags_updated` notification. Editor UI gated on `GET /config` → `max_mod_hashtags_per_post`; **dev-live 2026-07-05, prod flip pending** (contract: `reference/makapix-club/docs/mod-hashtags/API-CONTRACT.md`; plan: `docs/mod-hashtags/`) |
+| **mod-hashtags** Moderator hashtags | ✅ | moderator-owned tags on posts: shield-marked display + "Tagged by a moderator" legend for artist/mods, "Edit mod hashtags" in the detail-page overflow menu (monitored quick-picks, optional audit note — `api/moderation_api.dart`), `mod_hashtags_updated` notification. Editor UI gated on `GET /config` → `max_mod_hashtags_per_post`; **live on prod 2026-07-05** (contract: `reference/makapix-club/docs/mod-hashtags/API-CONTRACT.md`; plan: `docs/mod-hashtags/`) |
 | **C4 (rest)** playlists · highlights · categories · reporting · **C5–C6** | ○ | not yet started |
 
 ## App shell
@@ -95,12 +95,42 @@ Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending)
   animation, import an image, export PNG/GIF, save/open `.mkpx`; sign in to post to Club, or remix a Club post.
 
 ## Remaining gaps / next up (honest)
-The editor pillar is feature-complete; the Club pillar is complete through C3. What genuinely remains:
-1. **Club phases C4–C6** — curate/manage, real-time & players, moderation & extras (see `SPEC-CLUB.md` §28).
-2. **iOS build** — cannot be built on this Windows workstation; deferred to a cloud macOS CI runner (SPEC §3.1).
-   All shared code is iOS-clean and the engine is integer-deterministic, so this is build/packaging only.
-3. Optional future polish: per-stop gradient-position UI editor, onion-skin range control, in-RAM compression
-   of inactive frames (file compression already done), and localization.
+The editor pillar covers the whole core of SPEC.md (engine, tools, selections, animation, layers, undo,
+`.mkpx`, FFI, three-row UI) but a handful of SPEC v1.1 items are still open; the Club pillar is complete
+through C3 plus most of C4. Verified against the code 2026-07-05:
+
+**Editor — SPEC.md items not yet built:**
+1. **Mirror/symmetry drawing** (SPEC §28.3; pulled into v1 by §26.6) — nothing in engine or UI (the only
+   "mirror" code is the Flip tool).
+2. **APNG export** (a §26.4 *must-have*) — the codec decodes APNG but has no encoder; the export dialog
+   offers PNG/GIF/WebP only (animated WebP, the nice-to-have, *is* done).
+3. **Sprite-sheet export UI** — supported in `crates/codec`, not wired into the export dialog.
+4. **Trim to non-transparent bounds** (§28.1) — resize + crop-to-selection exist; Trim doesn't.
+5. **Brightness/Contrast UI** (§28.1) — `color::brightness_contrast` exists in the engine but no UI/tool
+   exposes it (Invert, HSV-shift, Dodge/Burn are done).
+6. **Reference image underlay** (§28.3) — not implemented.
+7. **Keyboard shortcuts** (§28.5) — no key handling in the editor (tools, undo/redo, save, play/pause,
+   zoom, frame prev/next).
+8. **Preferences screen** (§28.5) — individual settings persist ad-hoc via `shared_preferences`; no
+   preferences UI (default canvas size, grid/onion defaults, theme, autosave interval, haptics,
+   confirm-before-destructive).
+
+**Editor — partial:**
+9. **Onion skin** is an on/off toggle only — configurable range/opacity (§28.3) missing.
+10. **Action journal** (§28.2) — autosave + crash recovery are fully built
+    (`editor_page.persistence.dart`); the append-only action journal (bug-repro format) was never added.
+11. **Gradient per-stop position UI** — engine supports stop positions; the UI doesn't expose them.
+
+**Club:**
+12. **C4 remainder** — playlists, highlights, categories, reporting; **C5** real-time & players; **C6**
+    moderation & extras (mod-hashtags already shipped; see `SPEC-CLUB.md` §28).
+
+**Deferred by decision, not omission:**
+- **iOS build** — cannot be built on this Windows workstation; deferred to a cloud macOS CI runner
+  (SPEC §3.1). All shared code is iOS-clean and the engine is integer-deterministic, so this is
+  build/packaging only.
+- **Localization** (post-v1 per §28.5; strings are currently hardcoded) and **in-RAM compression of
+  inactive frames** (file compression already done).
 
 ## Local upload harness (optional)
 The real publish flow runs against `development.makapix.club` / `makapix.club` (`config/club_config.dart`).
