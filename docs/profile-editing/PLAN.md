@@ -1,6 +1,7 @@
 # Profile editing — implementation plan
 
-**Status: planned** · Phase: C4 (curate & manage) · Spec: `SPEC-CLUB.md` §14 "Edit own profile" ·
+**Status: implemented 2026-07-06** (pending on-device verification, §5) · Phase: C4 (curate &
+manage) · Spec: `SPEC-CLUB.md` §14 "Edit own profile" ·
 Reviewed 2026-07-06 (fresh-eyes agent pass; all endpoint/limit/line claims verified against
 `reference/makapix-club` and the app code, amendments folded in)
 

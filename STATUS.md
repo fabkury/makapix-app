@@ -80,6 +80,7 @@ Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending)
 | **C4** Artist dashboard (aggregate) | ✅ | `ui/artist_dashboard_page.dart`; totals + country/device/emoji breakdowns + per-post table + authenticated-only toggle (§19). Per-post `/post/{id}/stats` drill-in deferred |
 | **C4** Post management + ZIP export | ✅ | `ui/post_management_page.dart`; bulk hide/unhide/delete + license + async ZIP data export (§20) via the unversioned `/api/pmd/*` (`ClubApiClient.dioRoot`) |
 | **mod-hashtags** Moderator hashtags | ✅ | moderator-owned tags on posts: shield-marked display + "Tagged by a moderator" legend for artist/mods, "Edit mod hashtags" in the detail-page overflow menu (monitored quick-picks, optional audit note — `api/moderation_api.dart`), `mod_hashtags_updated` notification. Editor UI gated on `GET /config` → `max_mod_hashtags_per_post`; **live on prod 2026-07-05** (contract: `reference/makapix-club/docs/mod-hashtags/API-CONTRACT.md`; plan: `docs/mod-hashtags/`) |
+| **C4** Edit own profile | ✅ | `ui/edit_profile_page.dart`; avatar upload/remove (immediate, `POST`/`DELETE /user/{key}/avatar`) + tagline/bio via one `PATCH /user/{key}` of only the changed fields; reached from the own-profile header and the account page. **Not** included: website field, handle-in-page (handle change stays in Settings → Account), Markdown bio preview (plan: `docs/profile-editing/`) |
 | **C4 (rest)** playlists · highlights · categories · reporting · **C5–C6** | ○ | not yet started |
 
 ## App shell
