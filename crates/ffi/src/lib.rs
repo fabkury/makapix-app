@@ -319,7 +319,9 @@ pub extern "C" fn mkpx_save_compact(ptr: *mut Session, out_len: *mut u64) -> *mu
 }
 
 /// Import an image file (GIF/PNG/APNG/JPEG/BMP/WebP) into the document.
-/// `mode`: 0=Fit, 1=Stretch, 2=Crop. `as_layer`: 0/1. Returns 0 on success, -1 on failure.
+/// `mode`: 0=Fit, 1=Stretch, 2=Crop. `as_layer`: 0/1. A non-empty crop rect (`crop_w>0 && crop_h>0`,
+/// source pixels) places that region 1:1 centered on the canvas (downscaled to fit only when larger,
+/// never upscaled), overriding `mode`. Returns 0 on success, -1 on failure.
 #[no_mangle]
 #[allow(clippy::too_many_arguments)]
 pub extern "C" fn mkpx_import(

@@ -270,8 +270,9 @@ class Engine {
     return ok;
   }
 
-  /// Import an image; mode 0=Fit,1=Stretch,2=Crop. Pass a crop rect (source pixels) to use
-  /// an explicit interactive crop region (stretched to the canvas).
+  /// Import an image; mode 0=Fit,1=Stretch,2=Crop. Pass a crop rect (source pixels) to use an
+  /// explicit interactive crop region, placed 1:1 centered on the canvas (downscaled to fit only
+  /// when larger than the canvas, never upscaled).
   bool importImage(Uint8List data,
       {int mode = 0, bool asLayer = true, int startFrame = 0, int cropX = 0, int cropY = 0, int cropW = 0, int cropH = 0}) {
     final p = malloc<Uint8>(data.length);

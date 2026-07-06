@@ -40,8 +40,9 @@ pub struct ImportConfig {
     pub anchor: Anchor,
     pub start_frame: usize,
     pub as_layer: bool,
-    /// Explicit source crop region (in source pixels). When set, that region is stretched to
-    /// fill the canvas (the interactive crop-rectangle from the UI), overriding `mode`.
+    /// Explicit source crop region (in source pixels) from the interactive crop widget. When set,
+    /// that region is placed **1:1, centered** on the canvas — downscaled (aspect-preserved) only
+    /// when larger than the canvas, never upscaled — overriding `mode`.
     pub crop_rect: Option<IRect>,
 }
 
@@ -54,6 +55,20 @@ impl Default for ImportConfig {
             as_layer: true,
             crop_rect: None,
         }
+    }
+}
+
+/// Fit `(rw,rh)` inside `(cw,ch)` preserving aspect ratio, **never upscaling**. Integer-exact
+/// (cross-multiply, floor division) so imports stay byte-deterministic across platforms.
+fn fit_no_upscale(rw: u32, rh: u32, cw: u32, ch: u32) -> (u32, u32) {
+    if rw <= cw && rh <= ch {
+        return (rw, rh); // fits as-is → placed 1:1
+    }
+    // Downscale: pick the binding axis without floats. Width-bound when cw/rw <= ch/rh.
+    if (rw as u64) * (ch as u64) >= (rh as u64) * (cw as u64) {
+        (cw, ((rh as u64 * cw as u64) / rw as u64).max(1) as u32)
+    } else {
+        (((rw as u64 * ch as u64) / rh as u64).max(1) as u32, ch)
     }
 }
 
@@ -72,16 +87,21 @@ fn src_get(rgba: &[u8], w: u32, h: u32, x: i32, y: i32) -> Rgba8 {
 /// Rasterize one decoded frame into a canvas-sized buffer per the config.
 pub fn frame_to_buffer(df: &DecodedFrame, cw: u32, ch: u32, cfg: &ImportConfig) -> RgbaBuffer {
     let mut out = RgbaBuffer::new(cw, ch);
-    // Explicit interactive crop: stretch the chosen source region to fill the canvas.
+    // Explicit interactive crop: place the chosen source region **1:1, centered** — downscaling
+    // (aspect-preserved, nearest-neighbor) only when the region is larger than the canvas. Never
+    // upscaled; a smaller region lands centered with transparent padding.
     if let Some(cr) = cfg.crop_rect {
-        let (rw, rh) = (cr.w.max(1) as u64, cr.h.max(1) as u64);
-        for y in 0..ch as i32 {
-            for x in 0..cw as i32 {
-                let sx = cr.x + (x as u64 * rw / cw.max(1) as u64) as i32;
-                let sy = cr.y + (y as u64 * rh / ch.max(1) as u64) as i32;
+        let (rw, rh) = (cr.w.max(1), cr.h.max(1));
+        let (dw, dh) = fit_no_upscale(rw, rh, cw, ch);
+        let ox = (cw as i32 - dw as i32) / 2;
+        let oy = (ch as i32 - dh as i32) / 2;
+        for y in 0..dh as i32 {
+            for x in 0..dw as i32 {
+                let sx = cr.x + (x as u64 * rw as u64 / dw as u64) as i32;
+                let sy = cr.y + (y as u64 * rh as u64 / dh as u64) as i32;
                 let c = src_get(&df.rgba, df.w, df.h, sx, sy);
                 if c.a != 0 {
-                    out.set(x, y, c);
+                    out.set(ox + x, oy + y, c);
                 }
             }
         }
@@ -223,8 +243,17 @@ mod tests {
     }
 
     #[test]
-    fn crop_rect_stretches_region_to_canvas() {
-        // 8x8 source: left half red, right half blue. Crop just the right (blue) half.
+    fn fit_no_upscale_cases() {
+        assert_eq!(fit_no_upscale(4, 8, 16, 16), (4, 8)); // fits → 1:1
+        assert_eq!(fit_no_upscale(16, 16, 16, 16), (16, 16)); // equal → 1:1
+        assert_eq!(fit_no_upscale(32, 16, 16, 16), (16, 8)); // wide, width-bound
+        assert_eq!(fit_no_upscale(16, 32, 16, 16), (8, 16)); // tall, height-bound
+        assert_eq!(fit_no_upscale(300, 100, 32, 32), (32, 10)); // width-bound, floor
+    }
+
+    #[test]
+    fn crop_rect_places_region_1to1_centered() {
+        // 8x8 source: left half red, right half blue. Crop just the right (blue) 4x8 half.
         let (w, h) = (8u32, 8u32);
         let mut rgba = vec![0u8; (w * h * 4) as usize];
         for y in 0..h {
@@ -241,9 +270,30 @@ mod tests {
         let df = DecodedFrame { rgba, w, h, duration_us: 100_000 };
         let cfg = ImportConfig { crop_rect: Some(IRect::new(4, 0, 4, 8)), ..Default::default() };
         let buf = frame_to_buffer(&df, 16, 16, &cfg);
-        // entire canvas should be blue (the cropped region stretched to fill)
-        assert_eq!(buf.get(0, 0), Rgba8::new(0, 0, 255, 255));
-        assert_eq!(buf.get(15, 15), Rgba8::new(0, 0, 255, 255));
+        // 4x8 region ≤ 16x16 canvas → placed 1:1 at ox=(16-4)/2=6, oy=(16-8)/2=4.
+        assert_eq!(buf.get(0, 0), Rgba8::TRANSPARENT); // padding stays clear
+        assert_eq!(buf.get(6, 4), Rgba8::new(0, 0, 255, 255)); // top-left of the region: blue
+        assert_eq!(buf.get(9, 11), Rgba8::new(0, 0, 255, 255)); // bottom-right of the region: blue
+        assert_eq!(buf.get(15, 15), Rgba8::TRANSPARENT); // padding stays clear
+    }
+
+    #[test]
+    fn crop_rect_downscales_when_larger_than_canvas() {
+        // 32x16 opaque source, cropped whole, into a 16x16 canvas → downscaled to 16x8, centered.
+        let (w, h) = (32u32, 16u32);
+        let mut rgba = vec![0u8; (w * h * 4) as usize];
+        for p in rgba.chunks_exact_mut(4) {
+            p[2] = 255;
+            p[3] = 255; // opaque blue
+        }
+        let df = DecodedFrame { rgba, w, h, duration_us: 100_000 };
+        let cfg = ImportConfig { crop_rect: Some(IRect::new(0, 0, 32, 16)), ..Default::default() };
+        let buf = frame_to_buffer(&df, 16, 16, &cfg);
+        // dest 16x8 at oy=(16-8)/2=4: the band [4,12) is filled, rows above/below transparent.
+        assert_eq!(buf.get(0, 0), Rgba8::TRANSPARENT);
+        assert_eq!(buf.get(0, 4), Rgba8::new(0, 0, 255, 255));
+        assert_eq!(buf.get(15, 11), Rgba8::new(0, 0, 255, 255));
+        assert_eq!(buf.get(0, 12), Rgba8::TRANSPARENT);
     }
 
     #[test]

@@ -110,7 +110,18 @@ extension _EditorFileIo on _EditorPageState {
                   icon: const Icon(Icons.crop, size: 16),
                   label: Text(cropRect == null ? 'Select crop area…' : 'Crop: ${cropRect!.width.toInt()}×${cropRect!.height.toInt()}'),
                   onPressed: () async {
-                    final r = await showDialog<Rect>(context: context, builder: (_) => CropDialog(image: srcImg));
+                    // Full-screen crop editor. Uses the OUTER _importImage `context` (not the dialog
+                    // builder's `ctx`): the route stacks above the still-open import dialog and returns
+                    // to it on pop, so `setS` runs normally.
+                    final r = await Navigator.of(context).push<Rect>(MaterialPageRoute(
+                      builder: (_) => CropPage(
+                        bytes: bytes,
+                        srcW: srcImg.width,
+                        srcH: srcImg.height,
+                        canvasW: engine.width,
+                        canvasH: engine.height,
+                      ),
+                    ));
                     if (r != null) setS(() => cropRect = r);
                   },
                 ),
