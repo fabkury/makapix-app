@@ -7,8 +7,10 @@ import '../publish/conformance.dart';
 import '../publish/publish_draft.dart';
 import '../state/auth_controller.dart';
 import '../state/publish_providers.dart';
+import '../state/rules_gate.dart';
 import 'artwork_detail_page.dart';
 import 'club_account_page.dart';
+import 'rules_gate_page.dart';
 import 'widgets/common.dart';
 
 /// "Post to Club": conformance gate → metadata/license/visibility → upload.
@@ -51,6 +53,11 @@ class _PublishPageState extends ConsumerState<PublishPage> {
 
   @override
   Widget build(BuildContext context) {
+    // "Post to Club" pushes this page on the editor navigator without entering
+    // the Club pillar, so it carries its own rules gate (ugc-safety R1).
+    if (ref.watch(rulesGateProvider) == RulesGate.show) {
+      return const RulesGatePage();
+    }
     final auth = ref.watch(authControllerProvider);
     if (!auth.isSignedIn) {
       return Scaffold(

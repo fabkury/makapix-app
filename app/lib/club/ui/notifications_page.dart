@@ -51,12 +51,18 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
     return Scaffold(appBar: AppBar(title: const Text('Notifications')), body: body);
   }
 
+  // Moderation/report types are presented impersonally (a shield avatar), never
+  // an acting moderator's identity, keeping both tile halves consistent.
+  static const _shieldTypes = {'mod_hashtags_updated', 'new_report', 'report_resolved'};
+
   Widget _tile(ClubNotification x) {
     final hasThumb = x.contentArtUrl != null && x.contentArtUrl!.isNotEmpty;
+    // `new_report` is forced inert until the server confirms what its
+    // content_sqid carries — for a user-target report it isn't a post sqid, so
+    // the default post link would open a broken page (ugc-safety R9).
+    final canTap = x.hasContentLink && x.type != 'new_report';
     return ListTile(
-      // Moderation is presented impersonally ("A moderator…"): a shield avatar,
-      // never the acting moderator's identity, keeping both tile halves consistent.
-      leading: x.type == 'mod_hashtags_updated'
+      leading: _shieldTypes.contains(x.type)
           ? const CircleAvatar(radius: 18, child: Icon(Icons.shield, size: 18))
           : HandleAvatar(url: x.actorAvatarUrl, handle: x.actorHandle ?? '?', radius: 18),
       title: Text(_text(x), maxLines: 2, overflow: TextOverflow.ellipsis),
@@ -64,7 +70,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
       trailing: hasThumb
           ? SizedBox(width: 40, height: 40, child: PixelArtImage(url: x.contentArtUrl!))
           : null,
-      onTap: x.hasContentLink
+      onTap: canTap
           ? () => Navigator.push(
               context, MaterialPageRoute(builder: (_) => ArtworkDetailPage(sqid: x.contentSqid!)))
           : null,
@@ -92,6 +98,10 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
             '${x.commentPreview != null ? ': ${x.commentPreview}' : ''}';
       case 'reputation_change':
         return 'Your reputation changed';
+      case 'new_report':
+        return 'New content report — open the moderation queue';
+      case 'report_resolved':
+        return "Thanks — we've reviewed your report.";
       default:
         return '$who · ${x.type}';
     }

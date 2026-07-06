@@ -7,6 +7,7 @@ import '../api/mkpx_api.dart';
 import '../edit/club_edit_request.dart';
 import '../models/club_error.dart';
 import '../models/post.dart';
+import '../models/report.dart';
 import '../models/server_config.dart';
 import '../state/api_providers.dart';
 import '../state/auth_controller.dart';
@@ -18,6 +19,7 @@ import '../state/publish_providers.dart';
 import 'hashtag_feed_page.dart';
 import 'profile_page.dart';
 import 'reactions_page.dart';
+import 'report_page.dart';
 import 'widgets/comments_section.dart';
 import 'widgets/common.dart';
 import 'widgets/mod_hashtags_sheet.dart';
@@ -385,11 +387,14 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
     // ref.watch (not read): the entry must appear when the config future
     // resolves. Null while loading / on fallback keeps it hidden — correct
     // failure mode against a server without the feature (contract §2).
-    final modEnabled =
-        ref.watch(serverConfigProvider).valueOrNull?.modHashtagsEnabled ?? false;
+    final cfg = ref.watch(serverConfigProvider).valueOrNull;
+    final modEnabled = cfg?.modHashtagsEnabled ?? false;
     final canModerate = ref.watch(authControllerProvider).me?.canModerate ?? false;
     final showMod = modEnabled && canModerate && !post.isPlaylist;
-    if (!showMkpx && !showMod) return const [];
+    // Report is visible to everyone (incl. signed-out) once the moderation key
+    // is live, except on your own post and on playlists (D6/A14/A16).
+    final showReport = cfg?.moderationEnabled == true && !post.isPlaylist && !_isOwner(post);
+    if (!showMkpx && !showMod && !showReport) return const [];
     return [
       PopupMenuButton<String>(
         tooltip: 'More actions',
@@ -397,6 +402,10 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
           if (v == 'attach') _attachMkpx(context, post);
           if (v == 'detach') _detachMkpx(context, post);
           if (v == 'mod_hashtags') _editModHashtags(context, post);
+          if (v == 'report') {
+            Navigator.push(context,
+                MaterialPageRoute(builder: (_) => ReportPage(target: ReportTarget.post(post))));
+          }
         },
         itemBuilder: (_) => [
           if (showMkpx)
@@ -414,6 +423,16 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
                 Icon(Icons.shield, size: 16),
                 SizedBox(width: 8),
                 Text('Edit mod hashtags…'),
+              ]),
+            ),
+          if (showReport && (showMkpx || showMod)) const PopupMenuDivider(),
+          if (showReport)
+            const PopupMenuItem(
+              value: 'report',
+              child: Row(children: [
+                Icon(Icons.flag_outlined, size: 16),
+                SizedBox(width: 8),
+                Text('Report post…'),
               ]),
             ),
         ],

@@ -1,5 +1,10 @@
 import 'package:dio/dio.dart';
 
+/// Shown wherever an interaction is refused with `403 blocked` (ugc-safety §5 /
+/// A8). Direction-neutral by design: a block refuses interactions in **either**
+/// direction (D11), so the copy must never disclose who blocked whom.
+const String kBlockedInteractionMessage = "You can't interact with this user.";
+
 /// A normalized Club API error.
 ///
 /// Maps both the v1 envelope `{ "error": { "code", "message" } }` and FastAPI's
@@ -62,6 +67,10 @@ class ClubError implements Exception {
 
   /// 429 — rate limited.
   bool get isRateLimited => status == 429;
+
+  /// 403 with the stable `blocked` code — an interaction refused because a
+  /// block exists between the two users, in either direction (ugc-safety §5).
+  bool get isBlocked => status == 403 && code == 'blocked';
 
   @override
   String toString() => 'ClubError(${status ?? '-'}, $code): $message';

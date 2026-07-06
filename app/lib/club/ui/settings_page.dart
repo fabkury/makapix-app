@@ -6,8 +6,11 @@ import '../models/club_error.dart';
 import '../state/api_providers.dart';
 import '../state/auth_controller.dart';
 import '../state/feed_providers.dart';
+import '../state/publish_providers.dart';
 import 'auth/account_management_page.dart';
+import 'blocked_users_page.dart';
 import 'widgets/common.dart';
+import 'widgets/external_links.dart';
 
 /// User settings (`SPEC-CLUB.md` §21). Currently surfaces the monitored-hashtag
 /// content filter: opt in to seeing posts tagged
@@ -76,6 +79,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final signedIn = ref.watch(authControllerProvider).isSignedIn;
+    // Safety affordances (blocked-users list, community/contact links) appear
+    // once the moderation config key is live.
+    final moderation = ref.watch(serverConfigProvider).valueOrNull?.moderation;
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: signedIn
@@ -92,6 +98,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   onTap: () => Navigator.push(context,
                       MaterialPageRoute(builder: (_) => const AccountManagementPage())),
                 ),
+                if (moderation != null)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.block),
+                    title: const Text('Blocked users'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.push(context,
+                        MaterialPageRoute(builder: (_) => const BlockedUsersPage())),
+                  ),
                 const Divider(height: 24),
                 Text('Monitored hashtags', style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 6),
@@ -113,6 +128,34 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         : const Text('Save changes'),
                   ),
                 ),
+                if (moderation != null) ...[
+                  const Divider(height: 24),
+                  Text('Community', style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 6),
+                  if (moderation.guidelinesUrl.isNotEmpty)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.gavel_outlined),
+                      title: const Text('Community rules'),
+                      trailing: const Icon(Icons.open_in_new, size: 16),
+                      onTap: () => openExternalUrl(context, moderation.guidelinesUrl),
+                    ),
+                  if (moderation.moderationPolicyUrl.isNotEmpty)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.shield_outlined),
+                      title: const Text('Moderation policy'),
+                      trailing: const Icon(Icons.open_in_new, size: 16),
+                      onTap: () => openExternalUrl(context, moderation.moderationPolicyUrl),
+                    ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.mail_outline),
+                    title: const Text('Contact the moderators'),
+                    subtitle: Text(moderation.contactEmail),
+                    onTap: () => openEmail(context, moderation.contactEmail),
+                  ),
+                ],
               ],
             )
           : SignInPrompt(

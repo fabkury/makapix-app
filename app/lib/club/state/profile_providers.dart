@@ -39,7 +39,7 @@ class ProfileController extends StateNotifier<AsyncValue<UserProfile>> {
       return null;
     } on ClubError catch (e) {
       state = AsyncValue.data(cur); // rollback
-      return e.message;
+      return e.isBlocked ? kBlockedInteractionMessage : e.message;
     } catch (_) {
       state = AsyncValue.data(cur);
       return 'Could not update follow.';

@@ -51,6 +51,7 @@ dependencies:
   share_plus: ^12.0.2
   cached_network_image: ^3.4.1    # persistent artwork/avatar image cache (vault URLs are immutable)
   flutter_cache_manager: ^3.4.1   # cache configs + feed-page prefetch (backs cached_network_image)
+  url_launcher: ^6.3.0            # community-rules / moderation-policy links + mailto contact (UGC safety)
 
 dev_dependencies:
   flutter_test:

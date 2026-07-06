@@ -7,6 +7,7 @@ import '../state/auth_controller.dart';
 import '../state/feed_providers.dart';
 import '../state/notifications_providers.dart';
 import '../state/player_providers.dart';
+import '../state/rules_gate.dart';
 import 'artist_dashboard_page.dart';
 import 'artwork_detail_page.dart';
 import 'auth/onboarding_wizard.dart';
@@ -16,6 +17,7 @@ import 'contribute_page.dart';
 import 'notifications_page.dart';
 import 'post_management_page.dart';
 import 'profile_page.dart';
+import 'rules_gate_page.dart';
 import 'search_page.dart';
 import 'settings_page.dart';
 import 'widgets/feed_grid.dart';
@@ -177,6 +179,12 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
     // Match the website: signed-out users get a welcome/sign-in funnel, not the feeds.
     if (auth.status == AuthStatus.loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    // First-run community-rules gate — covers signed-in and signed-out users
+    // (ugc-safety A1). Reactive: interposes once config resolves with the
+    // `moderation` key; otherwise a no-op.
+    if (ref.watch(rulesGateProvider) == RulesGate.show) {
+      return const RulesGatePage();
     }
     if (!auth.isSignedIn) {
       return const ClubWelcomePage();

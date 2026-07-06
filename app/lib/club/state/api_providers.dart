@@ -9,6 +9,7 @@ import '../api/notifications_api.dart';
 import '../api/player_api.dart';
 import '../api/post_api.dart';
 import '../api/profile_api.dart';
+import '../api/safety_api.dart';
 import '../api/search_api.dart';
 import '../api/pmd_api.dart';
 import '../api/settings_api.dart';
@@ -34,3 +35,5 @@ final statsApiProvider =
 final pmdApiProvider = Provider<PmdApi>((ref) => PmdApi(ref.watch(clubApiClientProvider)));
 final moderationApiProvider =
     Provider<ModerationApi>((ref) => ModerationApi(ref.watch(clubApiClientProvider)));
+final safetyApiProvider =
+    Provider<SafetyApi>((ref) => SafetyApi(ref.watch(clubApiClientProvider)));

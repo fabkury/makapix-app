@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/comment.dart';
+import '../../models/report.dart';
 import '../../state/auth_controller.dart';
 import '../../state/post_providers.dart';
+import '../../state/publish_providers.dart';
 import '../club_account_page.dart';
 import '../profile_page.dart';
+import '../report_page.dart';
 import 'common.dart';
 
 /// Threaded comments (depth ≤2) with a composer, likes, reply, and delete-own.
@@ -50,6 +53,9 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
     final async = ref.watch(commentsProvider(widget.postId));
     final auth = ref.watch(authControllerProvider);
     final mySub = auth.me?.user.sub;
+    // Report affordance appears once the moderation config key is live (works
+    // signed-out); ref.watch so it shows when the config future resolves.
+    final canReport = ref.watch(serverConfigProvider).valueOrNull?.moderationEnabled ?? false;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
@@ -63,7 +69,7 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
             padding: EdgeInsets.all(8), child: Text('Could not load comments.', style: TextStyle(color: Colors.white54))),
         data: (tree) => tree.isEmpty
             ? const Padding(padding: EdgeInsets.all(12), child: Text('No comments yet.', style: TextStyle(color: Colors.white38)))
-            : Column(children: [for (final c in tree) _tile(c, mySub, depth: 0)]),
+            : Column(children: [for (final c in tree) _tile(c, mySub, canReport, depth: 0)]),
       ),
       const SizedBox(height: 8),
       if (auth.isSignedIn) _composer() else _signInRow(),
@@ -121,7 +127,7 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
     Navigator.push(context, MaterialPageRoute(builder: (_) => ProfilePage(sqid: sqid)));
   }
 
-  Widget _tile(Comment c, String? mySub, {required int depth}) {
+  Widget _tile(Comment c, String? mySub, bool canReport, {required int depth}) {
     final isOwn = c.author?.sqid != null && c.author!.sqid == mySub;
     final notifier = ref.read(commentsProvider(widget.postId).notifier);
     return Padding(
@@ -149,18 +155,27 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
               Row(children: [
                 _miniBtn(c.likedByMe ? Icons.favorite : Icons.favorite_border,
                     c.likeCount > 0 ? '${c.likeCount}' : 'Like',
-                    onTap: () => notifier.toggleLike(c), active: c.likedByMe),
+                    onTap: () async {
+                      final err = await notifier.toggleLike(c);
+                      if (err != null && mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+                      }
+                    }, active: c.likedByMe),
                 if (depth == 0)
                   _miniBtn(Icons.reply, 'Reply', onTap: () => setState(() {
                         _replyTo = c.id;
                         _replyToHandle = c.author?.handle ?? 'guest';
                       })),
                 if (isOwn) _miniBtn(Icons.delete_outline, 'Delete', onTap: () => notifier.delete(c.id)),
+                if (canReport && !isOwn && !c.deleted)
+                  _miniBtn(Icons.flag_outlined, 'Report',
+                      onTap: () => Navigator.push(context,
+                          MaterialPageRoute(builder: (_) => ReportPage(target: ReportTarget.comment(c))))),
               ]),
             ]),
           ),
         ]),
-        for (final r in c.replies) _tile(r, mySub, depth: depth + 1),
+        for (final r in c.replies) _tile(r, mySub, canReport, depth: depth + 1),
       ]),
     );
   }

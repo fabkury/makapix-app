@@ -58,7 +58,7 @@ class ReactionsController extends StateNotifier<AsyncValue<ReactionTotals>> {
       return null;
     } on ClubError catch (e) {
       state = AsyncValue.data(cur); // rollback
-      return e.message;
+      return e.isBlocked ? kBlockedInteractionMessage : e.message;
     } catch (_) {
       state = AsyncValue.data(cur);
       return 'Could not update reaction.';
@@ -129,7 +129,7 @@ class GridLikesController extends StateNotifier<Map<int, GridLikeState>> {
       return null;
     } on ClubError catch (e) {
       state = {...state, post.id: cur}; // rollback
-      return e.message;
+      return e.isBlocked ? kBlockedInteractionMessage : e.message;
     } catch (_) {
       state = {...state, post.id: cur};
       return 'Could not update reaction.';
@@ -199,7 +199,7 @@ class CommentsController extends StateNotifier<AsyncValue<List<Comment>>> {
       return null;
     } on ClubError catch (e) {
       await load(); // drop the optimistic comment
-      return e.message;
+      return e.isBlocked ? kBlockedInteractionMessage : e.message;
     } catch (_) {
       await load();
       return 'Could not post comment.';
@@ -226,7 +226,9 @@ class CommentsController extends StateNotifier<AsyncValue<List<Comment>>> {
   static List<Comment> _withDeleted(List<Comment> tree, String id) =>
       [for (final c in tree) c.id == id ? c.markDeleted() : c.withReplies(_withDeleted(c.replies, id))];
 
-  Future<void> toggleLike(Comment c) async {
+  /// Returns [kBlockedInteractionMessage] when refused by a block, else null.
+  /// Other errors stay silent (fire-and-forget, as before).
+  Future<String?> toggleLike(Comment c) async {
     try {
       final api = ref.read(postApiProvider);
       if (c.likedByMe) {
@@ -235,7 +237,12 @@ class CommentsController extends StateNotifier<AsyncValue<List<Comment>>> {
         await api.likeComment(c.id);
       }
       await load();
-    } catch (_) {}
+      return null;
+    } on ClubError catch (e) {
+      return e.isBlocked ? kBlockedInteractionMessage : null;
+    } catch (_) {
+      return null;
+    }
   }
 }
 

@@ -55,6 +55,11 @@ class UserProfile {
   final ProfileStats stats;
   final bool isFollowing;
   final bool isOwnProfile;
+
+  /// `is_blocked_by_viewer` — true when the signed-in viewer has blocked this
+  /// user (ugc-safety §4). Always present on full profile responses; absent
+  /// (old server) or logged out → false, so pre-flip behavior is unchanged.
+  final bool isBlockedByViewer;
   final List<Post> highlights;
 
   UserProfile({
@@ -70,6 +75,7 @@ class UserProfile {
     required this.stats,
     required this.isFollowing,
     required this.isOwnProfile,
+    required this.isBlockedByViewer,
     required this.highlights,
   });
 
@@ -89,13 +95,15 @@ class UserProfile {
         stats: ProfileStats.fromJson((j['stats'] as Map?)?.cast<String, dynamic>() ?? const {}),
         isFollowing: j['is_following'] == true,
         isOwnProfile: j['is_own_profile'] == true,
+        isBlockedByViewer: j['is_blocked_by_viewer'] == true,
         highlights: (j['highlights'] as List?)
                 ?.map((e) => Post.fromJson((e as Map).cast<String, dynamic>()))
                 .toList() ??
             const [],
       );
 
-  UserProfile copyWith({bool? isFollowing, ProfileStats? stats}) => UserProfile(
+  UserProfile copyWith({bool? isFollowing, ProfileStats? stats, bool? isBlockedByViewer}) =>
+      UserProfile(
         userKey: userKey,
         sqid: sqid,
         handle: handle,
@@ -108,6 +116,7 @@ class UserProfile {
         stats: stats ?? this.stats,
         isFollowing: isFollowing ?? this.isFollowing,
         isOwnProfile: isOwnProfile,
+        isBlockedByViewer: isBlockedByViewer ?? this.isBlockedByViewer,
         highlights: highlights,
       );
 }

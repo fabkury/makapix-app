@@ -17,10 +17,12 @@ import 'package:makapix_club/club/auth/github_oauth.dart';
 import 'package:makapix_club/club/config/club_config.dart';
 import 'package:makapix_club/club/models/page.dart' as club;
 import 'package:makapix_club/club/models/post.dart';
+import 'package:makapix_club/club/models/server_config.dart';
 import 'package:makapix_club/club/state/auth_controller.dart';
 import 'package:makapix_club/club/state/edit_bridge.dart';
 import 'package:makapix_club/club/state/feed_providers.dart';
 import 'package:makapix_club/club/state/paged.dart';
+import 'package:makapix_club/club/state/publish_providers.dart';
 import 'package:makapix_club/shell/app_shell.dart';
 
 /// A signed-out [AuthController] that performs no token load / network.
@@ -46,6 +48,10 @@ Widget _harness() {
       feedProvider(FeedKind.promoted).overrideWith(
         (ref) => PagedNotifier<Post>((_) async => const club.Page<Post>(items: [])),
       ),
+      // The Club root now reads server config (to arm the first-run rules gate) even when
+      // signed out — return the offline fallback (moderation off) so no /config network
+      // call is made; the gate stays passed, exactly as against a pre-flip server.
+      serverConfigProvider.overrideWith((ref) async => ClubServerConfig.fallback),
     ],
     child: const MaterialApp(
       home: AppShell(
