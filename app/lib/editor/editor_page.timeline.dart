@@ -373,7 +373,7 @@ extension _EditorTimeline on _EditorPageState {
     _act('RenameLayer($i, $clean)');
   }
 
-  void _layerOptions(int i, Map<String, dynamic> l, int count) {
+  void _layerOptions(int i, Map<String, dynamic> l, int count, {bool belowLocked = false}) {
     // Sheet-local state must live outside the StatefulBuilder's builder:
     // setS re-runs the builder, and locals declared inside it would reset
     // to the values captured when the sheet opened.
@@ -427,6 +427,9 @@ extension _EditorTimeline on _EditorPageState {
                 ActionChip(avatar: const Icon(Icons.control_point_duplicate, size: 16), label: const Text('Duplicate'), onPressed: () { Navigator.pop(ctx); _act('DuplicateLayer($i)'); }),
                 ActionChip(avatar: const Icon(Icons.arrow_upward, size: 16), label: const Text('Up'), onPressed: i + 1 < count ? () { Navigator.pop(ctx); _act('ReorderLayer($i, ${i + 1})'); } : null),
                 ActionChip(avatar: const Icon(Icons.arrow_downward, size: 16), label: const Text('Down'), onPressed: i > 0 ? () { Navigator.pop(ctx); _act('ReorderLayer($i, ${i - 1})'); } : null),
+                // Merge this layer onto the one below (disabled on the bottom layer and when the
+                // layer below is locked — the engine guards both too).
+                ActionChip(avatar: const Icon(Icons.call_merge, size: 16), label: const Text('Merge down'), onPressed: (i > 0 && !belowLocked) ? () { Navigator.pop(ctx); _act('MergeDown($i)'); } : null),
                 ActionChip(avatar: const Icon(Icons.dynamic_feed, size: 16), label: const Text('Copy to all frames'), onPressed: () {
                   Navigator.pop(ctx);
                   final all = List.generate(engine.frameCount, (k) => k).where((k) => k != engine.activeFrame).join(',');
@@ -475,7 +478,8 @@ extension _EditorTimeline on _EditorPageState {
               if (cached == null || cached.hash != hash) _genLayerThumb(frame, i, hash);
               return GestureDetector(
                 onTap: () { setState(() => _selLayers.clear()); _act('SetActiveLayer($i)'); },
-                onLongPress: () => _layerOptions(i, l, layers.length),
+                onLongPress: () => _layerOptions(i, l, layers.length,
+                    belowLocked: i > 0 && (layers[i - 1] as Map<String, dynamic>)['locked'] == true),
                 child: Container(
                   width: tileW + 6,
                   margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 5),

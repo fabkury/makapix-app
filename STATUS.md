@@ -51,6 +51,7 @@ Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending)
 | Selected pixels move / copy / cut / paste | ✅ | |
 | Copy pixels frame→frame | ✅ | `PasteToFrame` in engine/DSL (UI pastes to active frame) |
 | Move/Duplicate layers from 1 frame → N frames | ✅ | layer options sheet → "Copy to all frames" (`DuplicateLayerToFrames`) |
+| Merge down (layer onto the one below) | ✅ | layer options sheet → "Merge down" (`MergeDown`): compositor-exact blend with the source's opacity, merged layer keeps the below layer's settings; one undo step; bottom/locked-below guarded |
 | Duplicate / reorder animation frame | ✅ | film-roll of frame previews at the top of the canvas (tap to go to a frame; long-press for duplicate/duration/move/delete); engine-rendered cached thumbnails |
 | Per-frame duration 16.6–1000 ms + bulk tools | ✅ | µs-precise; UI dialog (this frame / all frames / fps presets) |
 | Palettes: create/edit/save/load, add/remove/edit/dup color, RGB+HSV | ✅ | multiple palettes (selector + new), add/edit/duplicate/remove color (long-press swatch), RGB+HSV picker, eyedropper, **save/load `.gpl`/JSON**, embedded in `.mkpx` |
