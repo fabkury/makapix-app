@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/mkpx_api.dart';
@@ -286,11 +287,18 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
             onTap: () => Navigator.push(
                 context, MaterialPageRoute(builder: (_) => ReactionsPage(post: post)))),
         _stat(Icons.mode_comment_outlined, commentTotal, onTap: _scrollToComments),
-        IconButton(
-          icon: const Icon(Icons.share),
-          tooltip: 'Share',
-          visualDensity: VisualDensity.compact,
-          onPressed: () => _shareArtwork(context, post, base),
+        // Tap shares the pixels (+ URL caption); long-press copies just the link.
+        GestureDetector(
+          onLongPress: () {
+            Clipboard.setData(ClipboardData(text: '$base/p/${post.sqid}'));
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Link copied')));
+          },
+          child: IconButton(
+            icon: const Icon(Icons.share),
+            tooltip: 'Share (long-press to copy link)',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => _shareArtwork(context, post, base),
+          ),
         ),
       ]),
     );
