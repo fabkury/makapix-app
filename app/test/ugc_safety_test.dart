@@ -30,6 +30,7 @@ void main() {
             ],
         'contact_email': 'acme@makapix.club',
         'guidelines_url': 'https://makapix.club/about?tab=rules',
+        'terms_url': 'https://makapix.club/terms',
         'moderation_policy_url': 'https://makapix.club/about?tab=moderation',
         'max_blocks_per_user': 1000,
       };
@@ -43,6 +44,7 @@ void main() {
       expect(m.reportReasons.first.label, 'Spam or misleading');
       expect(m.contactEmail, 'acme@makapix.club');
       expect(m.guidelinesUrl, 'https://makapix.club/about?tab=rules');
+      expect(m.termsUrl, 'https://makapix.club/terms');
       expect(m.moderationPolicyUrl, 'https://makapix.club/about?tab=moderation');
       expect(m.maxBlocksPerUser, 1000);
     });
@@ -84,6 +86,7 @@ void main() {
       expect(m.contactEmail, 'acme@makapix.club');
       expect(m.maxBlocksPerUser, 1000);
       expect(m.guidelinesUrl, '');
+      expect(m.termsUrl, ''); // server msg 0006: absent terms_url → empty, gate falls back
     });
   });
 
@@ -278,6 +281,10 @@ void main() {
 
     test('stored version older than current → show again', () async {
       expect(await gateFor(storedVersion: 0, config: withModeration()), RulesGate.show);
+    });
+
+    test('accepted the previous version → re-prompted once after a bump (Terms adoption)', () async {
+      expect(await gateFor(storedVersion: kRulesVersion - 1, config: withModeration()), RulesGate.show);
     });
   });
 }

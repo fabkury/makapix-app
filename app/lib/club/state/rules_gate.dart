@@ -5,7 +5,9 @@ import 'publish_providers.dart';
 
 /// Bump when the community rules change materially — installs that accepted an
 /// older version are re-prompted on next launch.
-const int kRulesVersion = 1;
+/// v2 (server msg 0006): the gate now also references the formal Terms of Service,
+/// so previously-accepted installs re-accept once to agree to the Terms.
+const int kRulesVersion = 2;
 const String kRulesPrefKey = 'club.rules_accepted_version';
 
 enum RulesGate { show, passed }

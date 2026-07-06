@@ -62,6 +62,11 @@ class ModerationRules {
   final List<ReportReason> reportReasons;
   final String contactEmail;
   final String guidelinesUrl;
+
+  /// Formal Terms of Service URL (server message 0006, additive). Empty when the
+  /// server hasn't shipped it; the rules gate then falls back to the community
+  /// rules link alone.
+  final String termsUrl;
   final String moderationPolicyUrl;
   final int maxBlocksPerUser;
 
@@ -69,6 +74,7 @@ class ModerationRules {
     required this.reportReasons,
     this.contactEmail = 'acme@makapix.club',
     this.guidelinesUrl = '',
+    this.termsUrl = '',
     this.moderationPolicyUrl = '',
     this.maxBlocksPerUser = 1000,
   });
@@ -89,6 +95,7 @@ class ModerationRules {
       reportReasons: reasons,
       contactEmail: (j['contact_email'] ?? 'acme@makapix.club').toString(),
       guidelinesUrl: (j['guidelines_url'] ?? '').toString(),
+      termsUrl: (j['terms_url'] ?? '').toString(),
       moderationPolicyUrl: (j['moderation_policy_url'] ?? '').toString(),
       maxBlocksPerUser: (j['max_blocks_per_user'] as num?)?.toInt() ?? 1000,
     );

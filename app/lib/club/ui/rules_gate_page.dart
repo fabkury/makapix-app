@@ -5,6 +5,18 @@ import '../state/publish_providers.dart';
 import '../state/rules_gate.dart';
 import 'widgets/external_links.dart';
 
+/// The explicit "what you're agreeing to" line above the accept button. Names only
+/// the documents the server advertised so it never points at a missing link.
+String _agreementLine({required bool hasRules, required bool hasTerms}) {
+  if (hasRules && hasTerms) {
+    return 'By tapping Agree and continue, you agree to the Community Rules and the Terms of Service.';
+  }
+  if (hasTerms) {
+    return 'By tapping Agree and continue, you agree to the Terms of Service.';
+  }
+  return 'By tapping Agree and continue, you agree to the Community Rules.';
+}
+
 /// The one-time, full-screen community-rules gate. Shown before the Club pillar
 /// (and the editor's "Post to Club" entry) when the moderation feature is live
 /// and this install hasn't accepted the current rules version.
@@ -48,13 +60,29 @@ class RulesGatePage extends ConsumerWidget {
                     onPressed: () => openExternalUrl(context, moderation!.guidelinesUrl),
                     child: const Text('Read the community rules'),
                   ),
+                if ((moderation?.termsUrl ?? '').isNotEmpty)
+                  TextButton(
+                    onPressed: () => openExternalUrl(context, moderation!.termsUrl),
+                    child: const Text('Terms of Service'),
+                  ),
                 const SizedBox(height: 8),
                 const Text(
                   'You can report any content or user, and block anyone, from inside the app.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white54, fontSize: 12),
                 ),
-                const SizedBox(height: 28),
+                const SizedBox(height: 20),
+                // Explicit, adaptive agreement line: name only the documents the server
+                // actually advertised, so the copy never references a missing link.
+                Text(
+                  _agreementLine(
+                    hasRules: (moderation?.guidelinesUrl ?? '').isNotEmpty,
+                    hasTerms: (moderation?.termsUrl ?? '').isNotEmpty,
+                  ),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white60, fontSize: 12),
+                ),
+                const SizedBox(height: 12),
                 FilledButton(
                   onPressed: () => ref.read(rulesGateProvider.notifier).accept(),
                   child: const Padding(
