@@ -1,3 +1,3 @@
 New: Share the pixels. The Share button on a Club artwork now shares the actual image — animations as GIF or lossless WebP, stills as PNG, at the size you pick — with the link tagging along. Long-press to just copy the link.
 
-New: A bigger, better crop when importing. Importing an image (static or animated) opens a large crop editor with a live preview, play/pause and a frame counter for animations, drag-anywhere plus easy corner handles, exact X/Y/W/H entry, and an optional aspect lock. Crops smaller than the canvas now sit centered instead of being stretched.
+New: A bigger crop when importing. Importing a static or animated image opens a large crop editor: live preview, play/pause, drag-anywhere with easy corners, exact X/Y/W/H, and optional aspect lock.
