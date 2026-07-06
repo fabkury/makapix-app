@@ -265,10 +265,12 @@ class TriangleTipHandlePainter extends CustomPainter {
 
 /// Screen-space radius of the Ruler's endpoint reticles. Also the grab radius for dragging an end
 /// (shared with the gesture code), so "tap within the reticle to move that coordinate".
-const double kRulerReticleRadius = 36.0;
+const double kRulerReticleRadius = 52.0;
 
 /// The Ruler tool's overlay: a measurement line between two canvas points, a large draggable
-/// reticle targeting each end, each end's X,Y, and the straight-line length in pixels. Drawn in
+/// reticle targeting each end, each end's X,Y, and the straight-line length in pixels — plus the
+/// axis-aligned legs of the right triangle under the diagonal (the horizontal and vertical
+/// distances), drawn semitransparent so the main measurement stays dominant. Drawn in
 /// SCREEN space; never touches the pixel buffer.
 class RulerPainter extends CustomPainter {
   final Offset a, b; // endpoints in canvas-pixel coords (cell top-left)
@@ -281,6 +283,26 @@ class RulerPainter extends CustomPainter {
     if (scale <= 0) return;
     Offset sc(Offset c) => Offset(off.dx + (c.dx + 0.5) * scale, off.dy + (c.dy + 0.5) * scale);
     final pa = sc(a), pb = sc(b);
+    // The axis-aligned legs of the measurement triangle (drawn first, so the main diagonal and
+    // the reticles stay on top). Skipped when the diagonal is itself axis-aligned (the triangle
+    // collapses onto the main line and the legs would just restate its length).
+    final dxPx = (b.dx - a.dx).abs(), dyPx = (b.dy - a.dy).abs();
+    if (dxPx >= 1 && dyPx >= 1) {
+      final corner = Offset(pb.dx, pa.dy); // horizontal leg from A, vertical leg into B
+      final haloF = Paint()..color = const Color(0x59000000)..strokeWidth = 3..isAntiAlias = true;
+      final lineF = Paint()..color = const Color(0x59FFC400)..strokeWidth = 1.5..isAntiAlias = true;
+      canvas.drawLine(pa, corner, haloF);
+      canvas.drawLine(pa, corner, lineF);
+      canvas.drawLine(corner, pb, haloF);
+      canvas.drawLine(corner, pb, lineF);
+      // Leg labels sit at each leg's midpoint, nudged to the OUTSIDE of the triangle so they
+      // never collide with the diagonal's length label.
+      final hMid = Offset((pa.dx + corner.dx) / 2, pa.dy + (pb.dy > pa.dy ? -18 : 8));
+      final legRight = pb.dx >= pa.dx; // triangle interior is left of the vertical leg
+      final vMid = Offset(corner.dx + (legRight ? 6 : -6), (corner.dy + pb.dy) / 2 - 7);
+      _label(canvas, '${dxPx.round()} px', hMid, faint: true, centerX: true);
+      _label(canvas, '${dyPx.round()} px', vMid, faint: true, alignRight: !legRight);
+    }
     canvas.drawLine(pa, pb, Paint()..color = Colors.black..strokeWidth = 3..isAntiAlias = true);
     canvas.drawLine(pa, pb, Paint()..color = const Color(0xFFFFC400)..strokeWidth = 1.5..isAntiAlias = true);
     _reticle(canvas, pa);
@@ -308,15 +330,24 @@ class RulerPainter extends CustomPainter {
     canvas.drawCircle(c, 1.8, Paint()..color = const Color(0xFFFFC400));
   }
 
-  void _label(Canvas canvas, String text, Offset at) {
+  /// `faint` renders the semitransparent style of the triangle legs; `centerX` centres the text
+  /// horizontally on `at`; `alignRight` puts the text's right edge at `at` (for labels that must
+  /// grow away from the vertical leg).
+  void _label(Canvas canvas, String text, Offset at,
+      {bool faint = false, bool centerX = false, bool alignRight = false}) {
     final tp = TextPainter(
       text: TextSpan(
         text: ' $text ',
-        style: const TextStyle(fontSize: 11, color: Colors.white, backgroundColor: Color(0xCC000000)),
+        style: faint
+            ? const TextStyle(fontSize: 11, color: Colors.white70, backgroundColor: Color(0x66000000))
+            : const TextStyle(fontSize: 11, color: Colors.white, backgroundColor: Color(0xCC000000)),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-    tp.paint(canvas, at);
+    var p = at;
+    if (centerX) p = p.translate(-tp.width / 2, 0);
+    if (alignRight) p = p.translate(-tp.width, 0);
+    tp.paint(canvas, p);
   }
 
   @override
