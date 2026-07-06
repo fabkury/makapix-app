@@ -328,6 +328,22 @@ extension _EditorEngine on _EditorPageState {
       _rotateDragging = false;
       _redraw();
     }
+    // A pending HSV / Brightness-Contrast adjustment (a display-only preview, like the drafts
+    // above) is zeroed when leaving its tool, so returning starts clean instead of resuming a
+    // stale draft — same as the tools' row-1 Reset button.
+    if (_tool == 'HsvShift' && t != 'HsvShift' && (_hsvH != 0 || _hsvS != 0 || _hsvV != 0)) {
+      _hsvH = 0;
+      _hsvS = 0;
+      _hsvV = 0;
+      _send('SetHsvShift(0, 0, 0)');
+      _redraw();
+    }
+    if (_tool == 'BrightnessContrast' && t != 'BrightnessContrast' && (_bcBright != 0 || _bcContrast != 0)) {
+      _bcBright = 0;
+      _bcContrast = 0;
+      _send('SetBrightnessContrast(0, 1)');
+      _redraw();
+    }
     // The Ruler keeps its measurement across tool switches (its overlay just hides while another
     // tool is active and reappears on return); clear it with the Ruler's row-1 "Clear" button.
     _rulerDrag = 0;

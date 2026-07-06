@@ -420,6 +420,14 @@ extension _EditorControls on _EditorPageState {
           _hsvV = 0;
         });
       }));
+      // Discard the pending shift without touching the document (the preview reverts too).
+      children.add(_miniBtn('Reset', () {
+        syncHsv(() {
+          _hsvH = 0;
+          _hsvS = 0;
+          _hsvV = 0;
+        });
+      }));
     }
     if (_tool == 'BrightnessContrast') {
       // The HSV block's twin: slider changes sync the pending adjustment into the engine, whose
@@ -442,6 +450,13 @@ extension _EditorControls on _EditorPageState {
         _send('SetBrightnessContrast(${_bcBright.round()}, ${1.0 + _bcContrast / 100})');
         _act('ApplyBrightnessContrast()');
         // The adjustment is baked in now; zero the sliders so the preview matches the document.
+        syncBc(() {
+          _bcBright = 0;
+          _bcContrast = 0;
+        });
+      }));
+      // Discard the pending adjustment without touching the document (the preview reverts too).
+      children.add(_miniBtn('Reset', () {
         syncBc(() {
           _bcBright = 0;
           _bcContrast = 0;
