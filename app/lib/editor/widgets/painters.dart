@@ -16,10 +16,13 @@ class CanvasPainter extends CustomPainter {
   static const double checkerCell = 8;
 
   // One 2×2-cell tile, tiled by an ImageShader. Same two greys the engine used when it baked
-  // the checker into the display buffer, for visual continuity.
-  static final ui.Image _checkerTile = _buildCheckerTile();
+  // the checker into the display buffer, for visual continuity. The shader is anchored to the
+  // VIEWPORT (identity matrix), not the image: zooming moves the image origin on screen, so an
+  // origin-anchored pattern darts around during a pinch — a perfectly still backdrop is what
+  // reads as "not part of the drawing".
+  static final Paint _checkerPaint = _buildCheckerPaint();
 
-  static ui.Image _buildCheckerTile() {
+  static Paint _buildCheckerPaint() {
     const c = checkerCell;
     final rec = ui.PictureRecorder();
     final canvas = Canvas(rec);
@@ -27,7 +30,11 @@ class CanvasPainter extends CustomPainter {
     final dark = Paint()..color = const Color(0xFFA0A0A0);
     canvas.drawRect(const Rect.fromLTWH(c, 0, c, c), dark);
     canvas.drawRect(const Rect.fromLTWH(0, c, c, c), dark);
-    return rec.endRecording().toImageSync((c * 2).toInt(), (c * 2).toInt());
+    final tile = rec.endRecording().toImageSync((c * 2).toInt(), (c * 2).toInt());
+    return Paint()
+      ..shader = ui.ImageShader(tile, TileMode.repeated, TileMode.repeated,
+          Matrix4.identity().storage,
+          filterQuality: FilterQuality.none);
   }
 
   @override
@@ -35,19 +42,8 @@ class CanvasPainter extends CustomPainter {
     if (image == null) return;
     final iw = image!.width.toDouble(), ih = image!.height.toDouble();
     final dst = Rect.fromLTWH(off.dx, off.dy, iw * scale, ih * scale);
-    // The transparency checker, under the artwork. Anchored to the image's top-left (it pans
-    // with the artwork rather than swimming beneath it) but NOT multiplied by the zoom scale.
-    canvas.drawRect(
-      dst,
-      Paint()
-        ..shader = ui.ImageShader(
-          _checkerTile,
-          TileMode.repeated,
-          TileMode.repeated,
-          Matrix4.translationValues(off.dx, off.dy, 0).storage,
-          filterQuality: FilterQuality.none,
-        ),
-    );
+    // The transparency checker, under the artwork: fixed to the screen, clipped to the image.
+    canvas.drawRect(dst, _checkerPaint);
     final paint = Paint()
       ..filterQuality = FilterQuality.none
       ..isAntiAlias = false;

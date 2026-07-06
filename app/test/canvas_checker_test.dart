@@ -105,11 +105,15 @@ void main() {
     expect(edge, [0, 0, 0, 0, 1, 2, 3, 255]); // a=0 zeroes out; a=255 untouched
   });
 
-  test('checker pattern is anchored to the image origin (pans with the artwork)', () async {
+  test('checker pattern is fixed to the viewport (stays still under pan and zoom)', () async {
     final src = sourceImage(4, 4);
-    // Offset by one cell: the colour AT the image's top-left corner must be the same light
-    // cell as when un-offset — the pattern travels with the image.
-    final bytes = await rasterize(src, 10, Offset(cell, 0), 56, 40);
-    expect(pixel(bytes, 56, cell.toInt() + cell ~/ 2, cell ~/ 2), light);
+    // The same screen point shows the same checker colour while the artwork pans/zooms under
+    // it — a pattern anchored to the image origin would dart around during a pinch.
+    final a = await rasterize(src, 10, Offset.zero, 40, 40);
+    final b = await rasterize(src, 13, const Offset(3, 7), 40, 40);
+    for (final p in const [(12, 12), (20, 20), (28, 28)]) {
+      // points inside the image rect in BOTH renders
+      expect(pixel(b, 40, p.$1, p.$2), pixel(a, 40, p.$1, p.$2));
+    }
   });
 }
