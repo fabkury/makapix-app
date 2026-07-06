@@ -16,12 +16,23 @@ Map<String, String> buildProfilePatch(
   UserProfile current, {
   required String tagline,
   required String bio,
+}) =>
+    buildProfilePatchFrom(
+        currentTagline: current.tagline, currentBio: current.bio, tagline: tagline, bio: bio);
+
+/// String-baseline variant for callers that track the last-saved values
+/// directly (the Edit Profile page after a successful save).
+Map<String, String> buildProfilePatchFrom({
+  required String? currentTagline,
+  required String? currentBio,
+  required String tagline,
+  required String bio,
 }) {
   final patch = <String, String>{};
   final newTagline = tagline.trim();
   final newBio = bio.trim();
-  if (newTagline != (current.tagline ?? '')) patch['tagline'] = newTagline;
-  if (newBio != (current.bio ?? '')) patch['bio'] = newBio;
+  if (newTagline != (currentTagline ?? '')) patch['tagline'] = newTagline;
+  if (newBio != (currentBio ?? '')) patch['bio'] = newBio;
   return patch;
 }
 

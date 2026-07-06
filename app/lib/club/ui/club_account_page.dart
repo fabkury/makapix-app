@@ -3,12 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../cache/artwork_cache.dart';
+import '../models/club_error.dart';
 import '../models/club_user.dart';
+import '../state/api_providers.dart';
 import '../state/auth_controller.dart';
 import 'auth/account_management_page.dart';
 import 'auth/create_account_page.dart';
 import 'auth/forgot_password_page.dart';
 import 'auth/verify_email_page.dart';
+import 'edit_profile_page.dart';
 
 /// Reachable from the editor AppBar. Renders the sign-in form or the signed-in
 /// account view based on [authControllerProvider]. The app is not login-gated;
@@ -231,6 +234,8 @@ class _AccountView extends ConsumerWidget {
         _kv('Can post publicly',
             me.capabilities['can_post_public'] == true ? 'Yes' : 'Pending approval'),
         const SizedBox(height: 24),
+        _EditProfileButton(sqid: u.sub),
+        const SizedBox(height: 12),
         OutlinedButton.icon(
           onPressed: () => Navigator.push(
               context, MaterialPageRoute(builder: (_) => const AccountManagementPage())),
@@ -271,4 +276,46 @@ class _AccountView extends ConsumerWidget {
     }
     return '—';
   }
+}
+
+/// Fetches the full profile (this page only holds a [ClubMe]) and opens
+/// [EditProfilePage]. Stateful for the busy flag during the fetch.
+class _EditProfileButton extends ConsumerStatefulWidget {
+  final String sqid;
+  const _EditProfileButton({required this.sqid});
+  @override
+  ConsumerState<_EditProfileButton> createState() => _EditProfileButtonState();
+}
+
+class _EditProfileButtonState extends ConsumerState<_EditProfileButton> {
+  bool _busy = false;
+
+  Future<void> _open() async {
+    setState(() => _busy = true);
+    try {
+      final profile = await ref.read(profileApiProvider).profile(widget.sqid);
+      if (!mounted) return;
+      setState(() => _busy = false);
+      await Navigator.push(
+          context, MaterialPageRoute(builder: (_) => EditProfilePage(profile: profile)));
+    } on ClubError catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Could not load your profile.')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => OutlinedButton.icon(
+        onPressed: _busy ? null : _open,
+        icon: _busy
+            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+            : const Icon(Icons.edit_outlined),
+        label: const Text('Edit profile'),
+      );
 }

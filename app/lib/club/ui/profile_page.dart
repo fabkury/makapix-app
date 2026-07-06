@@ -10,6 +10,7 @@ import '../state/player_providers.dart';
 import '../state/profile_providers.dart';
 import 'artwork_detail_page.dart';
 import 'club_account_page.dart';
+import 'edit_profile_page.dart';
 import 'widgets/common.dart';
 import 'widgets/feed_grid.dart';
 import 'widgets/send_target_binder.dart';
@@ -105,11 +106,22 @@ class _Body extends ConsumerWidget {
           _stat('Rep', p.reputation),
         ]),
         const SizedBox(height: 12),
-        if (!p.isOwnProfile)
-          SizedBox(
-            width: 220,
-            child: _FollowButton(sqid: p.sqid, isFollowing: p.isFollowing, signedIn: signedIn),
-          ),
+        SizedBox(
+          width: 220,
+          child: p.isOwnProfile
+              ? OutlinedButton.icon(
+                  onPressed: () async {
+                    await Navigator.push(context,
+                        MaterialPageRoute(builder: (_) => EditProfilePage(profile: p)));
+                    // Avatar changes apply immediately and Save may have landed —
+                    // re-fetch so the header reflects them.
+                    ref.read(profileProvider(p.sqid).notifier).load();
+                  },
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  label: const Text('Edit profile'),
+                )
+              : _FollowButton(sqid: p.sqid, isFollowing: p.isFollowing, signedIn: signedIn),
+        ),
       ]),
     );
   }
