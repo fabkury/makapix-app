@@ -2238,6 +2238,39 @@ impl Session {
         });
     }
 
+    /// Merge layer `i` down onto the layer below it: composite `i`'s pixels — with its opacity,
+    /// via the compositor's own `over_opacity` blend — over layer `i-1`'s pixels, then remove
+    /// layer `i`. The merged layer keeps the below layer's identity and settings (name, opacity,
+    /// visibility, lock). An invisible or zero-opacity source contributes nothing (the compositor
+    /// would have shown none of it), so the merge degenerates to a plain remove. One undo step.
+    /// No-op on the bottom layer, an out-of-range index, or a locked layer below (its pixels are
+    /// protected, like painting).
+    pub fn merge_down(&mut self, i: usize) {
+        let layers = &self.doc.active_frame().layers;
+        if i == 0 || i >= layers.len() || layers[i - 1].locked {
+            return;
+        }
+        let st = self.doc.storage();
+        let (w, h) = (st.w as i32, st.h as i32);
+        self.edit_frame(|s| {
+            let f = s.doc.active_frame_mut();
+            let src = f.layers.remove(i);
+            if src.visible && src.opacity > 0 {
+                let dst = &mut f.layers[i - 1].pixels;
+                for y in 0..h {
+                    for x in 0..w {
+                        let p = src.pixels.get(x, y);
+                        if p.a != 0 {
+                            let d = dst.get(x, y);
+                            dst.set(x, y, crate::color::over_opacity(p, d, src.opacity));
+                        }
+                    }
+                }
+            }
+            f.active_layer = i - 1;
+        });
+    }
+
     pub fn reorder_layer(&mut self, from: usize, to: usize) {
         let n = self.doc.active_frame().layers.len();
         if from >= n || to >= n || from == to {
@@ -3102,6 +3135,59 @@ mod tests {
         assert!(!SelCanvas(&s).get(5, 5) && SelCanvas(&s).get(2, 2));
         assert!(s.doc.undo());
         assert!(s.doc.selection.is_none());
+    }
+
+    #[test]
+    fn merge_down_composites_and_removes() {
+        let mut s = Session::new(8, 8);
+        s.settings.primary = Rgba8::rgb(200, 0, 0); // bottom layer: red
+        s.tap(1, 1);
+        s.tap(2, 2);
+        s.run_script("AddLayer()").unwrap();
+        s.settings.primary = Rgba8::rgb(0, 200, 0); // top layer: green
+        s.tap(2, 2); // covers a red pixel
+        s.tap(3, 3); // lands on empty below
+        s.run_script("MergeDown(1)").unwrap();
+        assert_eq!(s.doc.active_frame().layers.len(), 1);
+        assert_eq!(s.doc.active_frame().active_layer, 0);
+        assert_eq!(s.pixel(0, 0, 1, 1), Rgba8::rgb(200, 0, 0), "below-only pixel untouched");
+        assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::rgb(0, 200, 0), "opaque top wins");
+        assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::rgb(0, 200, 0), "top-only pixel lands below");
+        // ONE undo restores both layers and the below layer's covered pixel
+        assert!(s.doc.undo());
+        assert_eq!(s.doc.active_frame().layers.len(), 2);
+        assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::rgb(200, 0, 0));
+        assert_eq!(s.pixel(0, 1, 2, 2), Rgba8::rgb(0, 200, 0));
+    }
+
+    #[test]
+    fn merge_down_opacity_visibility_and_guards() {
+        let mut s = Session::new(4, 4);
+        s.settings.primary = Rgba8::rgb(100, 100, 100);
+        s.tap(0, 0);
+        s.run_script("AddLayer()").unwrap();
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(0, 0);
+        // the source layer's opacity blends exactly like the compositor
+        s.run_script("SetLayerOpacity(1, 128); MergeDown(1)").unwrap();
+        let expect = crate::color::over_opacity(Rgba8::WHITE, Rgba8::rgb(100, 100, 100), 128);
+        assert_eq!(s.pixel(0, 0, 0, 0), expect);
+        assert_eq!(s.doc.active_frame().layers.len(), 1);
+        // bottom layer: no-op
+        s.merge_down(0);
+        assert_eq!(s.doc.active_frame().layers.len(), 1);
+        // an invisible source merges as a plain remove (contributes no pixels)
+        s.run_script("AddLayer()").unwrap();
+        s.settings.primary = Rgba8::rgb(0, 0, 250);
+        s.tap(1, 1);
+        s.run_script("SetLayerVisible(1, false); MergeDown(1)").unwrap();
+        assert_eq!(s.doc.active_frame().layers.len(), 1);
+        assert_eq!(s.pixel(0, 0, 1, 1), Rgba8::TRANSPARENT);
+        // a locked layer below refuses the merge (its pixels are protected)
+        s.run_script("AddLayer()").unwrap();
+        s.tap(1, 1);
+        s.run_script("SetLayerLocked(0, true); MergeDown(1)").unwrap();
+        assert_eq!(s.doc.active_frame().layers.len(), 2);
     }
 
     #[test]
