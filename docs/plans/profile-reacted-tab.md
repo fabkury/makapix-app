@@ -1,6 +1,7 @@
 # Profile tabs: Reacted ⚡ (+ display-only Highlights 💎) — implementation plan
 
-**Status: PLANNED (2026-07-07). Not yet implemented.** Revised same day after a fresh-eyes review
+**Status: IMPLEMENTED (2026-07-07)** — data layer `5c63c1f`, UI + tests `22bb9a7`; 236 Dart tests
+green, `flutter analyze` clean; on-device manual checklist pending. Revised same day after a fresh-eyes review
 (11 findings, all incorporated; the pinned-sliver TabBar was replaced by the simpler
 TabBar-in-body layout, killing the sliver-overlap problem outright).
 
