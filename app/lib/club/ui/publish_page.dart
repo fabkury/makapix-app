@@ -107,7 +107,9 @@ class _PublishPageState extends ConsumerState<PublishPage> {
         const SizedBox(height: 8),
         Center(
           child: Text(
-            '${d.width}×${d.height}  ·  ${d.isAnimated ? '${d.frameCount} frames' : 'static'}  ·  ${d.format.toUpperCase()}  ·  $kib KiB',
+            '${d.width}×${d.height}  ·  ${d.isAnimated ? '${d.frameCount} frames' : 'static'}'
+            '${d.isAnimated && d.totalDurationMs != null ? '  ·  ${(d.totalDurationMs! / 1000).toStringAsFixed(1)} s loop' : ''}'
+            '  ·  ${d.format.toUpperCase()}  ·  $kib KiB',
             style: const TextStyle(fontSize: 12, color: Colors.white54),
           ),
         ),

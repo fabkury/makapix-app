@@ -179,6 +179,19 @@ extension _EditorFileIo on _EditorPageState {
       _toast('Export failed');
       return;
     }
+    // Total loop duration from the document's per-frame durations, under the same
+    // clamp rules feeds play by — lets the artist verify a series shares one loop.
+    int? totalDurationMs;
+    if (fc > 1) {
+      try {
+        final st = json.decode(engine.stateJson()) as Map<String, dynamic>;
+        final frames = st['frame_detail'] as List?;
+        if (frames != null && frames.isNotEmpty) {
+          totalDurationMs = AnimationTimeline.computeTotalDurationMs(
+              frames.map((f) => (((f['duration_us'] as num?) ?? 100000).toInt()) ~/ 1000));
+        }
+      } catch (_) {/* metadata only — never blocks posting */}
+    }
     final draft = PublishDraft(
       bytes: bytes,
       format: 'webp',
@@ -191,6 +204,7 @@ extension _EditorFileIo on _EditorPageState {
       // compact profile, same as user-facing saves. The publish page decides
       // whether it is actually sent.
       mkpxBytes: engine.saveCompact(),
+      totalDurationMs: totalDurationMs,
     );
     if (!mounted) return;
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => PublishPage(draft: draft)));

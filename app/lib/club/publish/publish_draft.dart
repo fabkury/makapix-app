@@ -22,6 +22,12 @@ class PublishDraft {
   /// the editor (direct file upload) — the share checkbox is hidden then.
   final Uint8List? mkpxBytes;
 
+  /// Total loop duration for animated drafts, under the same clamp rules feeds
+  /// play by (`AnimationTimeline.computeTotalDurationMs`). Shown on the publish
+  /// sheet so an artist can verify a connected series shares one loop duration
+  /// (equal loops stay frame-locked on feeds). Null when unknown or static.
+  final int? totalDurationMs;
+
   const PublishDraft({
     required this.bytes,
     required this.format,
@@ -31,6 +37,7 @@ class PublishDraft {
     required this.frameCount,
     this.source,
     this.mkpxBytes,
+    this.totalDurationMs,
   });
 
   bool get isAnimated => frameCount > 1;

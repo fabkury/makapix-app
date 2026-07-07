@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../anim/animation_timeline.dart';
 import '../publish/publish_draft.dart';
 import '../state/edit_bridge.dart';
 import 'publish_page.dart';
@@ -56,6 +57,20 @@ class _ContributePageState extends ConsumerState<ContributePage> {
         return;
       }
       final frame = await codec.getNextFrame();
+      // For animated files, walk the remaining frames to sum the loop duration (shown
+      // on the publish sheet, same clamp rules feeds play by). Best-effort metadata.
+      int? totalDurationMs;
+      if (codec.frameCount > 1) {
+        try {
+          final delays = <int>[frame.duration.inMilliseconds];
+          for (var i = 1; i < codec.frameCount; i++) {
+            final fi = await codec.getNextFrame();
+            delays.add(fi.duration.inMilliseconds);
+            fi.image.dispose(); // only the first frame's image is kept (for sizing)
+          }
+          totalDurationMs = AnimationTimeline.computeTotalDurationMs(delays);
+        } catch (_) {/* metadata only — never blocks the upload */}
+      }
       final draft = PublishDraft(
         bytes: bytes,
         format: _formatOf(f.extension, bytes),
@@ -63,6 +78,7 @@ class _ContributePageState extends ConsumerState<ContributePage> {
         width: frame.image.width,
         height: frame.image.height,
         frameCount: codec.frameCount,
+        totalDurationMs: totalDurationMs,
       );
       if (!mounted) return;
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => PublishPage(draft: draft)));

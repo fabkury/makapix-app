@@ -15,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:makapix_club/club/anim/animation_timeline.dart';
 import 'package:makapix_club/club/edit/club_edit_request.dart';
 import 'package:makapix_club/club/publish/conformance.dart';
 import 'package:makapix_club/club/publish/publish_draft.dart';
