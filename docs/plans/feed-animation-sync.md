@@ -2,7 +2,10 @@
 
 Implemented 2026-07-07. Design brief: `prompt/feed-animation-sync-brief.md` (goals, rationale, the
 Rust-question resolution and its panic-abort gate). Server exchange: `reference/makapix-club/message/0008`
-(as-uploaded `art_url` guarantee + proposed `total_duration_ms` field).
+(as-uploaded `art_url` guarantee + proposed `total_duration_ms` field) — **confirmed with evidence in
+`0009`**, with scope caveats: only the exact `art_url` file is timing-safe; extension-swapped variants and
+the upscaled preview (frame-capped at 256) are re-encodes and must never be synced on. `total_duration_ms`
+accepted in principle, not scheduled — don't build against it until the server's follow-up.
 
 ## The idea
 
