@@ -9,6 +9,7 @@ import '../models/server_config.dart';
 import '../models/user_profile.dart';
 import '../state/auth_controller.dart';
 import '../state/feed_providers.dart';
+import '../state/paged.dart';
 import '../state/player_providers.dart';
 import '../state/profile_providers.dart';
 import '../state/publish_providers.dart';
@@ -158,6 +159,16 @@ class ProfilePage extends ConsumerWidget {
   }
 }
 
+/// The profile's tab set. Gallery is always present; Reacted only for
+/// signed-in viewers; Highlights only when the profile has any.
+enum ProfileTab { gallery, reacted, highlights }
+
+List<ProfileTab> profileTabsFor({required bool signedIn, required bool hasHighlights}) => [
+      ProfileTab.gallery,
+      if (signedIn) ProfileTab.reacted,
+      if (hasHighlights) ProfileTab.highlights,
+    ];
+
 class _Body extends ConsumerWidget {
   final UserProfile profile;
   const _Body({required this.profile});
@@ -173,35 +184,95 @@ class _Body extends ConsumerWidget {
         Expanded(child: _blockedBanner(context, ref)),
       ]);
     }
-    final gallery = ref.watch(ownerFeedProvider(profile.userKey));
-    final gn = ref.read(ownerFeedProvider(profile.userKey).notifier);
+    final tabs = profileTabsFor(signedIn: signedIn, hasHighlights: profile.highlights.isNotEmpty);
     return SendTargetBinder(
       target: ChannelTarget(
         displayName: profile.handle,
         userSqid: profile.sqid,
         userHandle: profile.handle,
       ),
-      child: Column(children: [
-      _header(context, ref, signedIn),
-      const Divider(height: 1),
-      Expanded(
-        child: FeedGrid(
-          state: gallery,
-          onLoadMore: gn.loadMore,
-          onRefresh: gn.refresh,
-          emptyMessage: 'No posts yet.',
-          onTap: (Post p) => Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (_) => ArtworkDetailPage(
-                        sqid: p.sqid,
-                        feed: pagedArtworkSource(ownerFeedProvider(profile.userKey),
-                            ownerFeedProvider(profile.userKey).notifier),
-                      ))),
-        ),
+      child: DefaultTabController(
+        length: tabs.length,
+        // Value-equal across rebuilds: the controller remounts only when the
+        // tab set genuinely changes (sign-in/out, highlights appearing) — not
+        // on ordinary rebuilds or token refreshes.
+        key: ValueKey('profile-tabs:${tabs.length}:$signedIn'),
+        child: Builder(builder: (context) {
+          return RefreshIndicator(
+            // Grid pulls arrive at depth 2 (outer → TabBarView page → grid);
+            // depth 0 keeps pulls on the expanded header working. The
+            // indicator's own axis check filters the horizontal PageView.
+            notificationPredicate: (n) => n.depth == 2 || n.depth == 0,
+            onRefresh: () => _refresh(ref, tabs, DefaultTabController.of(context).index),
+            child: NestedScrollView(
+              // Nothing pinned here: the TabBar lives in the body, so no
+              // sliver-overlap machinery is needed.
+              headerSliverBuilder: (_, _) => [
+                SliverToBoxAdapter(
+                    child: Column(children: [
+                  _header(context, ref, signedIn),
+                  const Divider(height: 1),
+                ])),
+              ],
+              body: Column(children: [
+                if (tabs.length > 1) ...[
+                  TabBar(
+                    tabs: [for (final t in tabs) _tab(t)],
+                    labelStyle: const TextStyle(fontSize: 13),
+                  ),
+                  const Divider(height: 1),
+                ],
+                Expanded(
+                  child: TabBarView(children: [
+                    for (final t in tabs)
+                      switch (t) {
+                        ProfileTab.gallery => _GalleryTab(profile: profile),
+                        ProfileTab.reacted => _ReactedTab(profile: profile),
+                        ProfileTab.highlights => _HighlightsTab(profile: profile),
+                      },
+                  ]),
+                ),
+              ]),
+            ),
+          );
+        }),
       ),
-    ]),
     );
+  }
+
+  Widget _tab(ProfileTab t) {
+    final (icon, label) = switch (t) {
+      ProfileTab.gallery => (Icons.grid_on, 'Gallery'),
+      ProfileTab.reacted => (Icons.bolt, 'Reacted'),
+      ProfileTab.highlights => (Icons.diamond_outlined, 'Highlights'),
+    };
+    return Tab(
+      height: 40,
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 16),
+        const SizedBox(width: 6),
+        Text(label),
+      ]),
+    );
+  }
+
+  /// Silent profile reload + refresh of only the active tab's feed. Never
+  /// touches a notifier whose provider was never instantiated (creating an
+  /// autoDispose provider just to refresh it double-fetches, then disposes
+  /// mid-flight).
+  Future<void> _refresh(WidgetRef ref, List<ProfileTab> tabs, int index) async {
+    final futures = <Future<void>>[
+      ref.read(profileProvider(profile.sqid).notifier).reload(),
+    ];
+    switch (tabs[index]) {
+      case ProfileTab.gallery:
+        futures.add(ref.read(ownerFeedProvider(profile.userKey).notifier).refresh());
+      case ProfileTab.reacted:
+        futures.add(ref.read(reactedFeedProvider(profile.sqid).notifier).refresh());
+      case ProfileTab.highlights:
+        break; // rides along with the profile reload
+    }
+    await Future.wait(futures);
   }
 
   Widget _blockedBanner(BuildContext context, WidgetRef ref) {
@@ -279,8 +350,9 @@ class _Body extends ConsumerWidget {
                       await Navigator.push(context,
                           MaterialPageRoute(builder: (_) => EditProfilePage(profile: p)));
                       // Avatar changes apply immediately and Save may have landed —
-                      // re-fetch so the header reflects them.
-                      ref.read(profileProvider(p.sqid).notifier).load();
+                      // re-fetch so the header reflects them (silently, so the
+                      // tab selection and scroll survive the return).
+                      ref.read(profileProvider(p.sqid).notifier).reload();
                     },
                     icon: const Icon(Icons.edit_outlined, size: 18),
                     label: const Text('Edit profile'),
@@ -295,6 +367,88 @@ class _Body extends ConsumerWidget {
         Text('$n', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         Text(label, style: const TextStyle(fontSize: 11, color: Colors.white54)),
       ]);
+}
+
+/// Each tab watches its own provider, so a feed is fetched only when its tab
+/// actually builds (opening a profile never eagerly fetches reacted-posts).
+class _GalleryTab extends ConsumerWidget {
+  final UserProfile profile;
+  const _GalleryTab({required this.profile});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(ownerFeedProvider(profile.userKey));
+    final n = ref.read(ownerFeedProvider(profile.userKey).notifier);
+    return FeedGrid(
+      key: const PageStorageKey('profile-gallery'),
+      nested: true,
+      state: state,
+      onLoadMore: n.loadMore,
+      onRefresh: () async {}, // the page owns refresh
+      emptyMessage: 'No posts yet.',
+      onTap: (Post p) => Navigator.push(
+          context,
+          MaterialPageRoute(
+              builder: (_) => ArtworkDetailPage(
+                    sqid: p.sqid,
+                    feed: pagedArtworkSource(ownerFeedProvider(profile.userKey),
+                        ownerFeedProvider(profile.userKey).notifier),
+                  ))),
+    );
+  }
+}
+
+class _ReactedTab extends ConsumerWidget {
+  final UserProfile profile;
+  const _ReactedTab({required this.profile});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(reactedFeedProvider(profile.sqid));
+    final n = ref.read(reactedFeedProvider(profile.sqid).notifier);
+    return FeedGrid(
+      key: const PageStorageKey('profile-reacted'),
+      nested: true,
+      state: state,
+      onLoadMore: n.loadMore,
+      onRefresh: () async {}, // the page owns refresh
+      emptyMessage: 'No reactions yet.',
+      onTap: (Post p) => Navigator.push(
+          context,
+          MaterialPageRoute(
+              builder: (_) => ArtworkDetailPage(
+                    sqid: p.sqid,
+                    feed: pagedArtworkSource(reactedFeedProvider(profile.sqid),
+                        reactedFeedProvider(profile.sqid).notifier),
+                  ))),
+    );
+  }
+}
+
+/// Display-only (§14): the highlights ride in the profile payload; pin/unpin
+/// management is C4 backlog.
+class _HighlightsTab extends ConsumerWidget {
+  final UserProfile profile;
+  const _HighlightsTab({required this.profile});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return FeedGrid(
+      key: const PageStorageKey('profile-highlights'),
+      nested: true,
+      state: PagedState<Post>(items: profile.highlights, atEnd: true, initialized: true),
+      onLoadMore: () async {},
+      onRefresh: () async {},
+      emptyMessage: 'No highlights.',
+      onTap: (Post p) => Navigator.push(
+          context,
+          MaterialPageRoute(
+              builder: (_) => ArtworkDetailPage(
+                    sqid: p.sqid,
+                    feed: ArtworkFeedSource.fixed(profile.highlights),
+                  ))),
+    );
+  }
 }
 
 class _FollowButton extends ConsumerWidget {

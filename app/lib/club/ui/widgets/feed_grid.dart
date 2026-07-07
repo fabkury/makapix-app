@@ -10,12 +10,19 @@ import '../comments_page.dart';
 import 'common.dart';
 
 /// Reusable infinite-scroll square grid of posts.
+///
+/// [nested] mounts the grid as the inner scrollable of a `NestedScrollView`
+/// (the profile tabs): the grid uses the inner `PrimaryScrollController`
+/// instead of its own, load-more triggers off scroll notifications, and the
+/// internal `RefreshIndicator` is skipped — the host page owns refresh
+/// (so `onRefresh` goes unused there; pass a no-op).
 class FeedGrid extends StatefulWidget {
   final PagedState<Post> state;
   final Future<void> Function() onLoadMore;
   final Future<void> Function() onRefresh;
   final void Function(Post) onTap;
   final String emptyMessage;
+  final bool nested;
   const FeedGrid({
     super.key,
     required this.state,
@@ -23,6 +30,7 @@ class FeedGrid extends StatefulWidget {
     required this.onRefresh,
     required this.onTap,
     this.emptyMessage = 'Nothing here yet.',
+    this.nested = false,
   });
 
   @override
@@ -30,19 +38,23 @@ class FeedGrid extends StatefulWidget {
 }
 
 class _FeedGridState extends State<FeedGrid> {
-  final _sc = ScrollController();
+  ScrollController? _sc;
 
   @override
   void initState() {
     super.initState();
-    _sc.addListener(() {
-      if (_sc.position.pixels > _sc.position.maxScrollExtent - 600) widget.onLoadMore();
-    });
+    if (!widget.nested) {
+      final sc = ScrollController();
+      sc.addListener(() {
+        if (sc.position.pixels > sc.position.maxScrollExtent - 600) widget.onLoadMore();
+      });
+      _sc = sc;
+    }
   }
 
   @override
   void dispose() {
-    _sc.dispose();
+    _sc?.dispose();
     super.dispose();
   }
 
@@ -54,32 +66,47 @@ class _FeedGridState extends State<FeedGrid> {
       return ClubErrorRetry(message: s.error!, onRetry: widget.onRefresh);
     }
     if (s.items.isEmpty) {
-      return RefreshIndicator(
-        onRefresh: widget.onRefresh,
-        child: ListView(children: [SizedBox(height: 240, child: ClubEmpty(message: widget.emptyMessage))]),
-      );
+      final empty = ListView(
+          primary: widget.nested ? true : null,
+          children: [SizedBox(height: 240, child: ClubEmpty(message: widget.emptyMessage))]);
+      if (widget.nested) return empty;
+      return RefreshIndicator(onRefresh: widget.onRefresh, child: empty);
     }
     final cols = (MediaQuery.of(context).size.width / 132).floor().clamp(2, 8);
-    return RefreshIndicator(
-      onRefresh: widget.onRefresh,
-      child: GridView.builder(
-        controller: _sc,
-        padding: const EdgeInsets.all(4),
-        // Cells are a little taller than wide to fit the info bar below a ~square artwork.
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: cols, mainAxisSpacing: 4, crossAxisSpacing: 4, childAspectRatio: 0.84),
-        itemCount: s.items.length + (s.atEnd ? 0 : 1),
-        itemBuilder: (ctx, i) {
-          if (i >= s.items.length) {
-            return const Center(
-                child: Padding(
-                    padding: EdgeInsets.all(16),
-                    child: SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2))));
-          }
-          return _PostTile(post: s.items[i], onTap: () => widget.onTap(s.items[i]));
-        },
-      ),
+    final grid = GridView.builder(
+      controller: _sc,
+      primary: widget.nested ? true : null,
+      padding: const EdgeInsets.all(4),
+      // Cells are a little taller than wide to fit the info bar below a ~square artwork.
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: cols, mainAxisSpacing: 4, crossAxisSpacing: 4, childAspectRatio: 0.84),
+      itemCount: s.items.length + (s.atEnd ? 0 : 1),
+      itemBuilder: (ctx, i) {
+        if (i >= s.items.length) {
+          return const Center(
+              child: Padding(
+                  padding: EdgeInsets.all(16),
+                  child: SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2))));
+        }
+        return _PostTile(post: s.items[i], onTap: () => widget.onTap(s.items[i]));
+      },
     );
+    if (widget.nested) {
+      // Wraps ONLY the grid, so notifications from the outer NestedScrollView /
+      // TabBarView never pass through here (they bubble from ancestors).
+      return NotificationListener<ScrollNotification>(
+        onNotification: (n) {
+          if (n.depth == 0 &&
+              n.metrics.axis == Axis.vertical &&
+              n.metrics.pixels > n.metrics.maxScrollExtent - 600) {
+            widget.onLoadMore();
+          }
+          return false;
+        },
+        child: grid,
+      );
+    }
+    return RefreshIndicator(onRefresh: widget.onRefresh, child: grid);
   }
 }
 
