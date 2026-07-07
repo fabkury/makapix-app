@@ -25,10 +25,12 @@ class ProfileApi {
       });
 
   /// Posts the user reacted to (favourites). Tolerates either a Page or a bare
-  /// `{items:[...]}` response.
-  Future<List<Post>> reactedPosts(String sqid) => client.guard(() async {
-        final resp = await client.dio.get('/user/u/${Uri.encodeComponent(sqid)}/reacted-posts');
-        return Page<Post>.fromJson((resp.data as Map).cast<String, dynamic>(), Post.fromJson).items;
+  /// `{items:[...]}` response; a server that ignores `cursor` simply yields a
+  /// single page (no `next_cursor` → the caller's paging ends).
+  Future<Page<Post>> reactedPosts(String sqid, {String? cursor}) => client.guard(() async {
+        final resp = await client.dio.get('/user/u/${Uri.encodeComponent(sqid)}/reacted-posts',
+            queryParameters: {'cursor': ?cursor});
+        return Page<Post>.fromJson((resp.data as Map).cast<String, dynamic>(), Post.fromJson);
       });
 
   Future<List<PostOwner>> followers(String sqid, {String? cursor}) =>
