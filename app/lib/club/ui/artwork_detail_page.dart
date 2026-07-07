@@ -9,6 +9,7 @@ import '../models/club_error.dart';
 import '../models/post.dart';
 import '../models/report.dart';
 import '../models/server_config.dart';
+import '../state/animation_settings.dart';
 import '../state/api_providers.dart';
 import '../state/auth_controller.dart';
 import '../state/edit_bridge.dart';
@@ -133,6 +134,9 @@ class _ArtworkDetailView extends ConsumerStatefulWidget {
 
 class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
   final _commentsKey = GlobalKey();
+
+  /// Play-despite-animations-off override for THIS artwork, while its page is open.
+  bool _playOverride = false;
 
   void _scrollToComments() {
     final ctx = _commentsKey.currentContext;
@@ -321,19 +325,51 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
 
   // The artwork on a dark stage: ~94% of the width, but never taller than 70% of the screen
   // (tall/portrait pieces letterbox within that cap instead of dominating the page).
-  Widget _stage(BuildContext context, Post post) => Container(
-        color: const Color(0xFF0E1012),
-        alignment: Alignment.center,
-        padding:
-            EdgeInsets.symmetric(horizontal: MediaQuery.of(context).size.width * 0.03, vertical: 12),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.70),
-          child: AspectRatio(
-            aspectRatio: post.height > 0 ? post.width / post.height : 1,
-            child: PixelArtImage(url: post.artUrl),
+  //
+  // When animations are off (the autoplay setting or OS reduce-motion), an animated post
+  // shows its first frame with a small play/stop overlay — playback started here joins the
+  // shared clock, so it is in phase with every other playing tile.
+  Widget _stage(BuildContext context, Post post) {
+    final motionOff = post.isAnimated &&
+        (!ref.watch(animationAutoplayProvider) || MediaQuery.disableAnimationsOf(context));
+    Widget art = PixelArtImage(
+      url: post.artUrl,
+      frameCount: post.frameCount,
+      width: post.width,
+      height: post.height,
+      forcePlay: _playOverride,
+    );
+    if (motionOff) {
+      art = Stack(children: [
+        Positioned.fill(child: art),
+        Positioned(
+          right: 8,
+          bottom: 8,
+          child: DecoratedBox(
+            decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+            child: IconButton(
+              icon: Icon(_playOverride ? Icons.stop : Icons.play_arrow, color: Colors.white),
+              tooltip: _playOverride ? 'Stop animation' : 'Play animation',
+              onPressed: () => setState(() => _playOverride = !_playOverride),
+            ),
           ),
         ),
-      );
+      ]);
+    }
+    return Container(
+      color: const Color(0xFF0E1012),
+      alignment: Alignment.center,
+      padding:
+          EdgeInsets.symmetric(horizontal: MediaQuery.of(context).size.width * 0.03, vertical: 12),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.70),
+        child: AspectRatio(
+          aspectRatio: post.height > 0 ? post.width / post.height : 1,
+          child: art,
+        ),
+      ),
+    );
+  }
 
   Widget _meta(Post post) {
     final parts = <String>[

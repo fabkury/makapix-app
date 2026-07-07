@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../config/monitored_hashtags.dart';
 import '../models/club_error.dart';
+import '../state/animation_settings.dart';
 import '../state/api_providers.dart';
 import '../state/auth_controller.dart';
 import '../state/feed_providers.dart';
@@ -126,6 +127,23 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         ? const SizedBox(
                             height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
                         : const Text('Save changes'),
+                  ),
+                ),
+                const Divider(height: 24),
+                // Playback is the page's first LOCAL setting: device-scoped, persisted via
+                // SharedPreferences, and applied immediately — no Save button (unlike the
+                // server-side monitored-hashtags section above).
+                Text('Playback', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 6),
+                SwitchListTile(
+                  value: ref.watch(animationAutoplayProvider),
+                  onChanged: (v) => ref.read(animationAutoplayProvider.notifier).set(v),
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Play animations'),
+                  subtitle: const Text(
+                    'Animated artworks play in feeds and on artwork pages. When off, they '
+                    'show their first frame (this device only).',
+                    style: TextStyle(color: Colors.white54),
                   ),
                 ),
                 if (moderation != null) ...[
