@@ -1,11 +1,13 @@
 # Feed animation sync — synchronized playback of animated posts
 
-Implemented 2026-07-07. Design brief: `prompt/feed-animation-sync-brief.md` (goals, rationale, the
-Rust-question resolution and its panic-abort gate). Server exchange: `reference/makapix-club/message/0008`
-(as-uploaded `art_url` guarantee + proposed `total_duration_ms` field) — **confirmed with evidence in
-`0009`**, with scope caveats: only the exact `art_url` file is timing-safe; extension-swapped variants and
-the upscaled preview (frame-capped at 256) are re-encodes and must never be synced on. `total_duration_ms`
-accepted in principle, not scheduled — don't build against it until the server's follow-up.
+Implemented 2026-07-07; verified on-device (Android) the same day. Design brief:
+`prompt/feed-animation-sync-brief.md` (goals, rationale, the Rust-question resolution and its panic-abort
+gate). Server exchange: `reference/makapix-club/message/0008..0011` — the as-uploaded `art_url` guarantee
+is **confirmed with evidence** (`0009`; only the exact `art_url` file is timing-safe: extension-swapped
+variants and the upscaled preview, frame-capped at 256, are re-encodes — never sync on them), and
+**`total_duration_ms` is live on dev + prod, backfilled** (`0010`), storing the *played* duration under
+exactly this feature's clamp policy (confirmed identical in `0011`) — available for future series
+verification / pre-decode planning; playback derives the loop client-side and doesn't depend on it.
 
 ## The idea
 
