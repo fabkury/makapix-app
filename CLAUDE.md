@@ -150,10 +150,15 @@ signals (and `pendingClubEditProvider` for edit/remix).
   palette manager, pickers, import/export; holds an `Engine` and renders the RGBA bytes it returns) ·
   `tools.dart` (tool catalogue) · `thumbnail.dart` · `widgets/painters.dart` · `dialogs/` (crop + colour
   picker).
-- **Club social layer:** `app/lib/club/`, modular and **Dart-only** — the Rust engine stays network-free and
-  is never touched by the social code. Structure: `api/` (typed REST per domain) · `auth/` (session, OAuth,
-  PKCE, token store) · `models/` · `state/` (Riverpod providers/controllers) · `publish/` · `edit/` · `ui/`
-  · `config/`.
+- **Club social layer:** `app/lib/club/`, modular and written in Dart. The engine⇄Club rule is a
+  **dependency direction, not a language ban**: the Rust engine never depends on or knows about Club — no
+  networking, no async I/O, no social-domain concepts in Rust — while Club **may consume** engine/codec
+  services through the existing bytes-only FFI seam when there is a concrete reason (today: conformance +
+  export for publish, decode for edit/remix; candidate: animation decode/frame-seek for synced feed
+  playback). Dart fetches, Rust computes. Day-to-day Club work (API, auth, state, UI) stays pure Dart, and
+  Club unit tests must keep running without the engine binary. Structure: `api/` (typed REST per domain) ·
+  `auth/` (session, OAuth, PKCE, token store) · `models/` · `state/` (Riverpod providers/controllers) ·
+  `publish/` · `edit/` · `ui/` · `config/`.
 - **State:** **Riverpod** (`ProviderScope` wraps the app in `main()`). HTTP is **Dio** with a single-flight
   401→refresh→retry interceptor (`api/club_api_client.dart`). `config/club_config.dart` selects the server:
   `dev` → `https://development.makapix.club`, `prod` → `https://makapix.club` — **`prod` is the
