@@ -126,6 +126,14 @@ Rust engine for Club. Conclusions:
   derived-clock architecture is identical either way, so nothing in the Dart-first implementation is wasted.
   This also aligns with SPEC-CLUB §11 ("animated art plays via the engine renderer (or the downloaded
   GIF/WebP)") and the C5 player trajectory.
+- **Hard gate before ever flipping to the Rust path (recorded 2026-07-07):** the workspace ships
+  `panic = "abort"` in release, and neither `catch_unwind` nor isolates contain an abort. Today
+  `crates/codec` only decodes bytes the user deliberately imports (or author-gated edit/remix downloads);
+  routing *feed* art through it means **any user's uploaded file is decoded by every client that scrolls
+  past it** — one malformed file that finds a panic in the decode path becomes a fleet-wide crash-on-scroll.
+  If the `decode_animation` optimization is ever taken up, fuzzing the codec decode path
+  (`cargo-fuzz`/`proptest`, which CLAUDE.md already encourages) stops being nice-to-have and becomes a
+  release gate.
 
 ## Boundary conditions the implementation inherits
 
