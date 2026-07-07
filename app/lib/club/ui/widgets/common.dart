@@ -1,7 +1,11 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../anim/frame_cache.dart';
 import '../../cache/artwork_cache.dart';
+import '../../state/animation_settings.dart';
+import 'synced_pixel_art_image.dart';
 
 /// Compact relative time, e.g. "3h", "2d".
 String timeAgo(DateTime? t) {
@@ -69,34 +73,55 @@ class SignInPrompt extends StatelessWidget {
 }
 
 /// Pixel-art image with nearest-neighbor scaling and graceful loading/error.
-class PixelArtImage extends StatelessWidget {
+///
+/// Static artworks (`frameCount <= 1`, the default) render through today's
+/// CachedNetworkImage path, untouched. Call sites that pass a `Post`'s
+/// `frameCount`/`width`/`height` opt animated artworks into clock-synchronized playback
+/// (`SyncedPixelArtImage`) — unless the post's estimated decoded size is over the
+/// per-post cap (or dimensions are unknown), in which case it takes the unsynced
+/// fallback seam. The server's frame_count/width/height are routing hints only; the
+/// decoder re-verifies against the actual file.
+class PixelArtImage extends ConsumerWidget {
   final String url;
   final BoxFit fit;
-  const PixelArtImage({super.key, required this.url, this.fit = BoxFit.contain});
+
+  /// Server-reported frame count (`Post.frameCount`); 1 = static.
+  final int frameCount;
+
+  /// Artwork pixel dimensions, for the pre-decode size check. 0 = unknown.
+  final int width;
+  final int height;
+
+  /// Detail-page override: play even when autoplay/reduce-motion says frozen.
+  final bool forcePlay;
+
+  const PixelArtImage({
+    super.key,
+    required this.url,
+    this.fit = BoxFit.contain,
+    this.frameCount = 1,
+    this.width = 0,
+    this.height = 0,
+    this.forcePlay = false,
+  });
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     if (url.isEmpty) {
       return const ColoredBox(
         color: Color(0xFF15171A),
         child: Center(child: Icon(Icons.image_not_supported, color: Colors.white24)),
       );
     }
-    return CachedNetworkImage(
-      imageUrl: url,
-      cacheManager: artImageCache,
-      fit: fit,
-      filterQuality: FilterQuality.none,
-      // No fades: cached pixel art should pop in crisp, like the old gapless Image.network did.
-      fadeInDuration: Duration.zero,
-      fadeOutDuration: Duration.zero,
-      useOldImageOnUrlChange: true,
-      errorWidget: (_, _, _) => const ColoredBox(
-        color: Color(0xFF15171A),
-        child: Center(child: Icon(Icons.broken_image, color: Colors.white24)),
-      ),
-      placeholder: (_, _) => const Center(
-          child: SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))),
-    );
+    if (frameCount <= 1) return cachedNetworkArtImage(url, fit);
+    if (width <= 0 ||
+        height <= 0 ||
+        !AnimationFrameCache.underPerPostCap(width: width, height: height, frameCount: frameCount)) {
+      return buildUnsyncedAnimatedFallback(url, fit);
+    }
+    final autoplay = ref.watch(animationAutoplayProvider);
+    final playing = forcePlay || (autoplay && !MediaQuery.disableAnimationsOf(context));
+    return SyncedPixelArtImage(url: url, fit: fit, playing: playing);
   }
 }
 

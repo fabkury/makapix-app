@@ -128,7 +128,13 @@ class _PostManagementPageState extends ConsumerState<PostManagementPage> {
           SizedBox(
             width: 44,
             height: 44,
-            child: Opacity(opacity: p.hiddenByUser ? 0.45 : 1, child: PixelArtImage(url: p.artUrl)),
+            child: Opacity(
+                opacity: p.hiddenByUser ? 0.45 : 1,
+                child: PixelArtImage(
+                    url: p.artUrl,
+                    frameCount: p.frameCount,
+                    width: p.width,
+                    height: p.height)),
           ),
           const SizedBox(width: 10),
           Expanded(

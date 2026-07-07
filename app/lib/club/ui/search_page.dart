@@ -94,7 +94,11 @@ class _ArtworksTab extends ConsumerWidget {
                                 ))),
                     child: ClipRRect(
                         borderRadius: BorderRadius.circular(4),
-                        child: PixelArtImage(url: posts[i].artUrl)),
+                        child: PixelArtImage(
+                            url: posts[i].artUrl,
+                            frameCount: posts[i].frameCount,
+                            width: posts[i].width,
+                            height: posts[i].height)),
                   ),
                 ),
         );

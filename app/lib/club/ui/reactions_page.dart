@@ -149,7 +149,11 @@ class _ArtworkHeader extends StatelessWidget {
             width: 76,
             height: 76,
             color: const Color(0xFF15171A),
-            child: PixelArtImage(url: post.artUrl),
+            child: PixelArtImage(
+                url: post.artUrl,
+                frameCount: post.frameCount,
+                width: post.width,
+                height: post.height),
           ),
         ),
       ),

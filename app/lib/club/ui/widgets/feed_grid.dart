@@ -103,7 +103,11 @@ class _PostTile extends ConsumerWidget {
           children: [
             Expanded(
               child: Stack(fit: StackFit.expand, children: [
-                PixelArtImage(url: post.artUrl),
+                PixelArtImage(
+                    url: post.artUrl,
+                    frameCount: post.frameCount,
+                    width: post.width,
+                    height: post.height),
                 if (post.isPlaylist)
                   const Positioned(
                     top: 3,
