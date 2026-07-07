@@ -4,9 +4,12 @@ Honest coverage of **both** of the app's co-equal pillars. The **Makapix Editor*
 shell) is built and runnable on this workstation. The **Makapix Club** social layer (see
 [`SPEC-CLUB.md`](SPEC-CLUB.md)) is **code-complete through phases C0–C3** (auth · read & discover · create &
 publish · edit & remix) against the live server contract; **C4** (curate/manage) is **in progress** — the
-artist dashboard, settings (monitored hashtags), and post management + ZIP data export are done; playlists,
-highlights, categories and reporting remain. **C5–C6** (real-time & players · moderation & extras) are **not
-yet** started. The two pillars sit under a neutral app shell
+artist dashboard, settings (monitored hashtags), and post management + ZIP data export are done; highlights,
+categories and the reacted/favourites tab remain, reporting (ugc-safety) is code-complete awaiting dev
+verification, and **playlists are fully deferred** (2026-07-07: don't develop until further notice — the
+server feature itself is mostly planned-but-deferred). Of **C5**, **player control + send-to-player shipped
+2026-06-29** (the Player Bar); live MQTT notifications and the soft-player kiosk are **not yet** started.
+**C6** (moderation & extras) is **not yet** started. The two pillars sit under a neutral app shell
 (`lib/shell/app_shell.dart`): the app **opens on the Club pillar** (signed-out users get Club's welcome/sign-in
 funnel) and the editor is a co-equal feature reachable **without login** via the centre ⊕ Create button.
 Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending) · **○ stubbed / not yet**.
@@ -84,7 +87,10 @@ Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending)
 | **mod-hashtags** Moderator hashtags | ✅ | moderator-owned tags on posts: shield-marked display + "Tagged by a moderator" legend for artist/mods, "Edit mod hashtags" in the detail-page overflow menu (monitored quick-picks, optional audit note — `api/moderation_api.dart`), `mod_hashtags_updated` notification. Editor UI gated on `GET /config` → `max_mod_hashtags_per_post`; **live on prod 2026-07-05** (contract: `reference/makapix-club/docs/mod-hashtags/API-CONTRACT.md`; plan: `docs/mod-hashtags/`) |
 | **C4** Edit own profile | ✅ | `ui/edit_profile_page.dart`; avatar upload/remove (immediate, `POST`/`DELETE /user/{key}/avatar`) + tagline/bio via one `PATCH /user/{key}` of only the changed fields; reached from the own-profile header and the account page. **Not** included: website field, handle-in-page (handle change stays in Settings → Account), Markdown bio preview (plan: `docs/profile-editing/`) |
 | **ugc-safety** Report · block · rules gate | ◑ | Store-compliance safety (contract v1): full-screen **report** flow (posts/comments/users, works signed-out) from post/comment/profile entries; **block/unblock** + blocked-user profile state + Settings → Blocked users; `403 blocked` handled at all five interaction sites; published moderation contact (Settings/report footer/gate); first-run **community-rules gate** (versioned, reactive, covers Club pillar + Post-to-Club); `new_report`/`report_resolved` notifications. Gated on `GET /config` → `moderation`. **Code-complete + unit-tested (27 tests); manual dev verification pending the server's dev flip.** Plan: `docs/ugc-safety/` |
-| **C4 (rest)** playlists · highlights · categories · **C5–C6** | ○ | not yet started |
+| **C5** Player Bar — player control + send-to-player | ✅ | list/control the user's online player devices (swap next/back, show artwork, play channel, pause, brightness, rotation, mirror — `api/player_api.dart`, `state/player_providers.dart`, `ui/widgets/player_bar.dart`); `SendTargetBinder` on home feeds / profile / hashtag feed / detail keeps "send to player" following what's on screen. Shipped 2026-06-29 (`9e14b69`) |
+| **Playlists** | — | **fully deferred (2026-07-07): don't develop until further notice** — server-side, playlists are mostly a planned-but-deferred feature. The app only *recognizes* playlist posts (badge on feed tiles; excluded from mkpx/mod/report menus) |
+| **C4 (rest)** highlights · categories · reacted/favourites tab | ○ | not yet started (reacted tab is next up) |
+| **C5 (rest)** MQTT live notifications · soft-player kiosk · **C6** | ○ | not yet started (notifications poll; MQTT auth is open question SPEC-CLUB §31.1) |
 
 ## App shell
 | Feature | Status | Notes |
@@ -125,8 +131,11 @@ through C3 plus most of C4. Verified against the code 2026-07-05:
 10. **Gradient per-stop position UI** — engine supports stop positions; the UI doesn't expose them.
 
 **Club:**
-11. **C4 remainder** — playlists, highlights, categories, reporting; **C5** real-time & players; **C6**
-    moderation & extras (mod-hashtags already shipped; see `SPEC-CLUB.md` §28).
+11. **C4 remainder** — highlights management, categories, the reacted/favourites profile tab; ugc-safety
+    reporting is code-complete awaiting the server's dev flip. **Playlists are fully deferred** (2026-07-07;
+    don't develop until further notice). **C5** — player control + send-to-player shipped 2026-06-29 (Player
+    Bar); MQTT live notifications and the soft-player kiosk remain. **C6** moderation & extras
+    (mod-hashtags already shipped; see `SPEC-CLUB.md` §28).
 
 **Deferred by decision, not omission:**
 - **iOS build** — cannot be built on this Windows workstation; deferred to a cloud macOS CI runner
