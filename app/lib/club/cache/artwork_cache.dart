@@ -25,6 +25,11 @@ final CacheManager avatarImageCache = CacheManager(
 /// Fire-and-forget prefetch of a feed page's artwork into the disk cache, so tiles render without
 /// a spinner when scrolled into view. Already-cached URLs are a no-op; errors are swallowed — the
 /// tile's own load will surface them.
+///
+/// Deliberately bytes-only: `getSingleFile` downloads to disk without decoding into Flutter's
+/// ImageCache. The synced-animation frame cache (`club/anim/`) is the sole decoder for animated
+/// posts and depends on this staying true — don't "upgrade" this to `precacheImage` or a
+/// provider-based prefetch, or animated artworks get decoded twice.
 void precacheArtworks(List<Post> posts) {
   for (final p in posts) {
     if (p.artUrl.isEmpty) continue;
