@@ -49,6 +49,19 @@ app/android/play-service-account.json
 # SERVER (via its vault) to send FCM pushes; must never enter this repo.
 *firebase-adminsdk*.json
 
+# ---- Google Services config (Firebase) — carries the project's Android API key ----
+# Kept out of the public repo. Copy google-services.json.example -> google-services.json
+# and fill in real values locally. Dormant today (no google-services Gradle plugin applied
+# and no Firebase packages), so a fresh checkout still builds without it.
+app/android/app/google-services.json
+
+# ---- Private design specs — kept local, NOT published ----
+# The editor-engine spec (SPEC.md) and the Club/server-contract spec (SPEC-CLUB.md) are
+# intentionally not part of the public repo. They stay on disk for local development;
+# do not re-add them to git.
+/SPEC.md
+/SPEC-CLUB.md
+
 # ---- Local working area (drafts + machine-local secrets; never committed) ----
 # Scratch dir for in-progress notes and downloaded secrets (firebase/, keystore/).
 inbox/
