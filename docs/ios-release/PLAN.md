@@ -25,11 +25,11 @@ Collected from the user before writing this plan:
 
 ### Open decisions to resolve before Phase 1 execution
 
-- **OD1 — Sign in with Apple (App Store review risk, see §6-R1).** Apple guideline **4.8** requires apps
-  that offer a third-party/social login (our **GitHub OAuth**) to **also** offer *Sign in with Apple*.
-  We must choose: **(a)** add Sign in with Apple, **(b)** ship the in-app email+password account system
-  (the pending server "A2 register" flow) and drop GitHub-login on iOS, or **(c)** attempt an exemption
-  argument. **This should be decided before we build**, because it can change the auth UI and entitlements.
+- **OD1 — Sign in with Apple — RESOLVED 2026-07-06: add Sign in with Apple.** Apple guideline **4.8**
+  requires apps offering a third-party/social login (our **GitHub OAuth**) to **also** offer *Sign in with
+  Apple*. **Decision: implement Sign in with Apple alongside GitHub** (keep GitHub). Enable the *Sign in
+  with Apple* capability on the App ID; add the `sign_in_with_apple` plugin + the `Runner.entitlements`
+  capability; build the small server leg. See §6-R1.
 - **OD2 — Universal Links vs custom scheme for the OAuth return on iOS** (see §5). MVP = **custom scheme
   only** (already server-allowlisted, zero server work). Universal Links (Associated Domains + a hosted
   `apple-app-site-association` file) is an optional polish that needs the *server* repo to host the AASA
@@ -254,13 +254,10 @@ Track this as **OD2**; default to custom-scheme-only for the first submission.
 
 ## 6. Risks & mitigations
 
-- **R1 — Apple 4.8 "Sign in with Apple" (HIGH, decide early / OD1).** GitHub OAuth is a third-party social
-  login; Apple typically requires *Sign in with Apple* as an equivalent option when any such login is
-  offered. **Mitigation / recommendation:** implement **Sign in with Apple** (cleanest path to approval,
-  ~1–2 days incl. the server leg), *or* ship the pending **email+password ("A2 register")** account system
-  and **hide the GitHub button on iOS** so no third-party social login is present (leans on server work
-  already accepted — see the `club-a2-register-pending` memory). Attempting an exemption argument is the
-  riskiest. **Resolve before Phase 1.**
+- **R1 — Apple 4.8 "Sign in with Apple" (RESOLVED / OD1).** Decision (2026-07-06): **implement Sign in
+  with Apple** alongside GitHub. Work: enable the capability on the App ID; add `sign_in_with_apple`
+  plugin + `Runner.entitlements`; add the server verification leg (Apple identity-token → session).
+  Residual risk is only execution, not approval-blocking ambiguity.
 - **R2 — Static-FFI linking on iOS (MEDIUM).** `DynamicLibrary.process()` needs the Rust symbols statically
   linked and *not* dead-stripped. Mitigation: xcframework + explicit link flags / a keep-symbols shim;
   this is exactly what the Phase 2 cloud-Mac session de-risks interactively.
@@ -292,3 +289,7 @@ Track this as **OD2**; default to custom-scheme-only for the first submission.
 _(Append dated entries as phases execute.)_
 
 - 2026-07-06 — Plan written & committed. Implementation on hold per D6 (awaiting Apple enrollment + iPhone).
+- 2026-07-06 — Apple Developer Program **paid** ($99); user signed in at developer.apple.com. Enrollment
+  in progress. Portal setup steps started (register App ID `club.makapix.app` **with Sign in with Apple
+  capability**, create App Store Connect API key, reserve app name / create app record).
+- 2026-07-06 — **OD1 resolved: add Sign in with Apple** (keep GitHub). Updated §0, §6-R1, P1.8.
