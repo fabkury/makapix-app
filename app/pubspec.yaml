@@ -52,6 +52,8 @@ dependencies:
   cached_network_image: ^3.4.1    # persistent artwork/avatar image cache (vault URLs are immutable)
   flutter_cache_manager: ^3.4.1   # cache configs + feed-page prefetch (backs cached_network_image)
   url_launcher: ^6.3.0            # community-rules / moderation-policy links + mailto contact (UGC safety)
+  sign_in_with_apple: ^6.1.0      # iOS "Sign in with Apple" (Apple guideline 4.8). Gated off until the
+                                  # server /auth/token apple grant ships — see kAppleSignInEnabled.
 
 dev_dependencies:
   flutter_test:
@@ -70,13 +72,18 @@ dev_dependencies:
   flutter_launcher_icons: ^0.14.4
 
 # Launcher-icon generation config (consumed by the flutter_launcher_icons tool).
-# Masters live in assets/icons/; iOS is intentionally omitted (deferred — no ios/ project).
+# Masters live in assets/icons/. Regenerate after changing them: `dart run flutter_launcher_icons`.
 flutter_launcher_icons:
   image_path: "assets/icons/icon.png"            # full-bleed master: legacy Android + Windows
   android: true                                  # regenerates mipmap-*/ic_launcher.png
   min_sdk_android: 21
   adaptive_icon_background: "assets/icons/icon_background.png"
   adaptive_icon_foreground: "assets/icons/icon_foreground.png"
+  # iOS icons must be OPAQUE (Apple rejects an alpha channel). The full-bleed master is already
+  # on solid black, but remove_alpha_ios flattens onto the brand background as a guarantee.
+  ios: true
+  remove_alpha_ios: true
+  background_color_ios: "#000000"
   windows:
     generate: true
     image_path: "assets/icons/icon.png"

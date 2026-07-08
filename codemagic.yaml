@@ -1,0 +1,88 @@
+# codemagic.yaml — iOS CI for Makapix Club (Phase 3 of docs/ios-release/PLAN.md).
+#
+# SKELETON: the shape is complete and runnable, but a few values are wired to Codemagic-side
+# secrets that must exist before the first green build (see the CHECKLIST at the bottom). It builds
+# the Rust engine into a static xcframework, compiles the Flutter iOS app, signs it with the App
+# Store Connect API key (fully headless — no interactive Apple ID), and publishes to TestFlight.
+#
+# PUBLIC-REPO HYGIENE: no Team ID / Key ID / Issuer ID / App Store app id / .p8 appears here. The
+# App Store Connect API key is added once in the Codemagic UI as an integration named `makapix_ci`;
+# the numeric App Store app id is provided at build time via the $APP_STORE_APP_ID env var (defined
+# in a Codemagic secret group), never committed.
+
+workflows:
+  ios-testflight:
+    name: iOS · TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 90
+    integrations:
+      # App Store Connect API key (.p8 + Key ID + Issuer ID) added in the Codemagic UI under
+      # Teams → Integrations → App Store Connect, referenced here by its integration name.
+      app_store_connect: makapix_ci
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: club.makapix.app
+      vars:
+        # Non-secret build coordinates.
+        XCODE_WORKSPACE: "Runner.xcworkspace"
+        XCODE_SCHEME: "Runner"
+        # $APP_STORE_APP_ID (the numeric Apple app id) comes from a Codemagic secret group — NOT
+        # hardcoded here because this repo is public. Add it in the UI (see CHECKLIST).
+      groups:
+        - makapix_ios          # secret group holding APP_STORE_APP_ID
+      flutter: 3.44.1          # match the pinned SDK (pubspec: sdk ^3.12.1)
+      xcode: latest            # TODO(P3.2): pin to a specific Xcode once the first build is green
+      cocoapods: default
+    cache:
+      cache_paths:
+        - $HOME/.pub-cache
+        - $HOME/.cargo
+        - $CM_BUILD_DIR/app/ios/Pods
+        - $CM_BUILD_DIR/target
+    scripts:
+      - name: Install Rust + iOS targets
+        script: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          source "$HOME/.cargo/env"
+          rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
+      - name: Build Rust static xcframework (build_ios.sh)
+        script: |
+          source "$HOME/.cargo/env"
+          ./build_ios.sh
+      - name: Flutter pub get
+        working_directory: app
+        script: flutter pub get
+      - name: Set up code signing (fetch/apply provisioning profiles via the API key)
+        working_directory: app
+        script: xcode-project use-profiles
+      - name: Compute next TestFlight build number (avoids CFBundleVersion collisions — R4)
+        working_directory: app
+        script: |
+          BUILD_NUMBER=$(($(app-store-connect get-latest-testflight-build-number "$APP_STORE_APP_ID") + 1))
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$CM_ENV"
+      - name: Flutter build ipa
+        working_directory: app
+        script: |
+          flutter build ipa --release \
+            --build-number="$BUILD_NUMBER" \
+            --export-options-plist=/Users/builder/export_options.plist
+    artifacts:
+      - app/build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - app/build/ios/ipa/*.app.dSYM.zip
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        # First run: internal testers only. Widen to an external group at Phase 4.
+
+# ── CHECKLIST before the first green build (Phase 3, docs/ios-release/PLAN.md §Phase 3) ──
+# 1. Codemagic → Teams → Integrations → App Store Connect: add the API key (.p8 + Key ID +
+#    Issuer ID) and name the integration exactly `makapix_ci`.
+# 2. Codemagic → the app → Environment variables: create a `makapix_ios` group with
+#    APP_STORE_APP_ID = <the numeric Apple app id> (marked secret).
+# 3. Connect this GitHub repo; set the trigger (tag/manual) — left manual until CI is proven.
+# 4. Confirm `xcode-project use-profiles` + `export_options.plist` path on the Codemagic image
+#    (Codemagic generates the export options during `use-profiles`; adjust the path if needed).
+# 5. Verify the Podfile -force_load path resolves the static lib (R2) — first build may need a tweak.

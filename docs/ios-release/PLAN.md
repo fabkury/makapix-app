@@ -34,8 +34,10 @@ Collected from the user before writing this plan:
   only** (already server-allowlisted, zero server work). Universal Links (Associated Domains + a hosted
   `apple-app-site-association` file) is an optional polish that needs the *server* repo to host the AASA
   file — defer unless the custom-scheme UX is unacceptable.
-- **OD3 — Minimum iOS deployment target.** Recommend **iOS 13.0** (Flutter's comfortable floor; covers
-  ~99% of active devices; fine for a used iPhone). Confirm the second-hand iPhone's iOS version once bought.
+- **OD3 — Minimum iOS deployment target — RESOLVED 2026-07-08: iOS 12.0** (user's choice for wider device
+  reach). Compatible: `sign_in_with_apple` 6.1.4's pod floor is iOS 9, so no CocoaPods conflict; the Apple
+  button self-hides below iOS 13 via `AppleOAuth.isAvailable()`. Confirm the second-hand iPhone's iOS
+  version once bought (it can only raise the effective floor, never lower it).
 
 ---
 
@@ -95,13 +97,13 @@ Per §0-D6 we execute nothing past this document until the user green-lights (en
 
 All of this is editable on Windows. It is **on hold** per D6 but fully specified here.
 
-- [ ] **P1.1 — Generate the iOS project:** `cd app && flutter create --platforms=ios .`
+- [x] **P1.1 — Generate the iOS project:** `cd app && flutter create --platforms=ios .`
       Produces `app/ios/` (`Runner.xcodeproj`, `Runner/Info.plist`, `Podfile`, etc.). Review the diff
       carefully; commit as a discrete `feat(ios/scaffold)` commit.
-- [ ] **P1.2 — Set bundle id & signing style:** `PRODUCT_BUNDLE_IDENTIFIER = club.makapix.app` across all
+- [x] **P1.2 — Set bundle id & signing style:** `PRODUCT_BUNDLE_IDENTIFIER = club.makapix.app` across all
       build configs in `ios/Runner.xcodeproj/project.pbxproj`; set the deployment target (OD3, iOS 13.0);
       configure for **automatic signing with the App Store Connect API key** (no manual profiles checked in).
-- [ ] **P1.3 — Rust static lib for iOS.** Add `"staticlib"` to `crates/ffi/Cargo.toml` `crate-type`
+- [x] **P1.3 — Rust static lib for iOS.** Add `"staticlib"` to `crates/ffi/Cargo.toml` `crate-type`
       (keep `cdylib`/`lib` for the other platforms). Author `build_ios.sh` (macOS-only) that:
       1. `rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios`
       2. builds `libmakapix_ffi.a` for device + simulator arches (release),
@@ -110,7 +112,7 @@ All of this is editable on Windows. It is **on hold** per D6 but fully specified
       Link the xcframework into the Runner target and ensure the C symbols (`mkpx_run`, `mkpx_display`, …)
       resolve via `DynamicLibrary.process()`. Add a bridging/`-ObjC`/force-load flag if the linker
       dead-strips the static symbols.
-- [ ] **P1.4 — `Info.plist`:**
+- [x] **P1.4 — `Info.plist`:**
       - Register the OAuth custom scheme under `CFBundleURLTypes` → `CFBundleURLSchemes = ["club.makapix.app"]`.
       - `CFBundleDisplayName = Makapix` (confirm exact store name).
       - Add usage strings only for what we actually touch: **`NSPhotoLibraryAddUsageString`** (if we let
@@ -118,17 +120,17 @@ All of this is editable on Windows. It is **on hold** per D6 but fully specified
         set minimal — Apple review rejects unused permission strings.
       - `ITSAppUsesNonExemptEncryption = false` (we use only standard HTTPS) to skip export-compliance
         prompts each upload.
-- [ ] **P1.5 — iOS launcher icons (opaque).** Add an `assets/icons/icon_ios.png` opaque master (flatten
+- [x] **P1.5 — iOS launcher icons (opaque).** Add an `assets/icons/icon_ios.png` opaque master (flatten
       the brand icon onto the brand background — no alpha), enable `ios: true` in the
       `flutter_launcher_icons` config pointing at it, and regenerate. Verify no transparency (Apple
       rejects icons with an alpha channel / rounded-corner baked in).
-- [ ] **P1.6 — Plugin/iOS smoke items:** confirm `share_plus` iPad popover source rect is handled;
+- [x] **P1.6 — Plugin/iOS smoke items:** confirm `share_plus` iPad popover source rect is handled;
       confirm `flutter_secure_storage` Keychain accessibility option is acceptable (default
       `first_unlock`); confirm `flutter_web_auth_2` uses `ASWebAuthenticationSession` (default on iOS).
-- [ ] **P1.7 — `codemagic.yaml` skeleton** at repo root (full version filled in Phase 3): a macOS-instance
+- [x] **P1.7 — `codemagic.yaml` skeleton** at repo root (full version filled in Phase 3): a macOS-instance
       workflow that installs Rust + iOS targets, runs `build_ios.sh`, `flutter build ipa`, signs via the
       App Store Connect API key, and publishes to TestFlight.
-- [ ] **P1.8 — Auth decision wiring (depends on OD1).** If Sign in with Apple is required, add
+- [x] **P1.8 — Auth decision wiring (depends on OD1).** If Sign in with Apple is required, add
       `sign_in_with_apple` plugin + the **Sign In with Apple** capability/entitlement and the server leg;
       if we instead ship email+password and drop GitHub-on-iOS, gate the GitHub button off on iOS.
 
@@ -293,3 +295,42 @@ _(Append dated entries as phases execute.)_
   in progress. Portal setup steps started (register App ID `club.makapix.app` **with Sign in with Apple
   capability**, create App Store Connect API key, reserve app name / create app record).
 - 2026-07-06 — **OD1 resolved: add Sign in with Apple** (keep GitHub). Updated §0, §6-R1, P1.8.
+- 2026-07-08 — **Phase 1 repo scaffolding executed** (Flutter 3.44.1, on Windows; compiles only on the Mac).
+  Decisions taken this session: Apple sign-in wired **app-side but gated off**; **iOS 12.0** min target;
+  home-screen name **"Makapix"**. Commit-ready. Done:
+  - **P1.1** `flutter create --platforms=ios .` → `app/ios/` (only `app/.metadata` + `app/pubspec.lock`
+    otherwise touched; no Dart/Android source changed).
+  - **P1.2** bundle id `club.makapix.app` (+ `.RunnerTests`) across all configs; `IPHONEOS_DEPLOYMENT_TARGET
+    = 12.0`; hand-authored `app/ios/Podfile` pinned to `platform :ios, '12.0'`. Signing left **automatic
+    with no `DEVELOPMENT_TEAM` hardcoded** (public repo — Codemagic injects the team via the API key).
+  - **P1.3** `crates/ffi/Cargo.toml` crate-type now `["cdylib", "staticlib", "lib"]` (verified builds on
+    Windows). New root **`build_ios.sh`** (macOS) → `MakapixFFI.xcframework` (device + fat simulator).
+    Vendored via new `app/ios/makapix_ffi.podspec` + a `pod 'makapix_ffi', :path => '.'` line; Podfile
+    `post_install` adds a `-force_load` so `DynamicLibrary.process()` finds the un-referenced Rust symbols
+    (exact path is the R2 item to confirm on the first Mac build). Xcframework is git-ignored.
+  - **P1.4** `Info.plist`: `CFBundleURLTypes` scheme `club.makapix.app` (prod GitHub OAuth return leg —
+    works with zero server work); `CFBundleDisplayName = Makapix`; `NSPhotoLibraryUsageDescription` (the
+    `file_picker` image picker); `ITSAppUsesNonExemptEncryption = false`.
+  - **P1.5** `flutter_launcher_icons` iOS enabled with `remove_alpha_ios` + `background_color_ios #000000`;
+    regenerated 21 icons; verified the 1024² marketing icon is RGB/opaque (Apple-compliant).
+  - **P1.6** reviewed: Podfile platform set; `flutter_secure_storage` → Keychain (default OK);
+    `flutter_web_auth_2` → `ASWebAuthenticationSession` (default). **Caveat noted:** `share_plus` needs a
+    `sharePositionOrigin` on **iPad** or the share sheet throws; the test device is an iPhone and the share
+    API is context-free, so deferred (add before any iPad claim).
+  - **P1.7** root **`codemagic.yaml`** skeleton: mac instance → install Rust+iOS targets → `build_ios.sh` →
+    `flutter build ipa` (auto-increment `CFBundleVersion` from TestFlight; R4) → API-key signing →
+    TestFlight. No secret IDs committed (ASC key = Codemagic integration `makapix_ci`; Apple app id via a
+    Codemagic secret var). Has an inline pre-first-build CHECKLIST.
+  - **P1.8** Sign in with Apple, **gated off** (`ClubConfig.kAppleSignInEnabled = false`): `sign_in_with_apple`
+    ^6.1.0 (resolved 6.1.4) dep; `app/lib/club/auth/apple_oauth.dart` (native flow + SHA-256 nonce);
+    `ClubSession.loginApple(...)` (plugin-free `apple_identity_token` grant); `AuthController.loginApple()` +
+    `appleOAuthProvider`; Apple's official `SignInWithAppleButton` in `club_account_page.dart` (renders only
+    when the flag is on **and** `AppleOAuth.isAvailable()`); `app/ios/Runner/Runner.entitlements`
+    (`com.apple.developer.applesignin`) wired into all 3 Runner configs. Server contract fully specified in
+    `docs/ios-release/apple-signin-server.md`. **Flip `kAppleSignInEnabled` once the server grant ships.**
+  - **Validation:** `flutter analyze` clean; **236 Dart tests green**; `cargo build -p makapix-ffi` OK.
+    iOS **compilation** is unvalidated by design (needs the Mac — Phase 2).
+  - **iOS OAuth note (→ OD2):** the **prod** GitHub return works as-is on iOS via the custom scheme. The
+    **dev** env (`app-dev.makapix.club` HTTPS App Link) would need Associated Domains + AASA on iOS; left
+    for later since store builds are prod. Shared `ClubConfig` deliberately untouched (avoids Android/test
+    regressions).

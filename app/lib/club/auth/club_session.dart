@@ -64,6 +64,28 @@ class ClubSession {
   Future<AuthTokens> exchangeAuthCode(String code, String codeVerifier) =>
       _grant({'grant_type': 'authorization_code', 'code': code, 'code_verifier': codeVerifier});
 
+  /// Sign in with Apple grant. Primitives only (no plugin types here — keeps this file
+  /// pure token logic). The server verifies [identityToken] against Apple's keys and
+  /// checks `sha256(rawNonce)` against the token's `nonce` claim. Name/email arrive only
+  /// on the first sign-in for an Apple ID. See docs/ios-release/apple-signin-server.md.
+  Future<AuthTokens> loginApple({
+    required String identityToken,
+    required String rawNonce,
+    String? authorizationCode,
+    String? givenName,
+    String? familyName,
+    String? email,
+  }) =>
+      _grant({
+        'grant_type': 'apple_identity_token',
+        'identity_token': identityToken,
+        'nonce': rawNonce,
+        'authorization_code': ?authorizationCode,
+        'given_name': ?givenName,
+        'family_name': ?familyName,
+        'email': ?email,
+      });
+
   /// Single-flight refresh. Returns false (and clears tokens) on failure so the
   /// caller can route to signed-out.
   Future<bool> refresh() {

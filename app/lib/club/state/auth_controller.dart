@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/club_api_client.dart';
+import '../auth/apple_oauth.dart';
 import '../auth/club_session.dart';
 import '../auth/github_oauth.dart';
 import '../config/club_config.dart';
@@ -20,11 +21,14 @@ final clubApiClientProvider =
 final githubOAuthProvider =
     Provider<GithubOAuth>((ref) => GithubOAuth(ref.watch(clubConfigProvider)));
 
+final appleOAuthProvider = Provider<AppleOAuth>((_) => const AppleOAuth());
+
 final authControllerProvider = StateNotifierProvider<AuthController, AuthState>((ref) {
   return AuthController(
     session: ref.watch(clubSessionProvider),
     api: ref.watch(clubApiClientProvider),
     oauth: ref.watch(githubOAuthProvider),
+    apple: ref.watch(appleOAuthProvider),
   )..init();
 });
 
@@ -75,9 +79,14 @@ class AuthController extends StateNotifier<AuthState> {
   final ClubSession session;
   final ClubApiClient api;
   final GithubOAuth oauth;
+  final AppleOAuth apple;
 
-  AuthController({required this.session, required this.api, required this.oauth})
-      : super(const AuthState.loading()) {
+  AuthController({
+    required this.session,
+    required this.api,
+    required this.oauth,
+    this.apple = const AppleOAuth(),
+  }) : super(const AuthState.loading()) {
     // A background refresh failure clears tokens but can't drive our state directly; listen for it
     // so we leave the signed-in UI instead of becoming a zombie session with no token. [audit F-4b]
     session.onSessionInvalidated = _onSessionInvalidated;
@@ -156,6 +165,34 @@ class AuthController extends StateNotifier<AuthState> {
       await _loadMe();
     } on ClubError catch (e) {
       state = AuthState.failure(e.message);
+    } catch (_) {
+      state = const AuthState.failure('Unexpected error. Please try again.');
+    }
+  }
+
+  /// Sign in with Apple (iOS 13+). Gated behind [ClubConfig.kAppleSignInEnabled] +
+  /// [AppleOAuth.isAvailable]; the UI only shows the button when both hold. Mirrors
+  /// [loginGithub]: grab the Apple credential, exchange it for Makapix tokens, load /me.
+  Future<void> loginApple() async {
+    state = const AuthState.signingIn();
+    try {
+      final r = await apple.authorize();
+      await session.loginApple(
+        identityToken: r.identityToken,
+        rawNonce: r.rawNonce,
+        authorizationCode: r.authorizationCode,
+        givenName: r.givenName,
+        familyName: r.familyName,
+        email: r.email,
+      );
+      await _loadMe();
+    } on ClubError catch (e) {
+      // A user-cancelled sheet returns to the form quietly rather than as an error.
+      if (e.code == 'apple_cancelled') {
+        state = const AuthState.signedOut();
+      } else {
+        state = AuthState.failure(e.message, code: e.code);
+      }
     } catch (_) {
       state = const AuthState.failure('Unexpected error. Please try again.');
     }

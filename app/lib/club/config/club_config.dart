@@ -55,6 +55,13 @@ class ClubConfig {
   // App Links would need the app-link host to be cross-host from the callback host — a server
   // topology change; the custom scheme is the pragmatic, app-only fix.)
 
+  /// Sign in with Apple (iOS, Apple guideline 4.8). **OFF** until the server
+  /// `/auth/token` `apple_identity_token` grant is live
+  /// (docs/ios-release/apple-signin-server.md). Flip to `true` once the server leg
+  /// ships; the button additionally self-hides where the native flow is unavailable
+  /// (non-iOS, or iOS < 13) via `AppleOAuth.isAvailable()`.
+  static const bool kAppleSignInEnabled = false;
+
   /// Custom scheme the app registers (Android manifest); matches applicationId.
   static const String oauthScheme = 'club.makapix.app';
 

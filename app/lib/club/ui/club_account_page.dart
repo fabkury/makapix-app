@@ -1,8 +1,10 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 import '../cache/artwork_cache.dart';
+import '../config/club_config.dart';
 import '../models/club_error.dart';
 import '../models/club_user.dart';
 import '../state/api_providers.dart';
@@ -164,6 +166,12 @@ class _SignInFormState extends ConsumerState<_SignInForm> {
                 icon: const Icon(Icons.code),
                 label: const Text('Continue with GitHub'),
               ),
+              // Sign in with Apple (iOS, guideline 4.8). Renders only when the feature
+              // flag is on AND the native flow is available (iOS 13+); a no-op otherwise.
+              if (ClubConfig.kAppleSignInEnabled) ...[
+                const SizedBox(height: 8),
+                _AppleSignInButton(busy: busy),
+              ],
               const SizedBox(height: 8),
               TextButton(
                 onPressed: busy
@@ -189,6 +197,30 @@ class _SignInFormState extends ConsumerState<_SignInForm> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Apple's official Sign in with Apple button, shown only where the native flow is
+/// available (iOS 13+). Reached solely through the `kAppleSignInEnabled` gate, so on
+/// non-Apple platforms and iOS < 13 it collapses to nothing.
+class _AppleSignInButton extends ConsumerWidget {
+  final bool busy;
+  const _AppleSignInButton({required this.busy});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return FutureBuilder<bool>(
+      future: ref.read(appleOAuthProvider).isAvailable(),
+      builder: (context, snap) {
+        if (snap.data != true) return const SizedBox.shrink();
+        final ctrl = ref.read(authControllerProvider.notifier);
+        return SignInWithAppleButton(
+          onPressed: busy ? () {} : () => ctrl.loginApple(),
+          style: SignInWithAppleButtonStyle.whiteOutlined,
+          height: 40,
+        );
+      },
     );
   }
 }

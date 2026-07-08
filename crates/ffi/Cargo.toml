@@ -8,7 +8,11 @@ description = "C ABI bridge for the Makapix engine, consumed by the Flutter shel
 
 [lib]
 name = "makapix_ffi"
-crate-type = ["cdylib", "lib"]
+# cdylib → Windows .dll / Android .so (loaded at runtime via DynamicLibrary.open)
+# staticlib → iOS libmakapix_ffi.a, linked into the Runner binary and reached via
+#             DynamicLibrary.process() (see app/lib/engine_ffi.dart + build_ios.sh)
+# lib → used by the mkpx CLI harness and Rust integration tests
+crate-type = ["cdylib", "staticlib", "lib"]
 
 [dependencies]
 makapix-engine = { path = "../engine" }
