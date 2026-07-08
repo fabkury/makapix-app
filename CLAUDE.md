@@ -18,10 +18,11 @@ The app has **two pillars** that share one Flutter binary:
 Terminology, kept strict in the docs: *Makapix Club* = the product (website **and** this app);
 *Makapix Editor* = the editor feature **inside** this app, not a separate product. Don't conflate them.
 
-**Doc map:** `README.md` (product hub) · `SPEC.md` (editor engine: data model, FFI, DSL, `.mkpx`, UI) ·
-`SPEC-CLUB.md` (social layer + server contract; §28 has the phase plan, §29 the website→app parity matrix) ·
-`PLAN.md` (editor build plan) · `STATUS.md` (honest feature coverage) · `docs/plans/C{0..3}-*.md` (per-phase
-implementation plans) · `docs/club-*.md`, `docs/reply-oauth-contract.md` (live app↔server contract).
+**Doc map:** `README.md` (product hub) · `PLAN.md` (editor build plan) · `STATUS.md` (honest feature
+coverage) · `docs/plans/C{0..3}-*.md` (per-phase implementation plans). The detailed design specs — `SPEC.md`
+(editor engine: data model, FFI, DSL, `.mkpx`, UI) and `SPEC-CLUB.md` (social layer + server contract; §28 the
+phase plan, §29 the website→app parity matrix) — are **internal design docs kept out of the public repo**;
+they live on the maintainer's machine, so references to them below won't resolve in a public checkout.
 
 ## Build, test, run
 

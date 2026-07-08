@@ -10,10 +10,10 @@ This repository is **the app**. It has two pillars:
 
 1. **Makapix Editor** — the built-in **animated pixel-art editor**: a deterministic, headless **Rust engine**
    with a thin **Flutter** shell. It is the in-app successor to the website's embedded Piskel/Pixelc editors —
-   draw, edit, and remix artwork natively. Specified in **[`SPEC.md`](SPEC.md)**.
+   draw, edit, and remix artwork natively. Specified in **`SPEC.md`** (an internal design doc — see *Documents*).
 2. **The full Makapix Club social experience** — feeds, reactions, comments, follows, profiles, playlists,
    notifications, players, and publishing — a native alternative to the website's social features. Specified
-   in **[`SPEC-CLUB.md`](SPEC-CLUB.md)**.
+   in **`SPEC-CLUB.md`** (an internal design doc — see *Documents*).
 
 > **Terminology** (so the docs stay unambiguous):
 > - **Makapix Club** — the product/community. It has two faces: the **website** and **this app**.
@@ -22,10 +22,12 @@ This repository is **the app**. It has two pillars:
 >   experience (the Club pillar).
 
 ## Documents
-- **[`SPEC.md`](SPEC.md)** — the **Makapix Editor** specification (the editor pillar): the deterministic Rust
+> **`SPEC.md`** and **`SPEC-CLUB.md`** are detailed internal design specifications and are **not included in
+> this public repository**. The summaries below describe what each covers.
+- **`SPEC.md`** — the **Makapix Editor** specification (the editor pillar): the deterministic Rust
   engine, data model, memory/tiling/COW, the action-script DSL + verification harness, color/compositing, the
   `.mkpx` format, every tool/feature, undo + compaction, the FFI boundary, and the three-row editor UI.
-- **[`SPEC-CLUB.md`](SPEC-CLUB.md)** — the **social-networking** specification (the Club pillar): accounts &
+- **`SPEC-CLUB.md`** — the **social-networking** specification (the Club pillar): accounts &
   auth, artwork conformance, publish, edit/remix, feeds & discovery, reactions, comments, profiles &
   following, search, notifications, playlists, analytics, players, and a website→app feature-parity matrix.
   It speaks to the live Makapix Club server (`makapix.club`).
@@ -33,7 +35,7 @@ This repository is **the app**. It has two pillars:
   pillar's rollout is phased separately in `SPEC-CLUB.md` §28.)
 - **[`STATUS.md`](STATUS.md)** — honest implementation coverage.
 
-## Core decisions (see SPEC §25)
+## Core decisions
 - Rust core, first-class & up front; Flutter shell over a hand-written C-ABI FFI (`dart:ffi`).
 - Deterministic, headless engine is the source of truth; CPU reference compositor is canonical.
 - 8-bit RGBA sRGB; premultiplied internal; integer-exact (goldens never fork per platform).
@@ -74,10 +76,8 @@ matrix.
   exact round-trip — no crash.
 
 **Club (social) pillar — specification & server contract.** The full social layer is specified in
-[`SPEC-CLUB.md`](SPEC-CLUB.md); the production `app↔server` contract changes are documented in
-[`docs/club-server-change-requests.md`](docs/club-server-change-requests.md) and being implemented by the
-server team. The native GitHub sign-in flow is live on staging; building the `lib/club` client (auth first)
-is the next phase.
+`SPEC-CLUB.md` (an internal design doc; see *Documents*). The native GitHub sign-in flow is live on staging;
+building the `lib/club` client (auth first) is the next phase.
 
 ### Build & run on Windows
 ```powershell
