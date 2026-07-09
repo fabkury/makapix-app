@@ -74,7 +74,16 @@ shipped per the frozen contract (no changes). Their answers to our `0002`:
   user-generated content can be reported" (category Social or Communication;
   interactive element "Users Interact" on every rating board; 12+/Teen
   ratings). All claims match the shipped 1.0.9+14 feature set.
-- [ ] App Store (iOS) UGC declarations — ride the App Store submit.
+- [x] App Store (iOS) UGC declarations — DONE 2026-07-09 in App Store
+  Connect: Age Ratings questionnaire completed with **User-Generated
+  Content = Yes** (all content descriptors None; no chat/DMs, no ads, no
+  in-app browser), **overridden to 13+** per the ToS age clause
+  (`makapix.club/terms`), Age Suitability URL set to the ToS; App Privacy
+  label **published** (Email Address, User ID, Photos or Videos, Other
+  User Content — all App Functionality, linked to identity, no tracking;
+  privacy policy `makapix.club/privacy`). Guideline-1.2 review notes
+  (report/block/rules-gate walkthrough + acme@makapix.club) go on the
+  version page at submission time.
 
 ## Notes
 
