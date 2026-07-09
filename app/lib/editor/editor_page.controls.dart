@@ -220,7 +220,8 @@ extension _EditorControls on _EditorPageState {
     if (_tool == 'Brush' || _tool == 'Airbrush' || _tool == 'Dodge' || _tool == 'Burn') {
       // UI cap 400 (= stamps 4 brush-diameters apart, already a sparse dotted trail); the engine
       // itself accepts up to 1000, but past ~400 the step outruns the largest possible canvas.
-      _labeledSlider(children, 'Spacing', _spacing.toDouble(), 1, 400, (v) {
+      // Power-curve track (γ=2): the useful low end (10–100) gets half the track instead of ¼.
+      _labeledPowSlider(children, 'Spacing', _spacing.toDouble(), 1, 400, (v) {
         setState(() => _spacing = v.round());
         _send('SetSpacing($_spacing)');
       });

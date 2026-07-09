@@ -223,6 +223,32 @@ extension _EditorToolgrid on _EditorPageState {
     children.add(_slider(posOf(v), 0, 1, (t) => onChanged(valOf(t))));
   }
 
+  // Like _labeledSlider, but the slider position follows a POWER curve across [min,max]
+  // (value = min + (max−min)·t^γ with γ = _kPowSliderGamma): the low end of the range gets more
+  // track than linear without the full log treatment (for 1..400, the track centre sits at ~100
+  // vs linear's 200 and log's ~20). `onChanged` receives the real value (not the slider position).
+  void _labeledPowSlider(List<Widget> children, String name, double value, double min, double max,
+      ValueChanged<double> onChanged, {bool integer = true}) {
+    final v = value.clamp(min, max);
+    double posOf(double x) => math.pow((x - min) / (max - min), 1 / _kPowSliderGamma).toDouble();
+    double valOf(double t) => min + (max - min) * math.pow(t, _kPowSliderGamma);
+    final shown = integer ? v.round().toString() : v.toStringAsFixed(1);
+    children.add(InkWell(
+      onTap: () => _editSliderValue(name, v, min, max, onChanged, integer: integer),
+      borderRadius: BorderRadius.circular(4),
+      child: Padding(
+        padding: const EdgeInsets.only(left: 8, right: 4),
+        child: Text('$name $shown',
+            style: const TextStyle(
+                fontSize: 11,
+                color: Colors.white60,
+                decoration: TextDecoration.underline,
+                decorationColor: Colors.white24)),
+      ),
+    ));
+    children.add(_slider(posOf(v), 0, 1, (t) => onChanged(valOf(t))));
+  }
+
   Future<void> _editSliderValue(String name, double value, double min, double max,
       ValueChanged<double> onChanged, {required bool integer}) async {
     String fmt(double d) => integer ? d.round().toString() : d.toStringAsFixed(1);
@@ -405,6 +431,10 @@ class _NewDocumentDialogState extends State<_NewDocumentDialog> {
 // 1.0 restores direct (ungeared) dragging; higher makes the sliders "heavier" and easier to land
 // on an exact number. Deliberately not user-configurable — adjust here on tester feedback.
 const double _kSliderGearRatio = 4.0;
+
+// Tuning knob for _labeledPowSlider's curve: 1.0 is linear, higher shifts ever more track toward
+// the low end (log-like). 2.0 (square-root positioning) is the middle-of-the-road choice.
+const double _kPowSliderGamma = 2.0;
 
 // A Slider whose drag is geared down by [_kSliderGearRatio]: pointer travel is divided by the
 // ratio before moving the thumb, so exact values are easy to hit. Pressing the track never jumps
