@@ -172,7 +172,7 @@ extension _EditorToolgrid on _EditorPageState {
   Widget _slider(double v, double min, double max, ValueChanged<double> onChanged) {
     return SizedBox(
       width: 120,
-      child: Slider(value: v.clamp(min, max), min: min, max: max, onChanged: onChanged),
+      child: _GearedSlider(value: v, min: min, max: max, onChanged: onChanged),
     );
   }
 
@@ -397,6 +397,54 @@ class _NewDocumentDialogState extends State<_NewDocumentDialog> {
           child: const Text('Create'),
         ),
       ],
+    );
+  }
+}
+
+// Tuning knob for the row-1 geared sliders: pixels of pointer travel per pixel of thumb travel.
+// 1.0 restores direct (ungeared) dragging; higher makes the sliders "heavier" and easier to land
+// on an exact number. Deliberately not user-configurable — adjust here on tester feedback.
+const double _kSliderGearRatio = 4.0;
+
+// A Slider whose drag is geared down by [_kSliderGearRatio]: pointer travel is divided by the
+// ratio before moving the thumb, so exact values are easy to hit. Pressing the track never jumps
+// the thumb — only dragging moves it (the tappable "Name value" label covers typed exact values).
+class _GearedSlider extends StatefulWidget {
+  final double value, min, max;
+  final ValueChanged<double> onChanged;
+  const _GearedSlider({required this.value, required this.min, required this.max, required this.onChanged});
+
+  @override
+  State<_GearedSlider> createState() => _GearedSliderState();
+}
+
+class _GearedSliderState extends State<_GearedSlider> {
+  // Unrounded value accumulated across the current drag. Integer sliders round what we report and
+  // hand the rounded value back on rebuild, so sub-unit progress must be kept here or slow drags
+  // would never cross a unit boundary. Null when not dragging (then the parent's value is shown).
+  double? _dragValue;
+
+  @override
+  Widget build(BuildContext context) {
+    final v = (_dragValue ?? widget.value).clamp(widget.min, widget.max);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragStart: (_) => setState(() => _dragValue = v),
+      onHorizontalDragUpdate: (d) {
+        // Material insets the track by the 24px thumb-overlay radius on each side.
+        final trackWidth = math.max(1.0, (context.size?.width ?? 120) - 48);
+        final dv = d.delta.dx / _kSliderGearRatio / trackWidth * (widget.max - widget.min);
+        // Clamp the accumulator itself so reversing at an end responds immediately.
+        setState(() => _dragValue = ((_dragValue ?? v) + dv).clamp(widget.min, widget.max));
+        widget.onChanged(_dragValue!);
+      },
+      onHorizontalDragEnd: (_) => setState(() => _dragValue = null),
+      onHorizontalDragCancel: () => setState(() => _dragValue = null),
+      // The Slider is display-only (the GestureDetector owns all input); the no-op onChanged
+      // keeps it in the enabled visual state.
+      child: AbsorbPointer(
+        child: Slider(value: v, min: widget.min, max: widget.max, onChanged: (_) {}),
+      ),
     );
   }
 }
