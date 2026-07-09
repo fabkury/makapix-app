@@ -127,7 +127,9 @@ through C3 plus most of C4. Verified against the code 2026-07-05:
    confirm-before-destructive).
 
 **Editor — partial:**
-8. **Onion skin** is an on/off toggle only — configurable range/opacity (§28.3) missing.
+8. **Onion skin** is an on/off toggle only — configurable range/opacity (§28.3) missing. (Neighbours
+   **loop-wrap** since 2026-07-09: frame 0 ghosts the last frame as prev, the last frame ghosts frame 0 as
+   next — all animations are assumed loops.)
 9. **Action journal** (§28.2) — autosave + crash recovery are fully built
    (`editor_page.persistence.dart`); the append-only action journal (bug-repro format) was never added.
 10. **Gradient per-stop position UI** — engine supports stop positions; the UI doesn't expose them.

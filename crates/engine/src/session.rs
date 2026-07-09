@@ -472,13 +472,14 @@ impl Session {
 
     pub fn display_bytes(&self, onion: bool, grid: bool, checker: bool) -> Vec<u8> {
         let af = self.doc.active_frame;
+        let n = self.doc.frames.len();
         let ov = render::Overlays {
-            onion_prev: if onion && af > 0 { Some(&self.doc.frames[af - 1]) } else { None },
-            onion_next: if onion && af + 1 < self.doc.frames.len() {
-                Some(&self.doc.frames[af + 1])
-            } else {
-                None
-            },
+            // Onion neighbours wrap around the ends — all animations are loops, so frame 0's
+            // "previous" is the last frame and the last frame's "next" is frame 0. A single frame
+            // has no neighbour; with two frames prev and next are the same frame, which is shown
+            // once (as prev) rather than blitted twice with both tints.
+            onion_prev: if onion && n > 1 { Some(&self.doc.frames[(af + n - 1) % n]) } else { None },
+            onion_next: if onion && n > 2 { Some(&self.doc.frames[(af + 1) % n]) } else { None },
             grid,
             checker_bg: checker,
             // The reticle is now drawn by the UI as a thin, screen-space, marching-ants overlay
@@ -4660,5 +4661,54 @@ mod tests {
         s.flip_document(true); // horizontal flip mirrors the whole storage
         // canvas x=-5 mirrors to x = 15 - (-5) = ... reflected across the canvas: (w-1 - x) = 15-(-5)=20.
         assert_eq!(s.pixel(0, 0, 20, 0), Rgba8::WHITE, "the gutter pixel mirrored with the artwork");
+    }
+
+    // ---- onion skin (loop-wrapped neighbours) ----
+
+    #[test]
+    fn onion_skin_wraps_around_the_loop() {
+        // 3 frames, one marker pixel each: frame 0 → (0,0), frame 1 → (1,0), frame 2 → (2,0).
+        let mut s = Session::new(4, 4);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(0, 0);
+        s.run_script("AddFrame()").unwrap();
+        s.tap(1, 0);
+        s.run_script("AddFrame()").unwrap();
+        s.tap(2, 0);
+        let at = |px: &[u8], x: usize, y: usize| {
+            let i = (y * 4 + x) * 4;
+            [px[i], px[i + 1], px[i + 2], px[i + 3]]
+        };
+
+        // The middle frame is the undisputed baseline: prev ghost at (0,0), next ghost at (2,0).
+        s.run_script("SetActiveFrame(1)").unwrap();
+        let px = s.display_bytes(true, false, false);
+        let prev_ghost = at(&px, 0, 0);
+        let next_ghost = at(&px, 2, 0);
+        assert_ne!(prev_ghost, [0, 0, 0, 0]);
+        assert_ne!(next_ghost, [0, 0, 0, 0]);
+        assert_ne!(prev_ghost, next_ghost, "prev and next carry distinct tints");
+
+        // First frame: "previous" wraps to the LAST frame's marker.
+        s.run_script("SetActiveFrame(0)").unwrap();
+        let px = s.display_bytes(true, false, false);
+        assert_eq!(at(&px, 2, 0), prev_ghost, "frame 0's prev ghost is the last frame");
+        assert_eq!(at(&px, 1, 0), next_ghost);
+
+        // Last frame: "next" wraps to the FIRST frame's marker.
+        s.run_script("SetActiveFrame(2)").unwrap();
+        let px = s.display_bytes(true, false, false);
+        assert_eq!(at(&px, 0, 0), next_ghost, "the last frame's next ghost is frame 0");
+        assert_eq!(at(&px, 1, 0), prev_ghost);
+
+        // Two frames: the other frame is prev AND next — it is ghosted ONCE (prev tint),
+        // not double-blitted with both tints.
+        s.run_script("RemoveFrame(2); SetActiveFrame(0)").unwrap();
+        let px = s.display_bytes(true, false, false);
+        assert_eq!(at(&px, 1, 0), prev_ghost, "two frames: a single prev-tinted ghost");
+
+        // One frame: no neighbour, so onion must not ghost the frame onto itself.
+        s.run_script("RemoveFrame(1)").unwrap();
+        assert_eq!(s.display_bytes(true, false, false), s.display_bytes(false, false, false));
     }
 }
