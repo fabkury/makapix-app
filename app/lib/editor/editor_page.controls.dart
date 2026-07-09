@@ -218,7 +218,9 @@ extension _EditorControls on _EditorPageState {
     }
     // Stamp spacing (% of brush size) for the stamp-trail tools. Tap the label to type a value.
     if (_tool == 'Brush' || _tool == 'Airbrush' || _tool == 'Dodge' || _tool == 'Burn') {
-      _labeledSlider(children, 'Spacing', _spacing.toDouble(), 1, 1000, (v) {
+      // UI cap 400 (= stamps 4 brush-diameters apart, already a sparse dotted trail); the engine
+      // itself accepts up to 1000, but past ~400 the step outruns the largest possible canvas.
+      _labeledSlider(children, 'Spacing', _spacing.toDouble(), 1, 400, (v) {
         setState(() => _spacing = v.round());
         _send('SetSpacing($_spacing)');
       });
