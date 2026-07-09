@@ -66,8 +66,14 @@ shipped per the frozen contract (no changes). Their answers to our `0002`:
 
 ## Pending
 
-- [ ] Play Console UGC questionnaire update (Policy → App content) — manual
-  Console work, no API.
+- [x] Play Console UGC declarations — verified in the Console 2026-07-09:
+  **already complete, nothing to change.** There is no standalone UGC form;
+  the declarations live in the IARC content-rating questionnaire (submitted
+  Jul 3, 2026), which already states "App is a social networking app",
+  "Users or user-generated content can be blocked", and "Users or
+  user-generated content can be reported" (category Social or Communication;
+  interactive element "Users Interact" on every rating board; 12+/Teen
+  ratings). All claims match the shipped 1.0.9+14 feature set.
 - [ ] App Store (iOS) UGC declarations — ride the App Store submit.
 
 ## Notes
