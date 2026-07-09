@@ -24,6 +24,11 @@ workflows:
         # Non-secret build coordinates.
         XCODE_WORKSPACE: "Runner.xcworkspace"
         XCODE_SCHEME: "Runner"
+        # Backend selector, mirroring build.ps1 / build_android.ps1: prod unless explicitly
+        # overridden. To point a TestFlight build at development.makapix.club (e.g. to verify
+        # Sign in with Apple against the dev server), override CLUB_ENV=dev for that one build
+        # in the Codemagic UI ("Start new build" → environment variable override).
+        CLUB_ENV: "prod"
         # $APP_STORE_APP_ID (the numeric Apple app id) comes from a Codemagic secret group — NOT
         # hardcoded here because this repo is public. Add it in the UI (see CHECKLIST).
       groups:
@@ -77,6 +82,7 @@ workflows:
         working_directory: app
         script: |
           flutter build ipa --release \
+            --dart-define=CLUB_ENV="$CLUB_ENV" \
             --build-number="$BUILD_NUMBER" \
             --export-options-plist=/Users/builder/export_options.plist
     artifacts:
