@@ -1,6 +1,6 @@
 # UGC safety (app) — Progress
 
-Tracks the implementation of `PLAN.md`. Status as of 2026-07-06.
+Tracks the implementation of `PLAN.md`. Status as of 2026-07-09.
 
 ## Code-complete (Dart-only; engine untouched)
 
@@ -49,18 +49,31 @@ shipped per the frozen contract (no changes). Their answers to our `0002`:
   are always null; the summary rides in `content_title`. The tile now renders
   `content_title` and stays **no-tap** (there is no in-app mod queue).
 
-## Pending
+## Shipped (2026-07-09)
 
-- [~] Manual E2E on dev (Android build): Blocked-users management screen
+- [x] Manual E2E on dev (Android build): Blocked-users management screen
   verified on device; remaining matrix items accepted on the strength of the
   contract-level match + green unit suite rather than exhaustive manual runs.
-- [ ] Prod build + joint prod flip (server PR `develop`→`main`; the
-  `moderation` key on makapix.club is the launch signal); Play Console UGC
-  questionnaire update. Reply `0004` sent (E2E summary + prod go).
+  Reply `0004` sent (E2E summary + prod go).
+- [x] Terms of Service adopted (server msgs 0006/0007): `ModerationRules`
+  parses `moderation.terms_url`; the rules gate links both the community
+  rules and the Terms with an explicit agree line; `kRulesVersion` bumped
+  1→2 so existing installs re-accept once.
+- [x] Prod flip: the `moderation` block (incl. `terms_url`) is live in
+  `GET makapix.club/api/v1/config` (verified 2026-07-09). The feature code
+  shipped in the 1.0.9+14 Play release (default prod backend), so report /
+  block / rules gate are fully active for Closed Testing users.
+
+## Pending
+
+- [ ] Play Console UGC questionnaire update (Policy → App content) — manual
+  Console work, no API.
+- [ ] App Store (iOS) UGC declarations — ride the App Store submit.
 
 ## Notes
 
 - No push work (no FCM/MQTT client — notifications are a polled list).
 - No client-side block filtering (server-side per contract §5).
 - Rules-gate acceptance persists in `shared_preferences`
-  (`club.rules_accepted_version`, `kRulesVersion = 1`).
+  (`club.rules_accepted_version`, `kRulesVersion = 2` since the ToS
+  adoption).
