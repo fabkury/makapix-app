@@ -24,6 +24,15 @@ if [[ "${1:-}" == "--debug" ]]; then
   CARGO_PROFILE_FLAG=""
 fi
 
+# The workspace release profile uses thin-LTO, which makes Rust emit each crate's codegen units
+# as LLVM bitcode instead of native objects. Apple's linker can't read Rust's newer-LLVM bitcode
+# ("Unknown attribute kind"), so it silently drops the objects that hold our #[no_mangle] mkpx_*
+# symbols — the app then links but DynamicLibrary.process() finds nothing at runtime. Force native
+# codegen for the iOS cross-compile so the symbols land in the archive. This is scoped to iOS on
+# purpose: the Windows DLL / Android .so link with Rust's own toolchain, where thin-LTO is fine, so
+# the override lives here rather than in the shared [profile.release].
+export CARGO_PROFILE_RELEASE_LTO=off
+
 # Repo root = dir of this script.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"

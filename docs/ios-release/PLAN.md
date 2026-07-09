@@ -334,3 +334,28 @@ _(Append dated entries as phases execute.)_
     **dev** env (`app-dev.makapix.club` HTTPS App Link) would need Associated Domains + AASA on iOS; left
     for later since store builds are prod. Shared `ClubConfig` deliberately untouched (avoids Android/test
     regressions).
+- 2026-07-08 — **Phase 2 cloud-Mac build: the app COMPILES for iOS and R2 (static-FFI linking) is CLOSED.**
+  Bootstrapped a Scaleway M2-Pro / macOS Sequoia 15.6.1 box (Xcode 16.3 preinstalled — no Apple-ID step),
+  installed Rust+iOS targets, Flutter 3.44.1, CocoaPods 1.17. `build_ios.sh` + `flutter build ios` went
+  green for simulator **and release device (unsigned)**; the release `Runner` exports all **34** `mkpx_*`
+  C-API symbols (`dyld_info` verified) → `DynamicLibrary.process()` resolves the engine at runtime.
+  **Two fixes were required (now in the repo), both are the real substance of R2:**
+  1. **`build_ios.sh` sets `CARGO_PROFILE_RELEASE_LTO=off`.** The workspace's thin-LTO makes Rust emit the
+     crate CGUs as LLVM bitcode; Apple's linker can't read Rust-LLVM-22 bitcode ("Unknown attribute kind")
+     and silently drops those objects, so the FFI symbols vanished. Native codegen fixes it. iOS-only
+     (Windows/Android link with Rust's own toolchain).
+  2. **`makapix_ffi.podspec` marks every `_mkpx_*` symbol as a linker root** (`-Wl,-u,<sym>`, the set
+     derived from the built archive at pod-install time via `nm`). Dart calls the API only at runtime, so
+     release `-dead_strip` was removing every entry point not explicitly kept. (Earlier `-force_load`
+     attempts failed: the Podfile `post_install` targeted a non-existent `Runner` target in the Pods
+     project, and pointing `-force_load` at CocoaPods' build-time xcframework copy trips Xcode's
+     build-input validation. The `-u` approach is slice-agnostic and path-free.)
+  - **Gotcha logged:** in a *debug* build the app code (and these symbols) lands in `Runner.debug.dylib`,
+    not the 156 KB `Runner` launcher stub — inspect the dylib, not the stub. Release links into `Runner`.
+  - **OD3 update:** min deployment target is now **iOS 13.0**, not 12.0 — Flutter 3.44 dropped iOS 12 and
+    force-upgrades the project regardless. Reconciled in `project.pbxproj`, `Podfile`, and `makapix_ffi.podspec`.
+  - **Signing decision:** keep the `.p8` OFF the rented Mac (user's call). The Mac only validated the
+    unsigned release link; the first **signed** TestFlight upload will run from **Codemagic** (Phase 3),
+    where the key lives in Codemagic's secret vault. Cloud Mac can be decommissioned now.
+  - **Not yet done:** commit+push these fixes to GitHub (Codemagic pulls from there); wire Codemagic
+    integration + secrets; first signed TestFlight build; then install on the iPhone (arriving 2026-07-09).

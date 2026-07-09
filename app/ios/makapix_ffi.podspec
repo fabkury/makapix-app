@@ -16,6 +16,21 @@ Pod::Spec.new do |s|
   s.author           = { 'Makapix' => 'pub@kury.dev' }
   s.source           = { :path => '.' }
   s.vendored_frameworks = 'MakapixFFI.xcframework'
-  s.platform         = :ios, '12.0'
+  s.platform         = :ios, '13.0'
   s.requires_arc     = true
+  # Dart resolves the engine's C API at runtime via DynamicLibrary.process(), so NOTHING references
+  # these symbols at link time. In release, -dead_strip therefore drops every entry point that isn't
+  # explicitly kept (a debug build keeps them only because it doesn't strip). We mark each one as a
+  # linker root with `-u`, which both keeps its code and holds it in the app's dynamic export table
+  # for dlsym. `-u` (vs -force_load with an explicit path) is slice-agnostic and doesn't trip Xcode's
+  # build-input validation; CocoaPods already links the right slice via -lmakapix_ffi.
+  #
+  # The symbol set is derived from the built archive at pod-install time so it can never drift from
+  # the actual FFI surface. build_ios.sh must have produced the xcframework first.
+  _ffi_lib  = File.join(__dir__, 'MakapixFFI.xcframework', 'ios-arm64', 'libmakapix_ffi.a')
+  _ffi_syms = `nm -gU "#{_ffi_lib}" 2>/dev/null`.scan(/(_mkpx_\w+)/).flatten.uniq
+  raise "makapix_ffi.podspec: no _mkpx_* symbols in #{_ffi_lib} — run ./build_ios.sh first" if _ffi_syms.empty?
+  s.user_target_xcconfig = {
+    'OTHER_LDFLAGS' => _ffi_syms.map { |sym| "-Wl,-u,#{sym}" }.join(' ')
+  }
 end

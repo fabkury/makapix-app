@@ -1,8 +1,9 @@
 # Global platform for the project. Matches IPHONEOS_DEPLOYMENT_TARGET in the Xcode project.
-# NOTE: Sign in with Apple's native flow needs iOS 13+; on iOS 12 devices the Apple button is
-# hidden (gated by SignInWithApple.isAvailable() + kAppleSignInEnabled) — see lib/club/auth.
-# If any pod raises its own minimum above 12.0 on the first `pod install`, bump this line to match.
-platform :ios, '12.0'
+# iOS 13.0: Flutter 3.44 dropped iOS 12 support and its tooling force-upgrades the project to 13.0
+# anyway, so we set it explicitly. This also cleanly covers Sign in with Apple's native flow
+# (needs 13+); the Apple button is still additionally gated by SignInWithApple.isAvailable() +
+# kAppleSignInEnabled — see lib/club/auth.
+platform :ios, '13.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -48,21 +49,8 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
-
-    # DynamicLibrary.process() (engine_ffi.dart on iOS) resolves the Rust symbols by name
-    # at runtime. Because nothing in the Swift/ObjC Runner references them at LINK time, the
-    # linker would dead-strip the whole static archive. -force_load keeps every symbol.
-    #
-    # RISK R2 (docs/ios-release/PLAN.md §6): the exact on-disk path of the vendored static
-    # lib is confirmed on the first Mac build (Phase 2). CocoaPods stages xcframework slices
-    # under $(PODS_XCFRAMEWORKS_BUILD_DIR)/makapix_ffi/. If mkpx_run et al. come back null
-    # from DynamicLibrary.process(), verify this path (or point it at the built .a) on the Mac.
-    if target.name == 'Runner'
-      target.build_configurations.each do |config|
-        config.build_settings['OTHER_LDFLAGS'] ||= ['$(inherited)']
-        config.build_settings['OTHER_LDFLAGS'] << '-force_load'
-        config.build_settings['OTHER_LDFLAGS'] << '$(PODS_XCFRAMEWORKS_BUILD_DIR)/makapix_ffi/libmakapix_ffi.a'
-      end
-    end
   end
+  # NOTE: the -force_load that keeps the Rust engine's symbols from being dead-stripped is applied
+  # via app/ios/makapix_ffi.podspec's user_target_xcconfig (it must land on the Runner *app* target,
+  # not a Pods-project target), so it is intentionally NOT here.
 end
