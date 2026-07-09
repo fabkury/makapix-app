@@ -50,15 +50,19 @@ workflows:
       - name: Flutter pub get
         working_directory: app
         script: flutter pub get
-      - name: Fetch/create App Store signing files (distribution cert + profile) via the API key
+      - name: Set up code signing (create/reuse distribution cert + App Store profile)
         script: |
-          # --create makes the distribution certificate + App Store provisioning profile for the
-          # bundle id if they don't exist yet (first run). The App Store Connect API key comes from
-          # the `makapix_ci` integration, so no key flags are needed here.
+          # keychain first, so newly created signing material has somewhere to live.
+          keychain initialize
+          # A STABLE private key (the CM_CERTIFICATE_PRIVATE_KEY secret) lets the API key create our
+          # own distribution certificate on the first build and REUSE it on every later build. Without
+          # it, fetch-signing-files hits Apple's orphaned auto-created cert (whose private key lived on
+          # a throwaway CI machine) and fails with "Cannot save Signing Certificates without
+          # certificate private key". Reusing one key also avoids per-build cert churn / the cert limit.
           app-store-connect fetch-signing-files "club.makapix.app" \
             --type IOS_APP_STORE \
+            --certificate-key @env:CM_CERTIFICATE_PRIVATE_KEY \
             --create
-          keychain initialize
           keychain add-certificates
       - name: Apply signing profiles to the Xcode project
         working_directory: app
