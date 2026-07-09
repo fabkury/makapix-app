@@ -20,9 +20,6 @@ workflows:
       # Teams → Integrations → App Store Connect, referenced here by its integration name.
       app_store_connect: makapix_ci
     environment:
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: club.makapix.app
       vars:
         # Non-secret build coordinates.
         XCODE_WORKSPACE: "Runner.xcworkspace"
@@ -53,7 +50,17 @@ workflows:
       - name: Flutter pub get
         working_directory: app
         script: flutter pub get
-      - name: Set up code signing (fetch/apply provisioning profiles via the API key)
+      - name: Fetch/create App Store signing files (distribution cert + profile) via the API key
+        script: |
+          # --create makes the distribution certificate + App Store provisioning profile for the
+          # bundle id if they don't exist yet (first run). The App Store Connect API key comes from
+          # the `makapix_ci` integration, so no key flags are needed here.
+          app-store-connect fetch-signing-files "club.makapix.app" \
+            --type IOS_APP_STORE \
+            --create
+          keychain initialize
+          keychain add-certificates
+      - name: Apply signing profiles to the Xcode project
         working_directory: app
         script: xcode-project use-profiles
       - name: Compute next TestFlight build number (avoids CFBundleVersion collisions — R4)
