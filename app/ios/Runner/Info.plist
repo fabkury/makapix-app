@@ -87,6 +87,13 @@
 	     its own save permission, so no NSPhotoLibraryAddUsageString is needed. -->
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Makapix needs access to your photos so you can pick an image for your avatar or artwork.</string>
+	<!-- The image-picker plugin references the camera API (it can capture a photo instead of
+	     choosing an existing one), so Apple requires this purpose string even if you only ever
+	     pick from the library — ITMS-90683. NSLocationWhenInUseUsageDescription is deliberately
+	     NOT declared: Makapix has no location feature, the reference is dead plugin code, and
+	     Apple lists that one as informational/not-required. See docs/ios-release/PLAN.md. -->
+	<key>NSCameraUsageDescription</key>
+	<string>Makapix needs camera access if you choose to take a photo to use as your avatar or artwork.</string>
 	<!-- We use only standard HTTPS/TLS; declaring this skips the export-compliance prompt on
 	     every TestFlight/App Store upload. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
