@@ -1,4 +1,4 @@
-# Makapix Club app — Implementation Status (2026-07-05)
+# Makapix Club app — Implementation Status (2026-07-10)
 
 Honest coverage of **both** of the app's co-equal pillars. The **Makapix Editor** (editor engine + Flutter
 shell) is built and runnable on this workstation. The **Makapix Club** social layer (see
@@ -13,6 +13,12 @@ server feature itself is mostly planned-but-deferred). Of **C5**, **player contr
 **C6** (moderation & extras) is **not yet** started. The two pillars sit under a neutral app shell
 (`lib/shell/app_shell.dart`): the app **opens on the Club pillar** (signed-out users get Club's welcome/sign-in
 funnel) and the editor is a co-equal feature reachable **without login** via the centre ⊕ Create button.
+
+**Distribution:** **Android** — Google Play Closed Testing (alpha track, 12+ testers, 14-day run toward
+production access). **iOS** — **v1.0.9 submitted for App Store review 2026-07-10** (iPhone-only for v1;
+builds ship via Codemagic → TestFlight; the Rust engine ships as a dynamic `MakapixFFI.framework`, guarded
+by the codemagic.yaml R2 export gate; Sign in with Apple live end-to-end). **Windows** — developer build
+from this workstation (`build.ps1`).
 Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending) · **○ stubbed / not yet**.
 
 ## Build artifacts
@@ -142,9 +148,11 @@ through C3 plus most of C4. Verified against the code 2026-07-05:
     (mod-hashtags already shipped; see `SPEC-CLUB.md` §28).
 
 **Deferred by decision, not omission:**
-- **iOS build** — cannot be built on this Windows workstation; deferred to a cloud macOS CI runner
-  (SPEC §3.1). All shared code is iOS-clean and the engine is integer-deterministic, so this is
-  build/packaging only.
+- **iPad support** — the iOS app is **iPhone-only for v1** (`TARGETED_DEVICE_FAMILY=1`, 2026-07-10): the
+  layout has never been exercised on an iPad, and claiming support would have required iPad screenshots
+  and invited App Review to test an unverified device class. Revisit as a deliberate, tested release. (The
+  iOS build itself is no longer deferred: it ships via Codemagic — `codemagic.yaml`, `build_ios.sh` — and
+  v1.0.9 was submitted for App Store review 2026-07-10.)
 - **Localization** (post-v1 per §28.5; strings are currently hardcoded) and **in-RAM compression of
   inactive frames** (file compression already done).
 
