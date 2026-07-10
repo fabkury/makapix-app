@@ -530,17 +530,50 @@ extension _EditorFileIo on _EditorPageState {
       curUs = frames[engine.activeFrame]['duration_us'] ?? 100000;
     }
     double ms = curUs / 1000.0;
+    // The text field is the source of truth while typing (never rewritten mid-edit, so a
+    // partial entry like "5" on the way to "50" isn't clobbered); the slider and fps chips
+    // write back into it. `ms` is kept clamped to the engine's range (16.667–1000 ms).
+    final ctrl = TextEditingController(text: ms.toStringAsFixed(1));
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setS) => AlertDialog(
           title: Text('Frame ${engine.activeFrame + 1} duration'),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text('${ms.toStringAsFixed(1)} ms  (${(1000 / ms).toStringAsFixed(1)} fps)'),
-            Slider(value: ms.clamp(16.6, 1000), min: 16.6, max: 1000, onChanged: (v) => setS(() => ms = v)),
+            Row(children: [
+              SizedBox(
+                width: 110,
+                child: TextField(
+                  controller: ctrl,
+                  autofocus: true,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
+                  decoration: const InputDecoration(suffixText: 'ms', isDense: true),
+                  onChanged: (t) {
+                    final v = double.tryParse(t.replaceAll(',', '.'));
+                    if (v != null) setS(() => ms = v.clamp(16.6, 1000));
+                  },
+                ),
+              ),
+              const Spacer(),
+              Text('${(1000 / ms).toStringAsFixed(1)} fps'),
+            ]),
+            Slider(
+                value: ms.clamp(16.6, 1000),
+                min: 16.6,
+                max: 1000,
+                onChanged: (v) => setS(() {
+                      ms = v;
+                      ctrl.text = v.toStringAsFixed(1);
+                    })),
             Wrap(spacing: 6, children: [
               for (final f in [60, 30, 24, 12, 8])
-                ActionChip(label: Text('${f}fps'), onPressed: () => setS(() => ms = 1000 / f)),
+                ActionChip(
+                    label: Text('${f}fps'),
+                    onPressed: () => setS(() {
+                          ms = 1000 / f;
+                          ctrl.text = ms.toStringAsFixed(1);
+                        })),
             ]),
           ]),
           actions: [
