@@ -80,9 +80,13 @@ DynamicLibrary _open() {
   if (Platform.isAndroid) {
     return DynamicLibrary.open('libmakapix_ffi.so');
   }
-  // iOS (future): statically linked into the app process.
+  // iOS: the engine ships as a dynamic framework embedded in Runner.app/Frameworks
+  // (built by build_ios.sh, vendored via app/ios/makapix_ffi.podspec). dlopen resolves
+  // the relative path through @rpath (@executable_path/Frameworks). It was previously
+  // statically linked + DynamicLibrary.process(), but Xcode 26's linker dead-strips the
+  // symbols out of the main executable's export table (2026-07-09) — don't go back.
   if (Platform.isIOS) {
-    return DynamicLibrary.process();
+    return DynamicLibrary.open('MakapixFFI.framework/MakapixFFI');
   }
   // Windows / desktop: makapix_ffi.dll next to the exe, or the dev target dirs.
   final exeDir = File(Platform.resolvedExecutable).parent.path;

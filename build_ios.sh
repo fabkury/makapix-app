@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
-# build_ios.sh — build the Makapix Rust engine as a STATIC xcframework for iOS.
+# build_ios.sh — build the Makapix Rust engine as a DYNAMIC framework xcframework for iOS.
 #
 # macOS-ONLY. Cross-compiling to Apple targets needs the Apple SDK + linker, so this
-# cannot run on Windows/Linux (see docs/ios-release/PLAN.md §1). It runs on the cloud
-# Mac (Phase 2) and in Codemagic CI (Phase 3), always BEFORE `flutter build ipa`.
+# cannot run on Windows/Linux (see docs/ios-release/PLAN.md §1). It runs in Codemagic CI
+# (Phase 3), always BEFORE `flutter build ipa`.
 #
-# Why static: app/lib/engine_ffi.dart resolves the engine via DynamicLibrary.process()
-# on iOS — i.e. the Rust symbols (mkpx_run, mkpx_display, …) must be linked INTO the
-# Runner binary, not shipped as a loadable .dylib. crates/ffi emits a `staticlib`
-# (libmakapix_ffi.a); this script fattens the simulator slice and packages a device +
-# simulator xcframework that app/ios/makapix_ffi.podspec vendors into the Runner target.
+# Why DYNAMIC (changed 2026-07-09): the engine originally linked statically into Runner
+# and was reached via DynamicLibrary.process(). That requires the _mkpx_* symbols to
+# survive -dead_strip AND stay in the main executable's export trie — behavior that
+# Xcode 26's linker broke (-u roots silently stripped, -exported_symbol/-export_dynamic
+# ignored; builds #8/#9 proved the flags reached the xcconfig yet the symbols vanished
+# with no link error). A dynamic framework sidesteps the entire class of problem: a
+# dylib IS its own export table, is never dead-stripped by the app link, and matches
+# how Windows (.dll) and Android (.so) already ship. Dart opens it with
+# DynamicLibrary.open('MakapixFFI.framework/MakapixFFI').
 #
 # Output: app/ios/MakapixFFI.xcframework   (git-ignored; regenerated every build)
 #
@@ -38,7 +42,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 CRATE="makapix-ffi"
-LIB="libmakapix_ffi.a"
+DYLIB="libmakapix_ffi.dylib"
+FW_NAME="MakapixFFI"
 
 DEVICE_TARGET="aarch64-apple-ios"        # iPhone/iPad (arm64)
 SIM_ARM_TARGET="aarch64-apple-ios-sim"   # Apple-silicon simulator
@@ -55,22 +60,54 @@ done
 
 OUT="$ROOT/target/ios"
 rm -rf "$OUT"
-mkdir -p "$OUT/sim"
+mkdir -p "$OUT/device" "$OUT/sim"
 
-echo "==> Fattening simulator archive (arm64-sim + x86_64-sim)"
+# Wrap a dylib into a minimal framework bundle. Apple validates embedded frameworks'
+# Info.plists at upload (ITMS), so the keys below are the required set.
+#   $1 = dylib path   $2 = out dir   $3 = platform (iPhoneOS | iPhoneSimulator)
+make_framework() {
+  local FW="$2/$FW_NAME.framework"
+  mkdir -p "$FW"
+  cp "$1" "$FW/$FW_NAME"
+  install_name_tool -id "@rpath/$FW_NAME.framework/$FW_NAME" "$FW/$FW_NAME"
+  cat > "$FW/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleExecutable</key><string>$FW_NAME</string>
+  <key>CFBundleIdentifier</key><string>club.makapix.ffi</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundleName</key><string>$FW_NAME</string>
+  <key>CFBundlePackageType</key><string>FMWK</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleSupportedPlatforms</key><array><string>$3</string></array>
+  <key>MinimumOSVersion</key><string>13.0</string>
+</dict>
+</plist>
+PLIST
+}
+
+echo "==> Fattening simulator dylib (arm64-sim + x86_64-sim)"
 lipo -create \
-  "target/$SIM_ARM_TARGET/$PROFILE/$LIB" \
-  "target/$SIM_X86_TARGET/$PROFILE/$LIB" \
-  -output "$OUT/sim/$LIB"
+  "target/$SIM_ARM_TARGET/$PROFILE/$DYLIB" \
+  "target/$SIM_X86_TARGET/$PROFILE/$DYLIB" \
+  -output "$OUT/sim/$DYLIB"
 
-XCFRAMEWORK="$ROOT/app/ios/MakapixFFI.xcframework"
+echo "==> Wrapping dylibs as frameworks"
+make_framework "target/$DEVICE_TARGET/$PROFILE/$DYLIB" "$OUT/device" "iPhoneOS"
+make_framework "$OUT/sim/$DYLIB" "$OUT/sim" "iPhoneSimulator"
+
+XCFRAMEWORK="$ROOT/app/ios/$FW_NAME.xcframework"
 echo "==> Packaging $XCFRAMEWORK"
 rm -rf "$XCFRAMEWORK"
 xcodebuild -create-xcframework \
-  -library "target/$DEVICE_TARGET/$PROFILE/$LIB" \
-  -library "$OUT/sim/$LIB" \
+  -framework "$OUT/device/$FW_NAME.framework" \
+  -framework "$OUT/sim/$FW_NAME.framework" \
   -output "$XCFRAMEWORK"
 
 echo "==> Done."
 echo "    $XCFRAMEWORK"
-echo "    Vendored by app/ios/makapix_ffi.podspec; linked into Runner on 'flutter build ipa'."
+echo "    Vendored by app/ios/makapix_ffi.podspec; embedded+signed into Runner.app/Frameworks."

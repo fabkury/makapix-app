@@ -93,31 +93,29 @@ workflows:
       - name: Verify Rust FFI symbols are exported (R2 gate)
         working_directory: app
         script: |
-          # The engine is reached via DynamicLibrary.process() → dlsym, so every _mkpx_* symbol must
-          # be in the Runner binary's EXPORT TRIE (not merely present as code). Xcode 26's linker
-          # silently dropped them (2026-07-09) and the app shipped with a dead editor — this gate
-          # makes that a hard build failure instead. Checks the exact binary that ships (the .ipa).
+          # The engine ships as a dynamic framework (MakapixFFI.framework) embedded in the app;
+          # Dart dlopens it and looks up the _mkpx_* symbols. This gate checks the exact .ipa
+          # that ships: the framework must be embedded, signed, and exporting the FFI surface.
+          # (History: the static-link + process() approach silently died under Xcode 26's
+          # linker and shipped five dead-editor builds before this gate existed — keep it.)
           set -euo pipefail
           IPA=$(ls build/ios/ipa/*.ipa)
           rm -rf /tmp/ipa_check && mkdir -p /tmp/ipa_check
           unzip -q "$IPA" -d /tmp/ipa_check
-          BIN=$(ls /tmp/ipa_check/Payload/*.app/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' /tmp/ipa_check/Payload/*.app/Info.plist))
-          EXPORTED=$(xcrun dyld_info -exports "$BIN" | grep -c '_mkpx_' || true)
-          echo "Exported _mkpx_* symbols in $(basename "$BIN"): $EXPORTED"
-          if [ "$EXPORTED" -lt 30 ]; then
-            echo "FAIL: Rust FFI symbols missing from the export trie — the editor would die at runtime."
-            echo "--- Diagnostics ---"
-            echo "Symbol table view:"
-            nm -gU "$BIN" | grep '_mkpx_' || echo "(none in symbol table either)"
-            XCCONFIG="ios/Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"
-            echo "Flags that reached $XCCONFIG:"
-            grep -o '\-Wl,-u,_mkpx_[a-z_]*' "$XCCONFIG" | wc -l | xargs echo "  -u flags:"
-            grep -o '\-Wl,-exported_symbol,_mkpx_[a-z_]*' "$XCCONFIG" | wc -l | xargs echo "  -exported_symbol flags:"
-            grep -c 'export_dynamic' "$XCCONFIG" | xargs echo "  export_dynamic:" || true
-            echo "Symbols in the vendored device archive:"
-            nm -gU ios/MakapixFFI.xcframework/ios-arm64/libmakapix_ffi.a 2>/dev/null | grep -c '_mkpx_' | xargs echo "  count:"
+          FW=$(ls -d /tmp/ipa_check/Payload/*.app/Frameworks/MakapixFFI.framework 2>/dev/null || true)
+          if [ -z "$FW" ]; then
+            echo "FAIL: MakapixFFI.framework is not embedded in the app bundle."
+            ls /tmp/ipa_check/Payload/*.app/Frameworks/ || true
             exit 1
           fi
+          EXPORTED=$(xcrun dyld_info -exports "$FW/MakapixFFI" | grep -c '_mkpx_' || true)
+          echo "Exported _mkpx_* symbols in MakapixFFI.framework: $EXPORTED"
+          if [ "$EXPORTED" -lt 30 ]; then
+            echo "FAIL: the embedded engine framework exports too few symbols."
+            nm -gU "$FW/MakapixFFI" | grep '_mkpx_' || echo "(none in symbol table)"
+            exit 1
+          fi
+          codesign -v "$FW" && echo "Framework code signature: OK"
     artifacts:
       - app/build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
