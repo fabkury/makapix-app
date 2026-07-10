@@ -1026,22 +1026,7 @@ impl Session {
                 ToolKind::Airbrush => self.airbrush_active(p),
                 ToolKind::Dodge => self.dodge_burn_active(p, self.dodge_dv(true)),
                 ToolKind::Burn => self.dodge_burn_active(p, self.dodge_dv(false)),
-                ToolKind::Bucket => {
-                    let color = self.settings.primary;
-                    let (th, cont) = (self.settings.threshold, self.settings.contiguous);
-                    let sel = self.selection_clone();
-                    // "All layers": decide the region from the composited frame (computed before the
-                    // mutable layer borrow), while the fill still lands in the active layer only. The
-                    // reference is composited over the whole **storage** area so its coordinates line
-                    // up with the storage-indexed layer buffer the flood reads. [risk: bucket ref]
-                    let reference = self
-                        .settings
-                        .fill_all_layers
-                        .then(|| render::composite_frame(self.doc.active_frame(), self.doc.storage_rect()));
-                    let clip = self.paint_clip();
-                    let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-                    tool::flood_fill(buf, reference.as_ref(), sel.as_ref(), clip, p, color, th, cont, PaintMode::Replace);
-                }
+                ToolKind::Bucket => self.flood_fill_at(p),
                 ToolKind::Move => {
                     // lift selected pixels into a floating buffer
                     if let Some(sel) = self.selection_clone() {
@@ -1735,6 +1720,38 @@ impl Session {
         let p = self.cursor_storage();
         let shape = Mask::from_color(sw, sh, &buf, p, self.settings.threshold, self.settings.contiguous);
         self.combine_selection(&shape, self.selection_mode);
+    }
+
+    /// Flood-fill seeded at `p` (storage coords) into the active layer, honouring the threshold,
+    /// contiguous and "All layers" settings plus the selection. Shared by the Bucket pointer tap
+    /// and `fill_cursor`; the caller owns the undo edit.
+    fn flood_fill_at(&mut self, p: Point) {
+        let color = self.settings.primary;
+        let (th, cont) = (self.settings.threshold, self.settings.contiguous);
+        let sel = self.selection_clone();
+        // "All layers": decide the region from the composited frame (computed before the
+        // mutable layer borrow), while the fill still lands in the active layer only. The
+        // reference is composited over the whole **storage** area so its coordinates line
+        // up with the storage-indexed layer buffer the flood reads. [risk: bucket ref]
+        let reference = self
+            .settings
+            .fill_all_layers
+            .then(|| render::composite_frame(self.doc.active_frame(), self.doc.storage_rect()));
+        let clip = self.paint_clip();
+        let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
+        tool::flood_fill(buf, reference.as_ref(), sel.as_ref(), clip, p, color, th, cont, PaintMode::Replace);
+    }
+
+    /// Flood-fill at the reticle (off-finger Bucket, Fill button): the same fill a tap would do —
+    /// threshold, contiguous, "All layers" and the selection honoured. One undo step per press.
+    pub fn fill_cursor(&mut self) {
+        if !self.active_editable() {
+            return;
+        }
+        let before = self.begin_edit();
+        let p = self.cursor_storage();
+        self.flood_fill_at(p);
+        self.commit_edit(before);
     }
 
     // ---- selection / clipboard ops ----
@@ -3136,6 +3153,29 @@ mod tests {
         assert!(!SelCanvas(&s).get(5, 5) && SelCanvas(&s).get(2, 2));
         assert!(s.doc.undo());
         assert!(s.doc.selection.is_none());
+    }
+
+    #[test]
+    fn precision_bucket_fills_at_reticle() {
+        let mut s = Session::new(8, 8);
+        // a full-height green wall at x=3 splits the canvas into two disconnected regions
+        s.settings.primary = Rgba8::rgb(0, 200, 0);
+        s.tool = ToolKind::Pencil;
+        for y in 0..8 {
+            s.tap(3, y);
+        }
+        s.settings.primary = Rgba8::rgb(200, 0, 0);
+        s.tool = ToolKind::Bucket;
+        s.set_cursor(1, 1);
+        s.run_script("FillCursor()").unwrap(); // via the DSL to cover the parse path
+        assert_eq!(s.pixel(0, 0, 1, 1), Rgba8::rgb(200, 0, 0));
+        assert_eq!(s.pixel(0, 0, 0, 7), Rgba8::rgb(200, 0, 0), "whole left region filled");
+        assert_eq!(s.pixel(0, 0, 3, 4), Rgba8::rgb(0, 200, 0), "wall untouched");
+        assert_eq!(s.pixel(0, 0, 5, 5), Rgba8::TRANSPARENT, "contiguous fill stops at the wall");
+        // the press was ONE undo step
+        assert!(s.doc.undo());
+        assert_eq!(s.pixel(0, 0, 1, 1), Rgba8::TRANSPARENT);
+        assert_eq!(s.pixel(0, 0, 3, 4), Rgba8::rgb(0, 200, 0), "undo reverts only the fill");
     }
 
     #[test]
