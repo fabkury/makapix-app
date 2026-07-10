@@ -38,7 +38,16 @@ Pod::Spec.new do |s|
   _ffi_lib  = File.join(__dir__, 'MakapixFFI.xcframework', 'ios-arm64', 'libmakapix_ffi.a')
   _ffi_syms = `nm -gU "#{_ffi_lib}" 2>/dev/null`.scan(/(_mkpx_\w+)/).flatten.uniq
   raise "makapix_ffi.podspec: no _mkpx_* symbols in #{_ffi_lib} — run ./build_ios.sh first" if _ffi_syms.empty?
+  # Three mechanisms, deliberately redundant (Xcode 26's ld dropped -u as a dead-strip root —
+  # build #8 proved the code vanished from the symbol table entirely, with no link error):
+  #   -u                 forces the archive members to be loaded at all
+  #   -exported_symbol   marks each entry point as a dead-strip ROOT and puts it in the export trie
+  #                      (side effect: unlisted globals become unexported — harmless for an app
+  #                      binary; plugin pods are dynamic frameworks with their own export tables)
+  #   -export_dynamic    belt-and-braces: preserve main-executable globals through LTO/dead-strip
   s.user_target_xcconfig = {
-    'OTHER_LDFLAGS' => (['-Wl,-export_dynamic'] + _ffi_syms.map { |sym| "-Wl,-u,#{sym}" }).join(' ')
+    'OTHER_LDFLAGS' => (['-Wl,-export_dynamic'] +
+                        _ffi_syms.map { |sym| "-Wl,-u,#{sym}" } +
+                        _ffi_syms.map { |sym| "-Wl,-exported_symbol,#{sym}" }).join(' ')
   }
 end

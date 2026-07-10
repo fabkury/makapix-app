@@ -106,8 +106,16 @@ workflows:
           echo "Exported _mkpx_* symbols in $(basename "$BIN"): $EXPORTED"
           if [ "$EXPORTED" -lt 30 ]; then
             echo "FAIL: Rust FFI symbols missing from the export trie — the editor would die at runtime."
-            echo "Diagnostics (symbol table view):"
+            echo "--- Diagnostics ---"
+            echo "Symbol table view:"
             nm -gU "$BIN" | grep '_mkpx_' || echo "(none in symbol table either)"
+            XCCONFIG="ios/Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"
+            echo "Flags that reached $XCCONFIG:"
+            grep -o '\-Wl,-u,_mkpx_[a-z_]*' "$XCCONFIG" | wc -l | xargs echo "  -u flags:"
+            grep -o '\-Wl,-exported_symbol,_mkpx_[a-z_]*' "$XCCONFIG" | wc -l | xargs echo "  -exported_symbol flags:"
+            grep -c 'export_dynamic' "$XCCONFIG" | xargs echo "  export_dynamic:" || true
+            echo "Symbols in the vendored device archive:"
+            nm -gU ios/MakapixFFI.xcframework/ios-arm64/libmakapix_ffi.a 2>/dev/null | grep -c '_mkpx_' | xargs echo "  count:"
             exit 1
           fi
     artifacts:
