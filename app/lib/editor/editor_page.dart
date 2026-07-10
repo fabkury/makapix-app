@@ -41,6 +41,7 @@ part 'editor_page.engine.dart';
 part 'editor_page.fileio.dart';
 part 'editor_page.canvas.dart';
 part 'editor_page.timeline.dart';
+part 'editor_page.sheets.dart';
 part 'editor_page.controls.dart';
 part 'editor_page.toolgrid.dart';
 part 'editor_page.persistence.dart';

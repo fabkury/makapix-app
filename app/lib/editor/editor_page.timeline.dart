@@ -347,103 +347,6 @@ extension _EditorTimeline on _EditorPageState {
     setState(() {});
   }
 
-  // Prompt for a new layer name and apply it. Cancelling (or an empty name) leaves the layer as-is.
-  // Newlines and ';' are stripped because they would split the DSL command; commas survive (the
-  // parser keeps everything after the index as the name).
-  Future<void> _renameLayer(int i, String current) async {
-    final ctrl = TextEditingController(text: current);
-    final name = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Rename layer'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          onSubmitted: (_) => Navigator.pop(ctx, ctrl.text),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('Rename')),
-        ],
-      ),
-    );
-    if (name == null) return; // cancelled
-    final clean = name.replaceAll(RegExp(r'[\r\n;]'), ' ').trim();
-    if (clean.isEmpty) return;
-    _act('RenameLayer($i, $clean)');
-  }
-
-  void _layerOptions(int i, Map<String, dynamic> l, int count, {bool belowLocked = false}) {
-    // Sheet-local state must live outside the StatefulBuilder's builder:
-    // setS re-runs the builder, and locals declared inside it would reset
-    // to the values captured when the sheet opened.
-    int opacity = l['opacity'] ?? 255;
-    bool locked = l['locked'] ?? false;
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
-        bool inGroup = _selLayers.contains(i);
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              InkWell(
-                onTap: () { Navigator.pop(ctx); _renameLayer(i, '${l['name']}'); },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Flexible(child: Text('${l['name']}', style: const TextStyle(fontWeight: FontWeight.bold))),
-                    const SizedBox(width: 6),
-                    const Icon(Icons.edit, size: 14, color: Colors.white54),
-                  ]),
-                ),
-              ),
-              Row(children: [
-                const Text('Opacity'),
-                Expanded(child: Slider(value: opacity.toDouble(), max: 255, onChanged: (v) { setS(() => opacity = v.round()); _send('SetLayerOpacity($i, $opacity)'); _redraw(); })),
-                Text('$opacity'),
-              ]),
-              SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, title: const Text('Locked'), value: locked, onChanged: (v) { setS(() => locked = v); _act('SetLayerLocked($i, $v)'); }),
-              SwitchListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                title: const Text('In move group'),
-                subtitle: const Text('Move together with the Move tool (when nothing is selected)', style: TextStyle(fontSize: 11)),
-                value: inGroup,
-                onChanged: (v) {
-                  setS(() => inGroup = v);
-                  setState(() {
-                    if (v) {
-                      _selLayers.add(i);
-                    } else {
-                      _selLayers.remove(i);
-                    }
-                  });
-                  _syncLayerSel();
-                },
-              ),
-              Wrap(spacing: 8, children: [
-                ActionChip(avatar: const Icon(Icons.add_box_outlined, size: 16), label: const Text('Add new layer here'), onPressed: () { Navigator.pop(ctx); _act('AddLayerAt(${i + 1})'); }),
-                ActionChip(avatar: const Icon(Icons.control_point_duplicate, size: 16), label: const Text('Duplicate'), onPressed: () { Navigator.pop(ctx); _act('DuplicateLayer($i)'); }),
-                ActionChip(avatar: const Icon(Icons.arrow_upward, size: 16), label: const Text('Up'), onPressed: i + 1 < count ? () { Navigator.pop(ctx); _act('ReorderLayer($i, ${i + 1})'); } : null),
-                ActionChip(avatar: const Icon(Icons.arrow_downward, size: 16), label: const Text('Down'), onPressed: i > 0 ? () { Navigator.pop(ctx); _act('ReorderLayer($i, ${i - 1})'); } : null),
-                // Merge this layer onto the one below (disabled on the bottom layer and when the
-                // layer below is locked — the engine guards both too).
-                ActionChip(avatar: const Icon(Icons.call_merge, size: 16), label: const Text('Merge down'), onPressed: (i > 0 && !belowLocked) ? () { Navigator.pop(ctx); _act('MergeDown($i)'); } : null),
-                ActionChip(avatar: const Icon(Icons.dynamic_feed, size: 16), label: const Text('Copy to all frames'), onPressed: () {
-                  Navigator.pop(ctx);
-                  final all = List.generate(engine.frameCount, (k) => k).where((k) => k != engine.activeFrame).join(',');
-                  if (all.isNotEmpty) _act('SetActiveLayer($i); DuplicateLayerToFrames($all)');
-                }),
-                ActionChip(avatar: const Icon(Icons.delete, size: 16), label: const Text('Delete'), onPressed: count > 1 ? () { Navigator.pop(ctx); _act('RemoveLayer($i)'); } : null),
-              ]),
-            ]),
-          ),
-        );
-      }),
-    );
-  }
-
   // Layers as a horizontal film-strip (mirrors the frame film-roll): each tile shows just that
   // layer on a checkerboard (transparent) background. "Add layer" sits to the left; duplicate and
   // the other per-layer actions live in the long-press menu.
@@ -478,8 +381,7 @@ extension _EditorTimeline on _EditorPageState {
               if (cached == null || cached.hash != hash) _genLayerThumb(frame, i, hash);
               return GestureDetector(
                 onTap: () { setState(() => _selLayers.clear()); _act('SetActiveLayer($i)'); },
-                onLongPress: () => _layerOptions(i, l, layers.length,
-                    belowLocked: i > 0 && (layers[i - 1] as Map<String, dynamic>)['locked'] == true),
+                onLongPress: () => _layerOptions(i),
                 child: Container(
                   width: tileW + 6,
                   margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 5),
