@@ -21,9 +21,17 @@ Pod::Spec.new do |s|
   # Dart resolves the engine's C API at runtime via DynamicLibrary.process(), so NOTHING references
   # these symbols at link time. In release, -dead_strip therefore drops every entry point that isn't
   # explicitly kept (a debug build keeps them only because it doesn't strip). We mark each one as a
-  # linker root with `-u`, which both keeps its code and holds it in the app's dynamic export table
-  # for dlsym. `-u` (vs -force_load with an explicit path) is slice-agnostic and doesn't trip Xcode's
-  # build-input validation; CocoaPods already links the right slice via -lmakapix_ffi.
+  # linker root with `-u`, which keeps its code; `-u` (vs -force_load with an explicit path) is
+  # slice-agnostic and doesn't trip Xcode's build-input validation; CocoaPods already links the right
+  # slice via -lmakapix_ffi.
+  #
+  # `-export_dynamic` is ALSO required: keeping the code is not enough — dlsym(RTLD_DEFAULT, …) needs
+  # the symbols in the main executable's export trie. Xcode 16-era ld left -u roots exported, and R2
+  # was closed on that behavior (Scaleway Mac, 2026-07-08); Xcode 26's linker dead-strips them from
+  # the export table even when -u keeps the code, which shipped TestFlight builds whose editor died
+  # with "Failed to lookup symbol 'mkpx_new'" (found 2026-07-09, first on-device editor run of a CI
+  # build). -export_dynamic preserves global symbols of a main executable through LTO/dead-strip.
+  # codemagic.yaml carries a post-build gate that fails the build if the exports go missing again.
   #
   # The symbol set is derived from the built archive at pod-install time so it can never drift from
   # the actual FFI surface. build_ios.sh must have produced the xcframework first.
@@ -31,6 +39,6 @@ Pod::Spec.new do |s|
   _ffi_syms = `nm -gU "#{_ffi_lib}" 2>/dev/null`.scan(/(_mkpx_\w+)/).flatten.uniq
   raise "makapix_ffi.podspec: no _mkpx_* symbols in #{_ffi_lib} — run ./build_ios.sh first" if _ffi_syms.empty?
   s.user_target_xcconfig = {
-    'OTHER_LDFLAGS' => _ffi_syms.map { |sym| "-Wl,-u,#{sym}" }.join(' ')
+    'OTHER_LDFLAGS' => (['-Wl,-export_dynamic'] + _ffi_syms.map { |sym| "-Wl,-u,#{sym}" }).join(' ')
   }
 end
