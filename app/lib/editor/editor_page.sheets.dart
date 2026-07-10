@@ -305,6 +305,84 @@ extension _EditorSheets on _EditorPageState {
     );
   }
 
+  // ── the frame sheet ───────────────────────────────────────────────────────
+
+  // Long-press menu of a film-roll frame, mirroring the layer sheet's zones. Move left/right
+  // keep the sheet open and `cur` tracks the frame across reorders; duration lives in the
+  // state zone (tap opens the existing duration dialog for this frame).
+  void _frameMenu(int initial) {
+    int cur = initial;
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: const Color(0xFF1A1C1F),
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
+        final count = engine.frameCount;
+        if (cur >= count) cur = count - 1;
+        final frames = (_state['frame_detail'] as List?) ?? [];
+        final us = cur < frames.length ? (((frames[cur]['duration_us'] as num?) ?? 100000).toInt()) : 100000;
+        final ms = us / 1000.0;
+
+        final hash = engine.frameHash(cur);
+        final cached = _frameThumbs[cur];
+        if (cached == null || cached.hash != hash) {
+          _genFrameThumb(cur, hash).then((_) {
+            if (ctx.mounted) setS(() {});
+          });
+        }
+
+        return _sheetScaffold(ctx, [
+          _sheetHeader(
+            thumb: (cached != null && cached.hash == hash) ? cached : null,
+            title: 'Frame ${cur + 1} of $count',
+            subtitle: '${ms.toStringAsFixed(1)} ms · ${(1000 / ms).toStringAsFixed(1)} fps',
+          ),
+          const SizedBox(height: 12),
+          _sheetBtn(Icons.timer_outlined, 'Edit duration…', () {
+            Navigator.pop(ctx);
+            _act('SetActiveFrame($cur)');
+            _editDuration();
+          }),
+          _sheetSection('Arrange'),
+          _sheetBtnRow([
+            _sheetBtn(Icons.chevron_left, 'Move left', cur > 0
+                ? () {
+                    _act('ReorderFrame($cur, ${cur - 1})');
+                    setS(() => cur--);
+                  }
+                : null),
+            _sheetBtn(Icons.chevron_right, 'Move right', cur + 1 < count
+                ? () {
+                    _act('ReorderFrame($cur, ${cur + 1})');
+                    setS(() => cur++);
+                  }
+                : null),
+          ]),
+          _sheetSection('Create'),
+          _sheetBtnRow([
+            _sheetBtn(Icons.control_point_duplicate, 'Duplicate', () {
+              Navigator.pop(ctx);
+              _act('DuplicateFrame($cur)');
+            }),
+            _sheetBtn(Icons.add_box_outlined, 'New frame after', () {
+              Navigator.pop(ctx);
+              _act('AddFrameAt(${cur + 1})');
+            }),
+          ]),
+          const SizedBox(height: 8),
+          const Divider(height: 1),
+          const SizedBox(height: 4),
+          _sheetDelete('Delete frame', count > 1
+              ? () {
+                  Navigator.pop(ctx);
+                  _act('RemoveFrame($cur)');
+                }
+              : null),
+        ]);
+      }),
+    );
+  }
+
   // Prompt for a new layer name and apply it. Cancelling (or an empty name) leaves the layer as-is.
   // Newlines and ';' are stripped because they would split the DSL command; commas survive (the
   // parser keeps everything after the index as the name).

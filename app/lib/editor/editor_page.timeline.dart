@@ -256,24 +256,6 @@ extension _EditorTimeline on _EditorPageState {
         _sheetItem(ctx, Icons.fit_screen, 'Fit to screen', _fitView),
       ]);
 
-  void _frameMenu(int i) {
-    final count = engine.frameCount;
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(dense: true, title: Text('Frame ${i + 1} of $count', style: const TextStyle(fontWeight: FontWeight.bold))),
-          ListTile(leading: const Icon(Icons.add_box_outlined), title: const Text('Add new frame here'), onTap: () { Navigator.pop(ctx); _act('AddFrameAt(${i + 1})'); }),
-          ListTile(leading: const Icon(Icons.copy), title: const Text('Duplicate'), onTap: () { Navigator.pop(ctx); _act('DuplicateFrame($i)'); }),
-          ListTile(leading: const Icon(Icons.timer_outlined), title: const Text('Duration…'), onTap: () { Navigator.pop(ctx); _act('SetActiveFrame($i)'); _editDuration(); }),
-          ListTile(leading: const Icon(Icons.chevron_left), title: const Text('Move left'), enabled: i > 0, onTap: () { Navigator.pop(ctx); _act('ReorderFrame($i, ${i - 1})'); }),
-          ListTile(leading: const Icon(Icons.chevron_right), title: const Text('Move right'), enabled: i + 1 < count, onTap: () { Navigator.pop(ctx); _act('ReorderFrame($i, ${i + 1})'); }),
-          ListTile(leading: const Icon(Icons.delete, color: Colors.redAccent), title: const Text('Delete'), enabled: count > 1, onTap: () { Navigator.pop(ctx); _act('RemoveFrame($i)'); }),
-        ]),
-      ),
-    );
-  }
-
   List<dynamic> _layerList() {
     final frames = (_state['frame_detail'] as List?) ?? [];
     final active = engine.activeFrame;
