@@ -104,7 +104,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   set _brushSize(int v) => _sizeByTool[_tool] = v;
   bool _round = true;
   bool _perfect = false; // Pencil pixel-perfect: drop L-corner doubles on a 1px stroke
-  int _threshold = 16;
+  int _threshold = 0; // Bucket / Select-by-Color colour tolerance: exact-match by default
   bool _contiguous = true;
   bool _fillAllLayers = false; // Bucket: decide the fill region from the composited image
   bool _shapeFill = false; // shapes default to Outline (the engine is told on tool select)
