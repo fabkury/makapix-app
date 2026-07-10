@@ -59,7 +59,7 @@ const _transformTools = {'Flip', 'Rotate', 'Invert'};
 const _actionTools = {'Onion'};
 // Tools that support a "Precision" mode (off-finger reticle + act-by-button). Precision is
 // a per-tool toggle, remembered independently per tool — see [_precisionTools].
-const _precisionTools = {'Pencil', 'Brush', 'Airbrush', 'Eraser', 'Dodge', 'Burn', 'Eyedropper', 'SelectByColor'};
+const _precisionTools = {'Pencil', 'Brush', 'Airbrush', 'Eraser', 'Bucket', 'Dodge', 'Burn', 'Eyedropper', 'SelectByColor'};
 
 class EditorPage extends ConsumerStatefulWidget {
   const EditorPage({super.key});

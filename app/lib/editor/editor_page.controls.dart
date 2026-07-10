@@ -64,6 +64,19 @@ extension _EditorControls on _EditorPageState {
             label: const Text('Select'),
           ),
         ));
+      } else if (_tool == 'Bucket') {
+        // FILL (one flood-fill at the reticle, off-finger). The same fill a tap would do —
+        // Threshold/Contiguous/All-layers and the selection honoured. Like Pick, no "Hold":
+        // filling is a single operation, one undo step per press.
+        children.add(Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          child: ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
+            onPressed: () { _send('FillCursor()'); _refreshState(); _redraw(); setState(() {}); },
+            icon: const Icon(Icons.format_color_fill, size: 16),
+            label: const Text('Fill'),
+          ),
+        ));
       } else {
         if (_tool == 'Airbrush') {
           // SPRAY (one airbrush dab at the reticle, off-finger)
