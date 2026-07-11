@@ -72,14 +72,9 @@ ProfileApi _api(_FakeAdapter adapter) {
 
 void main() {
   group('profileTabsFor', () {
-    test('gallery always; reacted for signed-in; highlights when present', () {
-      expect(profileTabsFor(signedIn: false, hasHighlights: false), [ProfileTab.gallery]);
-      expect(profileTabsFor(signedIn: true, hasHighlights: false),
-          [ProfileTab.gallery, ProfileTab.reacted]);
-      expect(profileTabsFor(signedIn: false, hasHighlights: true),
-          [ProfileTab.gallery, ProfileTab.highlights]);
-      expect(profileTabsFor(signedIn: true, hasHighlights: true),
-          [ProfileTab.gallery, ProfileTab.reacted, ProfileTab.highlights]);
+    test('gallery always; reacted for signed-in (highlights live in the strip, not a tab)', () {
+      expect(profileTabsFor(signedIn: false), [ProfileTab.gallery]);
+      expect(profileTabsFor(signedIn: true), [ProfileTab.gallery, ProfileTab.reacted]);
     });
   });
 

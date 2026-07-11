@@ -14,7 +14,6 @@ import '../models/user_profile.dart';
 import '../state/auth_controller.dart';
 import '../state/edit_bridge.dart';
 import '../state/feed_providers.dart';
-import '../state/paged.dart';
 import '../state/player_providers.dart';
 import '../state/profile_providers.dart';
 import '../state/publish_providers.dart';
@@ -187,13 +186,13 @@ class ProfilePage extends ConsumerWidget {
 }
 
 /// The profile's tab set. Gallery is always present; Reacted only for
-/// signed-in viewers; Highlights only when the profile has any.
-enum ProfileTab { gallery, reacted, highlights }
+/// signed-in viewers. Highlights are not a tab — they get the showcase
+/// strip between the header and the tab bar.
+enum ProfileTab { gallery, reacted }
 
-List<ProfileTab> profileTabsFor({required bool signedIn, required bool hasHighlights}) => [
+List<ProfileTab> profileTabsFor({required bool signedIn}) => [
       ProfileTab.gallery,
       if (signedIn) ProfileTab.reacted,
-      if (hasHighlights) ProfileTab.highlights,
     ];
 
 class _Body extends ConsumerWidget {
@@ -211,7 +210,7 @@ class _Body extends ConsumerWidget {
         Expanded(child: _blockedBanner(context, ref)),
       ]);
     }
-    final tabs = profileTabsFor(signedIn: signedIn, hasHighlights: profile.highlights.isNotEmpty);
+    final tabs = profileTabsFor(signedIn: signedIn);
     return SendTargetBinder(
       target: ChannelTarget(
         displayName: profile.handle,
@@ -221,8 +220,8 @@ class _Body extends ConsumerWidget {
       child: DefaultTabController(
         length: tabs.length,
         // Value-equal across rebuilds: the controller remounts only when the
-        // tab set genuinely changes (sign-in/out, highlights appearing) — not
-        // on ordinary rebuilds or token refreshes.
+        // tab set genuinely changes (sign-in/out) — not on ordinary rebuilds
+        // or token refreshes.
         key: ValueKey('profile-tabs:${tabs.length}:$signedIn'),
         child: Builder(builder: (context) {
           return RefreshIndicator(
@@ -238,6 +237,7 @@ class _Body extends ConsumerWidget {
                 SliverToBoxAdapter(
                     child: Column(children: [
                   _header(context, ref, signedIn),
+                  if (profile.highlights.isNotEmpty) _HighlightsStrip(profile: profile),
                   const Divider(height: 1),
                 ])),
               ],
@@ -255,7 +255,6 @@ class _Body extends ConsumerWidget {
                       switch (t) {
                         ProfileTab.gallery => _GalleryTab(profile: profile),
                         ProfileTab.reacted => _ReactedTab(profile: profile),
-                        ProfileTab.highlights => _HighlightsTab(profile: profile),
                       },
                   ]),
                 ),
@@ -271,7 +270,6 @@ class _Body extends ConsumerWidget {
     final (icon, label) = switch (t) {
       ProfileTab.gallery => (Icons.grid_on, 'Gallery'),
       ProfileTab.reacted => (Icons.bolt, 'Reacted'),
-      ProfileTab.highlights => (Icons.diamond_outlined, 'Highlights'),
     };
     return Tab(
       height: 40,
@@ -291,13 +289,12 @@ class _Body extends ConsumerWidget {
     final futures = <Future<void>>[
       ref.read(profileProvider(profile.sqid).notifier).reload(),
     ];
+    // The highlights strip rides along with the profile reload.
     switch (tabs[index]) {
       case ProfileTab.gallery:
         futures.add(ref.read(ownerFeedProvider(profile.userKey).notifier).refresh());
       case ProfileTab.reacted:
         futures.add(ref.read(reactedFeedProvider(profile.sqid).notifier).refresh());
-      case ProfileTab.highlights:
-        break; // rides along with the profile reload
     }
     await Future.wait(futures);
   }
@@ -632,28 +629,84 @@ class _ReactedTab extends ConsumerWidget {
   }
 }
 
-/// Display-only (§14): the highlights ride in the profile payload; pin/unpin
-/// management is C4 backlog.
-class _HighlightsTab extends ConsumerWidget {
+/// The artist's self-curated best work, showcased as a horizontal strip
+/// between the header and the tab bar (display-only, §14: the highlights ride
+/// in the profile payload; pin/unpin management is C4 backlog). The
+/// RefreshIndicator's axis check keeps this horizontal scroll from
+/// triggering pull-to-refresh.
+class _HighlightsStrip extends StatelessWidget {
   final UserProfile profile;
-  const _HighlightsTab({required this.profile});
+  const _HighlightsStrip({required this.profile});
+
+  static const double _tile = 108;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return FeedGrid(
-      key: const PageStorageKey('profile-highlights'),
-      nested: true,
-      state: PagedState<Post>(items: profile.highlights, atEnd: true, initialized: true),
-      onLoadMore: () async {},
-      onRefresh: () async {},
-      emptyMessage: 'No highlights.',
-      onTap: (Post p) => Navigator.push(
-          context,
-          MaterialPageRoute(
-              builder: (_) => ArtworkDetailPage(
-                    sqid: p.sqid,
-                    feed: ArtworkFeedSource.fixed(profile.highlights),
-                  ))),
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: Row(children: [
+          Icon(Icons.diamond_outlined, size: 14, color: cs.primary),
+          const SizedBox(width: 6),
+          Text('HIGHLIGHTS',
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1.2,
+                  color: cs.onSurfaceVariant)),
+        ]),
+      ),
+      SizedBox(
+        height: _tile,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          itemCount: profile.highlights.length,
+          separatorBuilder: (_, _) => const SizedBox(width: 8),
+          itemBuilder: (_, i) => _HighlightTile(
+            post: profile.highlights[i],
+            size: _tile,
+            onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => ArtworkDetailPage(
+                          sqid: profile.highlights[i].sqid,
+                          feed: ArtworkFeedSource.fixed(profile.highlights),
+                        ))),
+          ),
+        ),
+      ),
+      const SizedBox(height: 12),
+    ]);
+  }
+}
+
+class _HighlightTile extends StatelessWidget {
+  final Post post;
+  final double size;
+  final VoidCallback onTap;
+  const _HighlightTile({required this.post, required this.size, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: size,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: PixelArtImage(
+          url: post.artUrl,
+          fit: BoxFit.cover,
+          frameCount: post.frameCount,
+          width: post.width,
+          height: post.height,
+        ),
+      ),
     );
   }
 }
