@@ -27,6 +27,7 @@ import 'widgets/common.dart';
 import 'widgets/external_links.dart';
 import 'widgets/feed_grid.dart';
 import 'widgets/send_target_binder.dart';
+import 'widgets/synced_pixel_art_image.dart';
 
 /// A user's profile: header + stats + follow + gallery. When the moderation
 /// feature is live, an overflow menu adds report + block/unblock; a blocked
@@ -333,73 +334,113 @@ class _Body extends ConsumerWidget {
     );
   }
 
+  // Header geometry: art backdrop strip, avatar centered on its bottom edge,
+  // handle beside the avatar's protruding half, then the left-aligned info
+  // block. The name block gets fixed room (the stack bottom), so handle and
+  // tagline-free layout stay overflow-safe; tagline/bio flow below full-width.
+  static const double _kBackdropH = 120;
+  static const double _kAvatarR = 36;
+  static const double _kRing = 3;
+  static const double _kHeaderStackH = 176;
+
   Widget _header(BuildContext context, WidgetRef ref, bool signedIn) {
     final p = profile;
     final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(children: [
-        _avatar(context, p),
-        const SizedBox(height: 8),
-        Row(mainAxisSize: MainAxisSize.min, children: [
-          Flexible(
-            child: Text(p.handle,
-                style: Theme.of(context).textTheme.titleLarge, overflow: TextOverflow.ellipsis),
+    final avatarD = 2 * (_kAvatarR + _kRing);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SizedBox(
+        height: _kHeaderStackH,
+        width: double.infinity,
+        child: Stack(children: [
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: _kBackdropH,
+            child: _HeaderBackdrop(profile: p, height: _kBackdropH),
           ),
-          if (p.reputation > 0) ...[
-            const SizedBox(width: 8),
-            _RepChip(reputation: p.reputation),
-          ],
-        ]),
-        if (p.tagline != null && p.tagline!.isNotEmpty)
-          Text(p.tagline!, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
-        if (p.bio != null && p.bio!.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(p.bio!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13)),
+          Positioned(
+            left: 16,
+            top: _kBackdropH - avatarD / 2,
+            child: Container(
+              padding: const EdgeInsets.all(_kRing),
+              decoration: BoxDecoration(color: cs.surface, shape: BoxShape.circle),
+              child: _avatar(context, p),
+            ),
           ),
-        if (p.website != null && p.website!.isNotEmpty) _websiteLink(context, p.website!),
-        if (p.tagBadges.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Wrap(spacing: 6, children: [
-              for (final b in p.tagBadges)
-                Chip(
-                  avatar: b.iconUrl16 == null
-                      ? null
-                      : CircleAvatar(
-                          backgroundColor: Colors.transparent,
-                          backgroundImage: CachedNetworkImageProvider(b.iconUrl16!)),
-                  label: Text(b.label, style: const TextStyle(fontSize: 11)),
-                  visualDensity: VisualDensity.compact,
-                ),
+          Positioned(
+            left: 16 + avatarD + 12,
+            top: _kBackdropH + 6,
+            right: 16,
+            bottom: 0,
+            child: Row(children: [
+              Flexible(
+                child: Text(p.handle,
+                    style: Theme.of(context).textTheme.titleLarge,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+              ),
+              if (p.reputation > 0) ...[
+                const SizedBox(width: 8),
+                _RepChip(reputation: p.reputation),
+              ],
             ]),
           ),
-        const SizedBox(height: 12),
-        _statsRow(context, p),
-        const SizedBox(height: 12),
-        // Own profile → Edit; blocked → the banner owns Unblock (no button here);
-        // otherwise → Follow.
-        if (!p.isBlockedByViewer)
-          SizedBox(
-            width: 220,
-            child: p.isOwnProfile
-                ? OutlinedButton.icon(
-                    onPressed: () async {
-                      await Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => EditProfilePage(profile: p)));
-                      // Avatar changes apply immediately and Save may have landed —
-                      // re-fetch so the header reflects them (silently, so the
-                      // tab selection and scroll survive the return).
-                      ref.read(profileProvider(p.sqid).notifier).reload();
-                    },
-                    icon: const Icon(Icons.edit_outlined, size: 18),
-                    label: const Text('Edit profile'),
-                  )
-                : _FollowButton(sqid: p.sqid, isFollowing: p.isFollowing, signedIn: signedIn),
-          ),
-      ]),
-    );
+        ]),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (p.tagline != null && p.tagline!.isNotEmpty)
+            Text(p.tagline!, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
+          if (p.bio != null && p.bio!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(p.bio!, style: const TextStyle(fontSize: 13)),
+            ),
+          if (p.website != null && p.website!.isNotEmpty) _websiteLink(context, p.website!),
+          if (p.tagBadges.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Wrap(spacing: 6, children: [
+                for (final b in p.tagBadges)
+                  Chip(
+                    avatar: b.iconUrl16 == null
+                        ? null
+                        : CircleAvatar(
+                            backgroundColor: Colors.transparent,
+                            backgroundImage: CachedNetworkImageProvider(b.iconUrl16!)),
+                    label: Text(b.label, style: const TextStyle(fontSize: 11)),
+                    visualDensity: VisualDensity.compact,
+                  ),
+              ]),
+            ),
+          const SizedBox(height: 12),
+          _statsRow(context, p),
+          const SizedBox(height: 12),
+          // Own profile → Edit; blocked → the banner owns Unblock (no button
+          // here); otherwise → Follow.
+          if (!p.isBlockedByViewer)
+            SizedBox(
+              width: 220,
+              child: p.isOwnProfile
+                  ? OutlinedButton.icon(
+                      onPressed: () async {
+                        await Navigator.push(context,
+                            MaterialPageRoute(builder: (_) => EditProfilePage(profile: p)));
+                        // Avatar changes apply immediately and Save may have landed —
+                        // re-fetch so the header reflects them (silently, so the
+                        // tab selection and scroll survive the return).
+                        ref.read(profileProvider(p.sqid).notifier).reload();
+                      },
+                      icon: const Icon(Icons.edit_outlined, size: 18),
+                      label: const Text('Edit profile'),
+                    )
+                  : _FollowButton(sqid: p.sqid, isFollowing: p.isFollowing, signedIn: signedIn),
+            ),
+        ]),
+      ),
+    ]);
   }
 
   /// The header avatar; when an image exists, tap opens a full-size
@@ -469,6 +510,109 @@ class _Body extends ConsumerWidget {
         Text(label,
             style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
       ]);
+}
+
+/// The header's art backdrop: the artist's own work blown up with chunky
+/// pixels behind a scrim. Source: first static highlight, else first static
+/// gallery post (the gallery feed is warm — its tab builds immediately), else
+/// a deterministic pixel pattern seeded from the handle, so every profile has
+/// an identity. Animated art is skipped — a moving backdrop would compete
+/// with the content. Blocked profiles always get the pattern (their content
+/// stays hidden).
+class _HeaderBackdrop extends ConsumerWidget {
+  final UserProfile profile;
+  final double height;
+  const _HeaderBackdrop({required this.profile, required this.height});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    String? url;
+    if (!profile.isBlockedByViewer) {
+      for (final p in profile.highlights) {
+        if (p.frameCount <= 1 && p.artUrl.isNotEmpty) {
+          url = p.artUrl;
+          break;
+        }
+      }
+      if (url == null) {
+        final feed = ref.watch(ownerFeedProvider(profile.userKey));
+        for (final p in feed.items) {
+          if (p.frameCount <= 1 && p.artUrl.isNotEmpty) {
+            url = p.artUrl;
+            break;
+          }
+        }
+      }
+    }
+    return SizedBox(
+      height: height,
+      width: double.infinity,
+      child: Stack(fit: StackFit.expand, children: [
+        if (url == null)
+          CustomPaint(painter: _PixelPatternPainter(seed: profile.handle))
+        else
+          cachedNetworkArtImage(url, BoxFit.cover),
+        // Scrim: keep the art visible up top, merge into the page surface at
+        // the bottom where the avatar ring sits.
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                cs.surface.withValues(alpha: 0.25),
+                cs.surface.withValues(alpha: 0.45),
+                cs.surface.withValues(alpha: 0.95),
+              ],
+              stops: const [0, 0.55, 1],
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+/// Deterministic chunky-pixel banner from a text seed (FNV-1a hash feeding an
+/// LCG): a horizontally mirrored three-tone grid, hue-tinted per handle and
+/// muted enough to sit behind the scrim. Pure Dart — no engine round-trip.
+class _PixelPatternPainter extends CustomPainter {
+  final String seed;
+  _PixelPatternPainter({required this.seed});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var h = 0x811C9DC5; // FNV-1a offset basis
+    for (final r in seed.runes) {
+      h = ((h ^ r) * 0x01000193) & 0xFFFFFFFF;
+    }
+    final hue = (h % 360).toDouble();
+    var s = h;
+    int next() => s = (s * 1664525 + 1013904223) & 0xFFFFFFFF;
+
+    final tones = [
+      HSLColor.fromAHSL(1, hue, 0.30, 0.13).toColor(),
+      HSLColor.fromAHSL(1, hue, 0.35, 0.19).toColor(),
+      HSLColor.fromAHSL(1, (hue + 40) % 360, 0.45, 0.28).toColor(),
+    ];
+    const cell = 20.0;
+    final cols = (size.width / cell).ceil();
+    final rows = (size.height / cell).ceil();
+    final half = (cols + 1) ~/ 2;
+    final box = Paint();
+    for (var r = 0; r < rows; r++) {
+      for (var c = 0; c < half; c++) {
+        final roll = next() % 10;
+        box.color = tones[roll < 5 ? 0 : (roll < 8 ? 1 : 2)];
+        canvas.drawRect(Rect.fromLTWH(c * cell, r * cell, cell, cell), box);
+        canvas.drawRect(Rect.fromLTWH((cols - 1 - c) * cell, r * cell, cell, cell), box);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_PixelPatternPainter oldDelegate) => oldDelegate.seed != seed;
 }
 
 /// Small reputation pill beside the handle; tap for the explainer tooltip.
