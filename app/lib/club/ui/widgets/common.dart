@@ -7,6 +7,26 @@ import '../../cache/artwork_cache.dart';
 import '../../state/animation_settings.dart';
 import 'synced_pixel_art_image.dart';
 
+/// Compact count for stat rows, e.g. 999 → "999", 12345 → "12.3k", 3400000 → "3.4M".
+String compactCount(int n) {
+  if (n < 1000) return '$n';
+  // 999500+ rounds to "1000k" in the k branch — hand it to M ("1M") instead.
+  final (v, suffix) = n < 999500 ? (n / 1000.0, 'k') : (n / 1000000.0, 'M');
+  final txt = v >= 99.95
+      ? v.round().toString()
+      : v.toStringAsFixed(1).replaceFirst(RegExp(r'\.0$'), '');
+  return '$txt$suffix';
+}
+
+/// File size in the nearest of bytes/KiB/MiB, e.g. 512 → "512 bytes",
+/// 38214 → "37.3 KiB", 5452595 → "5.2 MiB".
+String formatFileSize(int bytes) {
+  if (bytes < 1024) return '$bytes bytes';
+  final (v, unit) =
+      bytes < 1024 * 1024 ? (bytes / 1024.0, 'KiB') : (bytes / (1024.0 * 1024.0), 'MiB');
+  return '${v.toStringAsFixed(1).replaceFirst(RegExp(r'\.0$'), '')} $unit';
+}
+
 /// Compact relative time, e.g. "3h", "2d".
 String timeAgo(DateTime? t) {
   if (t == null) return '';

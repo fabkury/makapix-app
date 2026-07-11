@@ -1,6 +1,10 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
 
+import '../cache/artwork_cache.dart';
 import '../models/club_error.dart';
 import '../models/post.dart';
 import '../models/report.dart';
@@ -8,17 +12,20 @@ import '../models/safety_copy.dart';
 import '../models/server_config.dart';
 import '../models/user_profile.dart';
 import '../state/auth_controller.dart';
+import '../state/edit_bridge.dart';
 import '../state/feed_providers.dart';
 import '../state/paged.dart';
 import '../state/player_providers.dart';
 import '../state/profile_providers.dart';
 import '../state/publish_providers.dart';
 import '../state/safety_providers.dart';
+import 'artist_dashboard_page.dart';
 import 'artwork_detail_page.dart';
 import 'club_account_page.dart';
 import 'edit_profile_page.dart';
 import 'report_page.dart';
 import 'widgets/common.dart';
+import 'widgets/external_links.dart';
 import 'widgets/feed_grid.dart';
 import 'widgets/send_target_binder.dart';
 
@@ -39,8 +46,9 @@ class ProfilePage extends ConsumerWidget {
     final profile = async.valueOrNull;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Profile'),
+        title: Text(profile == null ? 'Profile' : '@${profile.handle}'),
         actions: [
+          if (profile != null && !profile.isBlockedByViewer) _shareButton(context, ref, profile),
           if (rules != null && profile != null && !profile.isOwnProfile)
             _menu(context, ref, profile, signedIn, rules),
         ],
@@ -52,6 +60,25 @@ class ProfilePage extends ConsumerWidget {
           onRetry: () => ref.read(profileProvider(sqid).notifier).load(),
         ),
         data: (p) => _Body(profile: p),
+      ),
+    );
+  }
+
+  /// Tap shares the profile's web link; long-press copies just the link
+  /// (mirrors the artwork page's share affordance).
+  Widget _shareButton(BuildContext context, WidgetRef ref, UserProfile p) {
+    final url = '${ref.watch(clubConfigProvider).baseUrl}/u/${p.sqid}';
+    return GestureDetector(
+      onLongPress: () {
+        Clipboard.setData(ClipboardData(text: url));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Link copied')));
+      },
+      child: IconButton(
+        icon: const Icon(Icons.share),
+        tooltip: 'Share profile (long-press to copy link)',
+        onPressed: () =>
+            SharePlus.instance.share(ShareParams(text: '@${p.handle} on Makapix Club — $url')),
       ),
     );
   }
@@ -276,14 +303,15 @@ class _Body extends ConsumerWidget {
   }
 
   Widget _blockedBanner(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.block, size: 40, color: Colors.white30),
+          Icon(Icons.block, size: 40, color: cs.outline),
           const SizedBox(height: 12),
           Text("You've blocked @${profile.handle}. They can't interact with you, and you won't "
-              'see their content.', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white60)),
+              'see their content.', textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant)),
           const SizedBox(height: 16),
           FilledButton.icon(
             onPressed: () async {
@@ -310,34 +338,48 @@ class _Body extends ConsumerWidget {
 
   Widget _header(BuildContext context, WidgetRef ref, bool signedIn) {
     final p = profile;
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(children: [
-        HandleAvatar(url: p.avatarUrl, handle: p.handle, radius: 36),
+        _avatar(context, p),
         const SizedBox(height: 8),
-        Text(p.handle, style: Theme.of(context).textTheme.titleLarge),
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          Flexible(
+            child: Text(p.handle,
+                style: Theme.of(context).textTheme.titleLarge, overflow: TextOverflow.ellipsis),
+          ),
+          if (p.reputation > 0) ...[
+            const SizedBox(width: 8),
+            _RepChip(reputation: p.reputation),
+          ],
+        ]),
         if (p.tagline != null && p.tagline!.isNotEmpty)
-          Text(p.tagline!, style: const TextStyle(color: Colors.white60, fontSize: 12)),
+          Text(p.tagline!, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
         if (p.bio != null && p.bio!.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: Text(p.bio!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13)),
           ),
+        if (p.website != null && p.website!.isNotEmpty) _websiteLink(context, p.website!),
         if (p.tagBadges.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 6),
             child: Wrap(spacing: 6, children: [
               for (final b in p.tagBadges)
-                Chip(label: Text(b.label, style: const TextStyle(fontSize: 11)), visualDensity: VisualDensity.compact),
+                Chip(
+                  avatar: b.iconUrl16 == null
+                      ? null
+                      : CircleAvatar(
+                          backgroundColor: Colors.transparent,
+                          backgroundImage: CachedNetworkImageProvider(b.iconUrl16!)),
+                  label: Text(b.label, style: const TextStyle(fontSize: 11)),
+                  visualDensity: VisualDensity.compact,
+                ),
             ]),
           ),
         const SizedBox(height: 12),
-        Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-          _stat('Posts', p.stats.totalPosts),
-          _stat('Followers', p.stats.followerCount),
-          _stat('Views', p.stats.totalViews),
-          _stat('Rep', p.reputation),
-        ]),
+        _statsRow(context, p),
         const SizedBox(height: 12),
         // Own profile → Edit; blocked → the banner owns Unblock (no button here);
         // otherwise → Follow.
@@ -363,10 +405,150 @@ class _Body extends ConsumerWidget {
     );
   }
 
-  Widget _stat(String label, int n) => Column(children: [
-        Text('$n', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        Text(label, style: const TextStyle(fontSize: 11, color: Colors.white54)),
+  /// The header avatar; when an image exists, tap opens a full-size
+  /// nearest-neighbor viewer (pixel avatars deserve a crisp zoom).
+  Widget _avatar(BuildContext context, UserProfile p) {
+    final avatar = HandleAvatar(url: p.avatarUrl, handle: p.handle, radius: 36);
+    if (p.avatarUrl == null || p.avatarUrl!.isEmpty) return avatar;
+    final tag = 'profile-avatar-${p.sqid}';
+    return GestureDetector(
+      onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+              builder: (_) => _AvatarViewer(url: p.avatarUrl!, handle: p.handle, heroTag: tag))),
+      child: Hero(tag: tag, child: avatar),
+    );
+  }
+
+  Widget _websiteLink(BuildContext context, String website) {
+    final cs = Theme.of(context).colorScheme;
+    // Display without the scheme; launch with one (the field may omit it).
+    final label = website.replaceFirst(RegExp(r'^https?://'), '').replaceFirst(RegExp(r'/$'), '');
+    final url = website.startsWith(RegExp(r'https?://')) ? website : 'https://$website';
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: InkWell(
+        onTap: () => openExternalUrl(context, url),
+        borderRadius: BorderRadius.circular(6),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.link, size: 14, color: cs.primary),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(label,
+                  style: TextStyle(fontSize: 12, color: cs.primary),
+                  overflow: TextOverflow.ellipsis),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  /// Posts · Followers · Reactions · Views. On your own profile the row is
+  /// tappable and opens the Artist Dashboard (the full stats surface).
+  Widget _statsRow(BuildContext context, UserProfile p) {
+    final row = Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+      _stat(context, 'Posts', p.stats.totalPosts),
+      _stat(context, 'Followers', p.stats.followerCount),
+      _stat(context, 'Reactions', p.stats.totalReactionsReceived),
+      _stat(context, 'Views', p.stats.totalViews),
+    ]);
+    if (!p.isOwnProfile) return row;
+    return Tooltip(
+      message: 'View your stats',
+      child: InkWell(
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => ArtistDashboardPage(userKey: p.sqid))),
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: row),
+      ),
+    );
+  }
+
+  Widget _stat(BuildContext context, String label, int n) => Column(children: [
+        Text(compactCount(n), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        Text(label,
+            style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
       ]);
+}
+
+/// Small reputation pill beside the handle; tap for the explainer tooltip.
+class _RepChip extends StatelessWidget {
+  final int reputation;
+  const _RepChip({required this.reputation});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: 'Reputation: $reputation — earned through activity in the Club',
+      triggerMode: TooltipTriggerMode.tap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: cs.primaryContainer,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.auto_awesome, size: 12, color: cs.onPrimaryContainer),
+          const SizedBox(width: 4),
+          Text(compactCount(reputation),
+              style: TextStyle(
+                  fontSize: 11, fontWeight: FontWeight.w600, color: cs.onPrimaryContainer)),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Full-screen avatar viewer: black backdrop, pinch-zoom with chunky pixels
+/// (nearest-neighbor), tap anywhere to dismiss.
+class _AvatarViewer extends StatelessWidget {
+  final String url;
+  final String handle;
+  final String heroTag;
+  const _AvatarViewer({required this.url, required this.handle, required this.heroTag});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: GestureDetector(
+        onTap: () => Navigator.pop(context),
+        child: SafeArea(
+          child: Stack(children: [
+            Center(
+              child: Hero(
+                tag: heroTag,
+                child: InteractiveViewer(
+                  maxScale: 16,
+                  child: Image(
+                    image: CachedNetworkImageProvider(url, cacheManager: avatarImageCache),
+                    filterQuality: FilterQuality.none,
+                    fit: BoxFit.contain,
+                    semanticLabel: "@$handle's avatar",
+                    errorBuilder: (_, _, _) =>
+                        const Icon(Icons.broken_image, color: Colors.white24, size: 40),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 4,
+              left: 4,
+              child: IconButton(
+                icon: const Icon(Icons.close),
+                tooltip: 'Close',
+                onPressed: () => Navigator.pop(context),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
 }
 
 /// Each tab watches its own provider, so a feed is fetched only when its tab
@@ -386,6 +568,8 @@ class _GalleryTab extends ConsumerWidget {
       onLoadMore: n.loadMore,
       onRefresh: () async {}, // the page owns refresh
       emptyMessage: 'No posts yet.',
+      // Your own empty gallery is the best moment to start creating.
+      empty: profile.isOwnProfile ? const _CreateFirstArtEmpty() : null,
       onTap: (Post p) => Navigator.push(
           context,
           MaterialPageRoute(
@@ -394,6 +578,29 @@ class _GalleryTab extends ConsumerWidget {
                     feed: pagedArtworkSource(ownerFeedProvider(profile.userKey),
                         ownerFeedProvider(profile.userKey).notifier),
                   ))),
+    );
+  }
+}
+
+/// Empty-state CTA for your own gallery: jump straight into the editor.
+class _CreateFirstArtEmpty extends ConsumerWidget {
+  const _CreateFirstArtEmpty();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    return Center(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.brush_outlined, size: 40, color: cs.outline),
+        const SizedBox(height: 12),
+        Text('Your gallery is waiting.', style: TextStyle(color: cs.onSurfaceVariant)),
+        const SizedBox(height: 16),
+        FilledButton.icon(
+          onPressed: () => ref.read(openEditorProvider.notifier).state++,
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('Create your first pixel art'),
+        ),
+      ]),
     );
   }
 }
@@ -470,7 +677,11 @@ class _FollowButton extends ConsumerWidget {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
         }
       },
-      style: isFollowing ? FilledButton.styleFrom(backgroundColor: const Color(0xFF2A2D31)) : null,
+      style: isFollowing
+          ? FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+              foregroundColor: Theme.of(context).colorScheme.onSurface)
+          : null,
       icon: Icon(isFollowing ? Icons.check : Icons.person_add_alt_1, size: 18),
       label: Text(isFollowing ? 'Following' : 'Follow'),
     );

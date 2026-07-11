@@ -22,6 +22,10 @@ class FeedGrid extends StatefulWidget {
   final Future<void> Function() onRefresh;
   final void Function(Post) onTap;
   final String emptyMessage;
+
+  /// Custom empty-state widget (e.g. a call-to-action); falls back to a plain
+  /// `ClubEmpty` with [emptyMessage].
+  final Widget? empty;
   final bool nested;
   const FeedGrid({
     super.key,
@@ -30,6 +34,7 @@ class FeedGrid extends StatefulWidget {
     required this.onRefresh,
     required this.onTap,
     this.emptyMessage = 'Nothing here yet.',
+    this.empty,
     this.nested = false,
   });
 
@@ -68,7 +73,9 @@ class _FeedGridState extends State<FeedGrid> {
     if (s.items.isEmpty) {
       final empty = ListView(
           primary: widget.nested ? true : null,
-          children: [SizedBox(height: 240, child: ClubEmpty(message: widget.emptyMessage))]);
+          children: [
+            SizedBox(height: 240, child: widget.empty ?? ClubEmpty(message: widget.emptyMessage))
+          ]);
       if (widget.nested) return empty;
       return RefreshIndicator(onRefresh: widget.onRefresh, child: empty);
     }
