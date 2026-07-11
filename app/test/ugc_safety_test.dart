@@ -162,16 +162,19 @@ void main() {
       expect(t.label, contains('My art'));
     });
 
-    test('comment → UUID; offender from author', () {
+    test('comment → UUID; offender handle from flat author fields', () {
       final c = Comment.fromJson({
         'id': '7d9f-uuid',
         'body': 'hi',
-        'author': {'handle': 'bob', 'public_sqid': 'bsq'},
+        'author_handle': 'bob',
       });
       final t = ReportTarget.comment(c);
       expect(t.type, 'comment');
       expect(t.id, '7d9f-uuid');
-      expect(t.offenderSqid, 'bsq');
+      // Server comment payloads carry no author sqid, so block-by-sqid is
+      // unavailable from a comment report until the server adds one.
+      expect(t.offenderSqid, isNull);
+      expect(t.offenderHandle, 'bob');
       expect(t.label, contains('@bob'));
     });
 

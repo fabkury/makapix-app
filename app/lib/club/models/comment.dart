@@ -2,18 +2,22 @@
 /// to an IP rather than a user).
 class CommentAuthor {
   final String handle;
+
+  /// Only set on optimistic local comments (from the signed-in user). Server
+  /// comment payloads carry no author sqid — just flat `author_*` fields.
   final String? sqid;
   final String? avatarUrl;
   const CommentAuthor({required this.handle, this.sqid, this.avatarUrl});
 
-  static CommentAuthor? fromJson(Map<String, dynamic>? j) {
-    if (j == null) return null;
-    final h = j['handle'];
+  /// From the flat `author_handle`/`author_avatar_url` fields of a comment
+  /// payload (unlike reaction-users there is no `*_public_sqid`). A null
+  /// `author_handle` means anonymous.
+  static CommentAuthor? fromCommentJson(Map<String, dynamic> j) {
+    final h = j['author_handle'];
     if (h == null) return null;
     return CommentAuthor(
       handle: h.toString(),
-      sqid: j['public_sqid'] as String?,
-      avatarUrl: j['avatar_url'] as String?,
+      avatarUrl: j['author_avatar_url'] as String?,
     );
   }
 }
@@ -52,7 +56,7 @@ class Comment {
         depth: (j['depth'] as num?)?.toInt() ?? 0,
         body: (j['body'] ?? '').toString(),
         createdAt: DateTime.tryParse((j['created_at'] ?? '').toString()),
-        author: CommentAuthor.fromJson((j['author'] as Map?)?.cast<String, dynamic>()),
+        author: CommentAuthor.fromCommentJson(j),
         likeCount: (j['like_count'] as num?)?.toInt() ?? 0,
         likedByMe: j['liked_by_me'] == true,
         deleted: j['deleted'] == true || j['deleted_by_owner'] == true,

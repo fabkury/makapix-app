@@ -52,7 +52,9 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
   Widget build(BuildContext context) {
     final async = ref.watch(commentsProvider(widget.postId));
     final auth = ref.watch(authControllerProvider);
-    final mySub = auth.me?.user.sub;
+    // Ownership is matched by handle: server comment payloads carry no author
+    // sqid (only the optimistic local ones do), and handles are unique.
+    final myHandle = auth.me?.user.handle;
     // Report affordance appears once the moderation config key is live (works
     // signed-out); ref.watch so it shows when the config future resolves.
     final canReport = ref.watch(serverConfigProvider).valueOrNull?.moderationEnabled ?? false;
@@ -69,7 +71,7 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
             padding: EdgeInsets.all(8), child: Text('Could not load comments.', style: TextStyle(color: Colors.white54))),
         data: (tree) => tree.isEmpty
             ? const Padding(padding: EdgeInsets.all(12), child: Text('No comments yet.', style: TextStyle(color: Colors.white38)))
-            : Column(children: [for (final c in tree) _tile(c, mySub, canReport, depth: 0)]),
+            : Column(children: [for (final c in tree) _tile(c, myHandle, canReport, depth: 0)]),
       ),
       const SizedBox(height: 8),
       if (auth.isSignedIn) _composer() else _signInRow(),
@@ -120,15 +122,17 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
         ]),
       ]);
 
-  // Open a comment author's profile (no-op for anonymous/deleted authors with no public id).
+  // Open a comment author's profile. Server comments carry no author sqid, so
+  // today this only fires for the signed-in user's own optimistic comments;
+  // it lights up for everyone if the server ever adds `author_public_sqid`.
   void _openAuthor(CommentAuthor? author) {
     final sqid = author?.sqid;
     if (sqid == null || sqid.isEmpty) return;
     Navigator.push(context, MaterialPageRoute(builder: (_) => ProfilePage(sqid: sqid)));
   }
 
-  Widget _tile(Comment c, String? mySub, bool canReport, {required int depth}) {
-    final isOwn = c.author?.sqid != null && c.author!.sqid == mySub;
+  Widget _tile(Comment c, String? myHandle, bool canReport, {required int depth}) {
+    final isOwn = myHandle != null && c.author?.handle == myHandle;
     final notifier = ref.read(commentsProvider(widget.postId).notifier);
     return Padding(
       padding: EdgeInsets.only(left: depth * 20.0, top: 6, bottom: 6),
@@ -175,7 +179,7 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
             ]),
           ),
         ]),
-        for (final r in c.replies) _tile(r, mySub, canReport, depth: depth + 1),
+        for (final r in c.replies) _tile(r, myHandle, canReport, depth: depth + 1),
       ]),
     );
   }

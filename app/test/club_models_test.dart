@@ -162,18 +162,22 @@ void main() {
       expect(a.replies.first.id, 'b');
     });
 
-    test('parses anonymous vs authored', () {
-      final anon = Comment.fromJson({'id': '1', 'body': 'hi'});
+    test('parses anonymous vs authored (flat author_* fields, as the server sends)', () {
+      final anon = Comment.fromJson({'id': '1', 'body': 'hi', 'author_handle': null});
       expect(anon.isAnonymous, isTrue);
       final authored = Comment.fromJson({
         'id': '2',
         'body': 'hey',
-        'author': {'handle': 'bob', 'public_sqid': 'b2'},
+        'author_id': 1281,
+        'author_handle': 'bob',
+        'author_avatar_url': 'https://vault.example/a.jpg',
         'like_count': 4,
         'liked_by_me': true,
       });
       expect(authored.isAnonymous, isFalse);
       expect(authored.author!.handle, 'bob');
+      expect(authored.author!.avatarUrl, 'https://vault.example/a.jpg');
+      expect(authored.author!.sqid, isNull); // no author sqid in server payloads
       expect(authored.likeCount, 4);
       expect(authored.likedByMe, isTrue);
     });
