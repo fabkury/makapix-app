@@ -3,10 +3,9 @@
 class CommentAuthor {
   final String handle;
 
-  /// Set on optimistic local comments; server payloads don't send an author
-  /// sqid yet (requested as `author_public_sqid` — docs/comment-author-sqid
-  /// message 0001 in the server repo). Parsed opportunistically below so
-  /// tap-to-profile and block-from-report light up the moment it ships.
+  /// From `author_public_sqid` (live on prod since 2026-07-11, server PR #230 —
+  /// docs/comment-author-sqid in the server repo); also set on optimistic
+  /// local comments. Drives tap-to-profile and block-from-report.
   final String? sqid;
   final String? avatarUrl;
   const CommentAuthor({required this.handle, this.sqid, this.avatarUrl});

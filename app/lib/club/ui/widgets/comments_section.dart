@@ -122,9 +122,8 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
         ]),
       ]);
 
-  // Open a comment author's profile. Server comments carry no author sqid, so
-  // today this only fires for the signed-in user's own optimistic comments;
-  // it lights up for everyone if the server ever adds `author_public_sqid`.
+  // Open a comment author's profile (no-op for anonymous authors, whose
+  // `author_public_sqid` is null).
   void _openAuthor(CommentAuthor? author) {
     final sqid = author?.sqid;
     if (sqid == null || sqid.isEmpty) return;
