@@ -32,7 +32,8 @@ class HashtagFeedPage extends ConsumerWidget {
                   builder: (_) => ArtworkDetailPage(
                         sqid: p.sqid,
                         feed: pagedArtworkSource(
-                            hashtagFeedProvider(tag), hashtagFeedProvider(tag).notifier),
+                            hashtagFeedProvider(tag), hashtagFeedProvider(tag).notifier,
+                            name: tag, icon: Icons.tag),
                       ))),
         ),
       ),

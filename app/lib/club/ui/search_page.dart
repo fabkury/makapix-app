@@ -90,7 +90,7 @@ class _ArtworksTab extends ConsumerWidget {
                         MaterialPageRoute(
                             builder: (_) => ArtworkDetailPage(
                                   sqid: posts[i].sqid,
-                                  feed: ArtworkFeedSource.fixed(posts),
+                                  feed: ArtworkFeedSource.fixed(posts, name: 'Search'),
                                 ))),
                     child: ClipRRect(
                         borderRadius: BorderRadius.circular(4),

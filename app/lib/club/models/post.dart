@@ -64,6 +64,14 @@ class Post {
   bool get isPlaylist => kind == 'playlist';
   bool isModTag(String tag) => modHashtags.contains(tag);
 
+  /// The native-format file (falls back to the first file; null when the server sent none).
+  PostFile? get nativeFile {
+    for (final f in files) {
+      if (f.isNative) return f;
+    }
+    return files.isNotEmpty ? files.first : null;
+  }
+
   factory Post.fromJson(Map<String, dynamic> j) => Post(
         id: (j['id'] as num?)?.toInt() ?? 0,
         sqid: (j['public_sqid'] ?? '').toString(),

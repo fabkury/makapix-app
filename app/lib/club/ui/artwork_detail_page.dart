@@ -38,22 +38,34 @@ class ArtworkFeedSource {
   /// Ask the grid to load its next page (no-op when flat or already at the end).
   final void Function(WidgetRef ref) loadMore;
 
-  const ArtworkFeedSource({required this.watchItems, required this.loadMore});
+  /// Shown in the detail page's top bar (next to the back arrow) so the user knows which
+  /// feed they're swiping through, e.g. "Recommended", "#pixelart", "@handle · Reacted".
+  final String? name;
+
+  /// Optional glyph before [name] (the diamond/eye/hashtag feed identities).
+  final IconData? icon;
+
+  const ArtworkFeedSource(
+      {required this.watchItems, required this.loadMore, this.name, this.icon});
 
   /// A fixed, non-paginated list of posts (e.g. search results).
-  factory ArtworkFeedSource.fixed(List<Post> posts) =>
-      ArtworkFeedSource(watchItems: (_) => posts, loadMore: (_) {});
+  factory ArtworkFeedSource.fixed(List<Post> posts, {String? name, IconData? icon}) =>
+      ArtworkFeedSource(watchItems: (_) => posts, loadMore: (_) {}, name: name, icon: icon);
 }
 
 /// Build a feed source from a paged feed provider (the home feeds, a hashtag feed, a user gallery).
 /// Pass the provider and its `.notifier`, e.g. `pagedArtworkSource(feedProvider(k), feedProvider(k).notifier)`.
 ArtworkFeedSource pagedArtworkSource(
   ProviderListenable<PagedState<Post>> state,
-  ProviderListenable<PagedNotifier<Post>> notifier,
-) =>
+  ProviderListenable<PagedNotifier<Post>> notifier, {
+  String? name,
+  IconData? icon,
+}) =>
     ArtworkFeedSource(
       watchItems: (ref) => ref.watch(state).items,
       loadMore: (ref) => ref.read(notifier).loadMore(),
+      name: name,
+      icon: icon,
     );
 
 /// Full artwork view. When opened from a grid it becomes a horizontally-swipeable pager over that
@@ -109,13 +121,29 @@ class _ArtworkDetailPageState extends ConsumerState<ArtworkDetailPage> {
       );
     }
 
-    // Just a back arrow — no title — returning to the grid we came from.
+    // The back arrow returns to the grid we came from; next to it, that feed's name
+    // (muted — it's context, not a page title) when we know it.
     return SendTargetBinder(
       target: current == null
           ? null
           : ArtworkTarget(postId: current.id, title: current.title),
       child: Scaffold(
-        appBar: AppBar(titleSpacing: 0, title: const SizedBox.shrink()),
+        appBar: AppBar(
+          titleSpacing: 0,
+          title: feed?.name == null
+              ? const SizedBox.shrink()
+              : Row(mainAxisSize: MainAxisSize.min, children: [
+                  if (feed!.icon != null) ...[
+                    Icon(feed.icon, size: 18, color: Colors.white54),
+                    const SizedBox(width: 6),
+                  ],
+                  Flexible(
+                    child: Text(feed.name!,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 16, color: Colors.white70)),
+                  ),
+                ]),
+        ),
         body: body,
       ),
     );
@@ -372,10 +400,12 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
   }
 
   Widget _meta(Post post) {
+    final native = post.nativeFile;
     final parts = <String>[
       '${post.width}×${post.height}',
       post.isAnimated ? '${post.frameCount} frames' : 'static',
-      if (post.uniqueColors != null) '${post.uniqueColors} colors',
+      if (post.uniqueColors != null) '≤ ${post.uniqueColors} colors / frame',
+      if (native != null) '${formatFileSize(native.fileBytes)} ${native.format.toUpperCase()}',
       if (post.license != null) post.license!.identifier,
     ];
     return Text(parts.join('  ·  '), style: const TextStyle(fontSize: 12, color: Colors.white38));

@@ -84,7 +84,20 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
         MaterialPageRoute(
           builder: (_) => ArtworkDetailPage(
             sqid: p.sqid,
-            feed: pagedArtworkSource(feedProvider(kind), feedProvider(kind).notifier),
+            feed: pagedArtworkSource(
+              feedProvider(kind),
+              feedProvider(kind).notifier,
+              name: switch (kind) {
+                FeedKind.promoted => 'Recommended',
+                FeedKind.recent => 'Recent',
+                FeedKind.following => 'Following',
+              },
+              icon: switch (kind) {
+                FeedKind.promoted => Icons.diamond,
+                FeedKind.recent => Icons.visibility,
+                FeedKind.following => null,
+              },
+            ),
           ),
         ),
       );

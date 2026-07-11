@@ -790,7 +790,8 @@ class _GalleryTab extends ConsumerWidget {
               builder: (_) => ArtworkDetailPage(
                     sqid: p.sqid,
                     feed: pagedArtworkSource(ownerFeedProvider(profile.userKey),
-                        ownerFeedProvider(profile.userKey).notifier),
+                        ownerFeedProvider(profile.userKey).notifier,
+                        name: '@${profile.handle}'),
                   ))),
     );
   }
@@ -840,7 +841,8 @@ class _ReactedTab extends ConsumerWidget {
               builder: (_) => ArtworkDetailPage(
                     sqid: p.sqid,
                     feed: pagedArtworkSource(reactedFeedProvider(profile.sqid),
-                        reactedFeedProvider(profile.sqid).notifier),
+                        reactedFeedProvider(profile.sqid).notifier,
+                        name: '@${profile.handle} · Reacted'),
                   ))),
     );
   }
@@ -889,7 +891,8 @@ class _HighlightsStrip extends StatelessWidget {
                 MaterialPageRoute(
                     builder: (_) => ArtworkDetailPage(
                           sqid: profile.highlights[i].sqid,
-                          feed: ArtworkFeedSource.fixed(profile.highlights),
+                          feed: ArtworkFeedSource.fixed(profile.highlights,
+                              name: '@${profile.handle} · Highlights'),
                         ))),
           ),
         ),

@@ -75,7 +75,8 @@ class ClubWelcomePage extends ConsumerWidget {
                       builder: (_) => ArtworkDetailPage(
                             sqid: p.sqid,
                             feed: pagedArtworkSource(feedProvider(FeedKind.promoted),
-                                feedProvider(FeedKind.promoted).notifier),
+                                feedProvider(FeedKind.promoted).notifier,
+                                name: 'Recommended', icon: Icons.diamond),
                           ))),
             ),
           ),
