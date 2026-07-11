@@ -32,13 +32,43 @@ import 'widgets/synced_pixel_art_image.dart';
 /// A user's profile: header + stats + follow + gallery. When the moderation
 /// feature is live, an overflow menu adds report + block/unblock; a blocked
 /// user renders a header + banner (never a fake 404 — contract D14).
-class ProfilePage extends ConsumerWidget {
+class ProfilePage extends ConsumerStatefulWidget {
   final String sqid;
   const ProfilePage({super.key, required this.sqid});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(profileProvider(sqid));
+  ConsumerState<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends ConsumerState<ProfilePage> {
+  /// Outer controller of the body's NestedScrollView; drives the app bar's
+  /// collapsed "mini-bar" state (small avatar + Follow) once the header has
+  /// scrolled away — identity and the follow action stay reachable deep in
+  /// the grid, with no pinned-sliver machinery.
+  final ScrollController _scroll = ScrollController();
+  final ValueNotifier<bool> _collapsed = ValueNotifier(false);
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    final v = _scroll.hasClients && _scroll.offset > _Body._kHeaderStackH;
+    if (v != _collapsed.value) _collapsed.value = v;
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    _collapsed.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final async = ref.watch(profileProvider(widget.sqid));
     // ref.watch so the menu appears once the config future resolves; the menu
     // needs the resolved profile (built before the fetch completes → hidden).
     final rules = ref.watch(serverConfigProvider).valueOrNull?.moderation;
@@ -46,8 +76,9 @@ class ProfilePage extends ConsumerWidget {
     final profile = async.valueOrNull;
     return Scaffold(
       appBar: AppBar(
-        title: Text(profile == null ? 'Profile' : '@${profile.handle}'),
+        title: _title(profile),
         actions: [
+          _miniFollow(profile, signedIn),
           if (profile != null && !profile.isBlockedByViewer) _shareButton(context, ref, profile),
           if (rules != null && profile != null && !profile.isOwnProfile)
             _menu(context, ref, profile, signedIn, rules),
@@ -57,9 +88,46 @@ class ProfilePage extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => ClubErrorRetry(
           message: e is ClubError ? e.message : 'Could not load profile.',
-          onRetry: () => ref.read(profileProvider(sqid).notifier).load(),
+          onRetry: () => ref.read(profileProvider(widget.sqid).notifier).load(),
         ),
-        data: (p) => _Body(profile: p),
+        data: (p) => _Body(profile: p, scroll: _scroll),
+      ),
+    );
+  }
+
+  /// "@handle", gaining a small avatar when the header is scrolled away.
+  Widget _title(UserProfile? p) {
+    if (p == null) return const Text('Profile');
+    return ValueListenableBuilder<bool>(
+      valueListenable: _collapsed,
+      builder: (_, collapsed, _) => AnimatedSwitcher(
+        duration: const Duration(milliseconds: 200),
+        child: !collapsed
+            ? Text('@${p.handle}', key: const ValueKey('title-plain'))
+            : Row(key: const ValueKey('title-mini'), mainAxisSize: MainAxisSize.min, children: [
+                HandleAvatar(url: p.avatarUrl, handle: p.handle, radius: 14),
+                const SizedBox(width: 8),
+                Flexible(child: Text('@${p.handle}', overflow: TextOverflow.ellipsis)),
+              ]),
+      ),
+    );
+  }
+
+  /// Compact Follow action, shown only while collapsed on someone else's
+  /// (unblocked) profile — the moment a convinced viewer needs it.
+  Widget _miniFollow(UserProfile? p, bool signedIn) {
+    if (p == null || p.isOwnProfile || p.isBlockedByViewer) return const SizedBox.shrink();
+    return ValueListenableBuilder<bool>(
+      valueListenable: _collapsed,
+      builder: (_, collapsed, _) => AnimatedSwitcher(
+        duration: const Duration(milliseconds: 200),
+        child: !collapsed
+            ? const SizedBox.shrink()
+            : Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: _FollowButton(
+                    sqid: p.sqid, isFollowing: p.isFollowing, signedIn: signedIn, compact: true),
+              ),
       ),
     );
   }
@@ -198,7 +266,11 @@ List<ProfileTab> profileTabsFor({required bool signedIn}) => [
 
 class _Body extends ConsumerWidget {
   final UserProfile profile;
-  const _Body({required this.profile});
+
+  /// Outer controller for the NestedScrollView, owned by the page state
+  /// (drives the app bar's mini-bar collapse).
+  final ScrollController scroll;
+  const _Body({required this.profile, required this.scroll});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -232,6 +304,7 @@ class _Body extends ConsumerWidget {
             notificationPredicate: (n) => n.depth == 2 || n.depth == 0,
             onRefresh: () => _refresh(ref, tabs, DefaultTabController.of(context).index),
             child: NestedScrollView(
+              controller: scroll,
               // Nothing pinned here: the TabBar lives in the body, so no
               // sliver-overlap machinery is needed.
               headerSliverBuilder: (_, _) => [
@@ -859,25 +932,46 @@ class _FollowButton extends ConsumerWidget {
   final String sqid;
   final bool isFollowing;
   final bool signedIn;
-  const _FollowButton({required this.sqid, required this.isFollowing, required this.signedIn});
+
+  /// Dense app-bar variant (the collapsed mini-bar).
+  final bool compact;
+  const _FollowButton(
+      {required this.sqid,
+      required this.isFollowing,
+      required this.signedIn,
+      this.compact = false});
+
+  Future<void> _toggle(BuildContext context, WidgetRef ref) async {
+    if (!signedIn) {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const ClubAccountPage()));
+      return;
+    }
+    final err = await ref.read(profileProvider(sqid).notifier).toggleFollow();
+    if (err != null && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    if (compact) {
+      return FilledButton(
+        onPressed: () => _toggle(context, ref),
+        style: FilledButton.styleFrom(
+          visualDensity: VisualDensity.compact,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          backgroundColor: isFollowing ? cs.surfaceContainerHighest : null,
+          foregroundColor: isFollowing ? cs.onSurface : null,
+        ),
+        child: Text(isFollowing ? 'Following' : 'Follow', style: const TextStyle(fontSize: 13)),
+      );
+    }
     return FilledButton.icon(
-      onPressed: () async {
-        if (!signedIn) {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => const ClubAccountPage()));
-          return;
-        }
-        final err = await ref.read(profileProvider(sqid).notifier).toggleFollow();
-        if (err != null && context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
-        }
-      },
+      onPressed: () => _toggle(context, ref),
       style: isFollowing
           ? FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-              foregroundColor: Theme.of(context).colorScheme.onSurface)
+              backgroundColor: cs.surfaceContainerHighest, foregroundColor: cs.onSurface)
           : null,
       icon: Icon(isFollowing ? Icons.check : Icons.person_add_alt_1, size: 18),
       label: Text(isFollowing ? 'Following' : 'Follow'),
