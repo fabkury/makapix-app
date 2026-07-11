@@ -494,22 +494,24 @@ class _Body extends ConsumerWidget {
           // Own profile → Edit; blocked → the banner owns Unblock (no button
           // here); otherwise → Follow.
           if (!p.isBlockedByViewer)
-            SizedBox(
-              width: 220,
-              child: p.isOwnProfile
-                  ? OutlinedButton.icon(
-                      onPressed: () async {
-                        await Navigator.push(context,
-                            MaterialPageRoute(builder: (_) => EditProfilePage(profile: p)));
-                        // Avatar changes apply immediately and Save may have landed —
-                        // re-fetch so the header reflects them (silently, so the
-                        // tab selection and scroll survive the return).
-                        ref.read(profileProvider(p.sqid).notifier).reload();
-                      },
-                      icon: const Icon(Icons.edit_outlined, size: 18),
-                      label: const Text('Edit profile'),
-                    )
-                  : _FollowButton(sqid: p.sqid, isFollowing: p.isFollowing, signedIn: signedIn),
+            Center(
+              child: SizedBox(
+                width: 220,
+                child: p.isOwnProfile
+                    ? OutlinedButton.icon(
+                        onPressed: () async {
+                          await Navigator.push(context,
+                              MaterialPageRoute(builder: (_) => EditProfilePage(profile: p)));
+                          // Avatar changes apply immediately and Save may have landed —
+                          // re-fetch so the header reflects them (silently, so the
+                          // tab selection and scroll survive the return).
+                          ref.read(profileProvider(p.sqid).notifier).reload();
+                        },
+                        icon: const Icon(Icons.edit_outlined, size: 18),
+                        label: const Text('Edit profile'),
+                      )
+                    : _FollowButton(sqid: p.sqid, isFollowing: p.isFollowing, signedIn: signedIn),
+              ),
             ),
         ]),
       ),
