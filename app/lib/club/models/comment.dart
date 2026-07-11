@@ -3,20 +3,22 @@
 class CommentAuthor {
   final String handle;
 
-  /// Only set on optimistic local comments (from the signed-in user). Server
-  /// comment payloads carry no author sqid — just flat `author_*` fields.
+  /// Set on optimistic local comments; server payloads don't send an author
+  /// sqid yet (requested as `author_public_sqid` — docs/comment-author-sqid
+  /// message 0001 in the server repo). Parsed opportunistically below so
+  /// tap-to-profile and block-from-report light up the moment it ships.
   final String? sqid;
   final String? avatarUrl;
   const CommentAuthor({required this.handle, this.sqid, this.avatarUrl});
 
-  /// From the flat `author_handle`/`author_avatar_url` fields of a comment
-  /// payload (unlike reaction-users there is no `*_public_sqid`). A null
-  /// `author_handle` means anonymous.
+  /// From the flat `author_*` fields of a comment payload. A null
+  /// `author_handle` means anonymous (attributed to an IP).
   static CommentAuthor? fromCommentJson(Map<String, dynamic> j) {
     final h = j['author_handle'];
     if (h == null) return null;
     return CommentAuthor(
       handle: h.toString(),
+      sqid: j['author_public_sqid'] as String?,
       avatarUrl: j['author_avatar_url'] as String?,
     );
   }

@@ -177,9 +177,15 @@ void main() {
       expect(authored.isAnonymous, isFalse);
       expect(authored.author!.handle, 'bob');
       expect(authored.author!.avatarUrl, 'https://vault.example/a.jpg');
-      expect(authored.author!.sqid, isNull); // no author sqid in server payloads
+      expect(authored.author!.sqid, isNull); // no author sqid in server payloads yet
       expect(authored.likeCount, 4);
       expect(authored.likedByMe, isTrue);
+    });
+
+    test('adopts author_public_sqid when the server ships it', () {
+      final c = Comment.fromJson(
+          {'id': '3', 'body': 'yo', 'author_handle': 'bob', 'author_public_sqid': 'bsq'});
+      expect(c.author!.sqid, 'bsq');
     });
   });
 
