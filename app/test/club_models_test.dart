@@ -187,6 +187,27 @@ void main() {
           {'id': '3', 'body': 'yo', 'author_handle': 'bob', 'author_public_sqid': 'bsq'});
       expect(c.author!.sqid, 'bsq');
     });
+
+    test('deletion flags: owner vs moderator (ugc-safety msg 0008)', () {
+      final live = Comment.fromJson({'id': '1', 'body': 'hi'});
+      expect(live.deleted, isFalse);
+      expect(live.deletedByMod, isFalse);
+
+      final byOwner = Comment.fromJson(
+          {'id': '2', 'body': '[deleted]', 'deleted_by_owner': true, 'deleted_by_mod': false});
+      expect(byOwner.deleted, isTrue);
+      expect(byOwner.deletedByMod, isFalse);
+
+      // Mod take-downs no longer set deleted_by_owner — deleted must still be true.
+      final byMod = Comment.fromJson({
+        'id': '3',
+        'body': '[deleted by moderator]',
+        'deleted_by_owner': false,
+        'deleted_by_mod': true,
+      });
+      expect(byMod.deleted, isTrue);
+      expect(byMod.deletedByMod, isTrue);
+    });
   });
 
   group('ClubNotification', () {

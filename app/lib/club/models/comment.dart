@@ -34,6 +34,11 @@ class Comment {
   final int likeCount;
   final bool likedByMe;
   final bool deleted;
+
+  /// Moderator take-down (`deleted_by_mod`, live on prod since 2026-07-13,
+  /// server PR #234 — docs/ugc-safety msg 0008). Mod-deleted tombstones no
+  /// longer set `deleted_by_owner`, so [deleted] must OR both flags.
+  final bool deletedByMod;
   final List<Comment> replies;
 
   const Comment({
@@ -46,6 +51,7 @@ class Comment {
     required this.likeCount,
     required this.likedByMe,
     required this.deleted,
+    this.deletedByMod = false,
     this.replies = const [],
   });
 
@@ -60,7 +66,10 @@ class Comment {
         author: CommentAuthor.fromCommentJson(j),
         likeCount: (j['like_count'] as num?)?.toInt() ?? 0,
         likedByMe: j['liked_by_me'] == true,
-        deleted: j['deleted'] == true || j['deleted_by_owner'] == true,
+        deleted: j['deleted'] == true ||
+            j['deleted_by_owner'] == true ||
+            j['deleted_by_mod'] == true,
+        deletedByMod: j['deleted_by_mod'] == true,
       );
 
   /// A soft-deleted copy (keeps replies visible, as the server does). Used for optimistic deletes.
@@ -74,6 +83,7 @@ class Comment {
         likeCount: likeCount,
         likedByMe: likedByMe,
         deleted: true,
+        deletedByMod: deletedByMod,
         replies: replies,
       );
 
@@ -87,6 +97,7 @@ class Comment {
         likeCount: likeCount,
         likedByMe: likedByMe,
         deleted: deleted,
+        deletedByMod: deletedByMod,
         replies: r,
       );
 

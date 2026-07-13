@@ -153,7 +153,10 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
                 const SizedBox(width: 6),
                 Text(timeAgo(c.createdAt), style: const TextStyle(fontSize: 11, color: Colors.white38)),
               ]),
-              Text(c.deleted ? '[deleted]' : c.body,
+              Text(
+                  c.deleted
+                      ? (c.deletedByMod ? '[deleted by moderator]' : '[deleted]')
+                      : c.body,
                   style: TextStyle(fontSize: 13, color: c.deleted ? Colors.white38 : Colors.white)),
               Row(children: [
                 _miniBtn(c.likedByMe ? Icons.favorite : Icons.favorite_border,
