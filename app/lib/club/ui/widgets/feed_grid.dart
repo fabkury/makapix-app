@@ -79,45 +79,57 @@ class _FeedGridState extends State<FeedGrid> {
       if (widget.nested) return empty;
       return RefreshIndicator(onRefresh: widget.onRefresh, child: empty);
     }
-    final cols = (MediaQuery.of(context).size.width / 132).floor().clamp(2, 8);
-    final grid = GridView.builder(
-      controller: _sc,
-      primary: widget.nested ? true : null,
-      padding: const EdgeInsets.all(4),
-      // Cells are a little taller than wide to fit the info bar below a ~square artwork.
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: cols, mainAxisSpacing: 4, crossAxisSpacing: 4, childAspectRatio: 0.84),
-      itemCount: s.items.length + (s.atEnd ? 0 : 1),
-      itemBuilder: (ctx, i) {
-        if (i >= s.items.length) {
-          return const Center(
-              child: Padding(
-                  padding: EdgeInsets.all(16),
-                  child: SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2))));
-        }
-        return _PostTile(post: s.items[i], onTap: () => widget.onTap(s.items[i]));
-      },
-    );
-    if (widget.nested) {
-      // Wraps ONLY the grid, so notifications from the outer NestedScrollView /
-      // TabBarView never pass through here (they bubble from ancestors).
-      return NotificationListener<ScrollNotification>(
-        onNotification: (n) {
-          if (n.depth == 0 &&
-              n.metrics.axis == Axis.vertical &&
-              n.metrics.pixels > n.metrics.maxScrollExtent - 600) {
-            widget.onLoadMore();
+    return LayoutBuilder(builder: (context, constraints) {
+      final cols = (constraints.maxWidth / 132).floor().clamp(2, 8);
+      // Tile width the delegate will produce: layout width minus the grid's own
+      // padding (4+4) and the inter-column spacing, split across columns. The cell
+      // is that width plus the info bar, so the artwork area is an exact square.
+      final tileW = (constraints.maxWidth - 8 - 4 * (cols - 1)) / cols;
+      final grid = GridView.builder(
+        controller: _sc,
+        primary: widget.nested ? true : null,
+        padding: const EdgeInsets.all(4),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: cols,
+            mainAxisSpacing: 4,
+            crossAxisSpacing: 4,
+            mainAxisExtent: tileW + _PostTile.infoBarHeight),
+        itemCount: s.items.length + (s.atEnd ? 0 : 1),
+        itemBuilder: (ctx, i) {
+          if (i >= s.items.length) {
+            return const Center(
+                child: Padding(
+                    padding: EdgeInsets.all(16),
+                    child: SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2))));
           }
-          return false;
+          return _PostTile(post: s.items[i], onTap: () => widget.onTap(s.items[i]));
         },
-        child: grid,
       );
-    }
-    return RefreshIndicator(onRefresh: widget.onRefresh, child: grid);
+      if (widget.nested) {
+        // Wraps ONLY the grid, so notifications from the outer NestedScrollView /
+        // TabBarView never pass through here (they bubble from ancestors).
+        return NotificationListener<ScrollNotification>(
+          onNotification: (n) {
+            if (n.depth == 0 &&
+                n.metrics.axis == Axis.vertical &&
+                n.metrics.pixels > n.metrics.maxScrollExtent - 600) {
+              widget.onLoadMore();
+            }
+            return false;
+          },
+          child: grid,
+        );
+      }
+      return RefreshIndicator(onRefresh: widget.onRefresh, child: grid);
+    });
   }
 }
 
 class _PostTile extends ConsumerWidget {
+  /// Fixed height of the likes/comments bar below the artwork. The grid's
+  /// mainAxisExtent adds this to the tile width, keeping the artwork square.
+  static const double infoBarHeight = 24;
+
   final Post post;
   final VoidCallback onTap;
   const _PostTile({required this.post, required this.onTap});
@@ -135,25 +147,31 @@ class _PostTile extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // The cell is sized tileWidth + infoBarHeight, so this square holds the
+            // artwork, letterboxed/pillarboxed over the backdrop when non-square.
             Expanded(
-              child: Stack(fit: StackFit.expand, children: [
-                PixelArtImage(
-                    url: post.artUrl,
-                    frameCount: post.frameCount,
-                    width: post.width,
-                    height: post.height),
-                if (post.isPlaylist)
-                  const Positioned(
-                    top: 3,
-                    left: 3,
-                    child: Icon(Icons.playlist_play, size: 16, color: Colors.white70),
-                  ),
-              ]),
+              child: ColoredBox(
+                color: kArtworkBackdrop,
+                child: Stack(fit: StackFit.expand, children: [
+                  PixelArtImage(
+                      url: post.artUrl,
+                      frameCount: post.frameCount,
+                      width: post.width,
+                      height: post.height),
+                  if (post.isPlaylist)
+                    const Positioned(
+                      top: 3,
+                      left: 3,
+                      child: Icon(Icons.playlist_play, size: 16, color: Colors.white70),
+                    ),
+                ]),
+              ),
             ),
             // Solid info bar directly below the artwork: likes (left, tappable) · comments (right).
             Container(
+              height: infoBarHeight,
               color: const Color(0xFF2A2D31),
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 6),
               child: Row(children: [
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,

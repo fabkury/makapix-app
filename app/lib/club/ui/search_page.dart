@@ -94,11 +94,15 @@ class _ArtworksTab extends ConsumerWidget {
                                 ))),
                     child: ClipRRect(
                         borderRadius: BorderRadius.circular(4),
-                        child: PixelArtImage(
-                            url: posts[i].artUrl,
-                            frameCount: posts[i].frameCount,
-                            width: posts[i].width,
-                            height: posts[i].height)),
+                        // Cells are square (default aspect ratio); the backdrop shows
+                        // through as letterbox/pillarbox bars for non-square art.
+                        child: ColoredBox(
+                            color: kArtworkBackdrop,
+                            child: PixelArtImage(
+                                url: posts[i].artUrl,
+                                frameCount: posts[i].frameCount,
+                                width: posts[i].width,
+                                height: posts[i].height))),
                   ),
                 ),
         );

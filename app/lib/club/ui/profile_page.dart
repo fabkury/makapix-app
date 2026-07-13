@@ -917,13 +917,14 @@ class _HighlightTile extends StatelessWidget {
       child: Container(
         width: size,
         decoration: BoxDecoration(
+          color: kArtworkBackdrop,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         ),
         clipBehavior: Clip.antiAlias,
+        // Letterboxed (default contain) inside the square tile, like the grids.
         child: PixelArtImage(
           url: post.artUrl,
-          fit: BoxFit.cover,
           frameCount: post.frameCount,
           width: post.width,
           height: post.height,

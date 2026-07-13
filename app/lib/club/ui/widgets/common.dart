@@ -7,6 +7,10 @@ import '../../cache/artwork_cache.dart';
 import '../../state/animation_settings.dart';
 import 'synced_pixel_art_image.dart';
 
+/// Backdrop painted behind letterboxed/pillarboxed artwork (grid tiles, thumbnails),
+/// so the square display area reads as a frame around non-square art.
+const Color kArtworkBackdrop = Color(0xFF15171A);
+
 /// Compact count for stat rows, e.g. 999 → "999", 12345 → "12.3k", 3400000 → "3.4M".
 String compactCount(int n) {
   if (n < 1000) return '$n';
@@ -129,7 +133,7 @@ class PixelArtImage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     if (url.isEmpty) {
       return const ColoredBox(
-        color: Color(0xFF15171A),
+        color: kArtworkBackdrop,
         child: Center(child: Icon(Icons.image_not_supported, color: Colors.white24)),
       );
     }
