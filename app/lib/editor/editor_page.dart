@@ -51,7 +51,7 @@ const _prefsKey = 'tool_order_v1';
 const _kCurrentDrawing = 'editor.currentDrawingId'; // last-open library drawing (silent restore)
 const _kShareFormatPref = 'editor.shareFormat_v1'; // last-used Share format for animations (GIF/WebP)
 const _kExportStillFormatPref = 'editor.exportStillFormat_v1'; // last-used frame/layer export format (PNG/WebP)
-const _transformTools = {'Flip', 'Rotate', 'Invert'};
+const _transformTools = {'Flip', 'Rotate', 'Resize', 'Invert'};
 // Row-3 "action" tools in the reorderable grid: tapping fires an action/toggle immediately rather
 // than selecting a draw tool (handled in _toolTile / _doToolAction). Undo/Redo are NOT here — they
 // are pinned at the left of row-3 (see _buildToolBar / _pinnedActionTile). Play is NOT here either —
@@ -183,7 +183,17 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // Flip/Rotate/Invert/HSV/BC scope toggles: false = the active layer (or selection), true = every
   // layer of the active frame (FlipFrame*/RotateFrame/InvertFrame/SetHsvScope/SetBcScope in the
   // engine). Layer is the default.
-  bool _flipFrame = false, _rotateFrame = false, _invertFrame = false, _hsvFrame = false, _bcFrame = false;
+  bool _flipFrame = false, _rotateFrame = false, _resizeFrame = false, _invertFrame = false, _hsvFrame = false, _bcFrame = false;
+  // Rotate tool cleanEdge resampling (SetCleanEdge/SetCleanEdgeWidth): free-angle rotations
+  // sample the edge-aware cleanEdge reconstruction instead of nearest-neighbour. On by default
+  // (must match the engine's ToolSettings default). Width 0–2 like the reference site's slider.
+  bool _cleanEdge = true;
+  double _cleanEdgeWidth = 1.0;
+  // Resize tool cleanEdge (SetScaleCleanEdge/SetScaleCleanEdgeWidth) — INDEPENDENT from the
+  // Rotate tool's pair above by design; defaults must match the engine's. Only applies when
+  // upscaling (both factors ≥ 1); downscaling is always nearest-neighbour engine-side.
+  bool _resizeCleanEdge = true;
+  double _resizeCleanEdgeWidth = 1.0;
   // Move tool layer-move edge modes (mutually exclusive; both off = Regular = pixels clip off):
   bool _protectPixels = false; // keep opaque pixels on-canvas (non-destructive)
   bool _wrap = false; // pixels leaving one edge re-enter the opposite edge
@@ -296,13 +306,36 @@ class _EditorPageState extends ConsumerState<EditorPage>
   Rect? _rotDraftRect; // involved-region bbox in canvas pixels (pre-rotation), clamped to the canvas
   double _rotDraftAngle = 0; // current draft angle (radians, clockwise)
   bool _rotateDragging = false; // a finger is currently dragging the rotate handle
+  Offset _rotDraftOff = Offset.zero; // whole-pixel drag-to-move offset (JSON "rotate_draft".ox/oy)
+  Offset? _rotDraftMoveLast; // canvas pos while dragging the draft body (move mode)
   bool get _isRotateHandleActive => _tool == 'Rotate' && _hasRotateDraft;
   // Handle geometry in the painter's cell-index space (sc() adds +0.5 to reach the cell centre, so
-  // the geometric bbox centre is bbox-centre − 0.5). The handle's arm is half the bbox width, so
-  // at angle 0 the reticle sits on the bbox's right border (see _rotDraftReticle).
-  Offset get _rotDraftCenter =>
-      Offset(_rotDraftRect!.left + _rotDraftRect!.width / 2 - 0.5, _rotDraftRect!.top + _rotDraftRect!.height / 2 - 0.5);
-  Offset get _rotDraftCorner => Offset(_rotDraftRect!.right - 1, _rotDraftRect!.bottom - 1);
+  // the geometric bbox centre is bbox-centre − 0.5), shifted by the drag-to-move offset so the
+  // handle follows the moved draft. The handle's arm is half the bbox width, so at angle 0 the
+  // reticle sits on the bbox's right border (see _rotDraftReticle).
+  Offset get _rotDraftCenter => Offset(
+      _rotDraftRect!.left + _rotDraftRect!.width / 2 - 0.5 + _rotDraftOff.dx,
+      _rotDraftRect!.top + _rotDraftRect!.height / 2 - 0.5 + _rotDraftOff.dy);
+  Offset get _rotDraftCorner =>
+      Offset(_rotDraftRect!.right - 1 + _rotDraftOff.dx, _rotDraftRect!.bottom - 1 + _rotDraftOff.dy);
+
+  // Resize tool: ½×/2× act instantly; the "Scale" mode opens a free-scale draft — the involved
+  // pixels show a semitransparent preview with a corner knob until Commit.
+  // `_hasResizeDraft`/`_resizeDraftRect`/`_resizeSx`/`_resizeSy` come from the engine state JSON
+  // ("scale_draft"). The engine verb is Scale (ScaleDraft*/ScaleLayer/ScaleFrame).
+  bool _hasResizeDraft = false;
+  Rect? _resizeDraftRect; // involved-region bbox in canvas pixels (pre-scale), clamped to the canvas
+  double _resizeSx = 1.0, _resizeSy = 1.0; // current draft factors
+  bool _resizeDragging = false; // a finger is currently dragging the corner knob
+  bool _resizeLockRatio = true; // uniform scaling by default; unlock for X/Y stretch
+  Offset _resizeDraftOff = Offset.zero; // whole-pixel drag-to-move offset (JSON "scale_draft".ox/oy)
+  Offset? _resizeDraftMoveLast; // canvas pos while dragging the draft body (move mode)
+  bool get _isResizeHandleActive => _tool == 'Resize' && _hasResizeDraft;
+  // Same cell-index-space convention as _rotDraftCenter (sc() adds +0.5 to reach cell centres),
+  // shifted by the drag-to-move offset so the outline + knob follow the moved draft.
+  Offset get _resizeDraftCenter => Offset(
+      _resizeDraftRect!.left + _resizeDraftRect!.width / 2 - 0.5 + _resizeDraftOff.dx,
+      _resizeDraftRect!.top + _resizeDraftRect!.height / 2 - 0.5 + _resizeDraftOff.dy);
 
   // Whether ANY draft is pending — drives the floating commit-menu over the canvas's bottom-left
   // corner. Mirrors the per-tool guards in _commitActiveDraft/_cancelActiveDraft; at most one draft
@@ -313,6 +346,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
       (_isCopyPaste && _hasPasteDraft) ||
       (_tool == 'Move' && _hasMoveDraft) ||
       (_tool == 'Rotate' && _hasRotateDraft) ||
+      (_tool == 'Resize' && _hasResizeDraft) ||
       (_tool == 'HsvShift' && _hasHsvDraft) ||
       (_tool == 'BrightnessContrast' && _hasBcDraft);
 

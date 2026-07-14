@@ -264,10 +264,37 @@ extension _EditorEngine on _EditorPageState {
           (rd['h'] as num).toDouble(),
         ).intersect(Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()));
         _rotDraftAngle = ((rd['angle_mrad'] as num?)?.toDouble() ?? 0) / 1000.0;
+        _rotDraftOff = Offset(
+            ((rd['ox'] as num?) ?? 0).toDouble(), ((rd['oy'] as num?) ?? 0).toDouble());
       } else {
         _hasRotateDraft = false;
         _rotDraftRect = null;
         _rotateDragging = false;
+        _rotDraftOff = Offset.zero;
+        _rotDraftMoveLast = null;
+      }
+      // {x,y,w,h,sx_milli,sy_milli} while a Resize "Scale" draft is open, else null.
+      final sd = _state['scale_draft'];
+      if (sd is Map) {
+        _hasResizeDraft = true;
+        // Same canvas clamp as the rotate draft: a whole-layer lift spans the storage, and the
+        // centred gutter keeps the clamped rect's centre == the engine's pivot.
+        _resizeDraftRect = Rect.fromLTWH(
+          (sd['x'] as num).toDouble(),
+          (sd['y'] as num).toDouble(),
+          (sd['w'] as num).toDouble(),
+          (sd['h'] as num).toDouble(),
+        ).intersect(Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()));
+        _resizeSx = ((sd['sx_milli'] as num?)?.toDouble() ?? 1000) / 1000.0;
+        _resizeSy = ((sd['sy_milli'] as num?)?.toDouble() ?? 1000) / 1000.0;
+        _resizeDraftOff = Offset(
+            ((sd['ox'] as num?) ?? 0).toDouble(), ((sd['oy'] as num?) ?? 0).toDouble());
+      } else {
+        _hasResizeDraft = false;
+        _resizeDraftRect = null;
+        _resizeDragging = false;
+        _resizeDraftOff = Offset.zero;
+        _resizeDraftMoveLast = null;
       }
       final pal = (_state['palette'] as List?)?.cast<String>() ?? [];
       _palette = pal.map(_parseHex).toList();
@@ -334,6 +361,13 @@ extension _EditorEngine on _EditorPageState {
       _rotateDragging = false;
       _redraw();
     }
+    // A pending resize (Scale) draft is likewise discarded when leaving the Resize tool.
+    if (_hasResizeDraft) {
+      _send('ScaleDraftCancel()');
+      _hasResizeDraft = false;
+      _resizeDragging = false;
+      _redraw();
+    }
     // A pending HSV / Brightness-Contrast adjustment (a display-only preview, like the drafts
     // above) is likewise cancelled when leaving its tool, so returning starts clean instead of
     // resuming a stale draft — same as the commit-menu's Cancel.
@@ -374,6 +408,8 @@ extension _EditorEngine on _EditorPageState {
     _send('SetSpacing($_spacing); SetFillAllLayers($_fillAllLayers)');
     _send('SetSelectionMode($_selMode); SetProtectPixels($_protectPixels); SetWrap($_wrap)');
     _send('SetPixelPerfect($_perfect); SetOverscanView(${_overscan ? 1 : 0})');
+    _send('SetCleanEdge($_cleanEdge); SetCleanEdgeWidth(${(_cleanEdgeWidth * 1000).round()})');
+    _send('SetScaleCleanEdge($_resizeCleanEdge); SetScaleCleanEdgeWidth(${(_resizeCleanEdgeWidth * 1000).round()})');
     if (t == 'Gradient') {
       _send('SetGradientType(${_radial ? 'Radial' : 'Linear'})');
       _send('SetGradientSmoothstep($_gradSmooth)');

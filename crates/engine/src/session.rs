@@ -94,10 +94,51 @@ struct RotateDraft {
     src_mask: Option<Mask>, // bbox-sized mask of the lifted pixels (selection only; None = whole layer)
     pivot: PointF, // continuous canvas coords to rotate about: bbox centre, or canvas centre
     angle: f32,    // radians, clockwise (matches the Shape rotate handle's convention)
+    /// Whole-pixel translation applied AFTER the rotation (drag-to-move on the draft body).
+    /// Integer, so identity/quarter-turn exactness is preserved under a moved draft.
+    off: Point,
+    /// cleanEdge resampling for this draft — captured from `settings` at begin, live-updated by
+    /// `SetCleanEdge`/`SetCleanEdgeWidth` while the draft is open so the preview responds.
+    clean_edge: bool,
+    clean_edge_width: f32,
 }
 
 /// One lifted layer of a [`RotateDraft`].
 struct RotateDraftLayer {
+    lid: u32,
+    src: RgbaBuffer,
+}
+
+/// The pending free-scale draft (the Resize tool; engine verb "Scale" to avoid colliding with
+/// `ResizeCanvas`) — [`RotateDraft`]'s twin with X/Y scale factors instead of an angle.
+struct ScaleDraft {
+    fid: u32,
+    is_selection: bool,
+    /// Frame scope: every layer of the frame was lifted (mirrors the rotate draft's policy —
+    /// acts on everything, and commit clears the selection).
+    frame_scope: bool,
+    /// Selection at begin: drives clearing the origin pixels on commit and the undo `sel_before`.
+    sel_before: Option<Arc<Mask>>,
+    /// The lifted sources, one per involved layer (exactly one except in frame scope).
+    layers: Vec<ScaleDraftLayer>,
+    sw: i32,
+    sh: i32,
+    src_origin: Point, // where src(0,0) sits in canvas coords: bbox top-left, or (0,0) for a layer
+    src_mask: Option<Mask>, // bbox-sized mask of the lifted pixels (selection only; None = whole layer)
+    pivot: PointF, // continuous canvas coords to scale about: bbox centre, or canvas centre
+    scale_x: f32,  // 1.0 = identity; the setter clamps to 0.1..=8.0 (thousandths over the DSL)
+    scale_y: f32,
+    /// Whole-pixel translation applied AFTER the scale (drag-to-move on the draft body).
+    off: Point,
+    /// cleanEdge for this draft — captured from `settings.scale_clean_edge*` at begin,
+    /// live-updated by `SetScaleCleanEdge*` while open; the resampler applies it only when
+    /// upscaling (any shrinking axis → nearest-neighbour regardless).
+    clean_edge: bool,
+    clean_edge_width: f32,
+}
+
+/// One lifted layer of a [`ScaleDraft`].
+struct ScaleDraftLayer {
     lid: u32,
     src: RgbaBuffer,
 }
@@ -266,6 +307,10 @@ pub struct Session {
     /// like a move draft, committed on demand. Driven via `RotateDraftBegin`/`RotateDraftSetAngle`/
     /// `RotateDraftCommit`/`RotateDraftCancel`; see `session/canvas.rs`.
     rotate_draft: Option<RotateDraft>,
+    /// The pending free-scale draft (Resize tool). Non-destructive, washed like a rotate draft,
+    /// committed on demand. Driven via `ScaleDraftBegin`/`ScaleDraftSet`/`ScaleDraftCommit`/
+    /// `ScaleDraftCancel`; see `session/canvas.rs`.
+    scale_draft: Option<ScaleDraft>,
     /// While a selection-mask drag is in progress (`MoveSelectionBegin`→`MoveSelectionCommit`), the
     /// selection at drag start. Set ⇒ the per-step `MoveSelection`s update the mask in place without
     /// recording, and the commit records a single undo step for the whole drag. `None` ⇒ a one-shot
@@ -301,6 +346,7 @@ impl Session {
             move_bbox: None,
             move_draft: None,
             rotate_draft: None,
+            scale_draft: None,
             move_sel_before: None,
         }
     }
@@ -492,6 +538,7 @@ impl Session {
         let preview = self
             .move_draft_preview_frame()
             .or_else(|| self.rotate_draft_preview_frame())
+            .or_else(|| self.scale_draft_preview_frame())
             .or_else(|| self.hsv_preview_frame())
             .or_else(|| self.bc_preview_frame());
         let frame = preview.as_ref().unwrap_or_else(|| self.doc.active_frame());
@@ -628,6 +675,12 @@ impl Session {
             self.rotate_draft_wash_into(buf);
             return;
         }
+        // A pending scale draft: same treatment — the preview frame shows the scaled pixels,
+        // the wash marks them as not-yet-committed.
+        if self.scale_draft.as_ref().filter(|d| d.fid == self.doc.active_frame().id).is_some() {
+            self.scale_draft_wash_into(buf);
+            return;
+        }
         // A pending move draft: the moved pixels are already in the layer (crash-safe), so just wash
         // them with a soft semi-transparent tint to mark "pending until Commit". Only wash when the
         // draft's own frame is the one being displayed (the user may have switched frames).
@@ -725,6 +778,10 @@ impl Session {
         // While a selection rotate draft is open the marquee follows the (preview) rotated mask,
         // even though the document's selection isn't touched until Commit.
         if let Some(m) = self.rotate_draft_outline() {
+            return Some(m);
+        }
+        // Same for a selection scale draft: the marquee follows the scaled (preview) mask.
+        if let Some(m) = self.scale_draft_outline() {
             return Some(m);
         }
         // While a selection move draft is open the marquee follows the (preview) move, even though
@@ -826,14 +883,32 @@ impl Session {
         // The rotate draft carries its pre-rotation region bbox + the live angle so the shell can
         // place the rotate handle (centre = bbox centre, arm reaches a corner) and show the angle.
         let rotate_draft = match self.rotate_draft_rect() {
-            Some(r) => format!(
-                "{{\"x\":{},\"y\":{},\"w\":{},\"h\":{},\"angle_mrad\":{}}}",
-                r.x,
-                r.y,
-                r.w,
-                r.h,
-                self.rotate_draft_angle_mrad().unwrap_or(0)
-            ),
+            Some(r) => {
+                let (ox, oy) = self.rotate_draft_offset().unwrap_or((0, 0));
+                format!(
+                    "{{\"x\":{},\"y\":{},\"w\":{},\"h\":{},\"angle_mrad\":{},\"ox\":{},\"oy\":{}}}",
+                    r.x,
+                    r.y,
+                    r.w,
+                    r.h,
+                    self.rotate_draft_angle_mrad().unwrap_or(0),
+                    ox,
+                    oy
+                )
+            }
+            None => "null".to_string(),
+        };
+        // The scale draft mirrors it: pre-scale region bbox + the live X/Y factors (thousandths)
+        // so the shell can place the corner handle and sync its sliders.
+        let scale_draft = match self.scale_draft_rect() {
+            Some(r) => {
+                let (sx, sy) = self.scale_draft_factors_milli().unwrap_or((1000, 1000));
+                let (ox, oy) = self.scale_draft_offset().unwrap_or((0, 0));
+                format!(
+                    "{{\"x\":{},\"y\":{},\"w\":{},\"h\":{},\"sx_milli\":{},\"sy_milli\":{},\"ox\":{},\"oy\":{}}}",
+                    r.x, r.y, r.w, r.h, sx, sy, ox, oy
+                )
+            }
             None => "null".to_string(),
         };
         // Gutter geometry for the shell: `storage` is the full off-canvas area, `origin` the canvas
@@ -841,11 +916,12 @@ impl Session {
         let st = self.doc.storage();
         let og = self.doc.origin();
         let extra = format!(
-            ",\"has_clipboard\":{},\"paste\":{},\"move_draft\":{},\"rotate_draft\":{},\"storage\":[{},{}],\"origin\":[{},{}],\"overscan\":{}",
+            ",\"has_clipboard\":{},\"paste\":{},\"move_draft\":{},\"rotate_draft\":{},\"scale_draft\":{},\"storage\":[{},{}],\"origin\":[{},{}],\"overscan\":{}",
             self.clipboard.is_some(),
             rect(self.paste_draft_rect()),
             rect(self.move_draft_rect()),
             rotate_draft,
+            scale_draft,
             st.w,
             st.h,
             og.x,
@@ -3633,6 +3709,463 @@ mod tests {
         assert!(s.doc.selection.is_none(), "frame-scope commit clears the selection");
         assert!(s.doc.undo(), "one undo step");
         assert!(s.doc.selection.is_some(), "undo restores the pre-commit selection");
+    }
+
+    /// A 12×12 45° staircase (white iff y ≥ x) — the sprite shape cleanEdge visibly reworks.
+    fn staircase_session() -> Session {
+        let mut s = Session::new(12, 12);
+        s.settings.primary = Rgba8::WHITE;
+        for y in 0..12 {
+            for x in 0..=y {
+                s.tap(x, y);
+            }
+        }
+        s
+    }
+
+    #[test]
+    fn clean_edge_quarter_turns_match_nn() {
+        // Quarter turns stay lossless under cleanEdge (identity at exact cell centres), so the
+        // 90°/180° buttons inheriting the default-on setting is invisible.
+        for q in 1..=3u8 {
+            let mut on = staircase_session();
+            on.set_clean_edge(true);
+            on.rotate_layer(q);
+            let mut off = staircase_session();
+            off.set_clean_edge(false);
+            off.rotate_layer(q);
+            assert_eq!(on.doc.content_hash(), off.doc.content_hash(), "q={q}");
+        }
+    }
+
+    #[test]
+    fn clean_edge_free_angle_differs_and_adds_no_colours() {
+        let commit = |clean: bool| {
+            let mut s = staircase_session();
+            s.set_clean_edge(clean);
+            s.rotate_draft_begin();
+            s.rotate_draft_set_angle(785); // ~45°
+            s.rotate_draft_commit();
+            s
+        };
+        let ce = commit(true);
+        let nn = commit(false);
+        assert_ne!(ce.doc.content_hash(), nn.doc.content_hash(), "cleanEdge must rework a free angle");
+        // Palette-preserving: cleanEdge never blends — only the sprite color or holes appear.
+        for y in 0..12 {
+            for x in 0..12 {
+                let p = ce.pixel(0, 0, x, y);
+                assert!(p == Rgba8::WHITE || p.a == 0, "invented color {p:?} at ({x},{y})");
+            }
+        }
+    }
+
+    #[test]
+    fn clean_edge_selection_rotation_mask_matches_nn() {
+        // The rotated marquee follows the region, not pixel colors, so it is algorithm-independent.
+        let build = |clean: bool| {
+            let mut s = staircase_session();
+            s.set_clean_edge(clean);
+            s.tool = ToolKind::SelectRect;
+            s.stroke_path(&[(1, 2), (7, 9)]);
+            s.rotate_draft_begin();
+            s.rotate_draft_set_angle(600);
+            s.rotate_draft_commit();
+            s
+        };
+        let ce = build(true);
+        let nn = build(false);
+        let a = ce.doc.selection.as_ref().expect("cleanEdge keeps the rotated marquee");
+        let b = nn.doc.selection.as_ref().expect("NN keeps the rotated marquee");
+        assert_eq!(a.bounds(), b.bounds());
+        let bb = a.bounds().unwrap();
+        for y in bb.y..bb.y + bb.h as i32 {
+            for x in bb.x..bb.x + bb.w as i32 {
+                assert_eq!(a.get(x, y), b.get(x, y), "marquee diverged at ({x},{y})");
+            }
+        }
+    }
+
+    #[test]
+    fn set_clean_edge_dsl_and_mid_draft_live_update() {
+        let mut s = staircase_session();
+        s.run_script("SetCleanEdge(true)\nSetCleanEdgeWidth(707)").unwrap();
+        assert!(s.settings.clean_edge);
+        assert!((s.settings.clean_edge_width - 0.707).abs() < 1e-6);
+
+        // SetCleanEdge* mid-draft updates the OPEN draft (like RotateDraftSetAngle): turning it
+        // off after begin must commit a pure nearest-neighbour result.
+        let mut a = staircase_session();
+        a.run_script(
+            "SetCleanEdge(true)\nRotateDraftBegin()\nRotateDraftSetAngle(524)\nSetCleanEdge(false)\nRotateDraftCommit()",
+        )
+        .unwrap();
+        let mut b = staircase_session();
+        b.set_clean_edge(false);
+        b.rotate_draft_begin();
+        b.rotate_draft_set_angle(524);
+        b.rotate_draft_commit();
+        assert_eq!(a.doc.content_hash(), b.doc.content_hash(), "mid-draft toggle must take effect");
+    }
+
+    #[test]
+    fn clean_edge_width_clamps() {
+        let mut s = Session::new(4, 4);
+        s.set_clean_edge_width(-100);
+        assert_eq!(s.settings.clean_edge_width, 0.0);
+        s.set_clean_edge_width(5000);
+        assert_eq!(s.settings.clean_edge_width, 2.0);
+        s.set_clean_edge_width(707);
+        assert!((s.settings.clean_edge_width - 0.707).abs() < 1e-6);
+
+        // The 0–2 user range saturates to the sampler's internal [0.45, 1.142] band (like the
+        // reference site's slider extremes).
+        let commit = |thousandths: i32| {
+            let mut s = staircase_session();
+            s.set_clean_edge(true);
+            s.set_clean_edge_width(thousandths);
+            s.rotate_draft_begin();
+            s.rotate_draft_set_angle(524);
+            s.rotate_draft_commit();
+            s.doc.content_hash()
+        };
+        assert_eq!(commit(0), commit(450));
+        assert_eq!(commit(2000), commit(1142));
+        assert_ne!(commit(450), commit(1142), "the width must actually matter in between");
+    }
+
+    #[test]
+    fn clean_edge_pinned_grid_45deg() {
+        // Byte-pinned golden: the staircase rotated 45° CW (785 mrad) under cleanEdge. The
+        // original hypotenuse becomes a vertical edge; hand-verified against the NN result,
+        // cleanEdge removes the lone jagged tooth at (6,2) and fills (6,7)/(6,8)/(6,10)/(6,11)
+        // into a straight edge. Any intentional algorithm change must re-pin this honestly.
+        let mut s = staircase_session();
+        s.set_clean_edge(true);
+        s.rotate_draft_begin();
+        s.rotate_draft_set_angle(785);
+        s.rotate_draft_commit();
+        #[rustfmt::skip]
+        let want = [
+            "...###......",
+            "..####......",
+            ".#####......",
+            "######......",
+            "######......",
+            "######......",
+            "#######.....",
+            "#######.....",
+            "#######.....",
+            ".######.....",
+            "..#####.....",
+            "...####.....",
+        ];
+        for (y, row) in want.iter().enumerate() {
+            for (x, ch) in row.chars().enumerate() {
+                let p = s.pixel(0, 0, x as i32, y as i32);
+                assert_eq!(p.a != 0, ch == '#', "grid mismatch at ({x},{y}): {p:?}");
+                if ch == '#' {
+                    assert_eq!(p, Rgba8::WHITE, "palette-preserving output at ({x},{y})");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn clean_edge_commit_is_single_undo() {
+        let mut s = staircase_session();
+        s.set_clean_edge(true);
+        let h0 = s.doc.content_hash();
+        s.rotate_draft_begin();
+        s.rotate_draft_set_angle(524);
+        s.rotate_draft_commit();
+        assert_ne!(s.doc.content_hash(), h0);
+        assert!(s.doc.undo(), "the commit is one undo step");
+        assert_eq!(s.doc.content_hash(), h0);
+    }
+
+    // ---- the Resize tool (engine verb Scale) ----
+
+    #[test]
+    fn scale_identity_commit_is_noop() {
+        let mut s = staircase_session();
+        let h0 = s.doc.content_hash();
+        let depth = s.doc.history.undo.len();
+        s.scale_draft_begin();
+        assert_eq!(s.doc.content_hash(), h0, "the draft is non-destructive while open");
+        s.scale_draft_set(1000, 1000);
+        s.scale_draft_commit();
+        assert_eq!(s.doc.content_hash(), h0);
+        assert_eq!(s.doc.history.undo.len(), depth, "identity commit records no undo step");
+        assert!(s.scale_draft_rect().is_none(), "no draft remains");
+    }
+
+    #[test]
+    fn scale_2x_nn_is_exact_block_replication() {
+        // NN 2× about the canvas centre: dest (x,y) shows source floor(c + (x+0.5−c)/2). The
+        // storage centre pivot equals the canvas centre in canvas coords (centred gutter).
+        let orig = staircase_session();
+        let mut s = staircase_session();
+        s.set_scale_clean_edge(false);
+        s.scale_layer(2000, 2000);
+        let c = 6.0f32;
+        for y in 0..12 {
+            for x in 0..12 {
+                let sx = (c + (x as f32 + 0.5 - c) / 2.0).floor() as i32;
+                let sy = (c + (y as f32 + 0.5 - c) / 2.0).floor() as i32;
+                assert_eq!(s.pixel(0, 0, x, y), orig.pixel(0, 0, sx, sy), "at ({x},{y})");
+            }
+        }
+    }
+
+    #[test]
+    fn scale_2x_clean_edge_differs_and_adds_no_colours() {
+        let commit = |clean: bool| {
+            let mut s = staircase_session();
+            s.set_scale_clean_edge(clean);
+            s.scale_layer(2000, 2000);
+            s
+        };
+        let ce = commit(true);
+        let nn = commit(false);
+        assert_ne!(ce.doc.content_hash(), nn.doc.content_hash(), "cleanEdge must rework a 2× upscale");
+        // Palette-preserving: cleanEdge never blends.
+        for y in 0..12 {
+            for x in 0..12 {
+                let p = ce.pixel(0, 0, x, y);
+                assert!(p == Rgba8::WHITE || p.a == 0, "invented color {p:?} at ({x},{y})");
+            }
+        }
+    }
+
+    #[test]
+    fn scale_downscale_and_mixed_force_nn() {
+        // cleanEdge applies only when BOTH factors upscale; any shrinking axis → pure NN.
+        for (sx, sy) in [(500, 500), (2000, 500), (500, 2000), (999, 2000)] {
+            let commit = |clean: bool| {
+                let mut s = staircase_session();
+                s.set_scale_clean_edge(clean);
+                s.scale_layer(sx, sy);
+                s.doc.content_hash()
+            };
+            assert_eq!(commit(true), commit(false), "({sx},{sy}) must be pure NN");
+        }
+    }
+
+    #[test]
+    fn scale_selection_mask_follows_and_matches_nn() {
+        let build = |clean: bool, sx: i32, sy: i32| {
+            let mut s = staircase_session();
+            s.set_scale_clean_edge(clean);
+            s.tool = ToolKind::SelectRect;
+            s.stroke_path(&[(2, 3), (8, 9)]);
+            s.scale_draft_begin();
+            s.scale_draft_set(sx, sy);
+            s.scale_draft_commit();
+            s
+        };
+        for (sx, sy) in [(2000, 2000), (500, 500)] {
+            let ce = build(true, sx, sy);
+            let nn = build(false, sx, sy);
+            let a = ce.doc.selection.as_ref().expect("marquee survives the scale");
+            let b = nn.doc.selection.as_ref().expect("marquee survives the scale");
+            assert_eq!(a.bounds(), b.bounds(), "({sx},{sy})");
+            let bb = a.bounds().unwrap();
+            for y in bb.y..bb.y + bb.h as i32 {
+                for x in bb.x..bb.x + bb.w as i32 {
+                    // Algorithm-independent AND solid (a scaled rect region has no holes).
+                    assert_eq!(a.get(x, y), b.get(x, y), "({sx},{sy}) marquee diverged at ({x},{y})");
+                    assert!(a.get(x, y), "({sx},{sy}) hole at ({x},{y})");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn scale_draft_set_and_width_clamp() {
+        let mut s = staircase_session();
+        s.scale_draft_begin();
+        s.scale_draft_set(50, 99999);
+        assert_eq!(s.scale_draft_factors_milli(), Some((100, 8000)), "factors clamp to 0.1×..8×");
+        s.scale_draft_cancel();
+        s.set_scale_clean_edge_width(-5);
+        assert_eq!(s.settings.scale_clean_edge_width, 0.0);
+        s.set_scale_clean_edge_width(9999);
+        assert_eq!(s.settings.scale_clean_edge_width, 2.0);
+    }
+
+    #[test]
+    fn scale_preset_matches_draft_and_identity_noops() {
+        let mut a = staircase_session();
+        a.scale_layer(2000, 2000);
+        let mut b = staircase_session();
+        b.scale_draft_begin();
+        b.scale_draft_set(2000, 2000);
+        b.scale_draft_commit();
+        assert_eq!(a.doc.content_hash(), b.doc.content_hash(), "preset == manual draft");
+
+        let mut c = staircase_session();
+        let depth = c.doc.history.undo.len();
+        c.scale_layer(1000, 1000);
+        assert_eq!(c.doc.history.undo.len(), depth, "identity preset records nothing");
+    }
+
+    #[test]
+    fn scale_commit_is_single_undo_and_restores_selection() {
+        let mut s = staircase_session();
+        s.tool = ToolKind::SelectRect;
+        s.stroke_path(&[(2, 3), (8, 9)]);
+        let h0 = s.doc.content_hash();
+        let sel_bounds = s.doc.selection.as_ref().unwrap().bounds();
+        let depth = s.doc.history.undo.len();
+        s.scale_draft_begin();
+        s.scale_draft_set(2000, 2000);
+        s.scale_draft_commit();
+        assert_ne!(s.doc.content_hash(), h0);
+        assert_eq!(s.doc.history.undo.len(), depth + 1, "exactly one undo step");
+        assert!(s.doc.undo());
+        assert_eq!(s.doc.content_hash(), h0);
+        assert_eq!(s.doc.selection.as_ref().unwrap().bounds(), sel_bounds, "undo restores the marquee");
+    }
+
+    #[test]
+    fn scale_mid_draft_dsl_live_update_and_rotate_independence() {
+        // SetScaleCleanEdge mid-draft updates the OPEN draft.
+        let mut a = staircase_session();
+        a.run_script(
+            "SetScaleCleanEdge(true)\nScaleDraftBegin()\nScaleDraftSet(2000,2000)\nSetScaleCleanEdge(false)\nScaleDraftCommit()",
+        )
+        .unwrap();
+        let mut b = staircase_session();
+        b.set_scale_clean_edge(false);
+        b.scale_layer(2000, 2000);
+        assert_eq!(a.doc.content_hash(), b.doc.content_hash(), "mid-draft toggle must take effect");
+
+        // The ROTATE tool's SetCleanEdge must not leak into a scale draft (independent settings).
+        let mut c = staircase_session();
+        c.run_script(
+            "SetScaleCleanEdge(true)\nScaleDraftBegin()\nScaleDraftSet(2000,2000)\nSetCleanEdge(false)\nScaleDraftCommit()",
+        )
+        .unwrap();
+        let mut d = staircase_session();
+        d.set_scale_clean_edge(true);
+        d.scale_layer(2000, 2000);
+        assert_eq!(c.doc.content_hash(), d.doc.content_hash(), "Rotate's toggle leaked into Scale");
+    }
+
+    #[test]
+    fn scale_frame_scope_scales_all_layers_and_clears_selection() {
+        let mut s = Session::new(8, 8);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(3, 3);
+        s.add_layer();
+        s.settings.primary = Rgba8::new(255, 0, 0, 255);
+        s.tap(4, 4);
+        s.tool = ToolKind::SelectRect;
+        s.stroke_path(&[(1, 1), (3, 3)]);
+        assert!(s.doc.selection.is_some());
+        s.run_script("ScaleFrame(2000,2000)").unwrap();
+        // 2× about the canvas centre (c=4): source (3,3) → dest block {2,3}²; (4,4) → {4,5}².
+        assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 1, 4, 4), Rgba8::new(255, 0, 0, 255));
+        assert_eq!(s.pixel(0, 1, 5, 5), Rgba8::new(255, 0, 0, 255));
+        assert!(s.doc.selection.is_none(), "frame-scope commit clears the selection");
+        assert!(s.doc.undo(), "one undo step");
+        assert!(s.doc.selection.is_some(), "undo restores the pre-commit selection");
+    }
+
+    #[test]
+    fn scale_draft_cancel_is_nondestructive() {
+        let mut s = staircase_session();
+        let h0 = s.doc.content_hash();
+        let depth = s.doc.history.undo.len();
+        s.scale_draft_begin();
+        s.scale_draft_set(3000, 500);
+        s.scale_draft_cancel();
+        assert_eq!(s.doc.content_hash(), h0, "cancel leaves the document exactly as it was");
+        assert_eq!(s.doc.history.undo.len(), depth);
+        assert!(s.scale_draft_rect().is_none(), "no draft remains after cancel");
+    }
+
+    #[test]
+    fn draft_move_commits_as_pure_translation() {
+        // Identity factors/angle + a whole-pixel move commit as a pure translation, for BOTH
+        // transform drafts — and the identity no-op check must NOT swallow a moved draft.
+        for rotate in [false, true] {
+            let mut s = staircase_session();
+            let depth = s.doc.history.undo.len();
+            let orig = staircase_session();
+            if rotate {
+                s.run_script("RotateDraftBegin()\nRotateDraftMove(3,2)\nRotateDraftCommit()").unwrap();
+            } else {
+                s.scale_draft_begin();
+                s.scale_draft_move(3, 2);
+                s.scale_draft_commit();
+            }
+            assert_eq!(s.doc.history.undo.len(), depth + 1, "rotate={rotate}: one undo step");
+            for y in 0..12 {
+                for x in 0..12 {
+                    let want = if x >= 3 && y >= 2 {
+                        orig.pixel(0, 0, x - 3, y - 2)
+                    } else {
+                        Rgba8::TRANSPARENT
+                    };
+                    assert_eq!(s.pixel(0, 0, x, y), want, "rotate={rotate} at ({x},{y})");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn draft_move_accumulates_and_translates_scaled_content() {
+        // 2× + accumulated moves: the moved commit equals the unmoved commit translated by the
+        // total offset (the offset is applied after the scale, inside the same resample).
+        let base = {
+            let mut s = staircase_session();
+            s.scale_draft_begin();
+            s.scale_draft_set(2000, 2000);
+            s.scale_draft_commit();
+            s
+        };
+        let mut m = staircase_session();
+        m.scale_draft_begin();
+        m.scale_draft_set(2000, 2000);
+        m.scale_draft_move(1, 0);
+        m.scale_draft_move(1, 2); // accumulates → (2, 2)
+        m.scale_draft_commit();
+        for y in 2..12 {
+            for x in 2..12 {
+                assert_eq!(m.pixel(0, 0, x, y), base.pixel(0, 0, x - 2, y - 2), "at ({x},{y})");
+            }
+        }
+    }
+
+    #[test]
+    fn draft_move_shifts_selection_marquee() {
+        let mut s = staircase_session();
+        s.tool = ToolKind::SelectRect;
+        s.stroke_path(&[(2, 3), (6, 7)]);
+        let bb0 = s.doc.selection.as_ref().unwrap().bounds().unwrap();
+        s.run_script("ScaleDraftBegin()\nScaleDraftMove(2,1)\nScaleDraftCommit()").unwrap();
+        let bb1 = s.doc.selection.as_ref().unwrap().bounds().unwrap();
+        assert_eq!(
+            (bb1.x, bb1.y, bb1.w, bb1.h),
+            (bb0.x + 2, bb0.y + 1, bb0.w, bb0.h),
+            "the marquee follows the moved draft"
+        );
+    }
+
+    #[test]
+    fn transform_drafts_are_mutually_exclusive() {
+        let mut s = staircase_session();
+        s.scale_draft_begin();
+        s.rotate_draft_begin();
+        assert!(s.rotate_draft_rect().is_none(), "rotate must not open over a scale draft");
+        s.scale_draft_cancel();
+        s.rotate_draft_begin();
+        s.scale_draft_begin();
+        assert!(s.scale_draft_rect().is_none(), "scale must not open over a rotate draft");
     }
 
     #[test]

@@ -468,10 +468,37 @@ extension _EditorControls on _EditorPageState {
       children.add(_miniBtn('Flip V', () => _act(_flipFrame ? 'FlipFrameV()' : 'FlipV()')));
     }
     if (_tool == 'Rotate') {
+      // cleanEdge resampling toggle + its line width. Shown in BOTH row-1 states (idle and
+      // mid-draft) — the engine live-updates an open draft, so tweaking these while the Angle
+      // preview is up responds immediately.
+      void cleanEdgeControls() {
+        children.add(Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          child: FilterChip(
+            selected: _cleanEdge,
+            label: Text(_cleanEdge ? 'cleanEdge ✔' : 'cleanEdge'),
+            selectedColor: const Color(0xFF30A050),
+            onSelected: (v) {
+              setState(() => _cleanEdge = v);
+              _send('SetCleanEdge($_cleanEdge)');
+              if (_hasRotateDraft) _redraw(full: false, refetchSelection: false);
+            },
+          ),
+        ));
+        if (_cleanEdge) {
+          _labeledSlider(children, 'Line', _cleanEdgeWidth, 0.0, 2.0, (v) {
+            setState(() => _cleanEdgeWidth = v);
+            _send('SetCleanEdgeWidth(${(v * 1000).round()})');
+            if (_hasRotateDraft) _redraw(full: false, refetchSelection: false);
+          }, integer: false, decimals: 2);
+        }
+      }
+
       if (_hasRotateDraft) {
         // Free-angle "Angle" mode in progress: the floating commit-menu bakes/discards the draft;
         // the 90°/180° controls hide until it resolves. Row-1 just teaches the gesture.
-        label('Drag the on-canvas handle to set the angle');
+        label('Drag the handle to set the angle · drag the draft to move it');
+        cleanEdgeControls();
       } else {
         // 90°/180° and the free-angle draft act on the active layer (or the selected pixels), or
         // on every layer of the active frame in Frame scope.
@@ -483,6 +510,79 @@ extension _EditorControls on _EditorPageState {
         children.add(_miniBtn('180°', () => _act('$verb(2)')));
         children.add(const SizedBox(width: 6));
         children.add(_miniBtn('Angle', _beginRotateDraft));
+        cleanEdgeControls();
+      }
+    }
+    if (_tool == 'Resize') {
+      // The Resize tool's cleanEdge toggle + line width — independent state from the Rotate
+      // tool's (SetScaleCleanEdge*). Shown in both row-1 states; the engine live-updates an open
+      // draft. cleanEdge only takes effect when upscaling (engine-gated) — the chip stays
+      // toggleable regardless so the preference is ready when the drag crosses 1×.
+      void cleanEdgeControls() {
+        children.add(Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          child: FilterChip(
+            selected: _resizeCleanEdge,
+            label: Text(_resizeCleanEdge ? 'cleanEdge ✔' : 'cleanEdge'),
+            selectedColor: const Color(0xFF30A050),
+            onSelected: (v) {
+              setState(() => _resizeCleanEdge = v);
+              _send('SetScaleCleanEdge($_resizeCleanEdge)');
+              if (_hasResizeDraft) _redraw(full: false, refetchSelection: false);
+            },
+          ),
+        ));
+        if (_resizeCleanEdge) {
+          _labeledSlider(children, 'Line', _resizeCleanEdgeWidth, 0.0, 2.0, (v) {
+            setState(() => _resizeCleanEdgeWidth = v);
+            _send('SetScaleCleanEdgeWidth(${(v * 1000).round()})');
+            if (_hasResizeDraft) _redraw(full: false, refetchSelection: false);
+          }, integer: false, decimals: 2);
+        }
+      }
+
+      if (_hasResizeDraft) {
+        // Free-scale "Scale" mode in progress: drag the corner knob, or drive the factors from
+        // the X/Y sliders; the floating commit-menu bakes/discards the draft. Both paths write
+        // the same fields and send ScaleDraftSet, so knob and sliders always agree.
+        void syncScale(double sx, double sy) {
+          setState(() {
+            _resizeSx = sx;
+            _resizeSy = sy;
+          });
+          _send('ScaleDraftSet(${(sx * 1000).round()},${(sy * 1000).round()})');
+          _redraw(full: false, refetchSelection: true); // a selection scale moves the marquee
+        }
+
+        children.add(Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          child: FilterChip(
+            selected: _resizeLockRatio,
+            label: Text(_resizeLockRatio ? 'Lock ✔' : 'Lock'),
+            selectedColor: const Color(0xFF30A050),
+            onSelected: (v) {
+              setState(() => _resizeLockRatio = v);
+              // Re-locking adopts X for both axes (deterministic), syncing the engine at once.
+              if (v && _resizeSx != _resizeSy) syncScale(_resizeSx, _resizeSx);
+            },
+          ),
+        ));
+        _labeledLogSlider(children, 'X', _resizeSx, 0.1, 8.0,
+            (v) => syncScale(v, _resizeLockRatio ? v : _resizeSy));
+        _labeledLogSlider(children, 'Y', _resizeSy, 0.1, 8.0,
+            (v) => syncScale(_resizeLockRatio ? v : _resizeSx, v));
+        cleanEdgeControls();
+      } else {
+        // ½×/2× and the free-scale draft act on the active layer (or the selected pixels), or
+        // on every layer of the active frame in Frame scope.
+        label(_resizeFrame ? 'Resize frame' : (_outlineEdges.isNotEmpty ? 'Resize selection' : 'Resize layer'));
+        children.add(_toggle(const ['Layer', 'Frame'], _resizeFrame ? 1 : 0, (i) => setState(() => _resizeFrame = i == 1)));
+        final verb = _resizeFrame ? 'ScaleFrame' : 'ScaleLayer';
+        children.add(_miniBtn('½×', () => _act('$verb(500,500)')));
+        children.add(_miniBtn('2×', () => _act('$verb(2000,2000)')));
+        children.add(const SizedBox(width: 6));
+        children.add(_miniBtn('Scale', _beginResizeDraft));
+        cleanEdgeControls();
       }
     }
     if (_tool == 'Invert') {

@@ -180,10 +180,10 @@ extension _EditorToolgrid on _EditorPageState {
   // text-entry dialog so the exact value can be typed instead of dragged. The text path and
   // the drag path share the same [onChanged], keeping behaviour identical.
   void _labeledSlider(List<Widget> children, String name, double value, double min, double max,
-      ValueChanged<double> onChanged, {bool integer = true}) {
-    final shown = integer ? value.round().toString() : value.toStringAsFixed(1);
+      ValueChanged<double> onChanged, {bool integer = true, int decimals = 1}) {
+    final shown = integer ? value.round().toString() : value.toStringAsFixed(decimals);
     children.add(InkWell(
-      onTap: () => _editSliderValue(name, value, min, max, onChanged, integer: integer),
+      onTap: () => _editSliderValue(name, value, min, max, onChanged, integer: integer, decimals: decimals),
       borderRadius: BorderRadius.circular(4),
       child: Padding(
         padding: const EdgeInsets.only(left: 8, right: 4),
@@ -250,8 +250,8 @@ extension _EditorToolgrid on _EditorPageState {
   }
 
   Future<void> _editSliderValue(String name, double value, double min, double max,
-      ValueChanged<double> onChanged, {required bool integer}) async {
-    String fmt(double d) => integer ? d.round().toString() : d.toStringAsFixed(1);
+      ValueChanged<double> onChanged, {required bool integer, int decimals = 1}) async {
+    String fmt(double d) => integer ? d.round().toString() : d.toStringAsFixed(decimals);
     final ctrl = TextEditingController(text: integer ? value.round().toString() : value.toStringAsFixed(2));
     ctrl.selection = TextSelection(baseOffset: 0, extentOffset: ctrl.text.length);
     final entered = await showDialog<double>(

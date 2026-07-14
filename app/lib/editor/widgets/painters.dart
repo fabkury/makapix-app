@@ -259,6 +259,70 @@ class ShapeRotateHandlePainter extends CustomPainter {
       o.center != center || o.corner != corner || o.rotation != rotation || o.scale != scale || o.off != off || o.arm != arm;
 }
 
+/// The Resize tool's scale handle: a dashed outline of the SCALED rect (centre ± half-extents ×
+/// factors), a knob circle at its bottom-right corner (the drag target — must match the shell's
+/// `_resizeReticle` hit-test), and a live "2.00×" readout ("2.00× · 1.50×" when the factors
+/// differ). Drawn in SCREEN space; knob styling matches [ShapeRotateHandlePainter] so the
+/// transform handles read as one family.
+class ResizeHandlePainter extends CustomPainter {
+  final Offset center; // canvas cell-index coords (the −0.5 convention; sc() adds +0.5)
+  final double sx, sy; // current scale factors
+  final Rect rect; // pre-scale bbox, canvas pixels
+  final double scale;
+  final Offset off;
+  const ResizeHandlePainter(this.center, this.sx, this.sy, this.rect, this.scale, this.off);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (scale <= 0) return;
+    final cs = Offset(off.dx + (center.dx + 0.5) * scale, off.dy + (center.dy + 0.5) * scale);
+    final scaled = Rect.fromCenter(
+        center: cs, width: rect.width * sx * scale, height: rect.height * sy * scale);
+    _dashedRect(canvas, scaled, Paint()..color = Colors.black..style = PaintingStyle.stroke..strokeWidth = 4..isAntiAlias = true);
+    _dashedRect(canvas, scaled, Paint()..color = const Color(0xFF4DA3FF)..style = PaintingStyle.stroke..strokeWidth = 2..isAntiAlias = true);
+    final knob = scaled.bottomRight;
+    canvas.drawCircle(knob, 11, Paint()..color = Colors.black..style = PaintingStyle.stroke..strokeWidth = 4..isAntiAlias = true);
+    canvas.drawCircle(knob, 11, Paint()..color = const Color(0xFF4DA3FF)..style = PaintingStyle.stroke..strokeWidth = 2.5..isAntiAlias = true);
+    canvas.drawCircle(knob, 2.5, Paint()..color = Colors.white);
+    final label = sx == sy
+        ? '${sx.toStringAsFixed(2)}×'
+        : '${sx.toStringAsFixed(2)}× · ${sy.toStringAsFixed(2)}×';
+    final tp = TextPainter(
+      text: TextSpan(
+        text: ' $label ',
+        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.white, backgroundColor: Color(0xCC000000)),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(canvas, knob + Offset(-tp.width / 2, -11 - 6 - tp.height));
+  }
+
+  // Dash each rect edge with a fixed 6/4 px pattern (screen space, so density is zoom-stable).
+  void _dashedRect(Canvas canvas, Rect r, Paint p) {
+    void dashLine(Offset a, Offset b) {
+      final v = b - a;
+      final len = v.distance;
+      if (len <= 0) return;
+      final dir = v / len;
+      var t = 0.0;
+      while (t < len) {
+        final e = math.min(t + 6.0, len);
+        canvas.drawLine(a + dir * t, a + dir * e, p);
+        t = e + 4.0;
+      }
+    }
+
+    dashLine(r.topLeft, r.topRight);
+    dashLine(r.topRight, r.bottomRight);
+    dashLine(r.bottomRight, r.bottomLeft);
+    dashLine(r.bottomLeft, r.topLeft);
+  }
+
+  @override
+  bool shouldRepaint(ResizeHandlePainter o) =>
+      o.center != center || o.sx != sx || o.sy != sy || o.rect != rect || o.scale != scale || o.off != off;
+}
+
 /// The Triangle's apex-skew handle: a faint rail along the (rotated) top edge with a diamond reticle
 /// at the apex. Dragging the diamond slides the tip horizontally between the two base corners. Drawn
 /// in SCREEN space. A distinct amber colour so it never reads as a size or rotate handle.

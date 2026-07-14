@@ -166,25 +166,37 @@ pub struct Stats {
     pub memory_bytes: usize,
 }
 
-pub fn stats(buf: &RgbaBuffer) -> Stats {
+/// Content stats over `window` (in buffer coords — the canvas rect for a layer buffer, so the
+/// gutter is excluded and `bbox` comes back window-relative, i.e. canvas coords, matching the
+/// `pixel` probe). `present_tiles`/`memory_bytes` describe the WHOLE buffer — they are
+/// tiling/COW diagnostics of the real storage, not of the window.
+pub fn stats(buf: &RgbaBuffer, window: IRect) -> Stats {
     let mut count = 0u64;
-    for y in 0..buf.height() as i32 {
-        for x in 0..buf.width() as i32 {
+    let (mut minx, mut miny, mut maxx, mut maxy) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
+    for y in window.y..window.bottom() {
+        for x in window.x..window.right() {
             if buf.get(x, y).a != 0 {
                 count += 1;
+                minx = minx.min(x);
+                miny = miny.min(y);
+                maxx = maxx.max(x);
+                maxy = maxy.max(y);
             }
         }
     }
+    let bbox = (count > 0).then(|| {
+        IRect::new(minx - window.x, miny - window.y, (maxx - minx + 1) as u32, (maxy - miny + 1) as u32)
+    });
     Stats {
         non_transparent: count,
-        bbox: buf.opaque_bounds(),
+        bbox,
         present_tiles: buf.present_tiles(),
         memory_bytes: buf.memory_bytes(),
     }
 }
 
-pub fn stats_text(buf: &RgbaBuffer) -> String {
-    let s = stats(buf);
+pub fn stats_text(buf: &RgbaBuffer, window: IRect) -> String {
+    let s = stats(buf, window);
     let bbox = s
         .bbox
         .map(|r| format!("({},{},{},{})", r.x, r.y, r.w, r.h))
@@ -239,6 +251,32 @@ mod tests {
         let s = ascii(&b, IRect::new(0, 0, 4, 2));
         assert!(s.contains("legend"));
         assert!(s.contains("A A"));
+    }
+
+    #[test]
+    fn ascii_window_offsets_into_the_buffer() {
+        // A storage-like buffer: content sits at the window origin, not (0,0) — the window must
+        // anchor there (the CLI passes `doc.canvas_rect()` for gutter-bearing layer buffers).
+        let mut b = RgbaBuffer::new(8, 6);
+        b.set(2, 1, Rgba8::rgb(255, 0, 0));
+        let s = ascii(&b, IRect::new(2, 1, 3, 2));
+        let grid: Vec<&str> = s.lines().skip(1).collect();
+        assert_eq!(grid, ["A . . ", ". . . "]);
+    }
+
+    #[test]
+    fn stats_window_excludes_outside_and_reports_relative_bbox() {
+        let mut b = RgbaBuffer::new(10, 10);
+        b.set(0, 0, Rgba8::rgb(1, 2, 3)); // outside the window (the "gutter")
+        b.set(3, 4, Rgba8::rgb(255, 0, 0)); // inside
+        b.set(5, 6, Rgba8::rgb(255, 0, 0)); // inside
+        let st = stats(&b, IRect::new(2, 2, 6, 6));
+        assert_eq!(st.non_transparent, 2, "content outside the window must not count");
+        let bb = st.bbox.expect("bbox");
+        assert_eq!((bb.x, bb.y, bb.w, bb.h), (1, 2, 3, 3), "bbox is window-relative");
+        let empty = stats(&b, IRect::new(8, 8, 2, 2));
+        assert_eq!(empty.non_transparent, 0);
+        assert!(empty.bbox.is_none());
     }
 
     #[test]

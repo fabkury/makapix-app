@@ -62,6 +62,10 @@ pub enum Action {
     SetWrap(bool),
     SetPixelPerfect(bool),
     SetOverscanView(bool),
+    SetCleanEdge(bool),
+    SetCleanEdgeWidth(i32), // thousandths, 0..=2000 = 0.0..=2.0 (the SetShapeRotation convention)
+    SetScaleCleanEdge(bool), // the Resize tool's cleanEdge toggle — independent from SetCleanEdge
+    SetScaleCleanEdgeWidth(i32), // thousandths, 0..=2000
     PointerDown(i32, i32),
     PointerMove(i32, i32),
     PointerUp,
@@ -120,8 +124,17 @@ pub enum Action {
     RotateDraftBegin,
     RotateDraftBeginFrame,
     RotateDraftSetAngle(i32),
+    RotateDraftMove(i32, i32), // whole-pixel nudge of the open draft, relative (PasteMove style)
     RotateDraftCommit,
     RotateDraftCancel,
+    ScaleLayer(i32, i32), // X/Y factors in thousandths (1000 = 1×), clamped 100..=8000
+    ScaleFrame(i32, i32),
+    ScaleDraftBegin,
+    ScaleDraftBeginFrame,
+    ScaleDraftSet(i32, i32), // thousandths
+    ScaleDraftMove(i32, i32), // whole-pixel nudge of the open draft, relative (PasteMove style)
+    ScaleDraftCommit,
+    ScaleDraftCancel,
     ResizeCanvas(u16, u16, u8, u8), // (w, h, anchor-x, anchor-y): 0 = left/top, 1 = centre, 2 = right/bottom
     CropToSelection,
     AddPaletteColor(Rgba8),
@@ -213,6 +226,10 @@ impl Session {
             SetWrap(b) => self.settings.wrap = b,
             SetPixelPerfect(b) => self.settings.pixel_perfect = b,
             SetOverscanView(b) => self.settings.overscan_view = b,
+            SetCleanEdge(b) => self.set_clean_edge(b),
+            SetCleanEdgeWidth(w) => self.set_clean_edge_width(w),
+            SetScaleCleanEdge(b) => self.set_scale_clean_edge(b),
+            SetScaleCleanEdgeWidth(w) => self.set_scale_clean_edge_width(w),
             PointerDown(x, y) => self.pointer_down(x, y),
             PointerMove(x, y) => self.pointer_move(x, y),
             PointerUp => self.pointer_up(),
@@ -271,8 +288,17 @@ impl Session {
             RotateDraftBegin => self.rotate_draft_begin(),
             RotateDraftBeginFrame => self.rotate_draft_begin_frame(),
             RotateDraftSetAngle(m) => self.rotate_draft_set_angle(m),
+            RotateDraftMove(dx, dy) => self.rotate_draft_move(dx, dy),
             RotateDraftCommit => self.rotate_draft_commit(),
             RotateDraftCancel => self.rotate_draft_cancel(),
+            ScaleLayer(sx, sy) => self.scale_layer(sx, sy),
+            ScaleFrame(sx, sy) => self.scale_frame(sx, sy),
+            ScaleDraftBegin => self.scale_draft_begin(),
+            ScaleDraftBeginFrame => self.scale_draft_begin_frame(),
+            ScaleDraftSet(sx, sy) => self.scale_draft_set(sx, sy),
+            ScaleDraftMove(dx, dy) => self.scale_draft_move(dx, dy),
+            ScaleDraftCommit => self.scale_draft_commit(),
+            ScaleDraftCancel => self.scale_draft_cancel(),
             ResizeCanvas(w, h, ax, ay) => self.resize_canvas(w, h, ax, ay),
             CropToSelection => self.crop_to_selection(),
             AddPaletteColor(c) => self.add_palette_color(c),
@@ -539,6 +565,10 @@ fn parse_line(line: &str) -> Result<Action, String> {
         "SetWrap" => SetWrap(boola(0)?),
         "SetPixelPerfect" => SetPixelPerfect(boola(0)?),
         "SetOverscanView" => SetOverscanView(boola(0)?),
+        "SetCleanEdge" => SetCleanEdge(boola(0)?),
+        "SetCleanEdgeWidth" => SetCleanEdgeWidth(i32a(0)?),
+        "SetScaleCleanEdge" => SetScaleCleanEdge(boola(0)?),
+        "SetScaleCleanEdgeWidth" => SetScaleCleanEdgeWidth(i32a(0)?),
         "PointerDown" => PointerDown(i32a(0)?, i32a(1)?),
         "PointerMove" => PointerMove(i32a(0)?, i32a(1)?),
         "PointerUp" => PointerUp,
@@ -605,8 +635,17 @@ fn parse_line(line: &str) -> Result<Action, String> {
         "RotateDraftBegin" => RotateDraftBegin,
         "RotateDraftBeginFrame" => RotateDraftBeginFrame,
         "RotateDraftSetAngle" => RotateDraftSetAngle(i32a(0)?),
+        "RotateDraftMove" => RotateDraftMove(i32a(0)?, i32a(1)?),
         "RotateDraftCommit" => RotateDraftCommit,
         "RotateDraftCancel" => RotateDraftCancel,
+        "ScaleLayer" => ScaleLayer(i32a(0)?, i32a(1)?),
+        "ScaleFrame" => ScaleFrame(i32a(0)?, i32a(1)?),
+        "ScaleDraftBegin" => ScaleDraftBegin,
+        "ScaleDraftBeginFrame" => ScaleDraftBeginFrame,
+        "ScaleDraftSet" => ScaleDraftSet(i32a(0)?, i32a(1)?),
+        "ScaleDraftMove" => ScaleDraftMove(i32a(0)?, i32a(1)?),
+        "ScaleDraftCommit" => ScaleDraftCommit,
+        "ScaleDraftCancel" => ScaleDraftCancel,
         "ResizeCanvas" => {
             let (ax, ay) = resize_anchor(args.get(2).copied().unwrap_or("Center"));
             ResizeCanvas(u16a(0)?, u16a(1)?, ax, ay)

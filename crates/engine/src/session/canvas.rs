@@ -2,7 +2,7 @@
 //! `session` god-file along the same `impl Session` seam `mod parse` already uses, so the methods
 //! still share `Session`'s private state (begin_edit/commit_edit/edit_doc, doc, selection). [audit F-17]
 
-use super::{RotateDraft, RotateDraftLayer, Session};
+use super::{RotateDraft, RotateDraftLayer, ScaleDraft, ScaleDraftLayer, Session};
 use crate::buffer::RgbaBuffer;
 use crate::color::Rgba8;
 use crate::document::Frame;
@@ -345,7 +345,9 @@ impl Session {
     /// or the active layer isn't editable. The shell then drives `rotate_draft_set_angle` from the
     /// handle and finishes with `rotate_draft_commit`/`rotate_draft_cancel`.
     pub fn rotate_draft_begin(&mut self) {
-        if self.rotate_draft.is_some() || !self.active_editable() {
+        // Cross-guard: never open on top of ANY transform draft (the scale draft included) —
+        // the shell cancels on tool switch, this keeps raw DSL streams safe too.
+        if self.rotate_draft.is_some() || self.scale_draft.is_some() || !self.active_editable() {
             return;
         }
         let fi = self.doc.active_frame;
@@ -382,6 +384,9 @@ impl Session {
                     src_mask: Some(src_mask),
                     pivot: PointF::new(bb.x as f32 + bb.w as f32 / 2.0, bb.y as f32 + bb.h as f32 / 2.0),
                     angle: 0.0,
+                    off: Point::new(0, 0),
+                    clean_edge: self.settings.clean_edge,
+                    clean_edge_width: self.settings.clean_edge_width,
                 });
                 return;
             }
@@ -401,6 +406,9 @@ impl Session {
             src_mask: None,
             pivot: PointF::new(cw as f32 / 2.0, ch as f32 / 2.0),
             angle: 0.0,
+            off: Point::new(0, 0),
+            clean_edge: self.settings.clean_edge,
+            clean_edge_width: self.settings.clean_edge_width,
         });
     }
 
@@ -410,7 +418,7 @@ impl Session {
     /// everything (locks/visibility are not consulted) and ignores the selection, which commit
     /// clears. No-op if a draft is already open.
     pub fn rotate_draft_begin_frame(&mut self) {
-        if self.rotate_draft.is_some() {
+        if self.rotate_draft.is_some() || self.scale_draft.is_some() {
             return;
         }
         let fi = self.doc.active_frame;
@@ -435,6 +443,9 @@ impl Session {
             src_mask: None,
             pivot: PointF::new(cw as f32 / 2.0, ch as f32 / 2.0),
             angle: 0.0,
+            off: Point::new(0, 0),
+            clean_edge: self.settings.clean_edge,
+            clean_edge_width: self.settings.clean_edge_width,
         });
     }
 
@@ -443,6 +454,35 @@ impl Session {
     pub fn rotate_draft_set_angle(&mut self, milliradians: i32) {
         if let Some(d) = self.rotate_draft.as_mut() {
             d.angle = milliradians as f32 / 1000.0;
+        }
+    }
+
+    /// Nudge the open rotate draft by whole pixels (drag-to-move on the draft body). Relative,
+    /// accumulating — the PasteMove convention. No-op if no draft is open.
+    pub fn rotate_draft_move(&mut self, dx: i32, dy: i32) {
+        if let Some(d) = self.rotate_draft.as_mut() {
+            d.off = Point::new(d.off.x + dx, d.off.y + dy);
+        }
+    }
+
+    /// Toggle cleanEdge resampling for the Rotate tool (see `crate::cleanedge`). Updates the
+    /// sticky setting and any open rotate draft, so a pending Angle preview responds live —
+    /// the same pattern as `rotate_draft_set_angle`.
+    pub fn set_clean_edge(&mut self, on: bool) {
+        self.settings.clean_edge = on;
+        if let Some(d) = self.rotate_draft.as_mut() {
+            d.clean_edge = on;
+        }
+    }
+
+    /// Set cleanEdge's line width (thousandths, clamped to 0..=2000 = 0.0..=2.0 — the reference
+    /// site's slider range; the sampler saturates the effective width to [0.45, 1.142] exactly
+    /// like the upstream shader). Updates the sticky setting and any open rotate draft.
+    pub fn set_clean_edge_width(&mut self, thousandths: i32) {
+        let w = thousandths.clamp(0, 2000) as f32 / 1000.0;
+        self.settings.clean_edge_width = w;
+        if let Some(d) = self.rotate_draft.as_mut() {
+            d.clean_edge_width = w;
         }
     }
 
@@ -455,8 +495,9 @@ impl Session {
             None => return,
         };
         let snapped = d.angle.rem_euclid(std::f32::consts::TAU);
-        if snapped < 1e-4 || (std::f32::consts::TAU - snapped) < 1e-4 {
-            return; // no rotation → no document change, no undo step
+        let no_turn = snapped < 1e-4 || (std::f32::consts::TAU - snapped) < 1e-4;
+        if no_turn && d.off.x == 0 && d.off.y == 0 {
+            return; // identity (no rotation, no move) → no document change, no undo step
         }
         let fi = match self.doc.frame_index_by_id(d.fid) {
             Some(fi) => fi,
@@ -559,25 +600,338 @@ impl Session {
     pub(super) fn rotate_draft_angle_mrad(&self) -> Option<i32> {
         self.rotate_draft.as_ref().map(|d| (d.angle * 1000.0).round() as i32)
     }
+
+    /// The rotate draft's whole-pixel move offset, if one is open — for the shell's overlay.
+    pub(super) fn rotate_draft_offset(&self) -> Option<(i32, i32)> {
+        self.rotate_draft.as_ref().map(|d| (d.off.x, d.off.y))
+    }
+
+    // ---- layer / selection / frame scaling (the Resize tool — engine verb "Scale" to avoid
+    //      colliding with `ResizeCanvas`, which changes canvas dimensions, not content). The
+    //      machinery is `RotateDraft`'s twin with X/Y scale factors instead of an angle. ----
+
+    /// Begin the Resize tool's "Scale" draft: lift the active layer (or the selected pixels) so
+    /// they can be previewed scaling non-destructively about the pivot. No-op if a transform
+    /// draft is already open or the active layer isn't editable. The shell drives
+    /// `scale_draft_set` from the corner handle / sliders and finishes with
+    /// `scale_draft_commit`/`scale_draft_cancel`.
+    pub fn scale_draft_begin(&mut self) {
+        if self.scale_draft.is_some() || self.rotate_draft.is_some() || !self.active_editable() {
+            return;
+        }
+        let fi = self.doc.active_frame;
+        let fid = self.doc.frames[fi].id;
+        let lid = self.doc.frames[fi].active_layer().id;
+        // Scale over the whole storage about its centre (= the canvas centre for a centred
+        // gutter), so the canvas scales in place and the gutter scales with it. [SPEC §8]
+        let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
+        let sel_before = self.doc.selection.clone();
+
+        // Selection present (and non-empty) → lift just the masked pixels, pivot on the bbox centre.
+        if let Some(sel) = self.selection_clone() {
+            if let Some(bb) = sel.bounds() {
+                let layer = &self.doc.frames[fi].active_layer().pixels;
+                let mut src = RgbaBuffer::new(bb.w, bb.h);
+                let mut src_mask = Mask::new(bb.w, bb.h);
+                for j in 0..bb.h as i32 {
+                    for i in 0..bb.w as i32 {
+                        if sel.get(bb.x + i, bb.y + j) {
+                            src.set(i, j, layer.get(bb.x + i, bb.y + j));
+                            src_mask.set(i, j, true);
+                        }
+                    }
+                }
+                self.scale_draft = Some(ScaleDraft {
+                    fid,
+                    is_selection: true,
+                    frame_scope: false,
+                    sel_before,
+                    layers: vec![ScaleDraftLayer { lid, src }],
+                    sw: bb.w as i32,
+                    sh: bb.h as i32,
+                    src_origin: Point::new(bb.x, bb.y),
+                    src_mask: Some(src_mask),
+                    pivot: PointF::new(bb.x as f32 + bb.w as f32 / 2.0, bb.y as f32 + bb.h as f32 / 2.0),
+                    scale_x: 1.0,
+                    scale_y: 1.0,
+                    off: Point::new(0, 0),
+                    clean_edge: self.settings.scale_clean_edge,
+                    clean_edge_width: self.settings.scale_clean_edge_width,
+                });
+                return;
+            }
+        }
+
+        // No selection → lift the whole active layer, pivot on the canvas centre.
+        let src = self.doc.frames[fi].active_layer().pixels.clone();
+        self.scale_draft = Some(ScaleDraft {
+            fid,
+            is_selection: false,
+            frame_scope: false,
+            sel_before,
+            layers: vec![ScaleDraftLayer { lid, src }],
+            sw: cw,
+            sh: ch,
+            src_origin: Point::new(0, 0),
+            src_mask: None,
+            pivot: PointF::new(cw as f32 / 2.0, ch as f32 / 2.0),
+            scale_x: 1.0,
+            scale_y: 1.0,
+            off: Point::new(0, 0),
+            clean_edge: self.settings.scale_clean_edge,
+            clean_edge_width: self.settings.scale_clean_edge_width,
+        });
+    }
+
+    /// Begin a frame-scope scale draft: lift EVERY layer of the active frame — the Resize tool's
+    /// "Scale" mode in Frame scope. Matches the rotate draft's policy: acts on everything
+    /// (locks/visibility not consulted) and ignores the selection, which commit clears. No-op if
+    /// a transform draft is already open.
+    pub fn scale_draft_begin_frame(&mut self) {
+        if self.scale_draft.is_some() || self.rotate_draft.is_some() {
+            return;
+        }
+        let fi = self.doc.active_frame;
+        let fid = self.doc.frames[fi].id;
+        let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
+        let layers = self.doc.frames[fi]
+            .layers
+            .iter()
+            .map(|l| ScaleDraftLayer { lid: l.id, src: l.pixels.clone() })
+            .collect();
+        self.scale_draft = Some(ScaleDraft {
+            fid,
+            is_selection: false,
+            frame_scope: true,
+            sel_before: self.doc.selection.clone(),
+            layers,
+            sw: cw,
+            sh: ch,
+            src_origin: Point::new(0, 0),
+            src_mask: None,
+            pivot: PointF::new(cw as f32 / 2.0, ch as f32 / 2.0),
+            scale_x: 1.0,
+            scale_y: 1.0,
+            off: Point::new(0, 0),
+            clean_edge: self.settings.scale_clean_edge,
+            clean_edge_width: self.settings.scale_clean_edge_width,
+        });
+    }
+
+    /// Set the open scale draft's X/Y factors (thousandths, clamped to 100..=8000 = 0.1×..=8×).
+    /// 1000 = identity. No-op if no draft is open.
+    pub fn scale_draft_set(&mut self, sx_milli: i32, sy_milli: i32) {
+        if let Some(d) = self.scale_draft.as_mut() {
+            d.scale_x = sx_milli.clamp(100, 8000) as f32 / 1000.0;
+            d.scale_y = sy_milli.clamp(100, 8000) as f32 / 1000.0;
+        }
+    }
+
+    /// Nudge the open scale draft by whole pixels (drag-to-move on the draft body). Relative,
+    /// accumulating — the PasteMove convention. No-op if no draft is open.
+    pub fn scale_draft_move(&mut self, dx: i32, dy: i32) {
+        if let Some(d) = self.scale_draft.as_mut() {
+            d.off = Point::new(d.off.x + dx, d.off.y + dy);
+        }
+    }
+
+    /// Toggle cleanEdge resampling for the Resize tool — independent from the Rotate tool's
+    /// toggle. Updates the sticky setting and any open scale draft (live preview). The sampler
+    /// only honours it when upscaling (both factors ≥ 1); downscaling is always nearest-neighbour.
+    pub fn set_scale_clean_edge(&mut self, on: bool) {
+        self.settings.scale_clean_edge = on;
+        if let Some(d) = self.scale_draft.as_mut() {
+            d.clean_edge = on;
+        }
+    }
+
+    /// Set the Resize tool's cleanEdge line width (thousandths, clamped 0..=2000 = 0.0..=2.0;
+    /// the sampler saturates the effective width to [0.45, 1.142] like the upstream shader).
+    /// Independent from the Rotate tool's width. Updates the setting and any open scale draft.
+    pub fn set_scale_clean_edge_width(&mut self, thousandths: i32) {
+        let w = thousandths.clamp(0, 2000) as f32 / 1000.0;
+        self.settings.scale_clean_edge_width = w;
+        if let Some(d) = self.scale_draft.as_mut() {
+            d.clean_edge_width = w;
+        }
+    }
+
+    /// Commit the scale draft into the document as one undo step (the selection mask rides along
+    /// for a selection scale). The ONLY path that makes the scale permanent. An identity draft
+    /// (both factors 1.0) commits nothing.
+    pub fn scale_draft_commit(&mut self) {
+        let d = match self.scale_draft.take() {
+            Some(d) => d,
+            None => return,
+        };
+        if d.scale_x == 1.0 && d.scale_y == 1.0 && d.off.x == 0 && d.off.y == 0 {
+            return; // identity (no scale, no move) → no document change, no undo step
+        }
+        let fi = match self.doc.frame_index_by_id(d.fid) {
+            Some(fi) => fi,
+            None => return,
+        };
+        let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
+        let before = self.doc.frames[fi].clone();
+        let scaled_mask = apply_scale_to_frame(&d, &mut self.doc.frames[fi], cw, ch);
+        if let Some(m) = scaled_mask {
+            // The marquee follows the scaled pixels; shrunk to nothing ⇒ empty ⇒ None.
+            self.doc.selection = m.nonempty().map(Arc::new);
+        } else if d.frame_scope {
+            // Ambiguous across a whole frame; cleared like the rotate draft (undo restores it).
+            self.doc.selection = None;
+        }
+        let after = self.doc.frames[fi].clone();
+        self.doc.record_frame_content(d.fid, before, after, d.sel_before);
+    }
+
+    /// Discard the scale draft. The document was never touched while it was open.
+    pub fn scale_draft_cancel(&mut self) {
+        self.scale_draft = None;
+    }
+
+    /// Scale the active layer (or selection) by fixed factors through the draft machinery —
+    /// the row-1 ½×/2× preset buttons. Identity is a no-op (no undo step). One undo step.
+    pub fn scale_layer(&mut self, sx_milli: i32, sy_milli: i32) {
+        if sx_milli == 1000 && sy_milli == 1000 {
+            return;
+        }
+        self.scale_draft = None; // never stack on a half-open Scale draft
+        self.scale_draft_begin();
+        if self.scale_draft.is_some() {
+            self.scale_draft_set(sx_milli, sy_milli);
+            self.scale_draft_commit();
+        }
+    }
+
+    /// `scale_layer`'s Frame-scope twin: scale every layer of the active frame.
+    pub fn scale_frame(&mut self, sx_milli: i32, sy_milli: i32) {
+        if sx_milli == 1000 && sy_milli == 1000 {
+            return;
+        }
+        self.scale_draft = None;
+        self.scale_draft_begin_frame();
+        if self.scale_draft.is_some() {
+            self.scale_draft_set(sx_milli, sy_milli);
+            self.scale_draft_commit();
+        }
+    }
+
+    /// A clone of the active frame with the scale draft applied, for the display preview — or
+    /// `None` when no draft is open on the active frame. The document itself is never modified.
+    pub(super) fn scale_draft_preview_frame(&self) -> Option<Frame> {
+        let d = self.scale_draft.as_ref()?;
+        let fi = self.doc.active_frame;
+        if self.doc.frames[fi].id != d.fid {
+            return None;
+        }
+        let mut frame = self.doc.frames[fi].clone();
+        let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
+        apply_scale_to_frame(d, &mut frame, cw, ch);
+        Some(frame)
+    }
+
+    /// Wash the scaled footprint of an open draft with the soft "draft" tint (the preview frame
+    /// already carries the scaled pixels at full colour). Used by `draw_tool_preview`.
+    pub(super) fn scale_draft_wash_into(&self, buf: &mut RgbaBuffer) {
+        let d = match self.scale_draft.as_ref().filter(|d| d.fid == self.doc.active_frame().id) {
+            Some(d) => d,
+            None => return,
+        };
+        let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
+        // Union the scaled footprints first, so pixels covered by several layers (frame scope)
+        // wash once — not once per layer, which would read as a darker tint.
+        let mut footprint = Mask::new(cw as u32, ch as u32);
+        for entry in &d.layers {
+            let (out, _mask) = scale_resample(d, &entry.src, cw, ch);
+            for y in 0..ch {
+                for x in 0..cw {
+                    if out.get(x, y).a != 0 {
+                        footprint.set(x, y, true);
+                    }
+                }
+            }
+        }
+        let wash = Rgba8::new(0, 200, 255, 60); // soft cyan "draft" wash (matches move/rotate)
+        for y in 0..ch {
+            for x in 0..cw {
+                if footprint.get(x, y) {
+                    buf.blend_over(x, y, wash);
+                }
+            }
+        }
+    }
+
+    /// The scaled selection mask while a selection scale draft is open (so the marquee follows
+    /// the preview), else `None`. Used by `outline_mask`.
+    pub(super) fn scale_draft_outline(&self) -> Option<Mask> {
+        let d = self.scale_draft.as_ref().filter(|d| d.is_selection && d.fid == self.doc.active_frame().id)?;
+        let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
+        // A selection draft lifts exactly one layer.
+        let entry = d.layers.first()?;
+        let (_out, mask) = scale_resample(d, &entry.src, cw, ch);
+        Some(mask)
+    }
+
+    /// The scale draft's pre-scale region (top-left + size), if one is open — for the shell to
+    /// place the corner handle and know a draft is active.
+    pub(super) fn scale_draft_rect(&self) -> Option<IRect> {
+        let d = self.scale_draft.as_ref()?;
+        let o = self.doc.origin();
+        Some(IRect::new(d.src_origin.x - o.x, d.src_origin.y - o.y, d.sw as u32, d.sh as u32))
+    }
+
+    /// The scale draft's current X/Y factors in thousandths, if one is open — for the shell.
+    pub(super) fn scale_draft_factors_milli(&self) -> Option<(i32, i32)> {
+        self.scale_draft
+            .as_ref()
+            .map(|d| ((d.scale_x * 1000.0).round() as i32, (d.scale_y * 1000.0).round() as i32))
+    }
+
+    /// The scale draft's whole-pixel move offset, if one is open — for the shell's overlay.
+    pub(super) fn scale_draft_offset(&self) -> Option<(i32, i32)> {
+        self.scale_draft.as_ref().map(|d| (d.off.x, d.off.y))
+    }
 }
 
-/// Nearest-neighbour rotation of one lifted source `src` (a `sw`×`sh` region whose pixel (0,0) sits
-/// at `src_origin` in canvas coords; optionally masked by `src_mask`) by `angle` radians clockwise
-/// about `pivot`, into a `cw`×`ch` canvas-sized buffer, clipped to the canvas. Returns the placed
-/// pixels and a matching 1-bit mask of where they landed. Integer-exact and deterministic: at exact
-/// multiples of 90° on a square region it reproduces the lossless quarter-turn.
+/// Rotation of one lifted source `src` (a `sw`×`sh` region whose pixel (0,0) sits at
+/// `src_origin` in canvas coords; optionally masked by `src_mask`) by `angle` radians clockwise
+/// about `pivot`, into a `cw`×`ch` canvas-sized buffer, clipped to the canvas. Samples
+/// nearest-neighbour, or the cleanEdge reconstruction when the draft's toggle is on (same
+/// inverse mapping — cleanEdge only changes which neighborhood color a sample point takes).
+/// Returns the placed pixels and a matching 1-bit mask of where they landed. Integer-exact and
+/// deterministic: at multiples of 90° on a square region it reproduces the lossless
+/// quarter-turn (the snap below makes that exact for both sampling modes).
 fn rotate_resample(d: &RotateDraft, src: &RgbaBuffer, cw: i32, ch: i32) -> (RgbaBuffer, Mask) {
     let (sw, sh, src_origin, src_mask, pivot, angle) =
         (d.sw, d.sh, d.src_origin, d.src_mask.as_ref(), d.pivot, d.angle);
+    // Whole-pixel drag-to-move offset, applied AFTER the rotation (integer, so it never
+    // disturbs the identity/quarter-turn exactness — it only shifts which cell receives what).
+    let (offx, offy) = (d.off.x as f32, d.off.y as f32);
     let mut out = RgbaBuffer::new(cw as u32, ch as u32);
     let mut out_mask = Mask::new(cw as u32, ch as u32);
-    let (cos, sin) = (angle.cos(), angle.sin());
+    // Quarter-turn snap: quarter turns arrive as rounded milliradians (1570/1571, 3141/3142, …),
+    // never exact multiples of π/2, so cos/sin carry ~1e-4 of drift that walks sample points off
+    // pixel centres on large canvases. Snapping inside a ±2 mrad window makes 90° multiples
+    // literally exact — for NN (which only relied on floor absorbing the drift) and for
+    // cleanEdge (whose identity margin at minimum line width is thinner than that drift).
+    let quarter = (angle / std::f32::consts::FRAC_PI_2).round();
+    let (cos, sin) = if (angle - quarter * std::f32::consts::FRAC_PI_2).abs() < 2e-3 {
+        match (quarter as i32).rem_euclid(4) {
+            0 => (1.0, 0.0),
+            1 => (0.0, 1.0),
+            2 => (-1.0, 0.0),
+            _ => (0.0, -1.0),
+        }
+    } else {
+        (angle.cos(), angle.sin())
+    };
 
     // Destination scan window = the canvas-clipped bounding box of the rotated source corners, so we
     // touch only pixels that can possibly receive content.
     let fwd = |px: f32, py: f32| {
         let (dx, dy) = (px - pivot.x, py - pivot.y);
-        (pivot.x + cos * dx - sin * dy, pivot.y + sin * dx + cos * dy)
+        (pivot.x + cos * dx - sin * dy + offx, pivot.y + sin * dx + cos * dy + offy)
     };
     let (mut minx, mut miny, mut maxx, mut maxy) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
     for (px, py) in [
@@ -599,8 +953,9 @@ fn rotate_resample(d: &RotateDraft, src: &RgbaBuffer, cw: i32, ch: i32) -> (Rgba
 
     for dy in y0..y1 {
         for dx in x0..x1 {
-            // Inverse-rotate the destination pixel centre back into source space (R(-angle)).
-            let (ddx, ddy) = (dx as f32 + 0.5 - pivot.x, dy as f32 + 0.5 - pivot.y);
+            // Inverse-rotate the destination pixel centre back into source space (undo the move
+            // offset first, then R(-angle)).
+            let (ddx, ddy) = (dx as f32 + 0.5 - offx - pivot.x, dy as f32 + 0.5 - offy - pivot.y);
             let sxf = pivot.x + cos * ddx + sin * ddy;
             let syf = pivot.y - sin * ddx + cos * ddy;
             let lx = (sxf - src_origin.x as f32).floor() as i32;
@@ -617,7 +972,18 @@ fn rotate_resample(d: &RotateDraft, src: &RgbaBuffer, cw: i32, ch: i32) -> (Rgba
             }
             out_mask.set(dx, dy, true);
             // The pixel buffer only carries opaque content (transparent source leaves a hole).
-            let c = src.get(lx, ly);
+            let c = if d.clean_edge {
+                // cleanEdge: sample the edge-aware reconstruction at the continuous source
+                // point (it reduces to the same cell as NN wherever no edge slice fires).
+                crate::cleanedge::sample(
+                    src,
+                    sxf - src_origin.x as f32,
+                    syf - src_origin.y as f32,
+                    d.clean_edge_width,
+                )
+            } else {
+                src.get(lx, ly)
+            };
             if c.a != 0 {
                 out.set(dx, dy, c);
             }
@@ -667,4 +1033,118 @@ fn apply_rotation_to_frame(d: &RotateDraft, frame: &mut Frame, cw: i32, ch: i32)
         }
     }
     rotated_mask
+}
+
+/// Scaling of one lifted source `src` (a `sw`×`sh` region whose pixel (0,0) sits at
+/// `src_origin` in canvas coords; optionally masked by `src_mask`) by the draft's X/Y factors
+/// about `pivot`, into a `cw`×`ch` canvas-sized buffer, clipped to the canvas. Samples
+/// nearest-neighbour, or the cleanEdge reconstruction when the draft's toggle is on AND both
+/// factors upscale (≥ 1, not both exactly 1) — cleanEdge is a reconstruction sampler, not a
+/// minifier, so any shrinking axis forces plain NN. Factors are milli-exact (1000 → 1.0,
+/// 2000 → 2.0 with zero float drift), so identity and integer scales are integer-exact: 1× is
+/// the identity and 2× NN is exact 2×2 block replication. Returns the placed pixels and a
+/// matching 1-bit region mask (`rotate_resample`'s twin).
+fn scale_resample(d: &ScaleDraft, src: &RgbaBuffer, cw: i32, ch: i32) -> (RgbaBuffer, Mask) {
+    let (sw, sh, src_origin, src_mask, pivot) =
+        (d.sw, d.sh, d.src_origin, d.src_mask.as_ref(), d.pivot);
+    let (sx, sy) = (d.scale_x, d.scale_y);
+    // Whole-pixel drag-to-move offset, applied AFTER the scale (integer — identity and integer
+    // factors stay exact under a moved draft).
+    let (offx, offy) = (d.off.x as f32, d.off.y as f32);
+    let mut out = RgbaBuffer::new(cw as u32, ch as u32);
+    let mut out_mask = Mask::new(cw as u32, ch as u32);
+    let use_clean = d.clean_edge && sx >= 1.0 && sy >= 1.0 && !(sx == 1.0 && sy == 1.0);
+
+    // Destination scan window = the canvas-clipped bbox of the scaled source rect. The map is
+    // axis-aligned with positive factors, so the two extreme corners suffice.
+    let fwd =
+        |px: f32, py: f32| (pivot.x + (px - pivot.x) * sx + offx, pivot.y + (py - pivot.y) * sy + offy);
+    let (minx, miny) = fwd(src_origin.x as f32, src_origin.y as f32);
+    let (maxx, maxy) = fwd((src_origin.x + sw) as f32, (src_origin.y + sh) as f32);
+    let x0 = (minx.floor() as i32).max(0);
+    let y0 = (miny.floor() as i32).max(0);
+    let x1 = (maxx.ceil() as i32).min(cw);
+    let y1 = (maxy.ceil() as i32).min(ch);
+
+    for dy in y0..y1 {
+        for dx in x0..x1 {
+            // Inverse-scale the destination pixel centre back into source space (undo the move
+            // offset first).
+            let sxf = pivot.x + (dx as f32 + 0.5 - offx - pivot.x) / sx;
+            let syf = pivot.y + (dy as f32 + 0.5 - offy - pivot.y) / sy;
+            let lx = (sxf - src_origin.x as f32).floor() as i32;
+            let ly = (syf - src_origin.y as f32).floor() as i32;
+            if lx < 0 || ly < 0 || lx >= sw || ly >= sh {
+                continue;
+            }
+            // The mask follows the scaled *region* (every masked source cell), independent of
+            // pixel opacity — so a selection's marquee scales as a whole. Inverse mapping keeps
+            // the region solid at any factor (membership only, no holes).
+            if let Some(m) = src_mask {
+                if !m.get(lx, ly) {
+                    continue;
+                }
+            }
+            out_mask.set(dx, dy, true);
+            // The pixel buffer only carries opaque content (transparent source leaves a hole).
+            let c = if use_clean {
+                crate::cleanedge::sample(
+                    src,
+                    sxf - src_origin.x as f32,
+                    syf - src_origin.y as f32,
+                    d.clean_edge_width,
+                )
+            } else {
+                src.get(lx, ly)
+            };
+            if c.a != 0 {
+                out.set(dx, dy, c);
+            }
+        }
+    }
+    (out, out_mask)
+}
+
+/// Apply a scale draft to `frame`: for each lifted layer, clear the origin pixels (the selected
+/// pixels, or the whole layer) and blit the resampled, scaled content alpha-over. Shared by the
+/// display preview (on a throwaway clone) and `scale_draft_commit` (on the real frame) so both
+/// render identically. Returns the scaled selection mask for a selection scale, else `None`.
+/// (`apply_rotation_to_frame`'s twin.)
+fn apply_scale_to_frame(d: &ScaleDraft, frame: &mut Frame, cw: i32, ch: i32) -> Option<Mask> {
+    let mut scaled_mask = None;
+    for entry in &d.layers {
+        let li = match frame.layer_index_by_id(entry.lid) {
+            Some(i) => i,
+            None => continue,
+        };
+        let (out, out_mask) = scale_resample(d, &entry.src, cw, ch);
+        let buf = &mut frame.layers[li].pixels;
+        // Clear the origin: the masked pixels for a selection scale, the whole layer otherwise.
+        if d.is_selection {
+            if let Some(m) = d.sel_before.as_deref() {
+                for y in 0..ch {
+                    for x in 0..cw {
+                        if m.get(x, y) {
+                            buf.set(x, y, Rgba8::TRANSPARENT);
+                        }
+                    }
+                }
+            }
+        } else {
+            buf.clear();
+        }
+        // Place the scaled content (alpha-over, so it composites onto any pixels left behind).
+        for y in 0..ch {
+            for x in 0..cw {
+                let c = out.get(x, y);
+                if c.a != 0 {
+                    buf.blend_over(x, y, c);
+                }
+            }
+        }
+        if d.is_selection {
+            scaled_mask = Some(out_mask);
+        }
+    }
+    scaled_mask
 }

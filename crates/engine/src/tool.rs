@@ -181,6 +181,19 @@ pub struct ToolSettings {
     /// dimmed) and selection gestures may reach into the gutter. A view/interaction flag driven from
     /// the shell (like `wrap`); it never affects paint tools, export or thumbnails. [SPEC §8]
     pub overscan_view: bool,
+    /// Rotate tool: sample free-angle rotations through the cleanEdge edge-aware reconstruction
+    /// (`crate::cleanedge`) instead of plain nearest-neighbour. The default rotation mode.
+    pub clean_edge: bool,
+    /// cleanEdge line width, 0.0..=2.0 (the sampler saturates the effective width to its
+    /// internal [0.45, 1.142] identity-preserving band, like the reference shader).
+    pub clean_edge_width: f32,
+    /// Resize tool: sample upscales through the cleanEdge reconstruction (only applies when
+    /// both factors ≥ 1; downscaling is always nearest-neighbour). Independent from the Rotate
+    /// tool's `clean_edge`. The default resize mode.
+    pub scale_clean_edge: bool,
+    /// The Resize tool's cleanEdge line width, 0.0..=2.0 (same semantics as `clean_edge_width`,
+    /// independent value).
+    pub scale_clean_edge_width: f32,
 }
 impl Default for ToolSettings {
     fn default() -> Self {
@@ -206,6 +219,10 @@ impl Default for ToolSettings {
             wrap: false,
             pixel_perfect: false,
             overscan_view: false,
+            clean_edge: true,
+            clean_edge_width: 1.0,
+            scale_clean_edge: true,
+            scale_clean_edge_width: 1.0,
         }
     }
 }

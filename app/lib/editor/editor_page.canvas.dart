@@ -126,6 +126,8 @@ extension _EditorCanvas on _EditorPageState {
       _commitMoveDraft();
     } else if (_tool == 'Rotate' && _hasRotateDraft) {
       _commitRotateDraft();
+    } else if (_tool == 'Resize' && _hasResizeDraft) {
+      _commitResizeDraft();
     } else if (_tool == 'HsvShift' && _hasHsvDraft) {
       _commitHsvDraft();
     } else if (_tool == 'BrightnessContrast' && _hasBcDraft) {
@@ -144,6 +146,8 @@ extension _EditorCanvas on _EditorPageState {
       _cancelMoveDraft();
     } else if (_tool == 'Rotate' && _hasRotateDraft) {
       _cancelRotateDraft();
+    } else if (_tool == 'Resize' && _hasResizeDraft) {
+      _cancelResizeDraft();
     } else if (_tool == 'HsvShift' && _hasHsvDraft) {
       _resetHsvDraft();
     } else if (_tool == 'BrightnessContrast' && _hasBcDraft) {
@@ -174,9 +178,9 @@ extension _EditorCanvas on _EditorPageState {
                 _startPinch();
               }
             } else {
-              // first finger → draw (unless this tool doesn't draw on the canvas). The Rotate tool
-              // is otherwise inert, but accepts the handle drag while an Angle draft is open.
-              if (!_isInertCanvasTool || _isRotateHandleActive) {
+              // first finger → draw (unless this tool doesn't draw on the canvas). The Rotate and
+              // Resize tools are otherwise inert, but accept their handle drag while a draft is open.
+              if (!_isInertCanvasTool || _isRotateHandleActive || _isResizeHandleActive) {
                 _drawPointer = e.pointer;
                 _beginDraw(e.localPosition, box);
               }
@@ -258,6 +262,15 @@ extension _EditorCanvas on _EditorPageState {
                         arm: _rotDraftArm(vScale)),
                     size: Size.infinite,
                   ),
+                if (_isResizeHandleActive && _resizeDraftRect != null)
+                  // Resize "Scale" handle: dashed outline of the scaled rect + a corner knob to
+                  // drag (the semitransparent draft preview lives in the composited image). The
+                  // knob position must match _resizeReticle, the drag hit-test.
+                  CustomPaint(
+                    painter: ResizeHandlePainter(
+                        _resizeDraftCenter, _resizeSx, _resizeSy, _resizeDraftRect!, vScale, vOff),
+                    size: Size.infinite,
+                  ),
                 if (_isSelShapeTool && _hasSelDraft) ...[
                   // The uncommitted selection draft: distinct cyan marching ants (vs the committed
                   // selection's black/white ants, still shown behind it) + draggable endpoint reticles.
@@ -307,6 +320,10 @@ extension _EditorCanvas on _EditorPageState {
   void _beginDraw(Offset pos, Size box) {
     if (_isRotateHandleActive) {
       _beginRotateHandle(pos, box);
+      return;
+    }
+    if (_isResizeHandleActive) {
+      _beginResizeHandle(pos, box);
       return;
     }
     if (_isRuler) {
@@ -359,6 +376,10 @@ extension _EditorCanvas on _EditorPageState {
   void _continueDraw(Offset pos, Size box) {
     if (_isRotateHandleActive) {
       _continueRotateHandle(pos, box);
+      return;
+    }
+    if (_isResizeHandleActive) {
+      _continueResizeHandle(pos, box);
       return;
     }
     if (_isRuler) {
@@ -446,7 +467,13 @@ extension _EditorCanvas on _EditorPageState {
 
   void _endDraw() {
     if (_isRotateHandleActive) {
-      _rotateDragging = false; // releasing leaves the angle where it was dragged (awaiting Commit)
+      _rotateDragging = false; // releasing leaves the angle/position where dragged (awaiting Commit)
+      _rotDraftMoveLast = null;
+      return;
+    }
+    if (_isResizeHandleActive) {
+      _resizeDragging = false; // releasing leaves the scale/position where dragged (awaiting Commit)
+      _resizeDraftMoveLast = null;
       return;
     }
     if (_isRuler) {
@@ -501,7 +528,13 @@ extension _EditorCanvas on _EditorPageState {
   // interrupts a nascent stroke to begin pan/zoom).
   void _cancelDraw() {
     if (_isRotateHandleActive) {
-      _rotateDragging = false; // a second finger interrupted; keep the angle where it is
+      _rotateDragging = false; // a second finger interrupted; keep the angle/position where it is
+      _rotDraftMoveLast = null;
+      return;
+    }
+    if (_isResizeHandleActive) {
+      _resizeDragging = false; // a second finger interrupted; keep the scale/position where it is
+      _resizeDraftMoveLast = null;
       return;
     }
     if (_isRuler) {
@@ -1039,23 +1072,119 @@ extension _EditorCanvas on _EditorPageState {
     return cs + Offset(math.cos(_rotDraftAngle), math.sin(_rotDraftAngle)) * _rotDraftArm(s);
   }
 
-  // Engage the handle only when the press lands near its reticle (the rest of the canvas is inert
-  // for the Rotate tool), so a stray tap on the draft pixels doesn't snap the angle.
+  // Near the reticle → the angle drag; anywhere else on the canvas → move mode (drag-to-move
+  // slides the whole draft by whole pixels).
   void _beginRotateHandle(Offset pos, Size box) {
     _rotateDragging = (pos - _rotDraftReticle(box)).distance <= 40.0;
+    _rotDraftMoveLast = _rotateDragging ? null : _toCanvas(pos, box);
   }
 
   // Drag → set the angle to the finger's bearing around the bbox centre, live (the engine re-renders
-  // the rotated preview + marquee). Mirrors the Shape rotate handle's atan2 math.
+  // the rotated preview + marquee). Mirrors the Shape rotate handle's atan2 math. Away from the
+  // knob, the same drag moves the draft instead.
   void _continueRotateHandle(Offset pos, Size box) {
-    if (!_rotateDragging) return;
+    if (_rotateDragging) {
+      final (s, off) = _view(box);
+      final c = _rotDraftCenter;
+      final cs = Offset(off.dx + (c.dx + 0.5) * s, off.dy + (c.dy + 0.5) * s);
+      final theta = math.atan2(pos.dy - cs.dy, pos.dx - cs.dx);
+      _rotDraftAngle = theta;
+      _send('RotateDraftSetAngle(${(theta * 1000).round()})');
+      _redraw(full: false, refetchSelection: true); // a selection rotation moves the marquee too
+      return;
+    }
+    _dragDraftMove(pos, box, isRotate: true);
+  }
+
+  // Move-mode drag shared by both transform drafts: accumulate whole-pixel deltas (the PasteMove
+  // convention) and nudge the open draft; the local offset keeps the handle overlay in step
+  // without a state refetch.
+  void _dragDraftMove(Offset pos, Size box, {required bool isRotate}) {
+    final last = isRotate ? _rotDraftMoveLast : _resizeDraftMoveLast;
+    if (last == null) return;
+    final p = _toCanvas(pos, box);
+    final dx = (p.dx - last.dx).round(), dy = (p.dy - last.dy).round();
+    if (dx == 0 && dy == 0) return;
+    if (isRotate) {
+      _rotDraftMoveLast = p;
+      _rotDraftOff += Offset(dx.toDouble(), dy.toDouble());
+      _send('RotateDraftMove($dx,$dy)');
+    } else {
+      _resizeDraftMoveLast = p;
+      _resizeDraftOff += Offset(dx.toDouble(), dy.toDouble());
+      _send('ScaleDraftMove($dx,$dy)');
+    }
+    _redraw(full: false, refetchSelection: true); // a selection draft moves the marquee too
+  }
+
+  // ---- Resize tool "Scale" draft: open/commit/cancel + the on-canvas corner-knob drag ----
+
+  void _beginResizeDraft() {
+    // Frame scope lifts every layer of the active frame; layer scope the active layer (or the
+    // selected pixels). Same knob, preview, and commit either way.
+    _send(_resizeFrame ? 'ScaleDraftBeginFrame()' : 'ScaleDraftBegin()');
+    _refreshState();
+    _redraw();
+    setState(() {});
+  }
+
+  void _commitResizeDraft() {
+    _send('ScaleDraftCommit()');
+    _resizeDragging = false;
+    _refreshState();
+    _redraw();
+    setState(() {});
+  }
+
+  void _cancelResizeDraft() {
+    _send('ScaleDraftCancel()');
+    _resizeDragging = false;
+    _refreshState();
+    _redraw();
+    setState(() {});
+  }
+
+  // The Resize knob's screen position: the bottom-right corner of the SCALED rect (centre +
+  // half-extents × factors). Shared by the painter and the drag hit-test so they can't disagree.
+  Offset _resizeReticle(Size box) {
     final (s, off) = _view(box);
-    final c = _rotDraftCenter;
+    final c = _resizeDraftCenter;
     final cs = Offset(off.dx + (c.dx + 0.5) * s, off.dy + (c.dy + 0.5) * s);
-    final theta = math.atan2(pos.dy - cs.dy, pos.dx - cs.dx);
-    _rotDraftAngle = theta;
-    _send('RotateDraftSetAngle(${(theta * 1000).round()})');
-    _redraw(full: false, refetchSelection: true); // a selection rotation moves the marquee too
+    return cs +
+        Offset(_resizeDraftRect!.width / 2 * _resizeSx * s, _resizeDraftRect!.height / 2 * _resizeSy * s);
+  }
+
+  // Near the knob → the scale drag; anywhere else on the canvas → move mode (drag-to-move
+  // slides the whole draft by whole pixels).
+  void _beginResizeHandle(Offset pos, Size box) {
+    _resizeDragging = (pos - _resizeReticle(box)).distance <= 40.0;
+    _resizeDraftMoveLast = _resizeDragging ? null : _toCanvas(pos, box);
+  }
+
+  // Drag → set the factors from the finger's offset from the bbox centre, live (the engine
+  // re-renders the scaled preview + marquee). Lock Ratio: uniform factor from the diagonal
+  // distance ratio; unlocked: per-axis ratios. Clamped 0.1×–8× (no mirroring — Flip exists).
+  void _continueResizeHandle(Offset pos, Size box) {
+    if (_resizeDragging) {
+      final (s, off) = _view(box);
+      final c = _resizeDraftCenter;
+      final cs = Offset(off.dx + (c.dx + 0.5) * s, off.dy + (c.dy + 0.5) * s);
+      final vx = (pos.dx - cs.dx) / s, vy = (pos.dy - cs.dy) / s; // finger offset, canvas px
+      final hw = math.max(0.5, _resizeDraftRect!.width / 2);
+      final hh = math.max(0.5, _resizeDraftRect!.height / 2);
+      if (_resizeLockRatio) {
+        final u = (math.sqrt(vx * vx + vy * vy) / math.sqrt(hw * hw + hh * hh)).clamp(0.1, 8.0).toDouble();
+        _resizeSx = u;
+        _resizeSy = u;
+      } else {
+        _resizeSx = (vx / hw).clamp(0.1, 8.0).toDouble();
+        _resizeSy = (vy / hh).clamp(0.1, 8.0).toDouble();
+      }
+      _send('ScaleDraftSet(${(_resizeSx * 1000).round()},${(_resizeSy * 1000).round()})');
+      _redraw(full: false, refetchSelection: true); // a selection scale moves the marquee too
+      return;
+    }
+    _dragDraftMove(pos, box, isRotate: false);
   }
 
   // The Shape tool's rotate-handle reticle (screen px): out beyond the box corner, at angle _shapeRot.

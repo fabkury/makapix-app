@@ -76,13 +76,14 @@ fn main() {
             "state" => println!("{}", session.state_json()),
             "ascii" => {
                 let (f, l) = (idx(&parts, 1), idx(&parts, 2));
-                let (w, h) = session.size();
+                // Window on the canvas rect: layer buffers are storage-sized (canvas + gutter,
+                // the canvas at `doc.origin()`), so a (0,0)-anchored window would show gutter.
                 let buf = layer_buffer(&session, f, l);
                 println!(
                     "# ascii frame={} layer={}\n{}",
                     f,
                     l,
-                    probe::ascii(&buf, makapix_engine::geom::IRect::new(0, 0, w as u32, h as u32))
+                    probe::ascii(&buf, session.doc.canvas_rect())
                 );
             }
             "hash" => {
@@ -91,7 +92,9 @@ fn main() {
             }
             "stats" => {
                 let (f, l) = (idx(&parts, 1), idx(&parts, 2));
-                print!("{}", probe::stats_text(&layer_buffer(&session, f, l)));
+                // Content fields (count/bbox) windowed on the canvas, bbox in canvas coords like
+                // the `pixel` probe; tile/memory numbers still describe the real storage buffer.
+                print!("{}", probe::stats_text(&layer_buffer(&session, f, l), session.doc.canvas_rect()));
             }
             "pixel" => {
                 let (f, l) = (idx(&parts, 1), idx(&parts, 2));
@@ -108,7 +111,10 @@ fn main() {
             "thumb" => {
                 let (f, l) = (idx(&parts, 1), idx(&parts, 2));
                 let (w, h) = (idx(&parts, 3).max(1) as u32, idx(&parts, 4).max(1) as u32);
-                print!("{}", probe::thumb(&layer_buffer(&session, f, l), w, h));
+                // Thumbnail the canvas window, not the storage buffer (which would letterbox the
+                // drawing inside the transparent gutter).
+                let canvas = layer_buffer(&session, f, l).subimage(session.doc.canvas_rect());
+                print!("{}", probe::thumb(&canvas, w, h));
             }
             "render" | "composite" | "display" => {
                 let f = idx(&parts, 1);

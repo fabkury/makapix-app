@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 pub mod buffer;
+pub mod cleanedge;
 pub mod color;
 pub mod document;
 pub mod geom;
