@@ -21,12 +21,16 @@ extension _EditorControls on _EditorPageState {
       // Remembered per tool (see _precisionOn).
       children.add(Padding(
         padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: FilterChip(
-          selected: _isPrecision,
-          avatar: Icon(Icons.gps_fixed, size: 16, color: _isPrecision ? Colors.white : Colors.white60),
-          label: Text(_isPrecision ? 'Precision ✔' : 'Precision'),
-          selectedColor: const Color(0xFF30A050),
-          onSelected: _setPrecision,
+        child: Tooltip(
+          message: 'Precision mode',
+          child: FilterChip(
+            selected: _isPrecision,
+            showCheckmark: false,
+            label: Icon(Icons.gps_fixed, size: 16, color: _isPrecision ? Colors.white : Colors.white60),
+            labelPadding: EdgeInsets.zero,
+            selectedColor: const Color(0xFF30A050),
+            onSelected: _setPrecision,
+          ),
         ),
       ));
     }
