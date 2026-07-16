@@ -1,0 +1,10 @@
+# Generated review/verification outputs (rebuild with gen_icons.py / build_final.py).
+# svg/ stays tracked: it is the committed design record of the approved set.
+contact_sheet.html
+round2.html
+roundtrip.html
+pixel_proof.txt
+pixel/
+smooth/
+material/
+__pycache__/
