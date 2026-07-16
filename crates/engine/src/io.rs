@@ -468,20 +468,53 @@ pub fn save_to_bytes(doc: &Document) -> Vec<u8> {
     let margin = Document::gutter_for(canvas);
 
     // Dictionary: distinct present tiles, first-appearance order (frames→layers→cells).
-    let mut dict_order: Vec<Vec<u8>> = Vec::new();
-    let mut dict_index: HashMap<Vec<u8>, u32> = HashMap::new();
+    // Entries are the live `Arc<Tile>`s — no byte clones. Lookup is two-level: an `Arc`-pointer
+    // cache catches COW-shared repeats without touching pixels, then a content-hash map (u128,
+    // byte-equality verified on hit so a hash collision can only cost a compare, never corrupt
+    // the file). This removed the double clone that made saving peak at 6-7× the document size
+    // (memlab M4a); output bytes are unchanged (same first-appearance ids).
+    let mut dict_order: Vec<Arc<Tile>> = Vec::new();
+    let mut by_ptr: HashMap<*const Tile, u32> = HashMap::new();
+    let mut by_hash: HashMap<u128, Vec<u32>> = HashMap::new(); // 1-based candidate ids
+    // Per-layer reference grids, computed in the same pass so FRMS below reuses them instead of
+    // re-cloning every tile for a map lookup (the second former full-clone pass).
+    let mut grids: Vec<Vec<u32>> = Vec::new();
     for f in &doc.frames {
         for l in &f.layers {
             let nt = l.pixels.num_tiles();
+            let mut grid = Vec::with_capacity(nt);
             for i in 0..nt {
-                if let Some(b) = l.pixels.tile_bytes(i) {
-                    // First appearance clones the 4096 bytes into the dictionary; a repeat only hashes.
-                    if let std::collections::hash_map::Entry::Vacant(e) = dict_index.entry(b) {
-                        dict_order.push(e.key().clone());
-                        e.insert(dict_order.len() as u32); // 1-based
+                let id = match l.pixels.tile_arc(i) {
+                    None => 0u32,
+                    Some(t) => {
+                        let ptr = Arc::as_ptr(t);
+                        match by_ptr.get(&ptr) {
+                            Some(&id) => id,
+                            None => {
+                                let h = t.content_hash();
+                                let cands = by_hash.entry(h).or_default();
+                                let id = match cands
+                                    .iter()
+                                    .copied()
+                                    .find(|&id| *dict_order[(id - 1) as usize] == **t)
+                                {
+                                    Some(id) => id,
+                                    None => {
+                                        dict_order.push(t.clone());
+                                        let id = dict_order.len() as u32;
+                                        cands.push(id);
+                                        id
+                                    }
+                                };
+                                by_ptr.insert(ptr, id);
+                                id
+                            }
+                        }
                     }
-                }
+                };
+                grid.push(id);
             }
+            grids.push(grid);
         }
     }
 
@@ -501,18 +534,23 @@ pub fn save_to_bytes(doc: &Document) -> Vec<u8> {
     head.u8(doc.selection.is_some() as u8); // head_flags bit0 = has SELC
     head.u128(doc.content_hash());
 
-    // TILE
+    // TILE — one 4096-byte temp per entry, encoded and dropped; never the whole set at once.
+    // Pre-sized (worst case ≈ RAW cells) so the Vec never overshoots by doubling (memlab M5) —
+    // under the document budget this reservation is ≤ ~340 MiB and effectively infallible.
     let mut tile = Writer::new();
+    tile.buf.reserve_exact(dict_order.len() * (TILE_BYTES + 8) + 16);
     tile.varint(dict_order.len() as u32);
-    for b in &dict_order {
-        let (codec, payload) = encode_tile(b);
+    for t in &dict_order {
+        let b = t.to_bytes();
+        let (codec, payload) = encode_tile(&b);
         tile.u8(codec);
         tile.bytes(&payload);
     }
 
-    // FRMS
+    // FRMS — ref-grids precomputed during the dictionary pass, same frames→layers order.
     let mut frms = Writer::new();
     frms.varint(doc.frames.len() as u32);
+    let mut grid_iter = grids.iter();
     for f in &doc.frames {
         frms.u32(f.id);
         frms.u32(f.duration_us);
@@ -524,13 +562,8 @@ pub fn save_to_bytes(doc: &Document) -> Vec<u8> {
             frms.u8((l.visible as u8) | ((l.locked as u8) << 1));
             frms.u8(l.opacity);
             frms.u8(0); // blend = Normal
-            let nt = l.pixels.num_tiles();
-            let grid: Vec<u32> = (0..nt)
-                .map(|i| match l.pixels.tile_bytes(i) {
-                    Some(b) => dict_index[&b],
-                    None => 0,
-                })
-                .collect();
+            let grid = grid_iter.next().expect("one grid per layer");
+            let nt = grid.len();
             let mut i = 0usize;
             while i < nt {
                 let idx = grid[i];
@@ -546,7 +579,9 @@ pub fn save_to_bytes(doc: &Document) -> Vec<u8> {
     }
 
     // Assemble: signature, critical chunks, optional chunks, then INTG (whole-file CRC).
+    // Pre-sized to the known chunk payloads so the final buffer never doubles past the file size.
     let mut w = Writer::new();
+    w.buf.reserve_exact(head.buf.len() + tile.buf.len() + frms.buf.len() + 64 * 1024);
     w.bytes(&SIGNATURE);
     write_chunk(&mut w, b"HEAD", true, &head.buf);
     write_chunk(&mut w, b"TILE", true, &tile.buf);

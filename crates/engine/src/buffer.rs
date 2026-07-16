@@ -24,6 +24,26 @@ impl Tile {
     fn is_all_transparent(&self) -> bool {
         self.0.iter().all(|p| p.a == 0)
     }
+    /// Raw 4096-byte straight-RGBA of this tile (row-major local order) — the inverse of
+    /// [`from_bytes`](Self::from_bytes). Used by `io` to encode one dictionary entry at a time,
+    /// so saving never clones the whole tile set.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut v = Vec::with_capacity(TILE_AREA * 4);
+        for p in &self.0 {
+            v.extend_from_slice(&[p.r, p.g, p.b, p.a]);
+        }
+        v
+    }
+
+    /// Deterministic content hash of the tile's pixels (dict keying in `io::save_to_bytes`).
+    pub fn content_hash(&self) -> crate::util::Hash {
+        let mut h = crate::util::Hasher::new();
+        for p in &self.0 {
+            h.write(&[p.r, p.g, p.b, p.a]);
+        }
+        h.finish()
+    }
+
     /// Build a tile from `TILE_AREA*4` straight-RGBA bytes (row-major local order). `None` if the
     /// slice is too short. Used by `io` to materialize a dictionary tile once, then share its `Arc`.
     pub fn from_bytes(bytes: &[u8]) -> Option<Tile> {
@@ -437,13 +457,13 @@ impl RgbaBuffer {
 
     /// Raw 4096-byte RGBA of tile `i`, or `None` if the tile is absent (transparent).
     pub fn tile_bytes(&self, i: usize) -> Option<Vec<u8>> {
-        self.tiles[i].as_ref().map(|t| {
-            let mut v = Vec::with_capacity(TILE_AREA * 4);
-            for p in &t.0 {
-                v.extend_from_slice(&[p.r, p.g, p.b, p.a]);
-            }
-            v
-        })
+        self.tiles[i].as_ref().map(|t| t.to_bytes())
+    }
+
+    /// The `Arc` of tile `i`, or `None` if absent. Lets `io` reference tiles without cloning
+    /// their bytes (the save-transient fix, memlab M4a).
+    pub fn tile_arc(&self, i: usize) -> Option<&Arc<Tile>> {
+        self.tiles[i].as_ref()
     }
 
     /// Install a (possibly shared) tile `Arc` at storage tile index `i`; out-of-range is ignored.

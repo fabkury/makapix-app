@@ -256,6 +256,13 @@ pub extern "C" fn mkpx_mem_json(ptr: *mut Session) -> *mut c_char {
     }
 }
 
+/// Upper-bound estimate of the `.mkpx` payload the document saves to (bytes) — check before
+/// `mkpx_save` on constrained platforms (SPEC §8.2b).
+#[no_mangle]
+pub extern "C" fn mkpx_save_estimate(ptr: *mut Session) -> u64 {
+    session(ptr).map(|s| s.save_estimate_bytes() as u64).unwrap_or(0)
+}
+
 /// Primary color as 0xRRGGBBAA.
 #[no_mangle]
 pub extern "C" fn mkpx_primary_color(ptr: *mut Session) -> u32 {
@@ -486,12 +493,25 @@ fn encode_progress_hook(done: usize, total: usize) -> bool {
 /// Export all frames as an animated GIF, upscaled ×`scale` (nearest-neighbour, clamped 1..=32,
 /// applied one frame at a time). Returns a malloc'd buffer; len via `out_len`. Progress is
 /// reported via `mkpx_export_progress`; null on failure OR `mkpx_export_cancel`.
+/// Whole-animation exports flatten every frame to RGBA first (`frames × w × h × 4`). Refuse
+/// upfront when that transient would be unreasonable (SPEC §8.2b M4c). With the document budget
+/// in force the worst legal flatten is 256 MiB (1024 frames × 256²) — this guard is pure
+/// defense-in-depth, but a cheap check beats an abort.
+fn export_flatten_ok(s: &Session) -> bool {
+    const EXPORT_FLATTEN_CAP: usize = 768 * 1024 * 1024;
+    let (w, h) = s.size();
+    s.doc.frames.len().saturating_mul(w as usize * h as usize * 4) <= EXPORT_FLATTEN_CAP
+}
+
 #[no_mangle]
 pub extern "C" fn mkpx_export_gif(ptr: *mut Session, scale: u32, out_len: *mut u64) -> *mut u8 {
     let s = match session(ptr) {
         Some(s) => s,
         None => return std::ptr::null_mut(),
     };
+    if !export_flatten_ok(s) {
+        return std::ptr::null_mut();
+    }
     let (w, h) = s.size();
     let frames = match composite_frames_tracked(s) {
         Some(f) => f,
@@ -513,6 +533,9 @@ pub extern "C" fn mkpx_export_webp(ptr: *mut Session, scale: u32, out_len: *mut 
         Some(s) => s,
         None => return std::ptr::null_mut(),
     };
+    if !export_flatten_ok(s) {
+        return std::ptr::null_mut();
+    }
     let (w, h) = s.size();
     let frames = match composite_frames_tracked(s) {
         Some(f) => f,

@@ -38,6 +38,8 @@ typedef _RunC = Pointer<Utf8> Function(Pointer<Void>, Pointer<Uint8>, IntPtr);
 typedef _RunD = Pointer<Utf8> Function(Pointer<Void>, Pointer<Uint8>, int);
 typedef _U32C = Uint32 Function(Pointer<Void>);
 typedef _U32D = int Function(Pointer<Void>);
+typedef _U64C = Uint64 Function(Pointer<Void>);
+typedef _U64D = int Function(Pointer<Void>);
 typedef _DisplayC = Int32 Function(Pointer<Void>, Int32, Int32, Int32, Pointer<Uint8>, IntPtr);
 typedef _DisplayD = int Function(Pointer<Void>, int, int, int, Pointer<Uint8>, int);
 typedef _CompositeC = Int32 Function(Pointer<Void>, Uint32, Pointer<Uint8>, IntPtr);
@@ -124,6 +126,7 @@ class Engine {
   late final _CompositeD _composite = _lib.lookupFunction<_CompositeC, _CompositeD>('mkpx_composite_frame');
   late final _StateD _state = _lib.lookupFunction<_StateC, _StateD>('mkpx_state_json');
   late final _StateD _memJson = _lib.lookupFunction<_StateC, _StateD>('mkpx_mem_json');
+  late final _U64D _saveEstimate = _lib.lookupFunction<_U64C, _U64D>('mkpx_save_estimate');
   late final _OutlineD _outline = _lib.lookupFunction<_OutlineC, _OutlineD>('mkpx_outline_mask');
   late final _FrameHashD _frameHash = _lib.lookupFunction<_FrameHashC, _FrameHashD>('mkpx_frame_hash');
   late final _FrameThumbD _frameThumb = _lib.lookupFunction<_FrameThumbC, _FrameThumbD>('mkpx_frame_thumb');
@@ -205,6 +208,11 @@ class Engine {
     _freeStr(p);
     return s;
   }
+
+  /// Upper-bound estimate of the `.mkpx` payload [save] would produce (unique tile payload
+  /// bytes). The engine's document budget already guarantees this stays under 320 MiB; exposed
+  /// for telemetry and future pre-save checks.
+  int saveEstimate() => _saveEstimate(_s);
 
   /// Engine-accounted memory census (tile-deduped) as JSON — see `probe::mem_report` on the Rust
   /// side. Powers the memory stress lab.

@@ -2941,6 +2941,11 @@ impl Session {
     pub fn save_bytes(&self) -> Vec<u8> {
         io::save_to_bytes(&self.doc)
     }
+    /// Upper-bound estimate of the `.mkpx` payload this document saves to (unique tile payload;
+    /// noise measures ~+0.1% headers on top). Lets shells warn/refuse before serializing.
+    pub fn save_estimate_bytes(&self) -> usize {
+        self.doc.unique_payload_bytes()
+    }
     pub fn load_bytes(&mut self, data: &[u8]) -> Result<(), io::IoError> {
         // The selection now travels inside the document (deserialized by `io`), so it is NOT cleared
         // here — a crash-recovery load restores the user's selection. The clipboard / paste draft are
