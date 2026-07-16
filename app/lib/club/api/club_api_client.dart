@@ -141,4 +141,12 @@ class ClubApiClient {
   Future<void> deleteAvatar(String userKey) => guard(() async {
         await dio.delete('/user/${Uri.encodeComponent(userKey)}/avatar');
       });
+
+  /// `POST /user/delete-account` → 202 — request permanent deletion of the
+  /// signed-in account. The server deactivates the account immediately (login
+  /// stops working) and deletes all user data asynchronously; owner-role
+  /// accounts are refused. App Store guideline 5.1.1(v).
+  Future<void> requestAccountDeletion() => guard(() async {
+        await dio.post('/user/delete-account');
+      });
 }

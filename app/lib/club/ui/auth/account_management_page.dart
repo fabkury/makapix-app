@@ -8,6 +8,7 @@ import '../../models/account.dart';
 import '../../models/club_error.dart';
 import '../../state/auth_controller.dart';
 import '../widgets/common.dart';
+import 'delete_account_page.dart';
 
 /// Settings → Account: change password, change handle, and view/unlink linked
 /// logins. Reached from [SettingsPage] and the signed-in account view.
@@ -227,6 +228,28 @@ class _AccountManagementPageState extends ConsumerState<AccountManagementPage> {
           ]),
           const SizedBox(height: 8),
           _section('Linked logins', [_providersList()]),
+          const SizedBox(height: 8),
+          _section('Danger zone', [
+            const Text(
+              'Permanently delete your account, including all your posts, '
+              'comments, reactions, and profile data.',
+              style: TextStyle(color: Colors.white54, fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.redAccent,
+                  side: const BorderSide(color: Colors.redAccent),
+                ),
+                onPressed: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const DeleteAccountPage())),
+                icon: const Icon(Icons.delete_forever_outlined, size: 20),
+                label: const Text('Delete account'),
+              ),
+            ),
+          ]),
         ],
       ),
     );
