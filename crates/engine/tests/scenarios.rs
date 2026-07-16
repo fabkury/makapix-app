@@ -380,3 +380,36 @@ fn mem_report_sees_cow_sharing_and_history_retention() {
     assert_eq!(r2.history_tiles, 4, "the noise generation is retained by the redo side");
     assert!(r2.total_bytes() >= 4 * 4096);
 }
+
+#[test]
+fn history_table_retention_is_linear_not_quadratic() {
+    // Before the Arc'd tile table (memlab M1), DocStructure records cloned every layer's
+    // tile-slot table: building F frames retained 4608·F² bytes of tables (18.9 MB at F=64).
+    // With COW tables the snapshots share the live tables until they diverge, so retention is
+    // O(F) — a few table generations per frame, not F copies of the whole vector.
+    let mut s = Session::empty();
+    let mut script = String::from("NewDocument(256,256)\n");
+    let frames = 64;
+    for f in 0..frames {
+        if f > 0 {
+            script.push_str("AddFrame()\n");
+        }
+        script.push_str(&format!("FillNoise({})\n", f + 1));
+    }
+    s.run_script(&script).unwrap();
+    let r = makapix_engine::probe::mem_report(&s.doc, &[]);
+    let per_table = 576 * 8; // 24×24 storage slots × pointer size at 256×256
+    let quadratic = per_table * frames * frames; // what the old code retained
+    assert!(
+        r.history_table_bytes <= 6 * frames * per_table,
+        "history tables {} bytes — expected O(frames), old quadratic was {}",
+        r.history_table_bytes,
+        quadratic
+    );
+    // Sanity: the undo timeline still works end-to-end after the change (each frame produced
+    // two records: AddFrame + FillNoise).
+    for _ in 0..2 * frames {
+        s.run_script("Undo()").unwrap();
+    }
+    assert_eq!(s.doc.frames.len(), 1, "undo chain rewinds the AddFrames");
+}

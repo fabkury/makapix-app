@@ -223,8 +223,9 @@ pub struct MemReport {
     /// Live-document tiles after Arc-pointer dedup — COW sharing wins show as the gap to
     /// `doc_tiles`.
     pub doc_unique_tiles: usize,
-    /// Fixed tile-slot-table overhead of every live layer (one pointer per grid slot, present or
-    /// not; 3w×3h storage makes this a real per-layer constant).
+    /// Tile-slot-table overhead of the live layers (one pointer per grid slot, present or not;
+    /// 3w×3h storage makes this a real per-layer constant). Tables are `Arc`-shared (COW) since
+    /// the memlab fix, so this is deduped by table pointer — a duplicated frame contributes once.
     pub tile_table_bytes: usize,
     pub layers_total: usize,
     pub undo_records: usize,
@@ -232,10 +233,10 @@ pub struct MemReport {
     /// Unique tiles reachable *only* from history records (undo + redo) — the memory the history
     /// retains beyond the live document.
     pub history_tiles: usize,
-    /// Tile-slot-table bytes held by history frame snapshots (`FrameContent`/`DocStructure`
-    /// before+after clones). Unlike tiles these are NOT Arc-shared — every snapshot re-allocates
-    /// its layers' tables — so structural edits on long animations retain O(frames²·layers)
-    /// table bytes here.
+    /// Unique tile-slot-table bytes retained ONLY by history frame snapshots
+    /// (`FrameContent`/`DocStructure` before+after), deduped by table pointer against the live
+    /// document. Before tables were Arc-shared this grew O(frames²·layers) (the memlab quadratic,
+    /// `docs/memlab/REPORT.md`); now snapshots share the live tables until they diverge.
     pub history_table_bytes: usize,
     /// Unique tiles reachable only from session extras (clipboard, paste draft).
     pub session_tiles: usize,
@@ -304,12 +305,18 @@ pub fn mem_report(doc: &Document, extras: &[&RgbaBuffer]) -> MemReport {
     let mut tile_table_bytes = 0usize;
     let mut layers_total = 0usize;
 
-    // Walk snapshot frames: dedup their tiles into `seen`, and sum their (never-shared) tile
-    // tables into the accumulator.
-    let visit_frames = |frames: &[Frame], seen: &mut HashSet<*const Tile>, tables: &mut usize| {
+    // Walk snapshot frames: dedup their tiles into `seen` and their (Arc-shared, COW) tables
+    // into `tables`, summing only first appearances into the accumulator.
+    let mut tables: HashSet<*const ()> = HashSet::new();
+    let visit_frames = |frames: &[Frame],
+                        seen: &mut HashSet<*const Tile>,
+                        tables: &mut HashSet<*const ()>,
+                        table_bytes: &mut usize| {
         for f in frames {
             for l in &f.layers {
-                *tables += l.pixels.tile_table_bytes();
+                if tables.insert(l.pixels.table_ptr()) {
+                    *table_bytes += l.pixels.tile_table_bytes();
+                }
                 l.pixels.visit_tile_arcs(&mut |t| {
                     seen.insert(Arc::as_ptr(t));
                 });
@@ -321,7 +328,9 @@ pub fn mem_report(doc: &Document, extras: &[&RgbaBuffer]) -> MemReport {
         for l in &f.layers {
             layers_total += 1;
             doc_tiles += l.pixels.present_tiles();
-            tile_table_bytes += l.pixels.tile_table_bytes();
+            if tables.insert(l.pixels.table_ptr()) {
+                tile_table_bytes += l.pixels.tile_table_bytes();
+            }
             l.pixels.visit_tile_arcs(&mut |t| {
                 seen.insert(Arc::as_ptr(t));
             });
@@ -349,12 +358,12 @@ pub fn mem_report(doc: &Document, extras: &[&RgbaBuffer]) -> MemReport {
                 seen.insert(Arc::as_ptr(t));
             }),
             Edit::FrameContent { before, after, .. } => {
-                visit_frames(std::slice::from_ref(before.as_ref()), &mut seen, &mut history_table_bytes);
-                visit_frames(std::slice::from_ref(after.as_ref()), &mut seen, &mut history_table_bytes);
+                visit_frames(std::slice::from_ref(before.as_ref()), &mut seen, &mut tables, &mut history_table_bytes);
+                visit_frames(std::slice::from_ref(after.as_ref()), &mut seen, &mut tables, &mut history_table_bytes);
             }
             Edit::DocStructure { before, after, .. } => {
-                visit_frames(before, &mut seen, &mut history_table_bytes);
-                visit_frames(after, &mut seen, &mut history_table_bytes);
+                visit_frames(before, &mut seen, &mut tables, &mut history_table_bytes);
+                visit_frames(after, &mut seen, &mut tables, &mut history_table_bytes);
             }
             Edit::Selection => {}
         }

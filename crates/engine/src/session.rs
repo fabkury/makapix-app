@@ -19,7 +19,7 @@ mod parse;
 pub use parse::Action;
 
 /// A captured pre-edit pixel snapshot of one layer's tiles.
-type TileSnapshot = Vec<Option<std::sync::Arc<crate::buffer::Tile>>>;
+type TileSnapshot = std::sync::Arc<crate::buffer::TileTable>;
 
 /// A pre-edit snapshot pinned to the exact (frame id, layer id) it was taken from. The matching
 /// commit/cancel resolves that target *by id* rather than acting on "whatever is active now", so a

@@ -39,13 +39,20 @@ impl Tile {
     }
 }
 
+/// The tile-slot table: one `Option<Arc<Tile>>` per 32×32 grid cell. Shared copy-on-write via
+/// `Arc` (see [`RgbaBuffer::tiles`]) so cloning a buffer — undo snapshots, frame/layer
+/// duplication, history records — is a pointer bump instead of a table re-allocation. Before this
+/// the table was the dominant undo-history cost: `DocStructure` records retained
+/// `4608 × layers × frames²` bytes of cloned tables (memlab study, `docs/memlab/REPORT.md`).
+pub type TileTable = Vec<Option<Arc<Tile>>>;
+
 #[derive(Clone)]
 pub struct RgbaBuffer {
     w: u32,
     h: u32,
     tiles_x: u32,
     tiles_y: u32,
-    tiles: Vec<Option<Arc<Tile>>>,
+    tiles: Arc<TileTable>,
 }
 
 /// A reversible change to a buffer expressed as changed tiles (COW snapshots). Cheap to
@@ -85,8 +92,15 @@ impl RgbaBuffer {
             h,
             tiles_x,
             tiles_y,
-            tiles: vec![None; (tiles_x * tiles_y) as usize],
+            tiles: Arc::new(vec![None; (tiles_x * tiles_y) as usize]),
         }
+    }
+
+    /// Mutable access to the tile table, cloning it first if it is shared (COW). The clone is a
+    /// few-KiB memcpy of pointers, paid at most once per divergence — not per write.
+    #[inline]
+    fn tiles_mut(&mut self) -> &mut TileTable {
+        Arc::make_mut(&mut self.tiles)
     }
 
     pub fn from_size(s: Size) -> Self {
@@ -158,9 +172,9 @@ impl RgbaBuffer {
             if c.a == 0 {
                 return;
             }
-            self.tiles[ti] = Some(Arc::new(Tile::transparent()));
+            self.tiles_mut()[ti] = Some(Arc::new(Tile::transparent()));
         }
-        let tile = Arc::make_mut(self.tiles[ti].as_mut().unwrap());
+        let tile = Arc::make_mut(self.tiles_mut()[ti].as_mut().unwrap());
         tile.0[li] = c;
     }
 
@@ -192,14 +206,16 @@ impl RgbaBuffer {
     }
 
     pub fn clear(&mut self) {
-        for t in &mut self.tiles {
-            *t = None;
-        }
+        self.tiles = Arc::new(vec![None; self.tiles.len()]);
     }
 
-    /// Drop tiles that became fully transparent (sparsity maintenance after erases).
+    /// Drop tiles that became fully transparent (sparsity maintenance after erases). Read-only
+    /// scan first so an already-compact shared table is never cloned.
     pub fn compact(&mut self) {
-        for t in &mut self.tiles {
+        if !self.tiles.iter().flatten().any(|t| t.is_all_transparent()) {
+            return;
+        }
+        for t in self.tiles_mut() {
             if let Some(tile) = t {
                 if tile.is_all_transparent() {
                     *t = None;
@@ -240,9 +256,15 @@ impl RgbaBuffer {
     /// Fixed overhead of the tile-slot table itself (present or not): one `Option<Arc<Tile>>`
     /// per grid slot. Not covered by [`memory_bytes`](Self::memory_bytes) — at 3w×3h storage this
     /// is a real per-layer constant (e.g. 576 slots for a 256×256 canvas), so the memory model
-    /// reports it separately.
+    /// reports it separately. Tables are `Arc`-shared since the memlab fix: dedup by
+    /// [`table_ptr`](Self::table_ptr) before summing across buffers.
     pub fn tile_table_bytes(&self) -> usize {
         self.tiles.len() * std::mem::size_of::<Option<Arc<Tile>>>()
+    }
+
+    /// Identity of the (possibly shared) tile table, for pointer-dedup in memory accounting.
+    pub fn table_ptr(&self) -> *const () {
+        Arc::as_ptr(&self.tiles) as *const ()
     }
 
     /// Visit every present tile's `Arc` (for pointer-deduped memory accounting).
@@ -288,18 +310,18 @@ impl RgbaBuffer {
 
     // ---- COW undo support ----
 
-    /// Cheap snapshot of the tile table (Arc clones only). Used as the "before" state.
-    pub fn snapshot(&self) -> Vec<Option<Arc<Tile>>> {
+    /// Cheap snapshot of the tile table — a single `Arc` bump since the table itself is COW.
+    /// Used as the "before" state of an edit.
+    pub fn snapshot(&self) -> Arc<TileTable> {
         self.tiles.clone()
     }
 
     /// Revert the buffer to a previously taken [`snapshot`](Self::snapshot), discarding any changes
     /// made since (used to abort an in-progress stroke without recording undo). No-op on a size
     /// mismatch.
-    pub fn restore_snapshot(&mut self, snap: &[Option<Arc<Tile>>]) {
+    pub fn restore_snapshot(&mut self, snap: &Arc<TileTable>) {
         if snap.len() == self.tiles.len() {
-            self.tiles.clear();
-            self.tiles.extend(snap.iter().cloned());
+            self.tiles = snap.clone();
         }
     }
 
@@ -332,14 +354,16 @@ impl RgbaBuffer {
     }
 
     pub fn apply_before(&mut self, patch: &TilePatch) {
+        let tiles = self.tiles_mut();
         for (i, b, _a) in &patch.changed {
-            self.tiles[*i] = b.clone();
+            tiles[*i] = b.clone();
         }
     }
 
     pub fn apply_after(&mut self, patch: &TilePatch) {
+        let tiles = self.tiles_mut();
         for (i, _b, a) in &patch.changed {
-            self.tiles[*i] = a.clone();
+            tiles[*i] = a.clone();
         }
     }
 
@@ -421,7 +445,7 @@ impl RgbaBuffer {
     /// Placing one shared `Arc` at many indices is how `io` restores in-RAM COW sharing on load.
     pub fn set_tile(&mut self, i: usize, tile: Option<Arc<Tile>>) {
         if i < self.tiles.len() {
-            self.tiles[i] = tile;
+            self.tiles_mut()[i] = tile;
         }
     }
 
@@ -435,7 +459,7 @@ impl RgbaBuffer {
             let o = k * 4;
             *slot = Rgba8::new(bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3]);
         }
-        self.tiles[i] = Some(Arc::new(Tile(arr)));
+        self.tiles_mut()[i] = Some(Arc::new(Tile(arr)));
     }
 
     /// Flatten to a tightly-packed row-major straight-RGBA byte buffer (for FFI/display/io).
