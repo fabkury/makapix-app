@@ -639,6 +639,15 @@ fn walk_chunks<'a>(data: &'a [u8], body_end: usize) -> Result<Chunks<'a>, IoErro
 }
 
 pub fn load_from_bytes(data: &[u8]) -> Result<Document, IoError> {
+    load_from_bytes_budgeted(data, crate::document::MEM_HARD_BUDGET)
+}
+
+/// [`load_from_bytes`] with an explicit memory budget: files whose unique tile payload
+/// (dictionary tiles × 4096 B — exactly what materializes in RAM, since the loader shares one
+/// `Arc` per dictionary tile) exceeds `hard_budget` are refused before any tile is allocated.
+/// Decision 2026-07-16: refuse rather than load-and-lock — with uniform budgets no compliant
+/// build can produce such a file, so this only rejects crafted/corrupt input.
+pub fn load_from_bytes_budgeted(data: &[u8], hard_budget: usize) -> Result<Document, IoError> {
     // Signature + fixed INTG trailer, then verify the whole-file CRC before trusting any body.
     if data.len() < 8 + INTG_LEN {
         return Err(IoError::Incomplete);
@@ -696,6 +705,11 @@ pub fn load_from_bytes(data: &[u8]) -> Result<Document, IoError> {
     let tile_count = tr.varint()? as usize;
     if tile_count > MAX_DICT_TILES {
         return Err(IoError::TooLarge("tile dictionary"));
+    }
+    // Memory budget (SPEC §8.2b): the dictionary IS the document's unique tile payload — refuse
+    // over-budget files up front, before materializing a single tile.
+    if tile_count.saturating_mul(4096) > hard_budget {
+        return Err(IoError::TooLarge("memory budget"));
     }
     let mut dict: Vec<Arc<Tile>> = Vec::with_capacity(tile_count.min(tr.remaining() / 2 + 1));
     for _ in 0..tile_count {

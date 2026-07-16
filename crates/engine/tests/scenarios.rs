@@ -439,3 +439,55 @@ fn history_byte_budget_evicts_oldest_but_keeps_floor() {
     assert_eq!(s2.doc.history.undo.len(), 20);
     assert!(s2.doc.history.retained_bytes() > 10 * 1024 * 1024);
 }
+
+// ---- document memory budget (SPEC §8.2b, enforcement M3) ----
+
+#[test]
+fn mem_budget_rolls_back_pixel_edits_past_hard() {
+    // 4 MiB hard budget = 16 full-noise 256x256 layers. Growing layer by layer, the fills that
+    // would cross the cap are rolled back (layer stays empty), the session never exceeds it,
+    // and refusals are counted for the shell.
+    let mut s = run("NewDocument(256,256)\nSetMemBudget(3145728,4194304)\nFillNoise(1)");
+    for i in 0..24 {
+        s.run_script(&format!("AddLayer()\nFillNoise({})", i + 2)).unwrap();
+    }
+    let unique = s.doc.unique_payload_bytes();
+    assert!(unique <= 4 * 1024 * 1024, "unique payload {} exceeds the hard budget", unique);
+    let (refusals, last) = s.mem_refusal_state();
+    assert!(refusals >= 9, "expected ~9 refused fills, got {}", refusals);
+    assert!(last.unwrap().contains("memory budget"));
+    assert!(s.state_json().contains("\"mem_soft_exceeded\":true"));
+    // The layers refused their fill are still present (AddLayer is free) but empty.
+    let last_layer = s.doc.frames[0].layers.last().unwrap();
+    assert_eq!(last_layer.pixels.present_tiles(), 0);
+    // Undo still rewinds the accepted fills cleanly.
+    while s.doc.undo() {}
+    assert_eq!(s.doc.unique_payload_bytes(), 0);
+}
+
+#[test]
+fn mem_budget_rolls_back_structural_edits_past_hard() {
+    // Two noise layers, then an artificially tiny budget: MergeDown would materialize a fresh
+    // merged buffer over the cap, so the whole frame mutation is rolled back.
+    let mut s = run("NewDocument(256,256)\nFillNoise(1)\nAddLayer()\nFillNoise(2)");
+    assert_eq!(s.doc.frames[0].layers.len(), 2);
+    s.run_script("SetMemBudget(65536,131072)").unwrap();
+    s.run_script("MergeDown(1)").unwrap();
+    assert_eq!(s.doc.frames[0].layers.len(), 2, "merge must be rolled back over budget");
+    let (refusals, _) = s.mem_refusal_state();
+    assert!(refusals >= 1);
+}
+
+#[test]
+fn mem_budget_refuses_over_budget_files_at_load() {
+    // A 64-tile noise doc saves fine, then a session with a tiny budget refuses to load it
+    // before materializing anything; the default budget loads it.
+    let s = run("NewDocument(256,256)\nFillNoise(7)");
+    let bytes = s.save_bytes();
+    let mut tiny = Session::empty();
+    tiny.run_script("SetMemBudget(65536,65536)").unwrap();
+    assert!(tiny.load_bytes(&bytes).is_err(), "16 KiB budget must refuse a 256 KiB file");
+    let mut normal = Session::empty();
+    normal.load_bytes(&bytes).unwrap();
+    assert_eq!(normal.doc.content_hash(), s.doc.content_hash());
+}

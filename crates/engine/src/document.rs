@@ -12,6 +12,18 @@ use std::sync::Arc;
 
 pub const MAX_FRAMES: usize = 1024;
 pub const MAX_LAYERS: usize = 64;
+
+/// Document memory budget on **unique tile payload** (Arc-deduped materialized tiles × 4096 B) —
+/// the joint limit the per-axis frame/layer/canvas caps never provided. Sized from the memlab
+/// study (SPEC §8.2b, `docs/memlab/REPORT.md`): Android's ~4 KiB allocator size class aborts the
+/// process near 1 GiB, so hard 320 MiB + the 96 MiB history budget + the post-M4 save transient
+/// stay under it with ~2× margin. Unique (not multiplicity) payload so COW-shared duplicate
+/// frames — the normal animation workflow — stay effectively free.
+pub const MEM_SOFT_BUDGET: usize = 256 * 1024 * 1024;
+/// Above this, mutations are rolled back / refused (`Session` chokepoints) and `.mkpx` files are
+/// refused at load. Uniform across platforms so any document a device can create, every other
+/// device can open.
+pub const MEM_HARD_BUDGET: usize = 320 * 1024 * 1024;
 pub const MIN_DURATION_US: u32 = 16_667; // ≈ 1/60 s
 pub const MAX_DURATION_US: u32 = 1_000_000; // 1000 ms
 pub const DEFAULT_DURATION_US: u32 = 100_000; // 100 ms
@@ -264,6 +276,24 @@ impl Document {
             .flat_map(|f| f.layers.iter())
             .map(|l| l.pixels.memory_bytes())
             .sum()
+    }
+
+    /// Unique tile payload of the live document: materialized tiles deduped by `Arc` pointer ×
+    /// 4096 B — what the tiles actually occupy in RAM (COW-shared duplicates count once). The
+    /// quantity the [`MEM_SOFT_BUDGET`]/[`MEM_HARD_BUDGET`] budgets are enforced on. O(present
+    /// tiles); at budget scale (~80k tiles) ~1 ms — fine per undoable action, not per pointer
+    /// event.
+    pub fn unique_payload_bytes(&self) -> usize {
+        let mut seen: std::collections::HashSet<*const crate::buffer::Tile> =
+            std::collections::HashSet::new();
+        for f in &self.frames {
+            for l in &f.layers {
+                l.pixels.visit_tile_arcs(&mut |t| {
+                    seen.insert(Arc::as_ptr(t));
+                });
+            }
+        }
+        seen.len() * 4096
     }
 
     pub fn new_layer(&mut self, name: impl Into<String>) -> Layer {

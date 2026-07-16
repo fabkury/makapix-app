@@ -316,6 +316,19 @@ pub struct Session {
     /// recording, and the commit records a single undo step for the whole drag. `None` ⇒ a one-shot
     /// `MoveSelection` (DSL/nudge) records its own step immediately.
     move_sel_before: Option<Option<Arc<Mask>>>,
+    /// Test/stress-lab override of the document memory budgets (soft, hard); `None` = the
+    /// `document::MEM_*_BUDGET` defaults. See SPEC §8.2b.
+    mem_budget_override: Option<(usize, usize)>,
+    /// Unique tile payload at the last exact census (`Document::unique_payload_bytes`).
+    mem_exact: usize,
+    /// Upper bound on unique-payload growth since `mem_exact` (Σ patch tiles × 4096). While
+    /// `mem_exact + mem_slack ≤ soft budget` no exact walk is needed on the hot edit path.
+    mem_slack: usize,
+    /// Count of mutations rolled back / refused by the memory budget (monotonic; the shell
+    /// watches it to surface a snackbar).
+    mem_refusals: u32,
+    /// Human-readable label of the last budget refusal.
+    mem_last_refusal: Option<String>,
 }
 
 impl Session {
@@ -348,6 +361,11 @@ impl Session {
             rotate_draft: None,
             scale_draft: None,
             move_sel_before: None,
+            mem_budget_override: None,
+            mem_exact: 0,
+            mem_slack: 0,
+            mem_refusals: 0,
+            mem_last_refusal: None,
         }
     }
 
@@ -929,6 +947,23 @@ impl Session {
             self.settings.overscan_view,
         );
         s.insert_str(s.len() - 1, &extra); // before the final '}'
+        // Memory budget (SPEC §8.2b): fresh unique-payload census + budgets + refusal telemetry,
+        // so the shell can show the soft-budget banner and refusal snackbars without extra FFI.
+        let unique = self.doc.unique_payload_bytes();
+        let (soft, hard) = self.mem_budgets();
+        let mem = format!(
+            ",\"mem_unique_bytes\":{},\"mem_soft_budget\":{},\"mem_hard_budget\":{},\"mem_soft_exceeded\":{},\"mem_refusals\":{},\"mem_last_refusal\":{}",
+            unique,
+            soft,
+            hard,
+            unique > soft,
+            self.mem_refusals,
+            match &self.mem_last_refusal {
+                Some(m) => format!("\"{}\"", m.replace('"', "'")),
+                None => "null".to_string(),
+            },
+        );
+        s.insert_str(s.len() - 1, &mem);
         s
     }
 
@@ -959,6 +994,46 @@ impl Session {
         self.doc.frames.len() - 1
     }
 
+    // ---- memory budget (SPEC §8.2b; docs/plans/memory-budget-enforcement.md M3) ----
+
+    /// Effective (soft, hard) unique-payload budgets (override or the document.rs defaults).
+    pub fn mem_budgets(&self) -> (usize, usize) {
+        self.mem_budget_override
+            .unwrap_or((crate::document::MEM_SOFT_BUDGET, crate::document::MEM_HARD_BUDGET))
+    }
+
+    /// Override the budgets (tests / stress lab; the `SetMemBudget` DSL action).
+    pub fn set_mem_budgets(&mut self, soft: usize, hard: usize) {
+        self.mem_budget_override = Some((soft, hard.max(soft)));
+        self.mem_recalibrate();
+    }
+
+    /// Refusal telemetry for the shell: (monotonic count, last refusal label).
+    pub fn mem_refusal_state(&self) -> (u32, Option<&str>) {
+        (self.mem_refusals, self.mem_last_refusal.as_deref())
+    }
+
+    /// Exact unique-payload census; resets the slack accumulator.
+    fn mem_recalibrate(&mut self) -> usize {
+        self.mem_exact = self.doc.unique_payload_bytes();
+        self.mem_slack = 0;
+        self.mem_exact
+    }
+
+    fn mem_refuse(&mut self, what: &str) {
+        self.mem_refusals += 1;
+        self.mem_last_refusal = Some(what.to_string());
+    }
+
+    /// Post-mutation budget gate for the two structural chokepoints (`edit_frame`/`edit_doc`).
+    /// Returns true when the mutation must be rolled back. Structural ops are rare, so the exact
+    /// walk is always affordable here (the hot pixel path in `commit_edit` short-circuits via
+    /// `mem_slack`).
+    fn mem_over_hard_after_structural(&mut self) -> bool {
+        let (_, hard) = self.mem_budgets();
+        self.mem_recalibrate() > hard
+    }
+
     // ---- undo-recording helpers ----
 
     fn begin_edit(&self) -> EditScope {
@@ -976,20 +1051,35 @@ impl Session {
         // Resolve the snapshot's OWN frame/layer by id — not the current active one, which the DSL
         // may have changed mid-stroke — so the recorded patch always matches `before`. [audit F-29]
         let EditScope { fid, lid, before, sel_before } = scope;
-        let patch = match self
+        let (fi, li) = match self
             .doc
             .frame_index_by_id(fid)
             .and_then(|fi| self.doc.frames[fi].layer_index_by_id(lid).map(|li| (fi, li)))
         {
-            Some((fi, li)) => self.doc.frames[fi].layers[li].pixels.diff_from(&before),
+            Some(pair) => pair,
             None => return, // the target frame/layer was deleted mid-edit; nothing to record
         };
+        let patch = self.doc.frames[fi].layers[li].pixels.diff_from(&before);
         if patch.is_empty() {
             // No pixels changed, but the mask may have (e.g. a Move/nudge of a selection that covers
             // only transparent pixels). Record the selection move alone so it's still undoable.
             if !sel_eq(&sel_before, &self.doc.selection) {
                 self.doc.record_selection(sel_before);
             }
+            return;
+        }
+        // Memory budget (SPEC §8.2b): an edit that would take the unique payload past the hard
+        // budget is rolled back instead of recorded — the invariant "a session is never over
+        // budget" holds for pixel edits too, so nothing can creep toward the Android allocator
+        // wall. `mem_slack` (an upper bound on growth since the last exact census) keeps the
+        // exact walk off the hot path while the document is comfortably under the soft budget.
+        self.mem_slack += patch.len() * 4096;
+        let (soft, hard) = self.mem_budgets();
+        if self.mem_exact + self.mem_slack > soft && self.mem_recalibrate() > hard {
+            self.doc.frames[fi].layers[li].pixels.restore_snapshot(&before);
+            self.doc.selection = sel_before;
+            self.mem_recalibrate();
+            self.mem_refuse("edit exceeds the document memory budget");
             return;
         }
         self.doc.record_pixels(fid, lid, patch, sel_before);
@@ -1011,6 +1101,15 @@ impl Session {
         let fid = self.doc.frames[fi].id;
         let sel_before = self.doc.selection.clone();
         let r = f(self);
+        // Memory budget: roll the whole frame mutation back if it crossed the hard cap (e.g. a
+        // merge/duplicate that materialized tiles). Clones are Arc-cheap since M1.
+        if self.mem_over_hard_after_structural() {
+            self.doc.frames[fi] = before;
+            self.doc.selection = sel_before;
+            self.mem_recalibrate();
+            self.mem_refuse("frame change exceeds the document memory budget");
+            return r;
+        }
         let after = self.doc.frames[fi].clone();
         self.doc.record_frame_content(fid, before, after, sel_before);
         r
@@ -1022,6 +1121,17 @@ impl Session {
         let before_size = self.doc.size;
         let sel_before = self.doc.selection.clone();
         let r = f(self);
+        // Memory budget: any document-structure mutation (import, paste-to-frame, canvas
+        // transforms, …) that lands over the hard cap is rolled back wholesale.
+        if self.mem_over_hard_after_structural() {
+            self.doc.frames = before;
+            self.doc.active_frame = before_active.min(self.doc.frames.len().saturating_sub(1));
+            self.doc.size = before_size;
+            self.doc.selection = sel_before;
+            self.mem_recalibrate();
+            self.mem_refuse(&format!("'{}' exceeds the document memory budget", label));
+            return r;
+        }
         self.doc.record_doc_structure(label, before, before_active, before_size, sel_before);
         r
     }
@@ -2835,7 +2945,9 @@ impl Session {
         // The selection now travels inside the document (deserialized by `io`), so it is NOT cleared
         // here — a crash-recovery load restores the user's selection. The clipboard / paste draft are
         // genuine session state and are reset.
-        self.doc = io::load_from_bytes(data)?;
+        let (_, hard) = self.mem_budgets();
+        self.doc = io::load_from_bytes_budgeted(data, hard)?;
+        self.mem_recalibrate();
         self.clipboard = None;
         self.paste_draft = None;
         self.move_draft = None; // a stale draft would reference the previous document's frame [F-29]

@@ -91,6 +91,12 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // (a selection tool acted) — NOT on every paint move; the live eraser footprint is recombined on
   // top cheaply each move. [audit F-11]
   List<List<int>> _selectionEdges = const [];
+  // ---- Document memory budget (engine SPEC §8.2b): the engine rolls back mutations past the
+  // hard budget and reports telemetry in state_json; the shell surfaces a banner while the soft
+  // budget is exceeded and a snackbar per refusal. -1 = "not yet seen", so a loaded session's
+  // pre-existing refusal count doesn't toast on the first refresh.
+  int _memRefusalsSeen = -1;
+  bool _memBannerShown = false;
   String _tool = 'Pencil';
   Color _primary = const Color(0xFF000000);
   List<Color> _palette = [];

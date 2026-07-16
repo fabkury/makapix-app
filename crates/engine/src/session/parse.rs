@@ -155,6 +155,9 @@ pub enum Action {
     /// lab to separate document growth from history retention; also the right tool after a bulk
     /// import when the pre-import states are meaningless.
     ClearHistory,
+    /// Override the document memory budgets (soft, hard) in bytes — tests / stress lab only
+    /// (SPEC §8.2b; the shipped defaults live in `document::MEM_*_BUDGET`).
+    SetMemBudget(u64, u64),
     Play,
     Pause,
     AdvanceClock(u64),
@@ -320,11 +323,14 @@ impl Session {
             ClearPalette => self.clear_palette(),
             Undo => {
                 self.doc.undo();
+                self.mem_recalibrate();
             }
             Redo => {
                 self.doc.redo();
+                self.mem_recalibrate();
             }
             ClearHistory => self.doc.history = crate::history::History::new(),
+            SetMemBudget(soft, hard) => self.set_mem_budgets(soft as usize, hard as usize),
             Play => self.play(),
             Pause => self.pause(),
             AdvanceClock(ms) => self.advance_clock_ms(ms),
@@ -673,6 +679,7 @@ fn parse_line(line: &str) -> Result<Action, String> {
         "Undo" => Undo,
         "Redo" => Redo,
         "ClearHistory" => ClearHistory,
+        "SetMemBudget" => SetMemBudget(u64a(0)?, u64a(1)?),
         "Play" => Play,
         "Pause" => Pause,
         "AdvanceClock" => AdvanceClock(u64a(0)?),

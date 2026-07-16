@@ -233,6 +233,43 @@ extension _EditorEngine on _EditorPageState {
     }
   }
 
+  /// Surface the engine's memory-budget telemetry (SPEC §8.2b): a persistent banner while the
+  /// document is over the soft budget, and a snackbar each time the engine rolled a mutation
+  /// back at the hard budget. The engine is authoritative — the shell only narrates.
+  void _syncMemBudgetUi() {
+    final soft = _state['mem_soft_exceeded'] == true;
+    final refusals = (_state['mem_refusals'] as num?)?.toInt() ?? 0;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger == null) return;
+    if (soft != _memBannerShown) {
+      _memBannerShown = soft;
+      messenger.hideCurrentMaterialBanner();
+      if (soft) {
+        final used = ((_state['mem_unique_bytes'] as num?) ?? 0) / (1024 * 1024);
+        final hard = ((_state['mem_hard_budget'] as num?) ?? 1) / (1024 * 1024);
+        messenger.showMaterialBanner(MaterialBanner(
+          content: Text(
+              'This drawing is very large (${used.toStringAsFixed(0)} of ${hard.toStringAsFixed(0)} MB). '
+              'Near the limit, changes that grow it further will be blocked.'),
+          leading: const Icon(Icons.data_usage),
+          actions: [
+            TextButton(
+              onPressed: () => messenger.hideCurrentMaterialBanner(),
+              child: const Text('Dismiss'),
+            ),
+          ],
+        ));
+      }
+    }
+    if (_memRefusalsSeen >= 0 && refusals > _memRefusalsSeen) {
+      messenger.showSnackBar(const SnackBar(
+        content: Text('Blocked: that change would push the drawing over the memory limit. '
+            'Reduce frames, layers or canvas size to continue growing it.'),
+      ));
+    }
+    _memRefusalsSeen = refusals;
+  }
+
   void _refreshState() {
     if (!_engineReady) return;
     try {
@@ -249,6 +286,7 @@ extension _EditorEngine on _EditorPageState {
       _canvasH = h;
       _hasPasteDraft = _state['paste'] != null; // [x,y,w,h] when a paste draft is floating, else null
       _hasMoveDraft = _state['move_draft'] != null; // [x,y,w,h] when a move draft is pending, else null
+      _syncMemBudgetUi();
       // {x,y,w,h,angle_mrad} while a Rotate "Angle" draft is open, else null.
       final rd = _state['rotate_draft'];
       if (rd is Map) {
