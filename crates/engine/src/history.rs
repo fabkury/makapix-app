@@ -14,6 +14,15 @@ use std::sync::Arc;
 
 pub const PER_FRAME_CAP: usize = 128;
 pub const TOTAL_CAP: usize = 8192;
+/// Byte budget for retained history (undo + redo), enforced by evicting the oldest undo records.
+/// Count caps alone let adversarial content retain gigabytes (memlab, `docs/memlab/REPORT.md`):
+/// 128 full-canvas repaints of one 256×256 layer ≈ 33.5 MB **per frame**, and structural records
+/// scale with the whole document. 96 MiB keeps the engine's share well under the ~1 GiB Android
+/// allocator wall with the document budget (SPEC §8.2b).
+pub const HISTORY_BYTE_BUDGET: usize = 96 * 1024 * 1024;
+/// Never evict below this many records, even over budget — undo must not silently vanish
+/// entirely because one record is huge.
+pub const MIN_RECORDS: usize = 8;
 
 #[derive(Clone)]
 pub enum Edit {
@@ -75,6 +84,36 @@ pub struct History {
     /// Per-frame content-edit count within the `undo` stack, kept in sync incrementally so the
     /// per-frame cap check is O(1) instead of rescanning the whole stack on every push. [audit F-16]
     counts: HashMap<u32, usize>,
+    /// Rolling sum of [`weight_of`] over undo + redo. An intentional over-estimate (shared tiles
+    /// counted per record); the `mem` probe stays the precise audit. Guards the byte budget.
+    bytes: usize,
+    /// Test/stress-lab override of [`HISTORY_BYTE_BUDGET`]; `None` = the default.
+    byte_budget: Option<usize>,
+}
+
+/// Deterministic approximate retained bytes of one record, computed identically at push and
+/// evict time so the rolling total stays consistent. Over-counts sharing on purpose (upper
+/// bound): a patch's before+after tiles are weighed in full even when the after side is the
+/// live document.
+fn weight_of(rec: &Record) -> usize {
+    const TILE_W: usize = 4096 + 32; // tile payload + Arc/heap overhead
+    // Frame/Layer snapshot cost per layer AFTER the COW-table fix (M1): Layer struct + name
+    // String + RgbaBuffer header; the table itself is Arc-shared until divergence.
+    const LAYER_W: usize = 256;
+    let mask = |m: &Option<Arc<Mask>>| m.as_ref().map(|m| m.memory_bytes()).unwrap_or(0);
+    let edit = match &rec.edit {
+        Edit::Pixels { patch, .. } => patch.len() * 2 * TILE_W,
+        Edit::FrameContent { before, after, .. } => {
+            (before.layers.len() + after.layers.len()) * LAYER_W
+        }
+        Edit::DocStructure { before, after, .. } => {
+            let layers: usize =
+                before.iter().chain(after.iter()).map(|f| f.layers.len()).sum();
+            layers * LAYER_W + (before.len() + after.len()) * 64
+        }
+        Edit::Selection => 0,
+    };
+    edit + mask(&rec.sel_before) + mask(&rec.sel_after) + 128
 }
 
 impl History {
@@ -112,10 +151,40 @@ impl History {
         }
     }
 
+    /// The effective byte budget (test override or the default).
+    pub fn byte_budget(&self) -> usize {
+        self.byte_budget.unwrap_or(HISTORY_BYTE_BUDGET)
+    }
+
+    /// Override the byte budget (tests / stress lab). `None` restores the default.
+    pub fn set_byte_budget(&mut self, budget: Option<usize>) {
+        self.byte_budget = budget;
+        self.enforce_byte_budget();
+    }
+
+    /// Approximate retained bytes across undo + redo (see [`weight_of`]).
+    pub fn retained_bytes(&self) -> usize {
+        self.bytes
+    }
+
+    fn enforce_byte_budget(&mut self) {
+        let budget = self.byte_budget();
+        while self.bytes > budget && self.undo.len() > MIN_RECORDS {
+            let removed = self.undo.remove(0);
+            self.dec(&removed);
+            self.bytes = self.bytes.saturating_sub(weight_of(&removed));
+        }
+    }
+
     fn push(&mut self, rec: Record) {
-        self.redo.clear(); // redo records are not counted (counts tracks only the undo stack)
+        // Redo records are not in `counts` but ARE in `bytes` — settle before clearing.
+        for r in &self.redo {
+            self.bytes = self.bytes.saturating_sub(weight_of(r));
+        }
+        self.redo.clear();
         let fid = rec.edit.frame_id();
         self.inc(&rec);
+        self.bytes += weight_of(&rec);
         self.undo.push(rec);
         // Per-frame compaction: drop the oldest content edit for this frame past the cap.
         if let Some(fid) = fid {
@@ -123,6 +192,7 @@ impl History {
                 if let Some(pos) = self.undo.iter().position(|r| r.edit.frame_id() == Some(fid)) {
                     let removed = self.undo.remove(pos);
                     self.dec(&removed);
+                    self.bytes = self.bytes.saturating_sub(weight_of(&removed));
                 } else {
                     break;
                 }
@@ -132,7 +202,10 @@ impl History {
         while self.undo.len() > TOTAL_CAP {
             let removed = self.undo.remove(0);
             self.dec(&removed);
+            self.bytes = self.bytes.saturating_sub(weight_of(&removed));
         }
+        // Byte budget (memlab M2): count caps bound records, this bounds what they retain.
+        self.enforce_byte_budget();
     }
 }
 

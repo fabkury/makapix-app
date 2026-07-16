@@ -413,3 +413,29 @@ fn history_table_retention_is_linear_not_quadratic() {
     }
     assert_eq!(s.doc.frames.len(), 1, "undo chain rewinds the AddFrames");
 }
+
+#[test]
+fn history_byte_budget_evicts_oldest_but_keeps_floor() {
+    // 20 full-canvas noise repaints at 256x256: each Pixels record weighs ~528 KB (64 tiles x 2
+    // sides). A 4 MiB budget holds ~7 of those, but the MIN_RECORDS floor (8) wins.
+    let mut s = run("NewDocument(256,256)");
+    s.doc.history.set_byte_budget(Some(4 * 1024 * 1024));
+    for i in 0..20 {
+        s.run_script(&format!("FillNoise({})", i + 1)).unwrap();
+    }
+    assert_eq!(s.doc.history.undo.len(), makapix_engine::history::MIN_RECORDS);
+    // The surviving records still undo cleanly.
+    for _ in 0..makapix_engine::history::MIN_RECORDS {
+        assert!(s.doc.undo(), "records within the floor must undo");
+    }
+    assert!(!s.doc.undo(), "evicted records are gone");
+
+    // A generous budget retains everything (count caps permitting).
+    let mut s2 = run("NewDocument(256,256)");
+    s2.doc.history.set_byte_budget(Some(64 * 1024 * 1024));
+    for i in 0..20 {
+        s2.run_script(&format!("FillNoise({})", i + 1)).unwrap();
+    }
+    assert_eq!(s2.doc.history.undo.len(), 20);
+    assert!(s2.doc.history.retained_bytes() > 10 * 1024 * 1024);
+}

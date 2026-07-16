@@ -68,6 +68,11 @@ impl TilePatch {
         self.changed.is_empty()
     }
 
+    /// Number of changed tile slots (each holds a before + after `Arc`).
+    pub fn len(&self) -> usize {
+        self.changed.len()
+    }
+
     /// Visit every tile `Arc` this patch holds alive (both before and after sides). Memory
     /// accounting walks these to find what the undo history retains beyond the live document
     /// (dedup by `Arc` pointer — see `probe::mem_report`).
