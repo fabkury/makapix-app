@@ -11,12 +11,18 @@
 //!   stats:F:L            pixel:F:L:X:Y         ramp:x0:y0:x1:y1:N
 //!   thumb:F:L:W:H        render:F:OUT.png[:S]  composite:F:OUT.png[:S]
 //!   assert.undo          assert.gradient:TOL   assert.roundtrip
+//!   mem                  mem.os
+//!
+//! `mem` prints the engine-accounted memory census (tile-deduped; see `probe::mem_report`);
+//! `mem.os` prints the process's OS-level resident/peak bytes. Probes run in order, so placing
+//! `mem.os` after `assert.roundtrip` captures the save/load transient in the peak.
 
 use makapix_engine::probe;
 use makapix_engine::render;
 use makapix_engine::Session;
 use std::process::exit;
 
+mod mem;
 mod png;
 
 fn main() {
@@ -74,6 +80,11 @@ fn main() {
         let parts: Vec<&str> = spec.split(':').collect();
         match parts[0] {
             "state" => println!("{}", session.state_json()),
+            "mem" => println!("# mem {}", session.mem_json()),
+            "mem.os" => {
+                let m = mem::os_mem();
+                println!("# mem.os resident_bytes={} peak_bytes={}", m.resident, m.peak);
+            }
             "ascii" => {
                 let (f, l) = (idx(&parts, 1), idx(&parts, 2));
                 // Window on the canvas rect: layer buffers are storage-sized (canvas + gutter,
