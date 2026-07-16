@@ -66,6 +66,10 @@ app/android/app/google-services.json
 # Scratch dir for in-progress notes and downloaded secrets (firebase/, keystore/).
 inbox/
 
+# ---- Private prompt notes — local only, never committed ----
+# Also deny-listed from Claude Code reads via .claude/settings.local.json.
+/prompt/
+
 # ---- Local Claude Code state (machine/user-specific) ----
 .claude/
 
