@@ -19,7 +19,9 @@ Terminology, kept strict in the docs: *Makapix Club* = the product (website **an
 *Makapix Editor* = the editor feature **inside** this app, not a separate product. Don't conflate them.
 
 **Doc map:** `README.md` (product hub) · `PLAN.md` (editor build plan) · `STATUS.md` (honest feature
-coverage) · `docs/plans/C{0..3}-*.md` (per-phase implementation plans). The detailed design specs — `SPEC.md`
+coverage) · `docs/plans/C{0..3}-*.md` (per-phase implementation plans) · `docs/memlab/REPORT.md` (measured
+memory limits under adversarial content — the numbers to design against; enforcement scoped in
+`docs/plans/memory-budget-enforcement.md`). The detailed design specs — `SPEC.md`
 (editor engine: data model, FFI, DSL, `.mkpx`, UI) and `SPEC-CLUB.md` (social layer + server contract; §28 the
 phase plan, §29 the website→app parity matrix) — are **internal design docs kept out of the public repo**;
 they live on the maintainer's machine, so references to them below won't resolve in a public checkout.
@@ -192,6 +194,12 @@ C5 real-time & players · C6 moderation & extras. Commits and branch work are ta
 
 ## Platform gotchas (Windows / Android)
 
+- **Android has a ~1 GiB allocator wall the workstation doesn't.** scudo caps its ~4 KiB size class —
+  where pixel tiles (4,112 B) and undo tile-tables (4,608 B) live — at ~1.0 GiB per process; past it every
+  tile allocation fails and `panic = "abort"` turns that into a SIGABRT crash (not an LMK kill), regardless
+  of device RAM. Measured 2026-07-16 on a 16 GB Pixel 10 Pro XL, in-app and headless alike; Windows runs the
+  same workloads to multi-GB, so a "works on the workstation" memory test proves nothing for devices. Numbers
+  and harnesses: `docs/memlab/REPORT.md` + `tools/memlab/`.
 - **Windows needs the VS "C++ ATL" component.** `flutter_secure_storage_windows` `#include`s `<atlstr.h>`
   (its `CA2W`/`CW2A` string macros), so a Windows build fails with `C1083: Cannot open include file:
   'atlstr.h'` unless ATL is installed. Add it once (elevated): `setup.exe modify --installPath "<VS

@@ -25,15 +25,21 @@ from this workstation (`build.ps1`).
 Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending) · **○ stubbed / not yet**.
 
 ## Build artifacts
-- `crates/engine` — pure deterministic core (dependency-free). **175 lib + 16 scenario + 4 fuzz + 1 perf tests.**
+- `crates/engine` — pure deterministic core (dependency-free). **208 lib + 18 scenario + 4 fuzz + 1 perf tests.**
 - `crates/codec` — image import/export (`image` crate). **12 tests.**
 - `crates/ffi` — C-ABI engine library: Windows `makapix_ffi.dll` · Android `libmakapix_ffi.so` (jniLibs) ·
   iOS dynamic `MakapixFFI.framework` (built by `build_ios.sh`; export-gated in CI). **6 tests.**
 - `crates/cli` — `mkpx` headless harness (renders PNG, prints oracles/JSON; exit-code CI gate).
 - `app/` — Flutter: Windows exe (`build.ps1`) · Android APK/AAB (`build_android.ps1`,
   `release_android.ps1` → Play) · iOS ipa (Codemagic → TestFlight/App Store, `codemagic.yaml`).
-- **Total: 214 Rust tests + 236 Dart tests green** (verified 2026-07-10). Engine loop verified by rendering
+- **Total: 249 Rust tests + 249 Dart tests green** (verified 2026-07-16). Engine loop verified by rendering
   `examples/demo.txt` & `showcase.txt`.
+- `tools/memlab/` — **memory-limit stress study (2026-07-16, ✅ measured on Windows + Pixel 10 Pro XL)**:
+  full-noise adversarial documents, headless CLI matrix + intent-gated in-app ladder. Findings + budgets:
+  [`docs/memlab/REPORT.md`](docs/memlab/REPORT.md); headline: Android aborts (scudo ~1 GiB size-class wall,
+  SIGABRT not LMK) long before the nominal 1024×64 frame/layer limits; `.mkpx` save transient 6–7× doc;
+  scripted frame-adding retains O(frames²·layers) undo tables. **Enforcement not yet implemented** — scoped
+  in [`docs/plans/memory-budget-enforcement.md`](docs/plans/memory-budget-enforcement.md).
 
 ## Core first-class features
 | Feature | Status | Notes |

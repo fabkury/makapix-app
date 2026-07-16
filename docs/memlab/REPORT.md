@@ -128,6 +128,11 @@ the headless CLI. LMK never got a say — the allocator aborts first.
 
 ## Recommended budgets (for the enforcement follow-up)
 
+> **Scoped 2026-07-16:** these recommendations are now a concrete work plan —
+> [`docs/plans/memory-budget-enforcement.md`](../plans/memory-budget-enforcement.md)
+> (M1 Arc'd tile tables · M2 history byte budget · M3 document budget at growth edges ·
+> M4 save-dict fix + size guards · M5 try_reserve hardening · M6 device re-validation).
+
 The measured constants make a joint byte budget straightforward. Suggested numbers, sized so the
 worst transient (save, ~7×… in-class ~3×) stays under the Android class ceiling with margin:
 
