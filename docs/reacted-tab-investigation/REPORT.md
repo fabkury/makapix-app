@@ -117,12 +117,16 @@ truly cures it. Until the pinned Flutter carries #187586:
 (master 2026-06-09 or later); if so, the glow behavior may be reverted to stretch — or kept, as a
 taste call.
 
-### Follow-ups considered, not yet done
+### Follow-ups (done 2026-07-16)
 
-- Upgrade workstation Flutter 3.44.1 → 3.44.6 (unrelated Android Impeller fixes, e.g.
-  shutdown/rotation crash) — pending decision.
-- Request a cherry-pick of #187586 into 3.44 stable (hard crash on flagship hardware qualifies) —
-  pending decision.
+- Mitigation **device-verified**: after installing the glow build, the previous repro steps
+  produced zero new crash-buffer records on the Pixel 10.
+- Workstation Flutter upgraded 3.44.1 → **3.44.6** (latest stable hotfix; unrelated Android
+  Impeller fixes, e.g. shutdown/rotation crash). `flutter analyze` clean, full test suite green.
+- **Cherry-pick of #187586 into 3.44 stable requested upstream**: the `cp: stable` label needs
+  triage rights, so the request was filed as a comment with the required CP fields —
+  <https://github.com/flutter/flutter/pull/187586#issuecomment-4994275706>. If granted, the fix
+  arrives in a 3.44.x hotfix; either way, re-check on the next Flutter upgrade.
 
 ---
 
