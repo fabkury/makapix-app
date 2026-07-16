@@ -2054,17 +2054,8 @@ impl Session {
         }
         let before = self.begin_edit();
         let canvas = self.doc.canvas_rect();
-        let mut rng = SeededRng::new(seed);
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-        for y in canvas.y..canvas.bottom() {
-            for x in canvas.x..canvas.right() {
-                let v = rng.next_u64();
-                // Alpha ORs in 1 so no pixel is transparent (keeps every tile fully materialized
-                // and immune to compact()); the low bias is irrelevant for stress content.
-                let c = Rgba8::new(v as u8, (v >> 8) as u8, (v >> 16) as u8, (v >> 24) as u8 | 1);
-                buf.set(x, y, c);
-            }
-        }
+        tool::noise_fill(buf, canvas, seed);
         self.commit_edit(before);
     }
 

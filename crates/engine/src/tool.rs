@@ -552,6 +552,23 @@ pub fn fill_region(buf: &mut RgbaBuffer, sel: Option<&Mask>, clip: IRect, color:
     }
 }
 
+/// Fill `rect` with seeded random RGBA noise — every pixel non-transparent, every tile distinct
+/// and incompressible. The single source of the stress-noise byte pattern: `Session::fill_noise`
+/// (the `FillNoise` DSL action), the `mkpx gen` harness command, and the app's stress lab must
+/// all produce identical content for a given seed.
+pub fn noise_fill(buf: &mut RgbaBuffer, rect: IRect, seed: u64) {
+    let mut rng = crate::util::SeededRng::new(seed);
+    for y in rect.y..rect.bottom() {
+        for x in rect.x..rect.right() {
+            let v = rng.next_u64();
+            // Alpha ORs in 1 so no pixel is transparent (keeps every tile fully materialized and
+            // immune to compact()); the low bias is irrelevant for stress content.
+            let c = Rgba8::new(v as u8, (v >> 8) as u8, (v >> 16) as u8, (v >> 24) as u8 | 1);
+            buf.set(x, y, c);
+        }
+    }
+}
+
 /// Clear (erase) the selection, or the whole layer (gutter included) when there's no selection.
 pub fn clear_region(buf: &mut RgbaBuffer, sel: Option<&Mask>, clip: IRect) {
     if sel.is_none() {

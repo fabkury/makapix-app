@@ -5,6 +5,13 @@
 //! Usage:
 //!   mkpx run <script.txt | -> [PROBE ...]
 //!   mkpx new <w> <h> -- <inline; actions; ...> [PROBE ...]
+//!   mkpx gen <w> <h> <frames> <layers> <seed> <out.mkpx> [PROBE ...]
+//!   mkpx load <file.mkpx> [PROBE ...]
+//!
+//! `gen` builds a document whose every layer is full seeded noise (`tool::noise_fill`) by direct
+//! construction — NO undo history, unlike scripted AddFrame/FillNoise — then saves it: the
+//! resting-document memory floor for stress scaling. `load` loads a .mkpx and runs probes
+//! (also history-free). Timings go to stderr as `# gen ...` lines.
 //!
 //! Probes (colon-separated):
 //!   ascii:F:L            state                 hash:F:L
@@ -68,6 +75,39 @@ fn main() {
             let h: u16 = args[3].parse().unwrap_or(64);
             session = Session::new(w, h);
             probe_start = 4;
+        }
+        "gen" => {
+            if args.len() < 8 {
+                eprintln!("mkpx gen needs <w> <h> <frames> <layers> <seed> <out.mkpx>");
+                exit(2);
+            }
+            let w: u16 = args[2].parse().unwrap_or(64);
+            let h: u16 = args[3].parse().unwrap_or(64);
+            let frames: usize = args[4].parse().unwrap_or(1);
+            let layers: usize = args[5].parse().unwrap_or(1);
+            let seed0: u64 = args[6].parse().unwrap_or(1);
+            session = gen_noise_doc(w, h, frames.max(1), layers.max(1), seed0, &args[7]);
+            probe_start = 8;
+        }
+        "load" => {
+            if args.len() < 3 {
+                eprintln!("mkpx load needs a .mkpx path");
+                exit(2);
+            }
+            let bytes = match std::fs::read(&args[2]) {
+                Ok(b) => b,
+                Err(e) => {
+                    eprintln!("cannot read {}: {}", args[2], e);
+                    exit(2);
+                }
+            };
+            let t0 = std::time::Instant::now();
+            if let Err(e) = session.load_bytes(&bytes) {
+                eprintln!("load error: {:?}", e);
+                exit(2);
+            }
+            println!("# load bytes={} ms={:.1}", bytes.len(), t0.elapsed().as_secs_f64() * 1000.0);
+            probe_start = 3;
         }
         other => {
             eprintln!("unknown command '{}'", other);
@@ -194,6 +234,65 @@ fn idx(parts: &[&str], k: usize) -> usize {
 }
 fn iarg(parts: &[&str], k: usize) -> i32 {
     parts.get(k).and_then(|s| s.parse().ok()).unwrap_or(0)
+}
+
+/// Build a `frames`×`layers` document whose every layer is full canvas noise, by DIRECT document
+/// construction (no Session actions, so no undo history — the resting-document floor), save it to
+/// `out`, and return the session holding it. Seeds increment per layer from `seed0`, matching what
+/// a `FillNoise(seed)` script with the same seed order produces.
+fn gen_noise_doc(w: u16, h: u16, frames: usize, layers: usize, seed0: u64, out: &str) -> Session {
+    use makapix_engine::document::{BlendMode, Frame, Layer};
+    use makapix_engine::buffer::RgbaBuffer;
+    use makapix_engine::tool;
+
+    let mut session = Session::new(w, h);
+    let storage = session.doc.storage();
+    let canvas = session.doc.canvas_rect();
+    let t0 = std::time::Instant::now();
+    let mut seed = seed0;
+    let mut fs = Vec::with_capacity(frames);
+    for fi in 0..frames {
+        let mut ls = Vec::with_capacity(layers);
+        for li in 0..layers {
+            let mut pixels = RgbaBuffer::from_size(storage);
+            tool::noise_fill(&mut pixels, canvas, seed);
+            seed += 1;
+            ls.push(Layer {
+                id: (fi * layers + li + 1) as u32,
+                name: format!("Layer {}", li + 1),
+                visible: true,
+                locked: false,
+                opacity: 255,
+                blend: BlendMode::Normal,
+                pixels,
+            });
+        }
+        fs.push(Frame { id: (fi + 1) as u32, duration_us: 100_000, layers: ls, active_layer: 0 });
+    }
+    session.doc.frames = fs;
+    let build_ms = t0.elapsed().as_secs_f64() * 1000.0;
+
+    let t1 = std::time::Instant::now();
+    let bytes = session.save_bytes();
+    let save_ms = t1.elapsed().as_secs_f64() * 1000.0;
+    let t2 = std::time::Instant::now();
+    if let Err(e) = std::fs::write(out, &bytes) {
+        eprintln!("cannot write {}: {}", out, e);
+        exit(2);
+    }
+    let write_ms = t2.elapsed().as_secs_f64() * 1000.0;
+    println!(
+        "# gen {}x{} frames={} layers={} build_ms={:.1} save_ms={:.1} write_ms={:.1} file_bytes={}",
+        w,
+        h,
+        frames,
+        layers,
+        build_ms,
+        save_ms,
+        write_ms,
+        bytes.len()
+    );
+    session
 }
 
 fn layer_buffer(s: &Session, f: usize, l: usize) -> makapix_engine::buffer::RgbaBuffer {
