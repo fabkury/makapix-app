@@ -114,6 +114,14 @@ impl Frame {
     }
 }
 
+/// Hard cap on palettes per document — kept in lockstep with the `.mkpx` loader's UPAL bound
+/// (io.rs), so an in-memory document can never grow past what the loader will accept back.
+pub const MAX_PALETTES: usize = 256;
+
+/// Cap on colors a palette is meant to hold; the `used_colors` query aborts past this many
+/// uniques rather than enumerate a photographic image.
+pub const MAX_PALETTE_COLORS: usize = 256;
+
 #[derive(Clone)]
 pub struct Palette {
     pub name: String,

@@ -2183,6 +2183,32 @@ impl Session {
         crate::probe::mem_report(&self.doc, &extras).to_json()
     }
 
+    /// Unique colors used by the artwork — see [`probe::used_colors`](crate::probe::used_colors).
+    pub fn used_colors(&self, max: usize) -> Option<Vec<Rgba8>> {
+        crate::probe::used_colors(&self.doc, max)
+    }
+
+    /// The `used_colors` query as JSON for the shell: `{"colors":["#RRGGBBAA",...]}`, or
+    /// `{"over_limit":true}` when the artwork uses more than
+    /// [`MAX_PALETTE_COLORS`](crate::document::MAX_PALETTE_COLORS) unique colors (early abort —
+    /// presence only, no ranking or occurrence counts).
+    pub fn used_colors_json(&self) -> String {
+        match self.used_colors(crate::document::MAX_PALETTE_COLORS) {
+            None => "{\"over_limit\":true}".to_string(),
+            Some(cs) => {
+                let mut s = String::from("{\"colors\":[");
+                for (i, c) in cs.iter().enumerate() {
+                    if i > 0 {
+                        s.push(',');
+                    }
+                    s.push_str(&format!("\"{}\"", c.to_hex()));
+                }
+                s.push_str("]}");
+                s
+            }
+        }
+    }
+
     pub fn clear_selection_pixels(&mut self) {
         // No selection → no-op (clearing "the selection" must not wipe the whole layer).
         if self.doc.selection.is_none() || !self.active_editable() {
@@ -2894,6 +2920,9 @@ impl Session {
         }
     }
     pub fn new_palette(&mut self, name: impl Into<String>) {
+        if self.doc.palettes.len() >= crate::document::MAX_PALETTES {
+            return; // past this the .mkpx loader would refuse the document
+        }
         self.doc.palettes.push(crate::document::Palette { name: name.into(), colors: Vec::new() });
         self.doc.active_palette = self.doc.palettes.len() - 1;
     }
@@ -2907,6 +2936,58 @@ impl Session {
     }
     pub fn clear_palette(&mut self) {
         self.doc.palette_mut().colors.clear();
+    }
+    /// Delete palette `i`. The last remaining palette can never be deleted (a document always
+    /// keeps at least one, matching the `.mkpx` loader). The active palette object stays active
+    /// when possible; deleting the active one falls to the palette that slides into its slot.
+    pub fn delete_palette(&mut self, i: usize) {
+        if self.doc.palettes.len() <= 1 || i >= self.doc.palettes.len() {
+            return;
+        }
+        self.doc.palettes.remove(i);
+        let a = self.doc.active_palette;
+        self.doc.active_palette = if i < a { a - 1 } else { a.min(self.doc.palettes.len() - 1) };
+    }
+    /// Insert a copy of palette `i` (named "<name> copy") right after it and make the copy
+    /// active (consistent with `new_palette`). No-op at the palette cap.
+    pub fn duplicate_palette(&mut self, i: usize) {
+        if i >= self.doc.palettes.len() || self.doc.palettes.len() >= crate::document::MAX_PALETTES {
+            return;
+        }
+        let mut p = self.doc.palettes[i].clone();
+        p.name.push_str(" copy");
+        self.doc.palettes.insert(i + 1, p);
+        self.doc.active_palette = i + 1;
+    }
+    /// Move palette `from` so it ends up at index `to`; the active palette follows the object,
+    /// not the slot.
+    pub fn move_palette(&mut self, from: usize, to: usize) {
+        let n = self.doc.palettes.len();
+        if from == to || from >= n || to >= n {
+            return;
+        }
+        let p = self.doc.palettes.remove(from);
+        self.doc.palettes.insert(to, p);
+        let a = self.doc.active_palette;
+        self.doc.active_palette = if a == from {
+            to
+        } else if from < a && to >= a {
+            a - 1
+        } else if from > a && to <= a {
+            a + 1
+        } else {
+            a
+        };
+    }
+    pub fn rename_palette_at(&mut self, i: usize, name: impl Into<String>) {
+        if i < self.doc.palettes.len() {
+            self.doc.palettes[i].name = name.into();
+        }
+    }
+    pub fn clear_palette_at(&mut self, i: usize) {
+        if i < self.doc.palettes.len() {
+            self.doc.palettes[i].colors.clear();
+        }
     }
 
     // ---- animation / rng ----
@@ -4917,6 +4998,102 @@ mod tests {
         assert_eq!(s.doc.palette().colors.len(), 1);
         s.run_script("SetActivePalette(0)").unwrap();
         assert_eq!(s.doc.palette().colors.len(), n0 + 2);
+    }
+
+    #[test]
+    fn delete_palette_fixes_up_active_and_keeps_last() {
+        let mut s = Session::new(8, 8);
+        s.run_script("NewPalette(B); NewPalette(C)").unwrap(); // [Default, B, C], active = C(2)
+        s.run_script("DeletePalette(0)").unwrap(); // deleting below the active: object follows
+        assert_eq!(s.doc.palettes.len(), 2);
+        assert_eq!(s.doc.active_palette, 1);
+        assert_eq!(s.doc.palette().name, "C");
+        s.run_script("DeletePalette(1)").unwrap(); // deleting the active tail → clamp
+        assert_eq!(s.doc.active_palette, 0);
+        assert_eq!(s.doc.palette().name, "B");
+        s.run_script("DeletePalette(0)").unwrap(); // the last palette can never be deleted
+        assert_eq!(s.doc.palettes.len(), 1);
+        s.run_script("NewPalette(X)").unwrap();
+        s.delete_palette(99); // OOB → no-op
+        assert_eq!(s.doc.palettes.len(), 2);
+    }
+
+    #[test]
+    fn duplicate_palette_copies_colors_and_activates() {
+        let mut s = Session::new(8, 8);
+        s.run_script("AddPaletteColor(#112233FF)").unwrap();
+        let n0 = s.doc.palette().colors.len();
+        let name0 = s.doc.palette().name.clone();
+        s.run_script("DuplicatePalette(0)").unwrap();
+        assert_eq!(s.doc.palettes.len(), 2);
+        assert_eq!(s.doc.active_palette, 1);
+        assert_eq!(s.doc.palette().name, format!("{name0} copy"));
+        assert_eq!(s.doc.palette().colors, s.doc.palettes[0].colors);
+        assert_eq!(s.doc.palette().colors.len(), n0);
+        s.duplicate_palette(9); // OOB → no-op
+        assert_eq!(s.doc.palettes.len(), 2);
+    }
+
+    #[test]
+    fn move_palette_active_follows_object() {
+        let mut s = Session::new(8, 8);
+        s.run_script("NewPalette(B); NewPalette(C); SetActivePalette(1)").unwrap(); // [Default,B,C], active=B
+        s.run_script("MovePalette(1, 2)").unwrap(); // moving the active palette itself
+        assert_eq!((s.doc.palette().name.as_str(), s.doc.active_palette), ("B", 2));
+        s.run_script("MovePalette(0, 2)").unwrap(); // non-active crossing down past the active
+        assert_eq!((s.doc.palette().name.as_str(), s.doc.active_palette), ("B", 1));
+        s.run_script("MovePalette(2, 0)").unwrap(); // non-active crossing up past the active
+        assert_eq!((s.doc.palette().name.as_str(), s.doc.active_palette), ("B", 2));
+        s.move_palette(1, 1); // from == to → no-op
+        s.move_palette(0, 9); // OOB → no-op
+        assert_eq!((s.doc.palette().name.as_str(), s.doc.active_palette), ("B", 2));
+    }
+
+    #[test]
+    fn rename_palette_at_keeps_commas_and_targets_index() {
+        let mut s = Session::new(8, 8);
+        s.run_script("NewPalette(B)").unwrap(); // active = 1
+        s.run_script("RenamePaletteAt(0, Reds, greens & blues)").unwrap();
+        assert_eq!(s.doc.palettes[0].name, "Reds, greens & blues");
+        assert_eq!(s.doc.palette().name, "B", "active palette untouched");
+        assert!(s.run_script("RenamePaletteAt(no-comma)").is_err());
+    }
+
+    #[test]
+    fn clear_palette_at_targets_index_not_active() {
+        let mut s = Session::new(8, 8);
+        s.run_script("NewPalette(B); AddPaletteColor(#FF0000FF)").unwrap(); // B active, 1 color
+        assert!(!s.doc.palettes[0].colors.is_empty());
+        s.run_script("ClearPaletteAt(0)").unwrap();
+        assert!(s.doc.palettes[0].colors.is_empty());
+        assert_eq!(s.doc.palette().colors.len(), 1, "active (B) untouched");
+        s.clear_palette_at(9); // OOB → no-op
+    }
+
+    #[test]
+    fn palette_count_caps_at_256() {
+        let mut s = Session::new(8, 8);
+        for i in 0..300 {
+            s.new_palette(format!("P{i}"));
+        }
+        assert_eq!(s.doc.palettes.len(), crate::document::MAX_PALETTES);
+        let active = s.doc.active_palette;
+        s.duplicate_palette(0); // at the cap → no-op
+        assert_eq!(s.doc.palettes.len(), crate::document::MAX_PALETTES);
+        assert_eq!(s.doc.active_palette, active);
+    }
+
+    #[test]
+    fn used_colors_json_shapes_and_spans_frames() {
+        let mut s = Session::new(4, 4);
+        assert_eq!(s.used_colors_json(), "{\"colors\":[]}");
+        let o = s.doc.origin();
+        s.doc.frames[0].layers[0].pixels.set(o.x, o.y, Rgba8::rgb(1, 2, 3));
+        assert_eq!(s.used_colors_json(), "{\"colors\":[\"#010203FF\"]}");
+        s.run_script("AddFrame()").unwrap();
+        s.doc.frames[1].layers[0].pixels.set(o.x + 1, o.y, Rgba8::rgb(9, 8, 7));
+        let cs = s.used_colors(256).unwrap();
+        assert_eq!(cs, vec![Rgba8::rgb(1, 2, 3), Rgba8::rgb(9, 8, 7)], "frames scanned in order");
     }
 
     #[test]

@@ -667,8 +667,8 @@ extension _EditorControls on _EditorPageState {
               ),
             ),
           ),
-          // palette controls: tucked into a button after the last swatch
-          IconButton(iconSize: 18, tooltip: 'Palette controls', onPressed: _paletteControlsMenu, icon: const Icon(Icons.palette, color: Colors.white70)),
+          // palette management: opens the full-screen palette page
+          IconButton(iconSize: 18, tooltip: 'Palettes', onPressed: _openPalettePage, icon: const Icon(Icons.palette, color: Colors.white70)),
         ]),
       ),
     );
@@ -709,27 +709,18 @@ extension _EditorControls on _EditorPageState {
     );
   }
 
-  void _paletteControlsMenu() {
-    final names = (_state['palette_names'] as List?)?.cast<String>() ?? ['Default'];
-    final active = (_state['active_palette'] as int?) ?? 0;
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          for (var i = 0; i < names.length; i++)
-            ListTile(
-              leading: Icon(i == active ? Icons.radio_button_checked : Icons.radio_button_unchecked, size: 18),
-              title: Text(names[i]),
-              onTap: () { Navigator.pop(ctx); _act('SetActivePalette($i)'); },
-            ),
-          const Divider(height: 1),
-          ListTile(leading: const Icon(Icons.add_circle_outline), title: const Text('Add current colour'), onTap: () { Navigator.pop(ctx); _act('AddPaletteColor(${_hex(_primary)})'); }),
-          ListTile(leading: const Icon(Icons.add_box_outlined), title: const Text('New palette'), onTap: () { Navigator.pop(ctx); _newPalette(); }),
-          ListTile(leading: const Icon(Icons.save_alt), title: const Text('Save palette'), onTap: () { Navigator.pop(ctx); _savePalette(); }),
-          ListTile(leading: const Icon(Icons.file_download_outlined), title: const Text('Load palette (.json/.gpl)'), onTap: () { Navigator.pop(ctx); _loadPalette(); }),
-        ]),
+  // The palette page owns palette-level management (switch/new/rename/duplicate/reorder/
+  // import/export/clear/delete + presets); the row-2 strip keeps colour-level editing.
+  Future<void> _openPalettePage() async {
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => PalettePage(
+        host: EnginePaletteHost(engine, onMutated: () => _autosave?.markActivity()),
       ),
-    );
+    ));
+    if (!mounted) return;
+    _refreshState();
+    _redraw();
+    setState(() {});
   }
 
   void _paletteSwatchMenu(int i, Color c) {
@@ -785,79 +776,6 @@ extension _EditorControls on _EditorPageState {
         );
       }),
     );
-  }
-
-  Future<void> _newPalette() async {
-    final ctrl = TextEditingController(text: 'Palette');
-    final name = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('New palette'),
-        content: TextField(controller: ctrl, autofocus: true),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('Create')),
-        ],
-      ),
-    );
-    if (name != null && name.trim().isNotEmpty) _act('NewPalette(${name.trim()})');
-  }
-
-  Future<void> _savePalette() async {
-    final path = await FilePicker.saveFile(fileName: 'palette.gpl', type: FileType.custom, allowedExtensions: ['gpl', 'json']);
-    if (path == null) return;
-    final names = (_state['palette_names'] as List?)?.cast<String>() ?? ['Palette'];
-    final active = (_state['active_palette'] as int?) ?? 0;
-    final pname = active < names.length ? names[active] : 'Palette';
-    final sb = StringBuffer('GIMP Palette\nName: $pname\nColumns: 0\n#\n');
-    for (final c in _palette) {
-      sb.writeln('${(c.r * 255).round()}\t${(c.g * 255).round()}\t${(c.b * 255).round()}\t${_hex(c)}');
-    }
-    await File(path).writeAsString(sb.toString());
-    _toast('Saved palette (${_palette.length} colors)');
-  }
-
-  Future<void> _loadPalette() async {
-    final res = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['gpl', 'json', 'txt']);
-    if (res == null || res.files.single.path == null) return;
-    final text = await File(res.files.single.path!).readAsString();
-    final colors = _parsePalette(text);
-    if (colors.isEmpty) {
-      _toast('No colors found');
-      return;
-    }
-    _send('NewPalette(${res.files.single.name.split('.').first})');
-    for (final c in colors) {
-      _send('AddPaletteColor(${_hex(c)})');
-    }
-    _refreshState();
-    setState(() {});
-    _toast('Loaded ${colors.length} colors');
-  }
-
-  List<Color> _parsePalette(String text) {
-    final out = <Color>[];
-    // try JSON array of hex strings
-    final t = text.trim();
-    if (t.startsWith('[')) {
-      try {
-        for (final h in (json.decode(t) as List)) {
-          out.add(_parseHex(h.toString()));
-        }
-        return out;
-      } catch (_) {}
-    }
-    // GIMP .gpl: lines of "R G B  name"
-    for (final line in text.split('\n')) {
-      final l = line.trim();
-      if (l.isEmpty || l.startsWith('#') || l.startsWith('GIMP') || l.startsWith('Name:') || l.startsWith('Columns:')) continue;
-      final parts = l.split(RegExp(r'\s+'));
-      if (parts.length >= 3) {
-        final r = int.tryParse(parts[0]), g = int.tryParse(parts[1]), b = int.tryParse(parts[2]);
-        if (r != null && g != null && b != null) out.add(Color.fromARGB(255, r, g, b));
-      }
-    }
-    return out;
   }
 
   // The static visual of a tool tile (icon + label, highlighted when selected/hovered).

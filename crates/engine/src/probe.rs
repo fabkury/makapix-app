@@ -83,6 +83,21 @@ pub fn state_json(doc: &Document) -> String {
         s.push_str(&format!("\"{}\"", c.to_hex()));
     }
     s.push_str("],");
+    s.push_str("\"palettes\":[");
+    for (i, p) in doc.palettes.iter().enumerate() {
+        if i > 0 {
+            s.push(',');
+        }
+        s.push_str(&format!("{{\"name\":\"{}\",\"colors\":[", p.name.replace('"', "'")));
+        for (j, c) in p.colors.iter().enumerate() {
+            if j > 0 {
+                s.push(',');
+            }
+            s.push_str(&format!("\"{}\"", c.to_hex()));
+        }
+        s.push_str("]}");
+    }
+    s.push_str("],");
     s.push_str("\"frame_detail\":[");
     for (i, f) in doc.frames.iter().enumerate() {
         if i > 0 {
@@ -196,6 +211,52 @@ pub fn stats(buf: &RgbaBuffer, window: IRect) -> Stats {
         present_tiles: buf.present_tiles(),
         memory_bytes: buf.memory_bytes(),
     }
+}
+
+/// Unique non-transparent colors used anywhere in the document — every frame, every layer,
+/// canvas window only (the gutter is excluded). Deterministic first-seen order: frames in order,
+/// layers bottom-to-top, present tiles row-major (ty, then tx), row-major within each tile.
+/// Absent tiles are skipped wholesale, so sparse documents scan fast.
+///
+/// Returns `None` as soon as more than `max` unique colors are found — a cheap early abort so a
+/// photographic import can't stall the caller. Presence only: no ranking, no occurrence counts.
+pub fn used_colors(doc: &Document, max: usize) -> Option<Vec<Rgba8>> {
+    let win = doc.canvas_rect();
+    let (tx0, ty0) = ((win.x.max(0) as u32) / TILE, (win.y.max(0) as u32) / TILE);
+    let (tx1, ty1) = (((win.right() - 1).max(0) as u32) / TILE, ((win.bottom() - 1).max(0) as u32) / TILE);
+    let mut seen: HashSet<Rgba8> = HashSet::new();
+    let mut out: Vec<Rgba8> = Vec::new();
+    for f in &doc.frames {
+        for l in &f.layers {
+            let buf = &l.pixels;
+            for ty in ty0..=ty1.min(buf.tiles_y().saturating_sub(1)) {
+                for tx in tx0..=tx1.min(buf.tiles_x().saturating_sub(1)) {
+                    if !buf.tile_present(tx, ty) {
+                        continue;
+                    }
+                    let x0 = ((tx * TILE) as i32).max(win.x);
+                    let y0 = ((ty * TILE) as i32).max(win.y);
+                    let x1 = (((tx + 1) * TILE) as i32).min(win.right());
+                    let y1 = (((ty + 1) * TILE) as i32).min(win.bottom());
+                    for y in y0..y1 {
+                        for x in x0..x1 {
+                            let c = buf.get(x, y);
+                            if c.a == 0 {
+                                continue;
+                            }
+                            if seen.insert(c) {
+                                if out.len() == max {
+                                    return None; // the (max+1)-th unique color: over the limit
+                                }
+                                out.push(c);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Some(out)
 }
 
 pub fn stats_text(buf: &RgbaBuffer, window: IRect) -> String {
@@ -469,5 +530,48 @@ mod tests {
         let s = state_json(&d);
         assert!(s.starts_with("{\"size\":[16,16]"));
         assert!(s.contains("\"frames\":1"));
+    }
+
+    #[test]
+    fn state_json_lists_all_palettes_with_colors() {
+        let mut d = Document::new(8, 8);
+        d.palettes.push(crate::document::Palette {
+            name: "Two".into(),
+            colors: vec![Rgba8::rgb(255, 0, 0)],
+        });
+        let s = state_json(&d);
+        // The full-preview array: every palette with its colors, not just the active one.
+        assert!(s.contains("\"palettes\":[{\"name\":\"Default\",\"colors\":[\"#140C1CFF\""), "{s}");
+        assert!(s.contains("{\"name\":\"Two\",\"colors\":[\"#FF0000FF\"]}"), "{s}");
+        // Legacy keys survive (the row-2 strip reads them).
+        assert!(s.contains("\"palette_names\":[\"Default\",\"Two\"]"), "{s}");
+        assert!(s.contains("\"palette\":["), "{s}");
+    }
+
+    #[test]
+    fn used_colors_first_seen_order_skips_transparent_and_gutter() {
+        let mut d = Document::new(4, 4);
+        let o = d.origin();
+        let buf = &mut d.frames[0].layers[0].pixels;
+        buf.set(0, 0, Rgba8::rgb(9, 9, 9)); // gutter (canvas starts at `o`) — must not be reported
+        buf.set(o.x + 1, o.y, Rgba8::rgb(1, 2, 3)); // first seen
+        buf.set(o.x + 3, o.y, Rgba8::rgb(7, 7, 7));
+        buf.set(o.x + 3, o.y, Rgba8::TRANSPARENT); // written then erased: present tile, a == 0 → skipped
+        buf.set(o.x, o.y + 1, Rgba8::rgb(4, 5, 6)); // second seen
+        buf.set(o.x + 2, o.y + 1, Rgba8::rgb(1, 2, 3)); // duplicate — presence only, no recount
+        let cs = used_colors(&d, 256).expect("under the limit");
+        assert_eq!(cs, vec![Rgba8::rgb(1, 2, 3), Rgba8::rgb(4, 5, 6)]);
+    }
+
+    #[test]
+    fn used_colors_over_limit_aborts_to_none() {
+        let mut d = Document::new(4, 4);
+        let o = d.origin();
+        let buf = &mut d.frames[0].layers[0].pixels;
+        for i in 0..3u8 {
+            buf.set(o.x + i as i32, o.y, Rgba8::rgb(i, 0, 0));
+        }
+        assert_eq!(used_colors(&d, 2), None, "3 uniques with max=2 must abort");
+        assert_eq!(used_colors(&d, 3).map(|v| v.len()), Some(3));
     }
 }

@@ -256,6 +256,16 @@ pub extern "C" fn mkpx_mem_json(ptr: *mut Session) -> *mut c_char {
     }
 }
 
+/// Unique colors used by the artwork as JSON: `{"colors":["#RRGGBBAA",...]}` or
+/// `{"over_limit":true}` past 256 uniques (early abort). Free with `mkpx_free_string`.
+#[no_mangle]
+pub extern "C" fn mkpx_used_colors_json(ptr: *mut Session) -> *mut c_char {
+    match session(ptr) {
+        Some(s) => cstring(&s.used_colors_json()),
+        None => cstring("{}"),
+    }
+}
+
 /// Upper-bound estimate of the `.mkpx` payload the document saves to (bytes) — check before
 /// `mkpx_save` on constrained platforms (SPEC §8.2b).
 #[no_mangle]
@@ -610,6 +620,24 @@ mod tests {
         mkpx_free_bytes(saved, len);
         mkpx_free(p);
         mkpx_free(p2);
+    }
+
+    #[test]
+    fn ffi_used_colors_json() {
+        let p = mkpx_new(16, 16);
+        let empty = mkpx_used_colors_json(p);
+        assert_eq!(unsafe { std::ffi::CStr::from_ptr(empty) }.to_str().unwrap(), "{\"colors\":[]}");
+        mkpx_free_string(empty);
+        let script = b"SelectTool(Pencil); SetPrimaryColor(#112233FF); Tap(5,5)";
+        let err = mkpx_run(p, script.as_ptr(), script.len());
+        assert!(err.is_null());
+        let one = mkpx_used_colors_json(p);
+        assert_eq!(
+            unsafe { std::ffi::CStr::from_ptr(one) }.to_str().unwrap(),
+            "{\"colors\":[\"#112233FF\"]}"
+        );
+        mkpx_free_string(one);
+        mkpx_free(p);
     }
 
     #[test]

@@ -817,7 +817,7 @@ pub fn load_from_bytes_budgeted(data: &[u8], hard_budget: usize) -> Result<Docum
     if let Some(pl) = chunks.upal {
         let mut pr = Reader::new(pl);
         let pc = pr.varint()? as usize;
-        if pc > 256 {
+        if pc > crate::document::MAX_PALETTES {
             return Err(IoError::TooLarge("palettes"));
         }
         for _ in 0..pc {

@@ -25,6 +25,7 @@ import 'package:makapix_club/engine_ffi.dart';
 import 'package:makapix_club/share/image_share.dart';
 
 import 'gallery/gallery_page.dart';
+import 'palette_page.dart';
 import 'persistence/autosave_controller.dart';
 import 'persistence/drawing_meta.dart';
 import 'persistence/drawing_store.dart';

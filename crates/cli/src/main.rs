@@ -18,7 +18,7 @@
 //!   stats:F:L            pixel:F:L:X:Y         ramp:x0:y0:x1:y1:N
 //!   thumb:F:L:W:H        render:F:OUT.png[:S]  composite:F:OUT.png[:S]
 //!   assert.undo          assert.gradient:TOL   assert.roundtrip
-//!   mem                  mem.os
+//!   mem                  mem.os                usedcolors
 //!
 //! `mem` prints the engine-accounted memory census (tile-deduped; see `probe::mem_report`);
 //! `mem.os` prints the process's OS-level resident/peak bytes. Probes run in order, so placing
@@ -122,6 +122,7 @@ fn main() {
         let parts: Vec<&str> = spec.split(':').collect();
         match parts[0] {
             "state" => println!("{}", session.state_json()),
+            "usedcolors" => println!("{}", session.used_colors_json()),
             "mem" => println!("# mem {}", session.mem_json()),
             "mem.os" => {
                 let m = mem::os_mem();

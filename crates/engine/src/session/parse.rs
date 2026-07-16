@@ -149,6 +149,11 @@ pub enum Action {
     RenamePalette(String),
     SetActivePalette(usize),
     ClearPalette,
+    DeletePalette(usize),
+    DuplicatePalette(usize),
+    MovePalette(usize, usize),
+    RenamePaletteAt(usize, String),
+    ClearPaletteAt(usize),
     Undo,
     Redo,
     /// Drop the whole undo/redo history (frees everything it retains). Used by the memory stress
@@ -321,6 +326,11 @@ impl Session {
             RenamePalette(name) => self.rename_palette(name),
             SetActivePalette(i) => self.set_active_palette(i),
             ClearPalette => self.clear_palette(),
+            DeletePalette(i) => self.delete_palette(i),
+            DuplicatePalette(i) => self.duplicate_palette(i),
+            MovePalette(from, to) => self.move_palette(from, to),
+            RenamePaletteAt(i, name) => self.rename_palette_at(i, name),
+            ClearPaletteAt(i) => self.clear_palette_at(i),
             Undo => {
                 self.doc.undo();
                 self.mem_recalibrate();
@@ -676,6 +686,17 @@ fn parse_line(line: &str) -> Result<Action, String> {
         "RenamePalette" => RenamePalette(inner.trim().to_string()),
         "SetActivePalette" => SetActivePalette(usza(0)?),
         "ClearPalette" => ClearPalette,
+        "DeletePalette" => DeletePalette(usza(0)?),
+        "DuplicatePalette" => DuplicatePalette(usza(0)?),
+        "MovePalette" => MovePalette(usza(0)?, usza(1)?),
+        "RenamePaletteAt" => {
+            // index, then the rest is the (free-text) name — split on the first comma only so
+            // names may themselves contain commas (same contract as RenameLayer).
+            let (idx, rest) = inner.split_once(',').ok_or("RenamePaletteAt needs index, name")?;
+            let i = idx.trim().parse::<usize>().map_err(|_| "bad palette index".to_string())?;
+            RenamePaletteAt(i, rest.trim().to_string())
+        }
+        "ClearPaletteAt" => ClearPaletteAt(usza(0)?),
         "Undo" => Undo,
         "Redo" => Redo,
         "ClearHistory" => ClearHistory,
