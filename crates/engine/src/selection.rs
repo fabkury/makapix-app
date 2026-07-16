@@ -52,6 +52,12 @@ impl Mask {
         &self.bits
     }
 
+    /// Approximate resident bytes of this mask (the packed bit words; the struct header is
+    /// negligible). Used by `probe::mem_report` to account masks retained by undo records.
+    pub fn memory_bytes(&self) -> usize {
+        self.bits.len() * 8
+    }
+
     /// Rebuild a mask from serialized `w`×`h` dimensions and its packed bit words. Returns `None`
     /// when the word count doesn't match the dimensions (corrupt input), so the loader can reject
     /// or drop a bad selection rather than trust mismatched data.

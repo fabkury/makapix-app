@@ -332,3 +332,51 @@ fn tiny_canvases_draw_resize_crop_roundtrip() {
     let s = run("NewDocument(0,0)");
     assert_eq!(s.doc.size, makapix_engine::geom::Size::new(1, 1));
 }
+
+// ---- FillNoise + mem probe (memory stress enablers) ----
+
+#[test]
+fn fill_noise_is_deterministic_dense_and_roundtrips() {
+    let a = run("NewDocument(64,64)\nFillNoise(42)");
+    let b = run("NewDocument(64,64)\nFillNoise(42)");
+    let c = run("NewDocument(64,64)\nFillNoise(43)");
+    assert_eq!(a.doc.content_hash(), b.doc.content_hash(), "same seed => same content");
+    assert_ne!(a.doc.content_hash(), c.doc.content_hash(), "different seed => different content");
+    // Every canvas pixel non-transparent; the full canvas tile grid is materialized.
+    for y in 0..64 {
+        for x in 0..64 {
+            assert_ne!(a.pixel(0, 0, x, y).a, 0, "({},{}) transparent", x, y);
+        }
+    }
+    let r = makapix_engine::probe::mem_report(&a.doc, &[]);
+    assert_eq!(r.doc_tiles, 4, "64x64 canvas = 2x2 tiles, all present");
+    // Incompressible content must still round-trip .mkpx byte-exactly.
+    let bytes = a.save_bytes();
+    let mut back = Session::empty();
+    back.load_bytes(&bytes).expect("load noise .mkpx");
+    assert_eq!(back.doc.content_hash(), a.doc.content_hash(), "noise roundtrip");
+}
+
+#[test]
+fn mem_report_sees_cow_sharing_and_history_retention() {
+    let s = run("NewDocument(64,64)\nFillNoise(7)\nDuplicateFrame(0)");
+    let r = makapix_engine::probe::mem_report(&s.doc, &[]);
+    assert_eq!(r.doc_tiles, 8, "two frames x 4 present tiles (with multiplicity)");
+    assert_eq!(r.doc_unique_tiles, 4, "duplicate frame shares tiles via Arc");
+    assert_eq!(r.history_tiles, 0, "history references the same live tiles");
+
+    // Diverge one tile on the duplicate: unique count grows by exactly one.
+    let mut s = s;
+    s.run_script("SetActiveFrame(1)\nSelectTool(Pencil)\nSetPrimaryColor(#00FF00FF)\nStroke([(1,1),(1,1)])")
+        .unwrap();
+    let r = makapix_engine::probe::mem_report(&s.doc, &[]);
+    assert_eq!(r.doc_tiles, 8);
+    assert_eq!(r.doc_unique_tiles, 5, "one tile COW-diverged");
+
+    // Undo the noise fill entirely: the live doc empties but history retains the noise tiles.
+    let s2 = run("NewDocument(64,64)\nFillNoise(9)\nUndo()");
+    let r2 = makapix_engine::probe::mem_report(&s2.doc, &[]);
+    assert_eq!(r2.doc_tiles, 0, "undo restored the empty layer");
+    assert_eq!(r2.history_tiles, 4, "the noise generation is retained by the redo side");
+    assert!(r2.total_bytes() >= 4 * 4096);
+}

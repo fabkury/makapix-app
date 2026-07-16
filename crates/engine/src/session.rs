@@ -2043,6 +2043,45 @@ impl Session {
         self.commit_edit(before);
     }
 
+    /// Fill the active layer's entire canvas rect with seeded random RGBA noise — every pixel
+    /// non-transparent, every tile incompressible and distinct. The adversarial worst case for the
+    /// tiled/COW/RLE architecture, used by memory stress testing (the `FillNoise` DSL action).
+    /// Deterministic for a given seed (own `SeededRng`, independent of the session RNG and of
+    /// script order); ignores the selection on purpose; one undo step like any fill.
+    pub fn fill_noise(&mut self, seed: u64) {
+        if !self.active_editable() {
+            return;
+        }
+        let before = self.begin_edit();
+        let canvas = self.doc.canvas_rect();
+        let mut rng = SeededRng::new(seed);
+        let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
+        for y in canvas.y..canvas.bottom() {
+            for x in canvas.x..canvas.right() {
+                let v = rng.next_u64();
+                // Alpha ORs in 1 so no pixel is transparent (keeps every tile fully materialized
+                // and immune to compact()); the low bias is irrelevant for stress content.
+                let c = Rgba8::new(v as u8, (v >> 8) as u8, (v >> 16) as u8, (v >> 24) as u8 | 1);
+                buf.set(x, y, c);
+            }
+        }
+        self.commit_edit(before);
+    }
+
+    /// Engine-accounted memory census as JSON (the `mem` probe): the live document, the whole
+    /// undo/redo history, and session-held buffers (clipboard, paste draft), tile-deduped by
+    /// `Arc` pointer. See [`probe::mem_report`](crate::probe::mem_report).
+    pub fn mem_json(&self) -> String {
+        let mut extras: Vec<&RgbaBuffer> = Vec::new();
+        if let Some((b, _)) = &self.clipboard {
+            extras.push(b);
+        }
+        if let Some((b, _)) = &self.paste_draft {
+            extras.push(b);
+        }
+        crate::probe::mem_report(&self.doc, &extras).to_json()
+    }
+
     pub fn clear_selection_pixels(&mut self) {
         // No selection → no-op (clearing "the selection" must not wipe the whole layer).
         if self.doc.selection.is_none() || !self.active_editable() {

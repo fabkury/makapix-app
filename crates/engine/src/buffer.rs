@@ -60,6 +60,20 @@ impl TilePatch {
     pub fn is_empty(&self) -> bool {
         self.changed.is_empty()
     }
+
+    /// Visit every tile `Arc` this patch holds alive (both before and after sides). Memory
+    /// accounting walks these to find what the undo history retains beyond the live document
+    /// (dedup by `Arc` pointer — see `probe::mem_report`).
+    pub fn visit_tile_arcs<'a>(&'a self, f: &mut impl FnMut(&'a Arc<Tile>)) {
+        for (_, b, a) in &self.changed {
+            if let Some(t) = b {
+                f(t);
+            }
+            if let Some(t) = a {
+                f(t);
+            }
+        }
+    }
 }
 
 impl RgbaBuffer {
@@ -221,6 +235,21 @@ impl RgbaBuffer {
 
     pub fn present_tiles(&self) -> usize {
         self.tiles.iter().filter(|t| t.is_some()).count()
+    }
+
+    /// Fixed overhead of the tile-slot table itself (present or not): one `Option<Arc<Tile>>`
+    /// per grid slot. Not covered by [`memory_bytes`](Self::memory_bytes) — at 3w×3h storage this
+    /// is a real per-layer constant (e.g. 576 slots for a 256×256 canvas), so the memory model
+    /// reports it separately.
+    pub fn tile_table_bytes(&self) -> usize {
+        self.tiles.len() * std::mem::size_of::<Option<Arc<Tile>>>()
+    }
+
+    /// Visit every present tile's `Arc` (for pointer-deduped memory accounting).
+    pub fn visit_tile_arcs<'a>(&'a self, f: &mut impl FnMut(&'a Arc<Tile>)) {
+        for t in self.tiles.iter().flatten() {
+            f(t);
+        }
     }
 
     pub fn is_empty(&self) -> bool {

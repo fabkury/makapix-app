@@ -2,12 +2,15 @@
 //! structural ASCII, JSON state, photometric ramps/thumbnails, stats, and closed-form
 //! oracles. All are pure reads.
 
-use crate::buffer::RgbaBuffer;
+use crate::buffer::{RgbaBuffer, Tile, TILE};
 use crate::color::Rgba8;
-use crate::document::Document;
+use crate::document::{Document, Frame};
 use crate::geom::{IRect, Point};
+use crate::history::Edit;
+use crate::selection::Mask;
 use crate::tool::{gradient_eval, GradientKind, Stop};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
+use std::sync::Arc;
 
 /// One-glyph-per-pixel structural dump with a color legend (SPEC §22, §3.1).
 pub fn ascii(buf: &RgbaBuffer, rect: IRect) -> String {
@@ -205,6 +208,163 @@ pub fn stats_text(buf: &RgbaBuffer, window: IRect) -> String {
         "# stats non_transparent={} bbox={} present_tiles={} memory_bytes={}\n",
         s.non_transparent, bbox, s.present_tiles, s.memory_bytes
     )
+}
+
+const TILE_BYTES: usize = (TILE * TILE * 4) as usize;
+
+/// Engine-accounted memory census (the `mem` probe). All tile figures are deduped by `Arc`
+/// pointer, so COW sharing (duplicated frames/layers, undo records referencing live tiles) is
+/// measured rather than double-counted. Byte figures count tile payloads only (4096 B each);
+/// allocator/`Arc` overhead is what the OS-level measurement adds on top.
+pub struct MemReport {
+    /// Present tiles across all live layers, with multiplicity (what `Document::memory_bytes`
+    /// counts): `doc_tiles × 4096 = Document::memory_bytes()`.
+    pub doc_tiles: usize,
+    /// Live-document tiles after Arc-pointer dedup — COW sharing wins show as the gap to
+    /// `doc_tiles`.
+    pub doc_unique_tiles: usize,
+    /// Fixed tile-slot-table overhead of every live layer (one pointer per grid slot, present or
+    /// not; 3w×3h storage makes this a real per-layer constant).
+    pub tile_table_bytes: usize,
+    pub layers_total: usize,
+    pub undo_records: usize,
+    pub redo_records: usize,
+    /// Unique tiles reachable *only* from history records (undo + redo) — the memory the history
+    /// retains beyond the live document.
+    pub history_tiles: usize,
+    /// Unique tiles reachable only from session extras (clipboard, paste draft).
+    pub session_tiles: usize,
+    /// Unique selection-mask bytes (live selection + masks retained by history records).
+    pub mask_bytes: usize,
+}
+
+impl MemReport {
+    pub fn doc_bytes(&self) -> usize {
+        self.doc_tiles * TILE_BYTES
+    }
+    pub fn doc_unique_bytes(&self) -> usize {
+        self.doc_unique_tiles * TILE_BYTES
+    }
+    pub fn history_bytes(&self) -> usize {
+        self.history_tiles * TILE_BYTES
+    }
+    pub fn session_bytes(&self) -> usize {
+        self.session_tiles * TILE_BYTES
+    }
+    pub fn total_unique_tiles(&self) -> usize {
+        self.doc_unique_tiles + self.history_tiles + self.session_tiles
+    }
+    /// Grand engine-accounted total: unique tile payloads + tile tables + masks.
+    pub fn total_bytes(&self) -> usize {
+        self.total_unique_tiles() * TILE_BYTES + self.tile_table_bytes + self.mask_bytes
+    }
+
+    pub fn to_json(&self) -> String {
+        format!(
+            "{{\"doc_tiles\":{},\"doc_bytes\":{},\"doc_unique_tiles\":{},\"doc_unique_bytes\":{},\
+             \"tile_table_bytes\":{},\"layers_total\":{},\
+             \"undo_records\":{},\"redo_records\":{},\
+             \"history_tiles\":{},\"history_bytes\":{},\
+             \"session_tiles\":{},\"session_bytes\":{},\
+             \"mask_bytes\":{},\"total_unique_tiles\":{},\"total_bytes\":{}}}",
+            self.doc_tiles,
+            self.doc_bytes(),
+            self.doc_unique_tiles,
+            self.doc_unique_bytes(),
+            self.tile_table_bytes,
+            self.layers_total,
+            self.undo_records,
+            self.redo_records,
+            self.history_tiles,
+            self.history_bytes(),
+            self.session_tiles,
+            self.session_bytes(),
+            self.mask_bytes,
+            self.total_unique_tiles(),
+            self.total_bytes()
+        )
+    }
+}
+
+/// Walk the live document, the whole undo/redo history, and any session-held buffers (`extras`:
+/// clipboard, paste draft), deduping tiles by `Arc` pointer to produce a [`MemReport`].
+pub fn mem_report(doc: &Document, extras: &[&RgbaBuffer]) -> MemReport {
+    let mut seen: HashSet<*const Tile> = HashSet::new();
+    let mut doc_tiles = 0usize;
+    let mut tile_table_bytes = 0usize;
+    let mut layers_total = 0usize;
+
+    let visit_frames = |frames: &[Frame], seen: &mut HashSet<*const Tile>| {
+        for f in frames {
+            for l in &f.layers {
+                l.pixels.visit_tile_arcs(&mut |t| {
+                    seen.insert(Arc::as_ptr(t));
+                });
+            }
+        }
+    };
+
+    for f in &doc.frames {
+        for l in &f.layers {
+            layers_total += 1;
+            doc_tiles += l.pixels.present_tiles();
+            tile_table_bytes += l.pixels.tile_table_bytes();
+            l.pixels.visit_tile_arcs(&mut |t| {
+                seen.insert(Arc::as_ptr(t));
+            });
+        }
+    }
+    let doc_unique_tiles = seen.len();
+
+    let mut masks: HashSet<*const Mask> = HashSet::new();
+    let mut mask_bytes = 0usize;
+    let mut visit_mask = |m: &Option<Arc<Mask>>, masks: &mut HashSet<*const Mask>| {
+        if let Some(m) = m {
+            if masks.insert(Arc::as_ptr(m)) {
+                mask_bytes += m.memory_bytes();
+            }
+        }
+    };
+    visit_mask(&doc.selection, &mut masks);
+
+    for rec in doc.history.undo.iter().chain(doc.history.redo.iter()) {
+        visit_mask(&rec.sel_before, &mut masks);
+        visit_mask(&rec.sel_after, &mut masks);
+        match &rec.edit {
+            Edit::Pixels { patch, .. } => patch.visit_tile_arcs(&mut |t| {
+                seen.insert(Arc::as_ptr(t));
+            }),
+            Edit::FrameContent { before, after, .. } => {
+                visit_frames(std::slice::from_ref(before.as_ref()), &mut seen);
+                visit_frames(std::slice::from_ref(after.as_ref()), &mut seen);
+            }
+            Edit::DocStructure { before, after, .. } => {
+                visit_frames(before, &mut seen);
+                visit_frames(after, &mut seen);
+            }
+            Edit::Selection => {}
+        }
+    }
+    let history_tiles = seen.len() - doc_unique_tiles;
+
+    for buf in extras {
+        buf.visit_tile_arcs(&mut |t| {
+            seen.insert(Arc::as_ptr(t));
+        });
+    }
+    let session_tiles = seen.len() - doc_unique_tiles - history_tiles;
+
+    MemReport {
+        doc_tiles,
+        doc_unique_tiles,
+        tile_table_bytes,
+        layers_total,
+        undo_records: doc.history.undo.len(),
+        redo_records: doc.history.redo.len(),
+        history_tiles,
+        session_tiles,
+        mask_bytes,
+    }
 }
 
 pub struct GradientOracle {

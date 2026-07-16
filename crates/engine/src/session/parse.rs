@@ -107,6 +107,9 @@ pub enum Action {
     MoveDraftCommit,
     MoveDraftCancel,
     FillSelection,
+    /// Stress primitive: fill the active layer's canvas with seeded random noise (see
+    /// `Session::fill_noise`).
+    FillNoise(u64),
     ClearSelection,
     ApplyHsvShift,
     ApplyBrightnessContrast,
@@ -271,6 +274,7 @@ impl Session {
             MoveDraftCommit => self.move_draft_commit(),
             MoveDraftCancel => self.move_draft_cancel(),
             FillSelection => self.fill_selection(),
+            FillNoise(seed) => self.fill_noise(seed),
             ClearSelection => self.clear_selection_pixels(),
             ApplyHsvShift => self.apply_hsv_shift(),
             ApplyBrightnessContrast => self.apply_brightness_contrast(),
@@ -618,6 +622,7 @@ fn parse_line(line: &str) -> Result<Action, String> {
         "MoveDraftCommit" => MoveDraftCommit,
         "MoveDraftCancel" => MoveDraftCancel,
         "FillSelection" => FillSelection,
+        "FillNoise" => FillNoise(u64a(0)?),
         "ClearSelection" => ClearSelection,
         "ApplyHsvShift" => ApplyHsvShift,
         "ApplyBrightnessContrast" => ApplyBrightnessContrast,
