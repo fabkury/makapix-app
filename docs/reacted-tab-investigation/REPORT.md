@@ -32,6 +32,12 @@ message-exchange convention: **`docs/reacted-posts-counts/messages/` in the serv
 (kickoff message `0001-app-reacted-posts-counts-request.md`). No app-side mitigation (hiding the
 info bar) — worse result for more work.
 
+**Resolved same day (2026-07-16):** the server team shipped the three fields via the shared
+`annotate_posts_with_counts` service (messages 0002 dev / 0003 prod, server PR #237), with the
+viewer-relative `user_has_liked` semantics verified with a second account. Independently
+confirmed on prod by anonymous curl (fields present, counts match their DB cross-check). No app
+change was needed — existing app versions lit up on deploy. Exchange closed.
+
 ---
 
 ## Bug 2 — crash on scroll: Impeller/Vulkan engine bug on PowerVR (Pixel 10)
