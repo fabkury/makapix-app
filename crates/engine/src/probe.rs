@@ -232,6 +232,11 @@ pub struct MemReport {
     /// Unique tiles reachable *only* from history records (undo + redo) — the memory the history
     /// retains beyond the live document.
     pub history_tiles: usize,
+    /// Tile-slot-table bytes held by history frame snapshots (`FrameContent`/`DocStructure`
+    /// before+after clones). Unlike tiles these are NOT Arc-shared — every snapshot re-allocates
+    /// its layers' tables — so structural edits on long animations retain O(frames²·layers)
+    /// table bytes here.
+    pub history_table_bytes: usize,
     /// Unique tiles reachable only from session extras (clipboard, paste draft).
     pub session_tiles: usize,
     /// Unique selection-mask bytes (live selection + masks retained by history records).
@@ -254,9 +259,13 @@ impl MemReport {
     pub fn total_unique_tiles(&self) -> usize {
         self.doc_unique_tiles + self.history_tiles + self.session_tiles
     }
-    /// Grand engine-accounted total: unique tile payloads + tile tables + masks.
+    /// Grand engine-accounted total: unique tile payloads + tile tables (live + history-held) +
+    /// masks.
     pub fn total_bytes(&self) -> usize {
-        self.total_unique_tiles() * TILE_BYTES + self.tile_table_bytes + self.mask_bytes
+        self.total_unique_tiles() * TILE_BYTES
+            + self.tile_table_bytes
+            + self.history_table_bytes
+            + self.mask_bytes
     }
 
     pub fn to_json(&self) -> String {
@@ -264,7 +273,7 @@ impl MemReport {
             "{{\"doc_tiles\":{},\"doc_bytes\":{},\"doc_unique_tiles\":{},\"doc_unique_bytes\":{},\
              \"tile_table_bytes\":{},\"layers_total\":{},\
              \"undo_records\":{},\"redo_records\":{},\
-             \"history_tiles\":{},\"history_bytes\":{},\
+             \"history_tiles\":{},\"history_bytes\":{},\"history_table_bytes\":{},\
              \"session_tiles\":{},\"session_bytes\":{},\
              \"mask_bytes\":{},\"total_unique_tiles\":{},\"total_bytes\":{}}}",
             self.doc_tiles,
@@ -277,6 +286,7 @@ impl MemReport {
             self.redo_records,
             self.history_tiles,
             self.history_bytes(),
+            self.history_table_bytes,
             self.session_tiles,
             self.session_bytes(),
             self.mask_bytes,
@@ -294,9 +304,12 @@ pub fn mem_report(doc: &Document, extras: &[&RgbaBuffer]) -> MemReport {
     let mut tile_table_bytes = 0usize;
     let mut layers_total = 0usize;
 
-    let visit_frames = |frames: &[Frame], seen: &mut HashSet<*const Tile>| {
+    // Walk snapshot frames: dedup their tiles into `seen`, and sum their (never-shared) tile
+    // tables into the accumulator.
+    let visit_frames = |frames: &[Frame], seen: &mut HashSet<*const Tile>, tables: &mut usize| {
         for f in frames {
             for l in &f.layers {
+                *tables += l.pixels.tile_table_bytes();
                 l.pixels.visit_tile_arcs(&mut |t| {
                     seen.insert(Arc::as_ptr(t));
                 });
@@ -327,6 +340,7 @@ pub fn mem_report(doc: &Document, extras: &[&RgbaBuffer]) -> MemReport {
     };
     visit_mask(&doc.selection, &mut masks);
 
+    let mut history_table_bytes = 0usize;
     for rec in doc.history.undo.iter().chain(doc.history.redo.iter()) {
         visit_mask(&rec.sel_before, &mut masks);
         visit_mask(&rec.sel_after, &mut masks);
@@ -335,12 +349,12 @@ pub fn mem_report(doc: &Document, extras: &[&RgbaBuffer]) -> MemReport {
                 seen.insert(Arc::as_ptr(t));
             }),
             Edit::FrameContent { before, after, .. } => {
-                visit_frames(std::slice::from_ref(before.as_ref()), &mut seen);
-                visit_frames(std::slice::from_ref(after.as_ref()), &mut seen);
+                visit_frames(std::slice::from_ref(before.as_ref()), &mut seen, &mut history_table_bytes);
+                visit_frames(std::slice::from_ref(after.as_ref()), &mut seen, &mut history_table_bytes);
             }
             Edit::DocStructure { before, after, .. } => {
-                visit_frames(before, &mut seen);
-                visit_frames(after, &mut seen);
+                visit_frames(before, &mut seen, &mut history_table_bytes);
+                visit_frames(after, &mut seen, &mut history_table_bytes);
             }
             Edit::Selection => {}
         }
@@ -362,6 +376,7 @@ pub fn mem_report(doc: &Document, extras: &[&RgbaBuffer]) -> MemReport {
         undo_records: doc.history.undo.len(),
         redo_records: doc.history.redo.len(),
         history_tiles,
+        history_table_bytes,
         session_tiles,
         mask_bytes,
     }
