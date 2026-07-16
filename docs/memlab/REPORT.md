@@ -184,6 +184,15 @@ script's problem, not a user's: interactive actions are one at a time and each r
 Caveat: `mkpx gen` constructs documents directly (deliberately bypassing Session chokepoints) —
 it can still hit the allocator wall and is a lab tool, not a product path.
 
+## Practical limits lookup
+
+The human-readable companion to the budgets is
+[`memory-limits-reference.xlsx`](memory-limits-reference.xlsx): per-canvas-size sheets with the
+maximum frame count per layers-per-frame under the comfortable (256 MiB) and absolute (320 MiB)
+budgets, worst-case (fully painted, all-unique) so every figure is a guarantee, plus an
+"Any size" sheet with the exact tiles-per-axis math (off-grid straddling included). Spot-verified
+against the engine: 64×64 @ 64 layers stops at exactly 320 full frames (335,544,320 bytes).
+
 ## Reproducing
 
 ```powershell
