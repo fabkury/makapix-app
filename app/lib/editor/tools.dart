@@ -2,39 +2,48 @@
 // teach-as-you-go help text shown in the gesture-safe band. Pure data, no engine coupling.
 import 'package:flutter/material.dart';
 
+import 'makapix_icon.dart';
+
 class ToolDef {
   final String dsl;
-  final IconData icon;
+  final IconData? icon;   // Material glyph (tools without an approved custom icon yet)
+  final MpxIcon? custom;  // approved Makapix custom icon (wins over [icon])
   final String label;
-  const ToolDef(this.dsl, this.icon, this.label);
+  const ToolDef(this.dsl, this.icon, this.label) : custom = null;
+  const ToolDef.custom(this.dsl, this.custom, this.label) : icon = null;
+
+  /// The tool's glyph at [size]; custom and Material icons render alike.
+  Widget iconWidget({required double size, Color? color}) => custom != null
+      ? MakapixIcon(custom!, size: size, color: color)
+      : Icon(icon, size: size, color: color);
 }
 
 const tools = <ToolDef>[
-  ToolDef('Pencil', Icons.edit, 'Pencil'),
+  ToolDef.custom('Pencil', MpxIcons.pencil, 'Pencil'),
   ToolDef('Brush', Icons.brush, 'Brush'),
-  ToolDef('Airbrush', Icons.blur_on, 'Airbrush'),
-  ToolDef('Eraser', Icons.auto_fix_normal, 'Eraser'),
-  ToolDef('Bucket', Icons.format_color_fill, 'Fill'),
+  ToolDef.custom('Airbrush', MpxIcons.airbrush, 'Airbrush'),
+  ToolDef.custom('Eraser', MpxIcons.eraser, 'Eraser'),
+  ToolDef.custom('Bucket', MpxIcons.fill, 'Fill'),
   ToolDef('Gradient', Icons.gradient, 'Gradient'),
-  ToolDef('Line', Icons.show_chart, 'Line'),
+  ToolDef.custom('Line', MpxIcons.line, 'Line'),
   ToolDef('Shape', Icons.category_outlined, 'Shape'),
   ToolDef('Ruler', Icons.straighten, 'Ruler'),
   ToolDef('Dodge', Icons.light_mode, 'Dodge'),
   ToolDef('Burn', Icons.dark_mode, 'Burn'),
-  ToolDef('Eyedropper', Icons.colorize, 'Pick'),
+  ToolDef.custom('Eyedropper', MpxIcons.pick, 'Pick'),
   ToolDef('Move', Icons.open_with, 'Move'),
   ToolDef('CopyPaste', Icons.content_copy, 'Copy'),
   // Select Shape concentrates Rectangle/Ellipse selection into one tool with a row-1 toggle (like the
   // Shape tool groups Ellipse/Triangle/Rectangle); it drafts the selection before committing it.
-  ToolDef('SelectShape', Icons.highlight_alt, 'Select'),
-  ToolDef('SelectFree', Icons.gesture, 'Lasso'),
-  ToolDef('SelectByColor', Icons.colorize_outlined, 'Sel Color'),
-  ToolDef('SelectLayer', Icons.opacity, 'Sel Lyr'),
+  ToolDef.custom('SelectShape', MpxIcons.select, 'Select'),
+  ToolDef.custom('SelectFree', MpxIcons.lasso, 'Lasso'),
+  ToolDef.custom('SelectByColor', MpxIcons.selColor, 'Sel Color'),
+  ToolDef.custom('SelectLayer', MpxIcons.selLyr, 'Sel Lyr'),
   ToolDef('HsvShift', Icons.palette, 'HSV'),
   ToolDef('BrightnessContrast', Icons.brightness_6, 'Bright'),
   // Transform actions: UI-only groups (no engine draw tool). Selecting one reveals its
   // action button(s) in row-1; the canvas is inert while one is selected.
-  ToolDef('Flip', Icons.flip, 'Flip'),
+  ToolDef.custom('Flip', MpxIcons.flip, 'Flip'),
   ToolDef('Rotate', Icons.rotate_90_degrees_cw, 'Rotate'),
   ToolDef('Resize', Icons.aspect_ratio, 'Resize'),
   ToolDef('Invert', Icons.invert_colors, 'Invert'),
@@ -43,7 +52,7 @@ const tools = <ToolDef>[
   // inert. Onion is an action toggle: tapping it lights up onion-skinning immediately.
   // (Undo/Redo are NOT here — they are pinned at the left of row-3, see _buildToolBar.)
   ToolDef('PlayPause', Icons.play_arrow, 'Play'),
-  ToolDef('Onion', Icons.layers, 'Onion'),
+  ToolDef.custom('Onion', MpxIcons.onion, 'Onion'),
 ];
 
 // Undo/Redo are pinned (fixed, non-reorderable) at the left of row-3, so they're kept out of the

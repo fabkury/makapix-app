@@ -25,7 +25,7 @@ extension _EditorToolgrid on _EditorPageState {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(t.icon, size: 18, color: fg),
+          t.iconWidget(size: 18, color: fg),
           const SizedBox(height: 1),
           Text(t.label, style: TextStyle(fontSize: 8.5, color: active ? Colors.amber : null), maxLines: 1, overflow: TextOverflow.clip),
         ],

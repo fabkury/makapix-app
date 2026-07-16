@@ -51,7 +51,7 @@ extension _EditorControls on _EditorPageState {
           child: ElevatedButton.icon(
             style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
             onPressed: () { _send('EyedropCursor()'); _refreshState(); _redraw(); setState(() {}); },
-            icon: const Icon(Icons.colorize, size: 16),
+            icon: const MakapixIcon(MpxIcons.pick, size: 16),
             label: const Text('Pick'),
           ),
         ));
@@ -64,7 +64,7 @@ extension _EditorControls on _EditorPageState {
           child: ElevatedButton.icon(
             style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
             onPressed: () { _send('SelectColorCursor()'); _refreshState(); _redraw(); setState(() {}); },
-            icon: const Icon(Icons.colorize_outlined, size: 16),
+            icon: const MakapixIcon(MpxIcons.selColor, size: 16),
             label: const Text('Select'),
           ),
         ));
@@ -77,7 +77,7 @@ extension _EditorControls on _EditorPageState {
           child: ElevatedButton.icon(
             style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
             onPressed: () { _send('FillCursor()'); _refreshState(); _redraw(); setState(() {}); },
-            icon: const Icon(Icons.format_color_fill, size: 16),
+            icon: const MakapixIcon(MpxIcons.fill, size: 16),
             label: const Text('Fill'),
           ),
         ));
@@ -89,7 +89,7 @@ extension _EditorControls on _EditorPageState {
             child: ElevatedButton.icon(
               style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
               onPressed: () { _send('AirbrushCursor()'); _refreshState(); _redraw(); setState(() {}); },
-              icon: const Icon(Icons.blur_on, size: 16),
+              icon: const MakapixIcon(MpxIcons.airbrush, size: 16),
               label: const Text('Spray'),
             ),
           ));

@@ -28,6 +28,7 @@ import 'gallery/gallery_page.dart';
 import 'persistence/autosave_controller.dart';
 import 'persistence/drawing_meta.dart';
 import 'persistence/drawing_store.dart';
+import 'makapix_icon.dart';
 import 'tools.dart';
 import 'thumbnail.dart';
 import 'widgets/painters.dart';

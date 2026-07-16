@@ -16,7 +16,7 @@ extension _EditorCanvas on _EditorPageState {
     final inset = MediaQuery.of(context).viewPadding.bottom;
     final gesturePad = inset < 16 ? 16.0 : inset;
     final tip = toolTips[_tool] ?? '';
-    final icon = tools.firstWhere((t) => t.dsl == _tool, orElse: () => tools.first).icon;
+    final tool = tools.firstWhere((t) => t.dsl == _tool, orElse: () => tools.first);
     // FIXED height = exactly two text lines + top padding + the reserved gesture pad, so the
     // band never changes height (no reflow of the rest of the screen).
     const lineH = 13.75; // 11px * 1.25
@@ -28,7 +28,7 @@ extension _EditorCanvas on _EditorPageState {
       padding: EdgeInsets.fromLTRB(12, 6, 12, gesturePad),
       alignment: Alignment.topLeft,
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Icon(icon, size: 13, color: const Color(0xFF6DAA2C)),
+        tool.iconWidget(size: 13, color: const Color(0xFF6DAA2C)),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
