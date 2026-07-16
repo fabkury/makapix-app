@@ -154,6 +154,36 @@ worst transient (save, ~7×… in-class ~3×) stays under the Android class ceil
 5. iOS is unmeasured (deferred); rerun `run_ladder` semantics there before trusting these
    numbers beyond Android.
 
+## Addendum — enforcement shipped and re-validated (2026-07-16, same day)
+
+The plan above was implemented in full (M1–M5, commits `9c84d6d`…`7fbe180`) and the adversarial
+suite re-run on the same Pixel. The engine now holds a strict invariant: **a session is never
+over the 320 MiB hard budget** (mutations that would cross it are rolled back at the three
+chokepoints; over-budget `.mkpx` files are refused at load before materializing a tile).
+
+| Workload (previously) | Now |
+|---|---|
+| edit 512 fr × 1 layer — **SIGABRT at frame 448**, ~1.4 GB retained | ✓ exit 0, all 512 frames, **180 MB RSS** (COW tables + history byte budget; no refusals even needed) |
+| DSL build toward 2 GiB (1024 × 8 noise) — **SIGABRT** | ✓ exit 0, capped at exactly 320 MiB unique payload, thousands of over-budget fills rolled back, process healthy |
+| Save a 256 MiB noise doc — peak 6.2×/7.3× doc | ✓ peak **3.2×** (852 MB on Windows), zero transient in the fatal ~4 KiB class, output byte-identical |
+| In-app ladder — 6 of 11 rungs SIGABRT | ✓ **all 11 rungs survived in a single app launch, zero kills** (`results/android_app.csv`; pre-enforcement runs archived as `*_pre_enforcement.csv`) |
+
+Post-enforcement ladder highlights (Pixel 10 Pro XL, release APK):
+
+| Rung | Result |
+|---|---|
+| edit 256 fr × 1 layer | ✓ 258 MB RSS — history retention fell **302 MB → 719 KB** (COW tables, measured on-device) |
+| edit 512 fr × 1 layer (was SIGABRT @448) | ✓ 342 MB RSS |
+| 1 GiB attempt (1024×4) + save (was SIGABRT) | ✓ capped at 320 MiB doc, 336 MB `.mkpx` saved, 1.32 GB app peak |
+| 2 / 4 / 8 GiB attempts (1024 × 8/16/32) | ✓ all capped at 320 MiB, 632–869 MB RSS, app alive throughout |
+
+Known cost: rungs that hammer the cap are slow — each refused fill still paints, censuses, and
+rolls back (the 8 GiB attempt with ~29k refused fills took ~24 min). That is an adversarial
+script's problem, not a user's: interactive actions are one at a time and each refusal is ~ms.
+
+Caveat: `mkpx gen` constructs documents directly (deliberately bypassing Session chokepoints) —
+it can still hit the allocator wall and is a lab tool, not a product path.
+
 ## Reproducing
 
 ```powershell

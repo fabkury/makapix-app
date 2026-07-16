@@ -38,8 +38,12 @@ Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending)
   full-noise adversarial documents, headless CLI matrix + intent-gated in-app ladder. Findings + budgets:
   [`docs/memlab/REPORT.md`](docs/memlab/REPORT.md); headline: Android aborts (scudo ~1 GiB size-class wall,
   SIGABRT not LMK) long before the nominal 1024×64 frame/layer limits; `.mkpx` save transient 6–7× doc;
-  scripted frame-adding retains O(frames²·layers) undo tables. **Enforcement not yet implemented** — scoped
-  in [`docs/plans/memory-budget-enforcement.md`](docs/plans/memory-budget-enforcement.md).
+  scripted frame-adding retains O(frames²·layers) undo tables. **Enforcement SHIPPED 2026-07-16**
+  ([`docs/plans/memory-budget-enforcement.md`](docs/plans/memory-budget-enforcement.md) M1–M6): COW tile
+  tables, 96 MiB history byte budget, 256/320 MiB document budget on unique payload (rollback at the three
+  mutation chokepoints + loader refusal + editor banner/snackbar), clone-free `.mkpx` save (byte-identical,
+  peak 6.2×→3.2×). Invariant: a session is never over the hard budget — the Android SIGABRT workloads now
+  end as graceful refusals (device-re-validated).
 
 ## Core first-class features
 | Feature | Status | Notes |

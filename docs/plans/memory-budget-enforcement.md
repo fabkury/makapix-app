@@ -35,7 +35,7 @@ wall.
 
 ## Work items (recommended order — M1 first, others build on its census semantics)
 
-### M1 — Arc the tile-slot table (kills the quadratic constant)  `[ ]`  ~1 day
+### M1 — Arc the tile-slot table (kills the quadratic constant)  `[x]` shipped 2026-07-16 (9c84d6d)
 
 `RgbaBuffer.tiles: Vec<Option<Arc<Tile>>>` → `Arc<Vec<Option<Arc<Tile>>>>` with `Arc::make_mut`
 in the mutators (`set`, `put_tile_bytes`, `set_tile`, `clear`, `compact`, `apply_before/after`,
@@ -55,7 +55,7 @@ in the mutators (`set`, `put_tile_bytes`, `set_tile`, `clear`, `compact`, `apply
 - New scenario test: after `AddFrame`×N on a noisy doc, census history table bytes stay O(N·L·8),
   not O(N²·L·4608).
 
-### M2 — History byte budget  `[ ]`  ~0.5 day
+### M2 — History byte budget  `[x]` shipped 2026-07-16 (3880c00)
 
 `history.rs`: alongside the existing caps (`PER_FRAME_CAP=128`, `TOTAL_CAP=8192`), add
 `HISTORY_BYTE_BUDGET` (default **96 MiB**) enforced in `push()`:
@@ -70,7 +70,15 @@ in the mutators (`set`, `put_tile_bytes`, `set_tile`, `clear`, `compact`, `apply
   it; no DSL surface needed yet.
 - Scenario test: churn + AddFrame chains stay under budget; undo still works after eviction.
 
-### M3 — Document budget at the growth edges  `[ ]`  ~1 day engine + 0.5 day shell
+### M3 — Document budget at the growth edges  `[x]` shipped 2026-07-16 (1150188)
+
+> **As-built deviations (both strengthen the plan):** (1) enforcement covers **pixel edits too** —
+> `commit_edit` rolls back any edit that would cross the hard cap (a `mem_slack` upper bound keeps
+> the census walk off the hot path under the soft budget), so the "accepted creep" gap below no
+> longer exists and the invariant is strict: *a session is never over the hard budget*. (2)
+> Decision on over-budget files flipped to **refuse at load** (user choice 2026-07-16) — the
+> loader checks `dict tiles × 4096` against the budget before materializing anything. Uniform
+> budgets, no desktop FFI override (user choice); `SetMemBudget` DSL action for tests/lab.
 
 Budget on **unique tile payload** (Arc-deduped, what actually occupies RAM), *not* multiplicity —
 a 1024-frame animation of a duplicated static background is a legitimate document that COW makes
@@ -97,7 +105,12 @@ payload gradually and is caught by the same checks.
   only at structural actions + banner polling); the wall is 3× away, so creep is harmless.
 - Tests: scenario (structural action refused at cap; flags set); Dart widget test for the banner.
 
-### M4 — Save/export: kill the transient, guard the rest  `[ ]`  ~1 day
+### M4 — Save/export: kill the transient, guard the rest  `[x]` shipped 2026-07-16 (7fbe180)
+
+> **As-built:** output verified byte-identical (SHA-256 + fingerprint pre/post). Measured save
+> peak on a 256 MiB noise doc: 6.2× → **3.2×** (1.66 GB → 852 MB), fatal-class transient zero.
+> Shell-side pre-save guards intentionally skipped: the M3 invariant makes an over-budget save
+> unreachable, so `save_estimate` ships as FFI + Dart binding (telemetry) without per-site checks.
 
 - **(a) Dict without clones** (biggest win, do first): `io.rs::save_to_bytes` currently clones
   every distinct tile's 4,096 B *twice* (`dict_order: Vec<Vec<u8>>` + `HashMap<Vec<u8>,u32>`
@@ -117,13 +130,25 @@ payload gradually and is caught by the same checks.
 - Re-run `assert.roundtrip` goldens + a Windows matrix `gen` spot-check to confirm the new peak
   ratio; record it in REPORT.md.
 
-### M5 — Best-effort allocation hardening  `[ ]`  ~0.25 day
+### M5 — Best-effort allocation hardening  `[x]` shipped 2026-07-16 (7fbe180, folded into M4)
 
 `try_reserve` on the few unbounded `Vec` growth sites that can still see tens/hundreds of MB
 (io writer buffer, codec encode buffers), mapping failure to `IoError::TooLarge` instead of
 abort. No pretense of general OOM safety — budgets are the real defense.
 
-### M6 — Validation + docs  `[ ]`  ~0.5–1 day
+> **As-built deviation:** implemented as exact pre-reservation of the two big writer buffers
+> (removes doubling overshoot deterministically — part of the 3.2× figure) rather than
+> `try_reserve`-with-Result plumbing: the FFI/Dart `save()` path treats a null return as fatal,
+> and the M3 invariant makes save-allocation failure unreachable, so a fallible signature would
+> have been dead code with real breakage risk.
+
+### M6 — Validation + docs  `[x]` completed 2026-07-16 — **acceptance met: zero SIGABRTs**
+
+> All suites green (250 Rust + 249 Dart, clippy at baseline), `.mkpx` output byte-identical.
+> Device re-run on the Pixel: the full in-app ladder survived **all 11 rungs in one launch**
+> (previously 6 kills); headless 2 GiB DSL build exits 0 capped at 320 MiB; the 512-frame edit
+> that died at frame 448 now runs at 342 MB RSS with history retention down 302 MB → 719 KB.
+> Addendum tables in `docs/memlab/REPORT.md`; SPEC §8.2b/§10.3 and STATUS.md updated.
 
 - Full suites green; clippy; goldens unchanged.
 - **Device proof:** re-run `tools/memlab/run_ladder.ps1` on the Pixel. Acceptance: **zero
