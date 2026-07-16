@@ -8,6 +8,7 @@ import '../state/feed_providers.dart';
 import '../state/notifications_providers.dart';
 import '../state/player_providers.dart';
 import '../state/rules_gate.dart';
+import '../state/super_post_provider.dart';
 import 'artist_dashboard_page.dart';
 import 'artwork_detail_page.dart';
 import 'auth/onboarding_wizard.dart';
@@ -117,7 +118,11 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
     final state = ref.watch(feedProvider(kind));
     final n = ref.read(feedProvider(kind).notifier);
     return FeedGrid(
-        state: state, onLoadMore: n.loadMore, onRefresh: n.refresh, onTap: (p) => _openPost(kind, p));
+        state: state,
+        onLoadMore: n.loadMore,
+        onRefresh: n.refresh,
+        superPostId: ref.watch(superPostIdProvider(kind)),
+        onTap: (p) => _openPost(kind, p));
   }
 
   // A compact top-bar icon button (8 sit side-by-side, so they're tight).

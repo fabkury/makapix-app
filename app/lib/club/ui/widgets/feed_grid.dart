@@ -8,6 +8,7 @@ import '../../state/post_providers.dart';
 import '../club_account_page.dart';
 import '../comments_page.dart';
 import 'common.dart';
+import 'super_post_grid_layout.dart';
 
 /// Reusable infinite-scroll square grid of posts.
 ///
@@ -27,6 +28,10 @@ class FeedGrid extends StatefulWidget {
   /// `ClubEmpty` with [emptyMessage].
   final Widget? empty;
   final bool nested;
+
+  /// Post id displayed as a 2×2 "super post" tile (home feeds only); null —
+  /// or an id absent from [state] — keeps the grid uniform.
+  final int? superPostId;
   const FeedGrid({
     super.key,
     required this.state,
@@ -36,6 +41,7 @@ class FeedGrid extends StatefulWidget {
     this.emptyMessage = 'Nothing here yet.',
     this.empty,
     this.nested = false,
+    this.superPostId,
   });
 
   @override
@@ -85,15 +91,29 @@ class _FeedGridState extends State<FeedGrid> {
       // padding (4+4) and the inter-column spacing, split across columns. The cell
       // is that width plus the info bar, so the artwork area is an exact square.
       final tileW = (constraints.maxWidth - 8 - 4 * (cols - 1)) / cols;
+      // Resolve the super post to its list index; a stale/absent id degrades to
+      // the plain uniform grid.
+      int? superIndex;
+      if (widget.superPostId != null) {
+        final ix = s.items.indexWhere((p) => p.id == widget.superPostId);
+        if (ix >= 0) superIndex = ix;
+      }
       final grid = GridView.builder(
         controller: _sc,
         primary: widget.nested ? true : null,
         padding: const EdgeInsets.all(4),
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: cols,
-            mainAxisSpacing: 4,
-            crossAxisSpacing: 4,
-            mainAxisExtent: tileW + _PostTile.infoBarHeight),
+        gridDelegate: superIndex == null
+            ? SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: cols,
+                mainAxisSpacing: 4,
+                crossAxisSpacing: 4,
+                mainAxisExtent: tileW + _PostTile.infoBarHeight)
+            : SuperPostGridDelegate(
+                crossAxisCount: cols,
+                mainAxisSpacing: 4,
+                crossAxisSpacing: 4,
+                infoBarExtent: _PostTile.infoBarHeight,
+                superIndex: superIndex),
         itemCount: s.items.length + (s.atEnd ? 0 : 1),
         itemBuilder: (ctx, i) {
           if (i >= s.items.length) {
@@ -102,7 +122,8 @@ class _FeedGridState extends State<FeedGrid> {
                     padding: EdgeInsets.all(16),
                     child: SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2))));
           }
-          return _PostTile(post: s.items[i], onTap: () => widget.onTap(s.items[i]));
+          return _PostTile(
+              post: s.items[i], superSize: i == superIndex, onTap: () => widget.onTap(s.items[i]));
         },
       );
       if (widget.nested) {
@@ -132,7 +153,12 @@ class _PostTile extends ConsumerWidget {
 
   final Post post;
   final VoidCallback onTap;
-  const _PostTile({required this.post, required this.onTap});
+
+  /// True for the 2×2 super tile: its cell is exactly [infoBarHeight] taller
+  /// below the square artwork, which becomes a title/author line above the
+  /// regular likes/comments bar.
+  final bool superSize;
+  const _PostTile({required this.post, required this.onTap, this.superSize = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -167,6 +193,27 @@ class _PostTile extends ConsumerWidget {
                 ]),
               ),
             ),
+            if (superSize)
+              Container(
+                height: infoBarHeight,
+                color: const Color(0xFF2A2D31),
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                alignment: Alignment.centerLeft,
+                child: Text.rich(
+                  TextSpan(children: [
+                    if (post.title.isNotEmpty)
+                      TextSpan(
+                          text: '${post.title}  ',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                    TextSpan(
+                        text: '@${post.owner.handle}',
+                        style: const TextStyle(color: Colors.white54)),
+                  ]),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11),
+                ),
+              ),
             // Solid info bar directly below the artwork: likes (left, tappable) · comments (right).
             Container(
               height: infoBarHeight,

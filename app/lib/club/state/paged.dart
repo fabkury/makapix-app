@@ -12,6 +12,14 @@ class PagedState<T> {
   final String? error;
   final bool initialized;
 
+  /// Bumped on every successful reset load (initial load or refresh); a failed
+  /// refresh keeps the old items and the old generation.
+  final int generation;
+
+  /// Item count of the most recent successful page-1 fetch (the first
+  /// `firstPageCount` entries of [items] are that page).
+  final int firstPageCount;
+
   const PagedState({
     this.items = const [],
     this.cursor,
@@ -19,6 +27,8 @@ class PagedState<T> {
     this.atEnd = false,
     this.error,
     this.initialized = false,
+    this.generation = 0,
+    this.firstPageCount = 0,
   });
 
   PagedState<T> copyWith({
@@ -36,6 +46,8 @@ class PagedState<T> {
         atEnd: atEnd ?? this.atEnd,
         error: clearError ? null : (error ?? this.error),
         initialized: initialized ?? this.initialized,
+        generation: generation,
+        firstPageCount: firstPageCount,
       );
 }
 
@@ -79,6 +91,8 @@ class PagedNotifier<T> extends StateNotifier<PagedState<T>> {
         loading: false,
         atEnd: page.nextCursor == null,
         initialized: true,
+        generation: reset ? state.generation + 1 : state.generation,
+        firstPageCount: reset ? page.items.length : state.firstPageCount,
       );
     } on ClubError catch (e) {
       state = state.copyWith(loading: false, error: e.message, initialized: true);
