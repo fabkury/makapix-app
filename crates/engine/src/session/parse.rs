@@ -151,6 +151,10 @@ pub enum Action {
     ClearPalette,
     Undo,
     Redo,
+    /// Drop the whole undo/redo history (frees everything it retains). Used by the memory stress
+    /// lab to separate document growth from history retention; also the right tool after a bulk
+    /// import when the pre-import states are meaningless.
+    ClearHistory,
     Play,
     Pause,
     AdvanceClock(u64),
@@ -320,6 +324,7 @@ impl Session {
             Redo => {
                 self.doc.redo();
             }
+            ClearHistory => self.doc.history = crate::history::History::new(),
             Play => self.play(),
             Pause => self.pause(),
             AdvanceClock(ms) => self.advance_clock_ms(ms),
@@ -667,6 +672,7 @@ fn parse_line(line: &str) -> Result<Action, String> {
         "ClearPalette" => ClearPalette,
         "Undo" => Undo,
         "Redo" => Redo,
+        "ClearHistory" => ClearHistory,
         "Play" => Play,
         "Pause" => Pause,
         "AdvanceClock" => AdvanceClock(u64a(0)?),

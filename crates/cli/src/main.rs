@@ -106,7 +106,9 @@ fn main() {
                 eprintln!("load error: {:?}", e);
                 exit(2);
             }
-            println!("# load bytes={} ms={:.1}", bytes.len(), t0.elapsed().as_secs_f64() * 1000.0);
+            let n = bytes.len();
+            drop(bytes); // free the file buffer before probes so `mem.os` resident is doc-only
+            println!("# load bytes={} ms={:.1}", n, t0.elapsed().as_secs_f64() * 1000.0);
             probe_start = 3;
         }
         other => {

@@ -2,6 +2,7 @@
 // nor the Club social layer is "the app" — both are co-equal pillars under the shell.
 import 'package:flutter/material.dart';
 
+import 'dev/memlab.dart';
 import 'shell/app_shell.dart';
 
 class MakapixApp extends StatelessWidget {
@@ -19,7 +20,9 @@ class MakapixApp extends StatelessWidget {
         ),
         sliderTheme: const SliderThemeData(trackHeight: 2),
       ),
-      home: const AppShell(),
+      // MemLabGate is a pass-through unless the app was launched with the memlab intent extra
+      // (adb-only memory stress lab, see lib/dev/memlab.dart) — no UI entry, no normal-start cost.
+      home: const MemLabGate(child: AppShell()),
     );
   }
 }

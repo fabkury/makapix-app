@@ -246,6 +246,16 @@ pub extern "C" fn mkpx_state_json(ptr: *mut Session) -> *mut c_char {
     }
 }
 
+/// Engine-accounted memory census (tile-deduped; see `probe::mem_report`) as JSON. Free with
+/// `mkpx_free_string`. Powers the in-app memory stress lab.
+#[no_mangle]
+pub extern "C" fn mkpx_mem_json(ptr: *mut Session) -> *mut c_char {
+    match session(ptr) {
+        Some(s) => cstring(&s.mem_json()),
+        None => cstring("{}"),
+    }
+}
+
 /// Primary color as 0xRRGGBBAA.
 #[no_mangle]
 pub extern "C" fn mkpx_primary_color(ptr: *mut Session) -> u32 {

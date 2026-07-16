@@ -123,6 +123,7 @@ class Engine {
   late final _DisplayD _display = _lib.lookupFunction<_DisplayC, _DisplayD>('mkpx_display');
   late final _CompositeD _composite = _lib.lookupFunction<_CompositeC, _CompositeD>('mkpx_composite_frame');
   late final _StateD _state = _lib.lookupFunction<_StateC, _StateD>('mkpx_state_json');
+  late final _StateD _memJson = _lib.lookupFunction<_StateC, _StateD>('mkpx_mem_json');
   late final _OutlineD _outline = _lib.lookupFunction<_OutlineC, _OutlineD>('mkpx_outline_mask');
   late final _FrameHashD _frameHash = _lib.lookupFunction<_FrameHashC, _FrameHashD>('mkpx_frame_hash');
   late final _FrameThumbD _frameThumb = _lib.lookupFunction<_FrameThumbC, _FrameThumbD>('mkpx_frame_thumb');
@@ -200,6 +201,15 @@ class Engine {
 
   String stateJson() {
     final p = _state(_s);
+    final s = p.toDartString();
+    _freeStr(p);
+    return s;
+  }
+
+  /// Engine-accounted memory census (tile-deduped) as JSON — see `probe::mem_report` on the Rust
+  /// side. Powers the memory stress lab.
+  String memJson() {
+    final p = _memJson(_s);
     final s = p.toDartString();
     _freeStr(p);
     return s;
