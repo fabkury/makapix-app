@@ -112,13 +112,19 @@ See `tools/memlab/results/android_app.csv` (+ `android_pss.csv` for PSS timeline
 
 | Rung | Outcome |
 |---|---|
-| 64 MiB doc + thumbs | ✓ 268 MB RSS |
-| 256 frames × 1 layer, realistic edit | ✓ 626 MB RSS (history-dominated) |
-| 256 MiB doc + thumbs | ✓ 509 MB RSS |
-| 512 frames × 1 layer, realistic edit | ✗ SIGABRT at frame 448 (history tables) |
-| 256 MiB doc + 1024 thumbs | ✓ 508 MB RSS |
-| 256 MiB doc + save | ✓ but 2,009 MB peak |
-| ≥1 GiB docs | ✗ SIGABRT (allocator class ceiling) |
+| 64 MiB doc + 64 thumbs | ✓ 268 MB RSS |
+| 256 frames × 1 layer, realistic edit | ✓ 626 MB RSS (302 MB of it history tables) |
+| 256 MiB doc + 256 thumbs | ✓ 509 MB RSS |
+| 512 frames × 1 layer, realistic edit | ✗ SIGABRT at frame 448 (history tables hit the class ceiling) |
+| 256 MiB doc + 1024 thumbs | ✓ 508 MB RSS — timeline textures are negligible |
+| 256 MiB doc + save (268.8 MB .mkpx in 3.3 s) | ✓ but **2,009 MB peak** |
+| 1024 × 4 (1 GiB doc, thumbs or save variant) | ✗ SIGABRT at frame 960 = 960 MiB of tiles |
+| 1024 × 8 (2 GiB attempt) | ✗ SIGABRT within frames 449–512 (0.90–1.00 GiB) |
+| 1024 × 16 (4 GiB attempt) | ✗ SIGABRT within frames 193–256 (0.77–1.00 GiB) |
+| 1024 × 32 (8 GiB attempt) | ✗ SIGABRT within frames 65–128 (0.52–1.00 GiB) |
+
+Every kill is the same wall: the ~4 KiB allocation class reaching ~1 GiB, in-app exactly as in
+the headless CLI. LMK never got a say — the allocator aborts first.
 
 ## Recommended budgets (for the enforcement follow-up)
 
