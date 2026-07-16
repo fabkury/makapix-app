@@ -253,6 +253,15 @@ extension _EditorTimeline on _EditorPageState {
             _redraw();
           },
         ),
+        _sheetItem(
+          ctx,
+          _threeRowToolbar ? Icons.table_rows : Icons.table_rows_outlined,
+          _threeRowToolbar ? '3-row toolbar: on' : '3-row toolbar: off',
+          () {
+            setState(() => _threeRowToolbar = !_threeRowToolbar);
+            _persistThreeRowToolbar();
+          },
+        ),
         _sheetItem(ctx, Icons.fit_screen, 'Fit to screen', _fitView),
       ]);
 

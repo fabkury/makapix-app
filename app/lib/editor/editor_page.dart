@@ -49,6 +49,7 @@ part 'editor_page.persistence.dart';
 
 const double _kMinZoom = 0.25, _kMaxZoom = 32.0;
 const _prefsKey = 'tool_order_v1';
+const _prefs3RowKey = 'toolbar_3row_v1'; // ☰ → View → 3-row toolbar (row-3 grid in 3 rows, Play pinned)
 const _kCurrentDrawing = 'editor.currentDrawingId'; // last-open library drawing (silent restore)
 const _kShareFormatPref = 'editor.shareFormat_v1'; // last-used Share format for animations (GIF/WebP)
 const _kExportStillFormatPref = 'editor.exportStillFormat_v1'; // last-used frame/layer export format (PNG/WebP)
@@ -56,7 +57,8 @@ const _transformTools = {'Flip', 'Rotate', 'Resize', 'Invert'};
 // Row-3 "action" tools in the reorderable grid: tapping fires an action/toggle immediately rather
 // than selecting a draw tool (handled in _toolTile / _doToolAction). Undo/Redo are NOT here — they
 // are pinned at the left of row-3 (see _buildToolBar / _pinnedActionTile). Play is NOT here either —
-// it is a selectable tool group whose controls live in row-1 (see _isPlayTool / _buildToolOptions).
+// it is a selectable tool group whose controls live in row-1 (see _isPlayTool / _buildToolOptions);
+// in 3-row toolbar mode it is also pinned beside Undo/Redo and hidden from the grid.
 const _actionTools = {'Onion'};
 // Tools that support a "Precision" mode (off-finger reticle + act-by-button). Precision is
 // a per-tool toggle, remembered independently per tool — see [_precisionTools].
@@ -238,6 +240,9 @@ class _EditorPageState extends ConsumerState<EditorPage>
   Offset _pinchStartMid = Offset.zero, _pinchStartPan = Offset.zero;
   // configurable bottom toolbar
   List<String> _toolOrder = tools.map((t) => t.dsl).toList();
+  // ☰ → View → 3-row toolbar: the row-3 grid reflows to 3 rows and Play is pinned beside
+  // Undo/Redo (its grid tile hides, but it stays in _toolOrder so the saved order never churns).
+  bool _threeRowToolbar = false;
   String? _dragTool; // tool dsl being long-press-dragged in row-3 (null = not dragging)
   int? _dropIndex; // live insertion index among the non-dragged tools (for drag preview)
   // film-roll frame thumbnails (cached, invalidated by per-frame content hash)

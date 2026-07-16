@@ -14,16 +14,23 @@ extension _EditorEngine on _EditorPageState {
     try {
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getStringList(_prefsKey);
+      final threeRow = prefs.getBool(_prefs3RowKey) ?? false;
       final all = tools.map((t) => t.dsl).toList();
+      List<String>? reconciled;
       if (saved != null) {
         // keep saved order, drop unknown tools, append any new tools at the end
-        final reconciled = <String>[for (final d in saved) if (all.contains(d)) d];
+        reconciled = <String>[for (final d in saved) if (all.contains(d)) d];
         for (final d in all) {
           if (!reconciled.contains(d)) reconciled.add(d);
         }
-        if (mounted) setState(() => _toolOrder = reconciled);
       }
-    } catch (_) {/* prefs unavailable → keep default order */}
+      if (mounted) {
+        setState(() {
+          if (reconciled != null) _toolOrder = reconciled;
+          _threeRowToolbar = threeRow;
+        });
+      }
+    } catch (_) {/* prefs unavailable → keep defaults */}
   }
 
   Future<void> _persistOrder() async {
@@ -33,19 +40,36 @@ extension _EditorEngine on _EditorPageState {
     } catch (_) {}
   }
 
-  // The row-3 order to display: while dragging, the dragged tool is placed at the live drop index
-  // among the other tools, so the menu rearranges in real time as a preview.
+  Future<void> _persistThreeRowToolbar() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_prefs3RowKey, _threeRowToolbar);
+    } catch (_) {}
+  }
+
+  // The row-3 grid's order in *visible* space: in 3-row mode Play is pinned beside Undo/Redo, so
+  // its tile is filtered out of the grid (it stays in _toolOrder). All drag/drop indexes
+  // (_dropIndex, `others`) live in this space; in 2-row mode it is the identity.
+  List<String> _visibleOrder(List<String> order) =>
+      _threeRowToolbar ? order.where((d) => d != 'PlayPause').toList() : order;
+
+  // The row-3 order to display (visible space): while dragging, the dragged tool is placed at the
+  // live drop index among the other tools, so the menu rearranges in real time as a preview.
   List<String> _displayToolOrder() {
-    if (_dragTool == null) return _toolOrder;
-    final others = _toolOrder.where((t) => t != _dragTool).toList();
+    final visible = _visibleOrder(_toolOrder);
+    if (_dragTool == null) return visible;
+    final others = visible.where((t) => t != _dragTool).toList();
     final drop = (_dropIndex ?? others.length).clamp(0, others.length);
     return [...others.sublist(0, drop), _dragTool!, ...others.sublist(drop)];
   }
 
-  // Commit the live-previewed order when the drag ends.
+  // Commit the live-previewed order when the drag ends. The preview is in visible space, so in
+  // 3-row mode the grid-hidden Play tile is reinserted at its former index to keep the full order
+  // (2-row mode must NOT reinsert: there the Play tile is itself draggable in the grid).
   void _commitToolDrag() {
     if (_dragTool == null) return;
-    final order = _displayToolOrder();
+    final display = _displayToolOrder();
+    final order = _threeRowToolbar ? restoreHiddenTool(display, _toolOrder, 'PlayPause') : display;
     setState(() {
       _toolOrder = order;
       _dragTool = null;

@@ -60,6 +60,18 @@ const tools = <ToolDef>[
 const undoToolDef = ToolDef('Undo', Icons.undo, 'Undo');
 const redoToolDef = ToolDef('Redo', Icons.redo, 'Redo');
 
+/// Rebuild the full tool order after a reorder done in *visible* space (the grid with [hidden]
+/// filtered out, as in the 3-row toolbar where Play is pinned): [hidden] is reinserted at its
+/// index in [previousFull], clamped, so toggling the toolbar mode never churns the saved order.
+/// If [hidden] wasn't in [previousFull], [visible] is returned as-is (the 2-row path).
+List<String> restoreHiddenTool(List<String> visible, List<String> previousFull, String hidden) {
+  final at = previousFull.indexOf(hidden);
+  if (at < 0) return visible;
+  final out = List<String>.of(visible)..remove(hidden);
+  out.insert(at.clamp(0, out.length), hidden);
+  return out;
+}
+
 // Succinct, teach-as-you-go help shown in the gesture-safe band at the bottom. Keep each to two
 // short lines: brief, professional, the core of the tool (not its nuances), no em dashes.
 const toolTips = <String, String>{

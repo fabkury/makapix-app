@@ -113,8 +113,10 @@ extension _EditorToolgrid on _EditorPageState {
           dragAnchorStrategy: pointerDragAnchorStrategy,
           onDragStarted: () => setState(() {
             _dragTool = dsl;
-            // start the gap where the tool currently sits (insertion index into the others list)
-            _dropIndex = _toolOrder.indexOf(dsl).clamp(0, _toolOrder.length - 1);
+            // start the gap where the tool currently sits (insertion index into the others list,
+            // in visible space — the grid may hide the Play tile in 3-row mode)
+            final visible = _visibleOrder(_toolOrder);
+            _dropIndex = visible.indexOf(dsl).clamp(0, visible.length - 1);
           }),
           onDragEnd: (_) => _commitToolDrag(),
           feedback: Material(color: Colors.transparent, child: _tileVisual(t, selected: true)),
@@ -136,33 +138,47 @@ extension _EditorToolgrid on _EditorPageState {
     );
   }
 
+  // The pinned Play tile (3-row mode only): a tool *selection*, exactly like tapping the grid's
+  // Play tile — row-1 shows the playback controls — deliberately not a _doToolAction toggle, so
+  // the "selecting another tool stops playback" contract is untouched.
+  Widget _pinnedPlayTile() {
+    return GestureDetector(
+      onTap: () => _selectTool('PlayPause'),
+      child: _tileVisual(_toolDef('PlayPause'), selected: _isPlayTool),
+    );
+  }
+
   Widget _buildToolBar() {
-    // Render from the live display order. Long-press any tile to drag it; the rest reflow in real
-    // time, and the order is committed on release. The "others" list (order minus the dragged tool)
-    // is the index space for drop positions.
+    // Render from the live display order (visible space: 3-row mode hides the Play tile, which is
+    // pinned instead). Long-press any tile to drag it; the rest reflow in real time, and the order
+    // is committed on release. The "others" list (visible order minus the dragged tool) is the
+    // index space for drop positions.
     final order = _displayToolOrder();
-    final others = _dragTool == null ? order : _toolOrder.where((t) => t != _dragTool).toList();
+    final others = _dragTool == null ? order : _visibleOrder(_toolOrder.where((t) => t != _dragTool).toList());
     final n = order.length;
-    final cols = (n + 1) ~/ 2; // top row holds the first half
-    final top = [for (var i = 0; i < cols; i++) _toolTile(order[i], others)];
-    final bottom = [for (var i = cols; i < n; i++) _toolTile(order[i], others)];
+    final rowsN = _threeRowToolbar ? 3 : 2;
+    final cols = (n + rowsN - 1) ~/ rowsN; // each row holds up to `cols` tiles
+    final gridRows = [
+      for (var r = 0; r < rowsN; r++)
+        Row(children: [
+          for (var i = r * cols; i < n && i < (r + 1) * cols; i++) _toolTile(order[i], others),
+        ]),
+    ];
     return Container(
-      height: 100,
+      height: _threeRowToolbar ? 148 : 100,
       color: const Color(0xFF15171A),
       child: Row(children: [
-        // Undo (top) / Redo (bottom) pinned at the left — fixed, don't scroll with the rest.
+        // Undo / Redo (+ Play in 3-row mode) pinned at the left — fixed, don't scroll with the rest.
         Column(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
           _pinnedActionTile(undoToolDef),
           _pinnedActionTile(redoToolDef),
+          if (_threeRowToolbar) _pinnedPlayTile(),
         ]),
         Container(width: 1, color: Colors.black26),
         Expanded(
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            child: Column(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
-              Row(children: top),
-              Row(children: bottom),
-            ]),
+            child: Column(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: gridRows),
           ),
         ),
       ]),
