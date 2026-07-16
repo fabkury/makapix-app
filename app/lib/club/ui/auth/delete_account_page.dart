@@ -90,6 +90,9 @@ class _DeleteAccountPageState extends ConsumerState<DeleteAccountPage> {
                   _bullet('Your profile${handle != null ? ' (@$handle)' : ''}, posts, '
                       'comments, reactions, followers, and settings will be '
                       'permanently deleted.'),
+                  _bullet('Comments that other users have replied to are '
+                      'replaced with an anonymous "[deleted comment]" '
+                      'placeholder so their replies stay readable.'),
                   _bullet('Deletion cannot be undone. Deleted content is not '
                       'recoverable.'),
                   _bullet('You will be signed out immediately and your account '
