@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../editor/gallery/drawing_library_grid.dart';
+import '../../editor/persistence/drawing_store_provider.dart';
 import '../cache/artwork_cache.dart';
 import '../models/club_error.dart';
 import '../models/post.dart';
@@ -254,12 +256,17 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   }
 }
 
-/// The profile's tab set. Gallery is always present; Reacted only for
-/// signed-in viewers. Highlights are not a tab — they get the showcase
-/// strip between the header and the tab bar.
-enum ProfileTab { gallery, reacted }
+/// The profile's tab set. Gallery is always present (and stays the default);
+/// Private (your local "My Drawings") sits to its left on your own profile;
+/// Reacted only for signed-in viewers. Highlights are not a tab — they get the
+/// showcase strip between the header and the tab bar.
+enum ProfileTab { private, gallery, reacted }
 
-List<ProfileTab> profileTabsFor({required bool signedIn}) => [
+/// Private appears only on your own signed-in profile (own-profile always implies
+/// signed-in in practice; requiring both keeps other-profile and signed-out views —
+/// including the pure-Dart widget tests — off the local-library / engine path).
+List<ProfileTab> profileTabsFor({required bool signedIn, required bool ownProfile}) => [
+      if (ownProfile && signedIn) ProfileTab.private,
       ProfileTab.gallery,
       if (signedIn) ProfileTab.reacted,
     ];
@@ -283,7 +290,9 @@ class _Body extends ConsumerWidget {
         Expanded(child: _blockedBanner(context, ref)),
       ]);
     }
-    final tabs = profileTabsFor(signedIn: signedIn);
+    final tabs = profileTabsFor(signedIn: signedIn, ownProfile: profile.isOwnProfile);
+    // Gallery is the default even though Private may sit to its left.
+    final galleryIndex = tabs.indexOf(ProfileTab.gallery);
     return SendTargetBinder(
       target: ChannelTarget(
         displayName: profile.handle,
@@ -292,6 +301,7 @@ class _Body extends ConsumerWidget {
       ),
       child: DefaultTabController(
         length: tabs.length,
+        initialIndex: galleryIndex < 0 ? 0 : galleryIndex,
         // Value-equal across rebuilds: the controller remounts only when the
         // tab set genuinely changes (sign-in/out) — not on ordinary rebuilds
         // or token refreshes.
@@ -327,6 +337,7 @@ class _Body extends ConsumerWidget {
                   child: TabBarView(children: [
                     for (final t in tabs)
                       switch (t) {
+                        ProfileTab.private => const _PrivateTab(),
                         ProfileTab.gallery => _GalleryTab(profile: profile),
                         ProfileTab.reacted => _ReactedTab(profile: profile),
                       },
@@ -342,6 +353,7 @@ class _Body extends ConsumerWidget {
 
   Widget _tab(ProfileTab t) {
     final (icon, label) = switch (t) {
+      ProfileTab.private => (Icons.lock_outline, 'Private'),
       ProfileTab.gallery => (Icons.grid_on, 'Gallery'),
       ProfileTab.reacted => (Icons.bolt, 'Reacted'),
     };
@@ -365,6 +377,8 @@ class _Body extends ConsumerWidget {
     ];
     // The highlights strip rides along with the profile reload.
     switch (tabs[index]) {
+      case ProfileTab.private:
+        break; // local library — no network feed to refresh (the grid self-loads)
       case ProfileTab.gallery:
         futures.add(ref.read(ownerFeedProvider(profile.userKey).notifier).refresh());
       case ProfileTab.reacted:
@@ -764,6 +778,59 @@ class _AvatarViewer extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Your own local "My Drawings" library, surfaced on your profile (own-profile only). These live
+/// on-device and are never seen by the server — hence the subdued "Only you can see this tab." line.
+/// Tapping a drawing (or "New") hands off to the editor pillar via the local-library bridge; the
+/// editor's own keep/discard prompt guards whatever drawing you currently have open. Rename/Delete
+/// happen in-place inside the shared [DrawingLibraryGrid].
+class _PrivateTab extends ConsumerWidget {
+  const _PrivateTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    final storeAsync = ref.watch(drawingStoreProvider);
+    return Column(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 8, 6),
+        child: Row(children: [
+          Icon(Icons.lock_outline, size: 15, color: cs.onSurfaceVariant),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text('Only you can see this tab.',
+                style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+          ),
+          TextButton.icon(
+            onPressed: () =>
+                ref.read(pendingLocalLibraryProvider.notifier).state = const NewLocalDrawing(),
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('New'),
+          ),
+        ]),
+      ),
+      const Divider(height: 1),
+      Expanded(
+        child: storeAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (_, _) => Center(
+            child: Text("Couldn't open your library.", style: TextStyle(color: cs.onSurfaceVariant)),
+          ),
+          data: (store) => DrawingLibraryGrid(
+            store: store,
+            // No "current" concept here: while you're on the profile the editor is unmounted and
+            // autosave is stopped, so any drawing is safe to delete (a deleted last-open one just
+            // falls back to a fresh Untitled on the next editor entry).
+            onOpen: (id) =>
+                ref.read(pendingLocalLibraryProvider.notifier).state = OpenLocalDrawing(id),
+            onNew: () =>
+                ref.read(pendingLocalLibraryProvider.notifier).state = const NewLocalDrawing(),
+          ),
+        ),
+      ),
+    ]);
   }
 }
 

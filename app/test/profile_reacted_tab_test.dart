@@ -73,8 +73,24 @@ ProfileApi _api(_FakeAdapter adapter) {
 void main() {
   group('profileTabsFor', () {
     test('gallery always; reacted for signed-in (highlights live in the strip, not a tab)', () {
-      expect(profileTabsFor(signedIn: false), [ProfileTab.gallery]);
-      expect(profileTabsFor(signedIn: true), [ProfileTab.gallery, ProfileTab.reacted]);
+      expect(profileTabsFor(signedIn: false, ownProfile: false), [ProfileTab.gallery]);
+      expect(profileTabsFor(signedIn: true, ownProfile: false),
+          [ProfileTab.gallery, ProfileTab.reacted]);
+    });
+
+    test('Private leads your own signed-in profile; Gallery stays default (middle)', () {
+      expect(profileTabsFor(signedIn: true, ownProfile: true),
+          [ProfileTab.private, ProfileTab.gallery, ProfileTab.reacted]);
+      // Gallery is never first once Private is present, but it is always present.
+      expect(profileTabsFor(signedIn: true, ownProfile: true).indexOf(ProfileTab.gallery), 1);
+    });
+
+    test('Private requires both own-profile and signed-in (never leaks to other/signed-out views)',
+        () {
+      // own but signed-out (an artificial combo — own-profile implies signed-in in practice)
+      expect(profileTabsFor(signedIn: false, ownProfile: true), [ProfileTab.gallery]);
+      // signed-in but someone else's profile
+      expect(profileTabsFor(signedIn: true, ownProfile: false).contains(ProfileTab.private), isFalse);
     });
   });
 

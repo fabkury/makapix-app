@@ -58,6 +58,10 @@ class _AppShellState extends ConsumerState<AppShell> {
     ref.listen<ClubEditRequest?>(pendingClubEditProvider, (_, next) {
       if (next != null) _select(_editor);
     });
+    // Profile → editor: the Private tab (local "My Drawings") asks to open or start a drawing.
+    ref.listen<LocalLibraryRequest?>(pendingLocalLibraryProvider, (_, next) {
+      if (next != null) _select(_editor);
+    });
     // The Club's Contribute button surfaces the editor; the editor's ☰ → Club returns here.
     ref.listen<int>(openEditorProvider, (_, _) => _select(_editor));
     ref.listen<int>(openClubProvider, (_, _) => _select(_club));

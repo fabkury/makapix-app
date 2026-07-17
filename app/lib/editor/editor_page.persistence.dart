@@ -45,6 +45,29 @@ extension _EditorPersistence on _EditorPageState {
     // not the placeholder 64×64 the engine boots with.
     final pending = ref.read(pendingClubEditProvider);
     if (pending != null && mounted) await _consumeClubEdit(pending);
+
+    // Consume any pending local-library request from the profile's Private tab. The editor is
+    // freshly mounted on every switch into this pillar, so reading here on mount is sufficient
+    // (mirrors the Club-edit path). _openExistingDrawing / _switchToNewDrawing carry their own
+    // keep/discard prompt for the outgoing drawing.
+    final localReq = ref.read(pendingLocalLibraryProvider);
+    if (localReq != null && mounted) {
+      ref.read(pendingLocalLibraryProvider.notifier).state = null; // consume once
+      switch (localReq) {
+        case OpenLocalDrawing(:final id):
+          await _openExistingDrawing(id);
+        case NewLocalDrawing():
+          await _switchToNewDrawing(title: 'Untitled', mutateEngine: () {
+            _send('NewDocument(64,64)');
+            _send('SelectTool($_tool)');
+          });
+          if (mounted) {
+            _refreshState();
+            _redraw();
+            setState(() {});
+          }
+      }
+    }
   }
 
   // ---- the autosave wiring ----------------------------------------------------
