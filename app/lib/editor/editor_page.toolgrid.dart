@@ -114,7 +114,7 @@ extension _EditorToolgrid on _EditorPageState {
           onDragStarted: () => setState(() {
             _dragTool = dsl;
             // start the gap where the tool currently sits (insertion index into the others list,
-            // in visible space — the grid may hide the Play tile in 3-row mode)
+            // in visible space — the grid may hide the pinned tile in 3-row mode)
             final visible = _visibleOrder(_toolOrder);
             _dropIndex = visible.indexOf(dsl).clamp(0, visible.length - 1);
           }),
@@ -138,19 +138,57 @@ extension _EditorToolgrid on _EditorPageState {
     );
   }
 
-  // The pinned Play tile (3-row mode only): a tool *selection*, exactly like tapping the grid's
-  // Play tile — row-1 shows the playback controls — deliberately not a _doToolAction toggle, so
-  // the "selecting another tool stops playback" contract is untouched.
-  Widget _pinnedPlayTile() {
+  // The pinned 3rd tile (3-row mode only): defaults to Play, but long-press picks any tool. It tap-
+  // routes exactly like the grid's tile for that tool — an action tool (Onion) toggles via
+  // _doToolAction; every other tool (incl. Play, whose controls live in row-1) selects via
+  // _selectTool — so each tool keeps the behaviour it has in the grid.
+  Widget _pinnedThirdTile() {
+    final dsl = _pinnedThirdTool;
+    final isAction = _actionTools.contains(dsl);
+    final t = _toolDef(dsl);
+    final selected = !isAction && dsl == _tool;
+    final active = isAction && _actionActive(dsl);
+    final enabled = !isAction || _actionEnabled(dsl);
     return GestureDetector(
-      onTap: () => _selectTool('PlayPause'),
-      child: _tileVisual(_toolDef('PlayPause'), selected: _isPlayTool),
+      onTap: () => isAction ? _doToolAction(dsl) : _selectTool(dsl),
+      onLongPress: _pinnedThirdConfigSheet,
+      child: _tileVisual(t, selected: selected, active: active, enabled: enabled),
+    );
+  }
+
+  // Long-press the pinned 3rd slot → pick which tool it holds. Lists every tool (Undo/Redo are the
+  // fixed slots 1&2 and never appear in `tools`); the choice hides the tool from the grid and
+  // persists. Leading uses iconWidget (not a raw Icon) because tool icons can be custom MpxIcons.
+  void _pinnedThirdConfigSheet() {
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: const Color(0xFF1A1C1F),
+      builder: (ctx) => _sheetScaffold(ctx, [
+        _sheetSection('Pinned tool'),
+        for (final t in tools)
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            selected: t.dsl == _pinnedThirdTool,
+            selectedTileColor: const Color(0x224080C0),
+            leading: t.iconWidget(size: 22, color: t.dsl == _pinnedThirdTool ? Colors.white : Colors.white70),
+            title: Text(t.label),
+            trailing: t.dsl == _pinnedThirdTool ? const Icon(Icons.check, color: Color(0xFF4080C0)) : null,
+            onTap: () {
+              Navigator.pop(ctx);
+              if (t.dsl == _pinnedThirdTool) return;
+              setState(() => _pinnedThirdTool = t.dsl);
+              _persistPinnedThirdTool();
+            },
+          ),
+      ]),
     );
   }
 
   Widget _buildToolBar() {
-    // Render from the live display order (visible space: 3-row mode hides the Play tile, which is
-    // pinned instead). Long-press any tile to drag it; the rest reflow in real time, and the order
+    // Render from the live display order (visible space: 3-row mode hides the pinned tile, which is
+    // pinned beside Undo/Redo instead). Long-press any tile to drag it; the rest reflow in real time, and the order
     // is committed on release. The "others" list (visible order minus the dragged tool) is the
     // index space for drop positions.
     final order = _displayToolOrder();
@@ -168,11 +206,12 @@ extension _EditorToolgrid on _EditorPageState {
       height: _threeRowToolbar ? 148 : 100,
       color: const Color(0xFF15171A),
       child: Row(children: [
-        // Undo / Redo (+ Play in 3-row mode) pinned at the left — fixed, don't scroll with the rest.
+        // Undo / Redo (+ the configurable 3rd tile in 3-row mode) pinned at the left — fixed, don't
+        // scroll with the rest.
         Column(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
           _pinnedActionTile(undoToolDef),
           _pinnedActionTile(redoToolDef),
-          if (_threeRowToolbar) _pinnedPlayTile(),
+          if (_threeRowToolbar) _pinnedThirdTile(),
         ]),
         Container(width: 1, color: Colors.black26),
         Expanded(

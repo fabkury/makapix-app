@@ -15,6 +15,7 @@ extension _EditorEngine on _EditorPageState {
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getStringList(_prefsKey);
       final threeRow = prefs.getBool(_prefs3RowKey) ?? false;
+      final pinned3 = prefs.getString(_prefsPinnedThirdKey);
       final all = tools.map((t) => t.dsl).toList();
       List<String>? reconciled;
       if (saved != null) {
@@ -28,6 +29,8 @@ extension _EditorEngine on _EditorPageState {
         setState(() {
           if (reconciled != null) _toolOrder = reconciled;
           _threeRowToolbar = threeRow;
+          // validate against the catalogue — a stale/removed dsl in old prefs falls back to the default
+          if (pinned3 != null && tools.any((t) => t.dsl == pinned3)) _pinnedThirdTool = pinned3;
         });
       }
     } catch (_) {/* prefs unavailable → keep defaults */}
@@ -47,11 +50,18 @@ extension _EditorEngine on _EditorPageState {
     } catch (_) {}
   }
 
-  // The row-3 grid's order in *visible* space: in 3-row mode Play is pinned beside Undo/Redo, so
-  // its tile is filtered out of the grid (it stays in _toolOrder). All drag/drop indexes
-  // (_dropIndex, `others`) live in this space; in 2-row mode it is the identity.
+  Future<void> _persistPinnedThirdTool() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_prefsPinnedThirdKey, _pinnedThirdTool);
+    } catch (_) {}
+  }
+
+  // The row-3 grid's order in *visible* space: in 3-row mode the configured pinned tool is pinned
+  // beside Undo/Redo, so its tile is filtered out of the grid (it stays in _toolOrder). All drag/drop
+  // indexes (_dropIndex, `others`) live in this space; in 2-row mode it is the identity.
   List<String> _visibleOrder(List<String> order) =>
-      _threeRowToolbar ? order.where((d) => d != 'PlayPause').toList() : order;
+      _threeRowToolbar ? order.where((d) => d != _pinnedThirdTool).toList() : order;
 
   // The row-3 order to display (visible space): while dragging, the dragged tool is placed at the
   // live drop index among the other tools, so the menu rearranges in real time as a preview.
@@ -64,12 +74,12 @@ extension _EditorEngine on _EditorPageState {
   }
 
   // Commit the live-previewed order when the drag ends. The preview is in visible space, so in
-  // 3-row mode the grid-hidden Play tile is reinserted at its former index to keep the full order
-  // (2-row mode must NOT reinsert: there the Play tile is itself draggable in the grid).
+  // 3-row mode the grid-hidden pinned tile is reinserted at its former index to keep the full order
+  // (2-row mode must NOT reinsert: there the pinned tool is itself draggable in the grid).
   void _commitToolDrag() {
     if (_dragTool == null) return;
     final display = _displayToolOrder();
-    final order = _threeRowToolbar ? restoreHiddenTool(display, _toolOrder, 'PlayPause') : display;
+    final order = _threeRowToolbar ? restoreHiddenTool(display, _toolOrder, _pinnedThirdTool) : display;
     setState(() {
       _toolOrder = order;
       _dragTool = null;

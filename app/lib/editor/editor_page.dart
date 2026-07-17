@@ -51,6 +51,7 @@ part 'editor_page.persistence.dart';
 const double _kMinZoom = 0.25, _kMaxZoom = 32.0;
 const _prefsKey = 'tool_order_v1';
 const _prefs3RowKey = 'toolbar_3row_v1'; // ☰ → View → 3-row toolbar (row-3 grid in 3 rows, Play pinned)
+const _prefsPinnedThirdKey = 'toolbar_pinned3_v1'; // 3-row mode: which tool is pinned in the 3rd slot (long-press to change)
 const _kCurrentDrawing = 'editor.currentDrawingId'; // last-open library drawing (silent restore)
 const _kShareFormatPref = 'editor.shareFormat_v1'; // last-used Share format for animations (GIF/WebP)
 const _kExportStillFormatPref = 'editor.exportStillFormat_v1'; // last-used frame/layer export format (PNG/WebP)
@@ -244,6 +245,10 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // ☰ → View → 3-row toolbar: the row-3 grid reflows to 3 rows and Play is pinned beside
   // Undo/Redo (its grid tile hides, but it stays in _toolOrder so the saved order never churns).
   bool _threeRowToolbar = false;
+  // 3-row mode: the tool pinned in the 3rd slot (below Undo/Redo). Defaults to Pencil; long-press the
+  // slot to change. The pinned tool stays in _toolOrder (only hidden from the grid) so pinning never
+  // churns the saved order — see _visibleOrder / _pinnedThirdTile / _pinnedThirdConfigSheet.
+  String _pinnedThirdTool = 'Pencil';
   String? _dragTool; // tool dsl being long-press-dragged in row-3 (null = not dragging)
   int? _dropIndex; // live insertion index among the non-dragged tools (for drag preview)
   // film-roll frame thumbnails (cached, invalidated by per-frame content hash)
