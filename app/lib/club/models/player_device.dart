@@ -7,6 +7,9 @@ class PlayerDevice {
   final String? deviceModel;
   final String? firmwareVersion;
   final String connectionStatus; // "online" | "offline"
+  final String registrationStatus; // "pending" | "registered"
+  final DateTime? lastSeenAt;
+  final DateTime? registeredAt;
   final int? currentPostId;
   final PlayerCapabilities capabilities;
   final bool? isPaused;
@@ -21,6 +24,9 @@ class PlayerDevice {
     this.deviceModel,
     this.firmwareVersion,
     required this.connectionStatus,
+    this.registrationStatus = 'pending',
+    this.lastSeenAt,
+    this.registeredAt,
     this.currentPostId,
     required this.capabilities,
     this.isPaused,
@@ -47,6 +53,9 @@ class PlayerDevice {
         deviceModel: j['device_model'] as String?,
         firmwareVersion: j['firmware_version'] as String?,
         connectionStatus: (j['connection_status'] ?? 'offline').toString(),
+        registrationStatus: (j['registration_status'] ?? 'pending').toString(),
+        lastSeenAt: _parseTime(j['last_seen_at']),
+        registeredAt: _parseTime(j['registered_at']),
         currentPostId: (j['current_post_id'] as num?)?.toInt(),
         capabilities: PlayerCapabilities.fromJson(
           j['capabilities'] is Map
@@ -58,6 +67,12 @@ class PlayerDevice {
         rotation: (j['rotation'] as num?)?.toInt(),
         mirror: j['mirror'] as String?,
       );
+
+  /// Parse an ISO-8601 timestamp string, tolerant of nulls/non-strings.
+  static DateTime? _parseTime(dynamic v) {
+    if (v is! String || v.isEmpty) return null;
+    return DateTime.tryParse(v);
+  }
 }
 
 /// Brightness control spec declared by a device.

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/player_device.dart';
 import '../../state/auth_controller.dart';
 import '../../state/player_providers.dart';
+import '../my_players_page.dart';
 import 'select_player_overlay.dart';
 
 /// Height of the bar's content row (excludes the bottom safe-area inset).
@@ -34,7 +35,6 @@ class PlayerBar extends ConsumerWidget {
     final pending = st.pendingFor(active.id);
     final caps = active.capabilities;
     final isPaused = pending?.isPaused ?? active.isPaused ?? false;
-    final hasMenu = st.onlinePlayers.length > 1 || caps.hasAdjustments;
 
     Future<void> run(Future<String?> Function() action, {String? okMessage}) async {
       final err = await action();
@@ -58,14 +58,11 @@ class PlayerBar extends ConsumerWidget {
           height: kPlayerBarHeight,
           child: Row(
             children: [
-                if (hasMenu)
-                  IconButton(
-                    icon: const Icon(Icons.more_vert),
-                    tooltip: 'Player options',
-                    onPressed: () => _openAdjustments(context),
-                  )
-                else
-                  const SizedBox(width: 12),
+                IconButton(
+                  icon: const Icon(Icons.more_vert),
+                  tooltip: 'Player options',
+                  onPressed: () => _openAdjustments(context),
+                ),
                 Expanded(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -229,6 +226,18 @@ class _AdjustmentsSheetState extends ConsumerState<_AdjustmentsSheet> {
                 ],
               ),
             ],
+            if (caps.hasAdjustments || online.length > 1) const Divider(),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.cast_outlined),
+              title: const Text('Manage players'),
+              subtitle: const Text('Register, rename or remove devices'),
+              onTap: () {
+                final nav = Navigator.of(context);
+                nav.pop(); // dismiss the sheet
+                nav.push(MaterialPageRoute(builder: (_) => const MyPlayersPage()));
+              },
+            ),
           ],
         ),
       ),

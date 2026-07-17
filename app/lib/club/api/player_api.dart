@@ -1,6 +1,16 @@
 import '../models/player_device.dart';
 import 'club_api_client.dart';
 
+/// Normalize typed registration-code input to the server's alphabet: upper-case, keep only
+/// `[A-Z0-9]`, and cap at 6 characters. The server upper-cases too and generates codes from an
+/// alphabet excluding ambiguous `0 O I 1 L`. Shared by the register UI's input formatter and
+/// exercised in tests.
+String normalizeRegistrationCode(String input) {
+  var t = input.toUpperCase().replaceAll(RegExp('[^A-Z0-9]'), '');
+  if (t.length > 6) t = t.substring(0, 6);
+  return t;
+}
+
 /// A main command for `POST /api/u/{sqid}/player/{playerId}/command`. `toJson` drops null
 /// fields (like `FeedApi._posts`), so only the keys a command needs are sent.
 class PlayerCommand {
@@ -60,6 +70,30 @@ class PlayerApi {
             .map((e) => PlayerDevice.fromJson((e as Map).cast<String, dynamic>()))
             .toList();
       });
+
+  /// Register (claim) a player to the signed-in user via the 6-char code shown on the device.
+  /// Unlike the other routes this one is mounted at the API root (`/api/player/register`), not
+  /// under `/u/{sqid}`. Returns the newly-registered device.
+  Future<PlayerDevice> register({required String code, required String name}) =>
+      client.guard(() async {
+        final resp = await client.dio.post(
+          '${client.session.config.baseUrl}/api/player/register',
+          data: {'registration_code': code, 'name': name},
+        );
+        return PlayerDevice.fromJson((resp.data as Map).cast<String, dynamic>());
+      });
+
+  /// Rename a registered player. Returns the updated device.
+  Future<PlayerDevice> updateName(String sqid, String playerId, String name) =>
+      client.guard(() async {
+        final resp =
+            await client.dio.patch('${_base(sqid)}/$playerId', data: {'name': name});
+        return PlayerDevice.fromJson((resp.data as Map).cast<String, dynamic>());
+      });
+
+  /// Remove a player registration (server tears down its cert + MQTT access).
+  Future<void> delete(String sqid, String playerId) =>
+      client.guard(() => client.dio.delete('${_base(sqid)}/$playerId'));
 
   Future<void> command(String sqid, String playerId, PlayerCommand cmd) => client
       .guard(() => client.dio.post('${_base(sqid)}/$playerId/command', data: cmd.toJson()));

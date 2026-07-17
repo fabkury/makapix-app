@@ -277,6 +277,51 @@ class PlayerController extends StateNotifier<PlayerState> {
     }
   }
 
+  // ---- Lifecycle: register / rename / remove. Read the sqid fresh from auth, since the
+  // My Players screen can be opened before the first poll sets `_sqid` (e.g. no device online,
+  // so the Player Bar never mounted). Each returns null on success, else an error message. ----
+
+  Future<String?> register({required String code, required String name}) async {
+    if (!ref.read(authControllerProvider).isSignedIn) return 'Not signed in.';
+    try {
+      await _api.register(code: code, name: name);
+      await refresh(); // pull the newly-registered device into the list
+      return null;
+    } on ClubError catch (e) {
+      return e.message;
+    }
+  }
+
+  Future<String?> rename(String playerId, String name) async {
+    final sqid = ref.read(authControllerProvider).me?.user.sub;
+    if (sqid == null || sqid.isEmpty) return 'Not signed in.';
+    try {
+      final updated = await _api.updateName(sqid, playerId, name);
+      _applyPlayers([
+        for (final p in state.players)
+          if (p.id == playerId) updated else p,
+      ]);
+      return null;
+    } on ClubError catch (e) {
+      return e.message;
+    }
+  }
+
+  Future<String?> remove(String playerId) async {
+    final sqid = ref.read(authControllerProvider).me?.user.sub;
+    if (sqid == null || sqid.isEmpty) return 'Not signed in.';
+    try {
+      await _api.delete(sqid, playerId);
+      // Drop any optimistic overlay for the gone device, then re-run the auto-pick.
+      final pending = Map<String, PendingPatch>.from(state.pending)..remove(playerId);
+      state = state.copyWith(pending: pending);
+      _applyPlayers(state.players.where((p) => p.id != playerId).toList());
+      return null;
+    } on ClubError catch (e) {
+      return e.message;
+    }
+  }
+
   // ---- Optional (optimistic) commands. ----
 
   Future<void> setPaused(String playerId, bool paused) => _optimistic(

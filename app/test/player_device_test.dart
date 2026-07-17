@@ -44,6 +44,30 @@ void main() {
       expect(p.capabilities.hasAdjustments, isTrue);
     });
 
+    test('parses registration status and timestamps', () {
+      final p = PlayerDevice.fromJson({
+        'id': 'p1',
+        'player_key': 'k',
+        'registration_status': 'registered',
+        'last_seen_at': '2026-07-17T12:00:00Z',
+        'registered_at': '2026-07-10T09:30:00Z',
+      });
+      expect(p.registrationStatus, 'registered');
+      expect(p.lastSeenAt, DateTime.utc(2026, 7, 17, 12));
+      expect(p.registeredAt, DateTime.utc(2026, 7, 10, 9, 30));
+    });
+
+    test('registration status defaults to pending; bad/absent timestamps are null', () {
+      final p = PlayerDevice.fromJson({
+        'id': 'p2',
+        'player_key': 'k2',
+        'last_seen_at': 'not-a-date',
+      });
+      expect(p.registrationStatus, 'pending');
+      expect(p.lastSeenAt, isNull);
+      expect(p.registeredAt, isNull);
+    });
+
     test('defaults to offline with no capabilities when fields are missing', () {
       final p = PlayerDevice.fromJson({'id': 'p2', 'player_key': 'k2'});
       expect(p.isOnline, isFalse);
