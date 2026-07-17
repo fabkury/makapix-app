@@ -26,6 +26,45 @@ const kExportWarnPixels = 64 * 1000 * 1000;
 // carries across both.
 const kShareFormatPref = 'share.animFormat_v1';
 
+// The integer upscale factors offered in the export/share dialog (nearest-neighbour, pixels stay
+// crisp). 2× was added to 1/4/8/16/32 so the smart default can land nearer the target on
+// non-power-of-2 canvases.
+const kExportScaleFactors = [1, 2, 4, 8, 16, 32];
+
+// Target output size (longest side, px) the smart default aims for. Landing near this means most
+// viewers/platforms display the artwork at (or below) its native size instead of applying smoothed
+// bilinear/bicubic upscaling, which would blur the pixel art.
+const kExportTargetLongestPx = 1024;
+
+/// Pick the upscale factor whose output lands CLOSEST to [kExportTargetLongestPx] on the artwork's
+/// longest side, so the export displays natively without smoothed upscaling. Factors that would trip
+/// the very-large-export warning (see [kExportWarnPixels]) are skipped so the default stays one-tap;
+/// on a tie the larger factor wins (leans toward never-upscaled). Falls back to the smallest factor
+/// if every factor is too large (e.g. a huge many-frame animation).
+int smartDefaultExportScale({
+  required int width,
+  required int height,
+  required int frames,
+  List<int> factors = kExportScaleFactors,
+  int target = kExportTargetLongestPx,
+  int warnPixels = kExportWarnPixels,
+}) {
+  final longest = width > height ? width : height;
+  int? best;
+  var bestDist = 1 << 62;
+  for (final f in factors) {
+    final totalPx = width * f * height * f * frames;
+    if (totalPx > warnPixels) continue; // never auto-pick a size that raises the red re-confirm
+    final dist = (longest * f - target).abs();
+    if (best == null || dist <= bestDist) {
+      // `<=` so that on an exact tie the later (larger) factor wins.
+      best = f;
+      bestDist = dist;
+    }
+  }
+  return best ?? factors.first;
+}
+
 /// The caption text that accompanies a shared image. Title in quotes + the link when both exist.
 String shareCaption(String title, String? url) {
   final t = title.trim();
@@ -53,7 +92,7 @@ Future<(int, String)?> showExportScaleDialog({
   List<String> formats = const [],
   String initialFormat = '',
 }) {
-  var scale = 1;
+  var scale = smartDefaultExportScale(width: width, height: height, frames: frames);
   var format = formats.contains(initialFormat) ? initialFormat : (formats.isEmpty ? '' : formats.first);
   var warned = false;
   return showDialog<(int, String)>(
@@ -78,7 +117,7 @@ Future<(int, String)?> showExportScaleDialog({
             const SizedBox(height: 6),
           ],
           Wrap(spacing: 6, children: [
-            for (final s in const [1, 4, 8, 16, 32])
+            for (final s in kExportScaleFactors)
               ChoiceChip(
                 label: Text('$s×'),
                 selected: scale == s,
