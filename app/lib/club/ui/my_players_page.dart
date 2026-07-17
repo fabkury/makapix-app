@@ -141,7 +141,7 @@ class _MyPlayersPageState extends ConsumerState<MyPlayersPage> {
                   const SizedBox(height: 16),
                   if (players.isEmpty)
                     _emptyState(context)
-                  else
+                  else ...[
                     for (final p in players) ...[
                       _PlayerTile(
                         player: p,
@@ -150,6 +150,13 @@ class _MyPlayersPageState extends ConsumerState<MyPlayersPage> {
                       ),
                       const SizedBox(height: 12),
                     ],
+                    const SizedBox(height: 4),
+                    OutlinedButton.icon(
+                      onPressed: _openRegister,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Register a player'),
+                    ),
+                  ],
                 ],
               ),
       ),
