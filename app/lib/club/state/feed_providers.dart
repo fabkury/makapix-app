@@ -28,6 +28,14 @@ final feedProvider =
   return n;
 });
 
+/// Top trending hashtags for the home header bar. One-shot fetch (no paging).
+/// Watches the signed-in identity so it refetches on account switch and clears
+/// on sign-out; a feed pull-to-refresh invalidates it (see [ClubHomePage]).
+final topHashtagsProvider = FutureProvider.autoDispose<List<String>>((ref) {
+  ref.watch(currentUserSubProvider);
+  return ref.read(searchApiProvider).topHashtags();
+});
+
 /// Posts for a hashtag.
 final hashtagFeedProvider =
     StateNotifierProvider.autoDispose.family<PagedNotifier<Post>, PagedState<Post>, String>((ref, tag) {

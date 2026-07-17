@@ -23,6 +23,7 @@ import 'rules_gate_page.dart';
 import 'search_page.dart';
 import 'settings_page.dart';
 import 'widgets/feed_grid.dart';
+import 'widgets/hashtag_bar.dart';
 import 'widgets/send_target_binder.dart';
 
 /// The social hub. Top bar (left → right): the Makapix Club menu · my profile · notifications,
@@ -121,7 +122,11 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
     return FeedGrid(
         state: state,
         onLoadMore: n.loadMore,
-        onRefresh: n.refresh,
+        onRefresh: () async {
+          // A pull-to-refresh also re-rolls the trending hashtag strip.
+          ref.invalidate(topHashtagsProvider);
+          await n.refresh();
+        },
         superPostId: ref.watch(superPostIdProvider(kind)),
         onTap: (p) => _openPost(kind, p));
   }
@@ -222,10 +227,15 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
     final unread = ref.watch(unreadCountProvider);
     final mySqid = auth.me?.user.sub;
     final cs = Theme.of(context).colorScheme;
+    // Trending-hashtag strip below the top bar — feed pages only (hidden on
+    // Contribute, `_feed == null`), and only once tags have loaded.
+    final tags = ref.watch(topHashtagsProvider).valueOrNull ?? const <String>[];
+    final showHashtags = _feed != null && tags.isNotEmpty;
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
         titleSpacing: 4,
+        bottom: showHashtags ? HashtagBar(tags: tags) : null,
         // Left group: Makapix Club menu · my profile · notifications.
         title: Row(mainAxisSize: MainAxisSize.min, children: [
           PopupMenuButton<String>(

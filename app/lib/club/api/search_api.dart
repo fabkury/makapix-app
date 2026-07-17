@@ -3,6 +3,14 @@ import '../models/page.dart';
 import '../models/post.dart';
 import 'club_api_client.dart';
 
+/// Pull the bare tag list out of a `/hashtags/top` response defensively. The
+/// server sends `{ "hashtags": ["cat", ...], "cached_until": ... }`; anything
+/// else (missing key, wrong shape) yields an empty list. Pure — unit-tested.
+List<String> parseTopHashtags(Object? data) {
+  final list = data is Map ? (data['hashtags'] as List?) : (data is List ? data : null);
+  return (list ?? const []).map((e) => e.toString()).where((s) => s.isNotEmpty).toList();
+}
+
 /// Search across artworks / users / hashtags. The unified `/search` is
 /// auth+trigram and its item shape is parsed defensively (verify on device).
 class SearchApi {
@@ -29,6 +37,15 @@ class SearchApi {
         return (list ?? const [])
             .map((e) => HashtagStat.fromJson((e as Map).cast<String, dynamic>()))
             .toList();
+      });
+
+  /// Top trending hashtags for the header bar. Server-driven "rotation": the
+  /// endpoint returns a random sample of the top-trending tags on a shared 2h
+  /// cache, so the set changes on re-fetch, not on any client timer. Lives under
+  /// the unversioned `/api` root (not `/api/v1`), so it uses [dioRoot].
+  Future<List<String>> topHashtags() => client.guard(() async {
+        final resp = await client.dioRoot.get('/hashtags/top');
+        return parseTopHashtags(resp.data);
       });
 
   /// Artwork text search via `/search`. Pulls post-shaped entries out of the
