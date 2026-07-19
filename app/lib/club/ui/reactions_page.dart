@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/post.dart';
@@ -28,7 +30,7 @@ class ReactionsPage extends ConsumerWidget {
           message: 'Could not load reactions.',
           onRetry: () async => ref.invalidate(reactionUsersProvider(post.id)),
         ),
-        data: (reactors) => _Body(post: post, reactors: reactors),
+        data: (reactors) => CenteredContent(child: _Body(post: post, reactors: reactors)),
       ),
     );
   }

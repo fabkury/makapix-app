@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:makapix_club/ui/layout.dart';
+
 import '../../models/player_device.dart';
 
 /// A modal that lists the online players and returns the one the user picks (or null if
@@ -10,7 +12,7 @@ Future<PlayerDevice?> showSelectPlayer(
   String? selectedId,
   String title = 'Choose a player',
 }) {
-  return showModalBottomSheet<PlayerDevice>(
+  return showAppSheet<PlayerDevice>(
     context: context,
     showDragHandle: true,
     builder: (ctx) {

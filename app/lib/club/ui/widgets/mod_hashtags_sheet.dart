@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../config/monitored_hashtags.dart';
@@ -13,7 +15,7 @@ import '../../state/post_providers.dart';
 /// `ClubServerConfig.modHashtagsEnabled` + `ClubMe.canModerate`.
 Future<void> showModHashtagsSheet(BuildContext context,
     {required Post post, required int cap}) {
-  return showModalBottomSheet<void>(
+  return showAppSheet<void>(
     context: context,
     isScrollControlled: true,
     builder: (_) => _ModHashtagsSheet(post: post, cap: cap),

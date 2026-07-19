@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/club_notification.dart';
@@ -48,7 +50,8 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
         ),
       );
     }
-    return Scaffold(appBar: AppBar(title: const Text('Notifications')), body: body);
+    return Scaffold(
+        appBar: AppBar(title: const Text('Notifications')), body: CenteredContent(child: body));
   }
 
   // Moderation/report types are presented impersonally (a shield avatar), never

@@ -103,6 +103,10 @@ void main() {
     await pumpPage(t);
     await t.enterText(find.byType(TextField), 'DELETE');
     await t.pump();
+    // The 640dp content cap wraps the warning card taller, so the button can sit
+    // below the fold of the test viewport — scroll it into view like a user would.
+    await t.ensureVisible(deleteButton());
+    await t.pump();
     await t.tap(deleteButton());
     // The busy spinner animates while the dialog is up, so pumpAndSettle would
     // never settle — pump bounded frames instead.
@@ -126,6 +130,8 @@ void main() {
     api.failWith = ClubError(
         status: 403, code: 'forbidden', message: 'Owners cannot delete their account.');
     await t.enterText(find.byType(TextField), 'DELETE');
+    await t.pump();
+    await t.ensureVisible(deleteButton());
     await t.pump();
     await t.tap(deleteButton());
     await t.pumpAndSettle();

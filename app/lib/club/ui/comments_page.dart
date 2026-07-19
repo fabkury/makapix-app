@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:makapix_club/ui/layout.dart';
+
 import '../models/post.dart';
 import 'artwork_detail_page.dart';
 import 'profile_page.dart';
@@ -17,14 +19,15 @@ class CommentsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Comments')),
-      body: SingleChildScrollView(
+      body: CenteredContent(
+          child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           _ArtworkHeader(post: post),
           const Divider(height: 24),
           CommentsSection(postId: post.id),
         ]),
-      ),
+      )),
     );
   }
 }

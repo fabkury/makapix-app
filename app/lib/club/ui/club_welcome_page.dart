@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/post.dart';
@@ -33,7 +35,8 @@ class ClubWelcomePage extends ConsumerWidget {
       ),
       body: Column(
         children: [
-          Padding(
+          CenteredContent(
+              child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
             child: Column(children: [
               const Text('Welcome to Makapix Club',
@@ -55,7 +58,7 @@ class ClubWelcomePage extends ConsumerWidget {
                 ),
               ),
             ]),
-          ),
+          )),
           const Padding(
             padding: EdgeInsets.fromLTRB(20, 4, 20, 4),
             child: Align(

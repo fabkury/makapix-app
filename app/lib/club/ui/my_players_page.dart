@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -31,7 +33,7 @@ class _MyPlayersPageState extends ConsumerState<MyPlayersPage> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
   Future<void> _openRegister() async {
-    final registered = await showModalBottomSheet<bool>(
+    final registered = await showAppSheet<bool>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
@@ -125,7 +127,8 @@ class _MyPlayersPageState extends ConsumerState<MyPlayersPage> {
           ),
         ],
       ),
-      body: RefreshIndicator(
+      body: CenteredContent(
+          child: RefreshIndicator(
         onRefresh: () => ref.read(playerControllerProvider.notifier).refresh(),
         child: (st.loading && players.isEmpty)
             ? ListView(
@@ -159,7 +162,7 @@ class _MyPlayersPageState extends ConsumerState<MyPlayersPage> {
                   ],
                 ],
               ),
-      ),
+      )),
     );
   }
 

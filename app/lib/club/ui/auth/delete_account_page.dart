@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/club_error.dart';
@@ -67,7 +69,8 @@ class _DeleteAccountPageState extends ConsumerState<DeleteAccountPage> {
     final handle = ref.watch(authControllerProvider).me?.user.handle;
     return Scaffold(
       appBar: AppBar(title: const Text('Delete account')),
-      body: ListView(
+      body: CenteredContent(
+          child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           Card(
@@ -141,7 +144,7 @@ class _DeleteAccountPageState extends ConsumerState<DeleteAccountPage> {
             ),
           ),
         ],
-      ),
+      )),
     );
   }
 

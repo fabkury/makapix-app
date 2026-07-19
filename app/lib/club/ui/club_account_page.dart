@@ -1,5 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+
+import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
@@ -43,7 +45,7 @@ class ClubAccountPage extends ConsumerWidget {
       appBar: AppBar(title: const Text('Makapix Club')),
       body: switch (auth.status) {
         AuthStatus.loading => const Center(child: CircularProgressIndicator()),
-        AuthStatus.signedIn => _AccountView(me: auth.me!),
+        AuthStatus.signedIn => CenteredContent(child: _AccountView(me: auth.me!)),
         _ => const _SignInForm(),
       },
     );

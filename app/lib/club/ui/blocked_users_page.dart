@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/blocked_user.dart';
@@ -99,7 +101,8 @@ class _BlockedUsersPageState extends ConsumerState<BlockedUsersPage> {
         ),
       );
     }
-    return Scaffold(appBar: AppBar(title: const Text('Blocked users')), body: body);
+    return Scaffold(
+        appBar: AppBar(title: const Text('Blocked users')), body: CenteredContent(child: body));
   }
 
   Widget _row(BlockedUser u) => ListTile(

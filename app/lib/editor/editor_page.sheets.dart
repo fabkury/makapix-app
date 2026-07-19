@@ -151,7 +151,7 @@ extension _EditorSheets on _EditorPageState {
   void _layerOptions(int initial) {
     int cur = initial;
     int? dragOpacity; // non-null while the opacity slider is being dragged
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
       showDragHandle: true,
       backgroundColor: const Color(0xFF1A1C1F),
@@ -312,7 +312,7 @@ extension _EditorSheets on _EditorPageState {
   // state zone (tap opens the existing duration dialog for this frame).
   void _frameMenu(int initial) {
     int cur = initial;
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
       showDragHandle: true,
       backgroundColor: const Color(0xFF1A1C1F),

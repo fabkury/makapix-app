@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/post.dart';
@@ -76,7 +78,7 @@ class _PublishPageState extends ConsumerState<PublishPage> {
     final cfg = ref.watch(serverConfigProvider).valueOrNull ?? ClubServerConfig.fallback;
     return Scaffold(
       appBar: AppBar(title: const Text('Post to Club')),
-      body: _form(cfg, pub),
+      body: CenteredContent(child: _form(cfg, pub)),
     );
   }
 

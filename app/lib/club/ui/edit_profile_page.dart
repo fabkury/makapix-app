@@ -1,5 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+
+import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../edit/profile_edit.dart';
@@ -182,7 +184,8 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
       },
       child: Scaffold(
         appBar: AppBar(title: const Text('Edit profile')),
-        body: ListView(
+        body: CenteredContent(
+            child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
             Center(
@@ -238,7 +241,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
               label: const Text('Save'),
             ),
           ],
-        ),
+        )),
       ),
     );
   }

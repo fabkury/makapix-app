@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/club_error.dart';
@@ -154,7 +156,7 @@ class _ReportPageState extends ConsumerState<ReportPage> {
                     style: TextStyle(color: Colors.white60)),
               ),
             )
-          : _form(rules),
+          : CenteredContent(child: _form(rules)),
     );
   }
 

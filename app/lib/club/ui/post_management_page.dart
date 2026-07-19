@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+
+import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/club_error.dart';
@@ -77,7 +79,7 @@ class _PostManagementPageState extends ConsumerState<PostManagementPage> {
             ),
         ],
       ),
-      body: _body(s, n),
+      body: CenteredContent(child: _body(s, n)),
       bottomNavigationBar: s.selected.isEmpty ? null : _bulkBar(s, n),
     );
   }
@@ -173,7 +175,9 @@ class _PostManagementPageState extends ConsumerState<PostManagementPage> {
         color: const Color(0xFF1B1E22),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
+          // The bar's background spans the window; its actions stay in the centered content column.
+          child: CenteredContent(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
             if (busy) const LinearProgressIndicator(minHeight: 2),
             Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
               TextButton.icon(
@@ -202,7 +206,7 @@ class _PostManagementPageState extends ConsumerState<PostManagementPage> {
                 label: Text(count > kPmdBatchMax ? 'Download (max $kPmdBatchMax)' : 'Download'),
               ),
             ]),
-          ]),
+          ])),
         ),
       ),
     );
@@ -230,7 +234,7 @@ class _PostManagementPageState extends ConsumerState<PostManagementPage> {
   // ---- License picker ----
   Future<void> _openLicensePicker() async {
     final n = ref.read(pmdListProvider.notifier);
-    final picked = await showModalBottomSheet<_LicenseChoice>(
+    final picked = await showAppSheet<_LicenseChoice>(
       context: context,
       builder: (ctx) => Consumer(builder: (ctx, ref, _) {
         final async = ref.watch(licensesProvider);
@@ -315,7 +319,7 @@ class _PostManagementPageState extends ConsumerState<PostManagementPage> {
 
   // ---- Downloads (BDR) sheet ----
   void _openDownloads() {
-    showModalBottomSheet<void>(
+    showAppSheet<void>(
       context: context,
       isScrollControlled: true,
       builder: (_) => const _DownloadsSheet(),

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/player_device.dart';
@@ -122,7 +124,7 @@ class PlayerBar extends ConsumerWidget {
   }
 
   void _openAdjustments(BuildContext context) {
-    showModalBottomSheet<void>(
+    showAppSheet<void>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,

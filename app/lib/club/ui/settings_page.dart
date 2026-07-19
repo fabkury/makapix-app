@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../config/monitored_hashtags.dart';
@@ -85,7 +87,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final moderation = ref.watch(serverConfigProvider).valueOrNull?.moderation;
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
-      body: signedIn
+      body: CenteredContent(
+          child: signedIn
           ? ListView(
               padding: const EdgeInsets.all(16),
               children: [
@@ -179,7 +182,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           : SignInPrompt(
               message: 'Sign in to manage your settings.',
               onSignIn: () => Navigator.pop(context),
-            ),
+            )),
     );
   }
 

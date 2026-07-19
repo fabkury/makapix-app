@@ -12,6 +12,8 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+
+import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter/services.dart' show AssetBundle, rootBundle;
 
 import '../engine_ffi.dart';
@@ -174,7 +176,7 @@ class _PalettePageState extends State<PalettePage> {
 
   void _paletteActions(int i) {
     final p = _palettes[i];
-    showModalBottomSheet<void>(
+    showAppSheet<void>(
       context: context,
       builder: (ctx) => SafeArea(
         child: Wrap(children: [
@@ -272,7 +274,7 @@ class _PalettePageState extends State<PalettePage> {
   // ---- add flow ----
 
   void _addMenu() {
-    showModalBottomSheet<void>(
+    showAppSheet<void>(
       context: context,
       builder: (ctx) => SafeArea(
         child: Wrap(children: [

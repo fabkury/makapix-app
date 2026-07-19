@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
+import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../auth/account_validators.dart';
@@ -150,7 +152,8 @@ class _AccountManagementPageState extends ConsumerState<AccountManagementPage> {
     }
     return Scaffold(
       appBar: AppBar(title: const Text('Account')),
-      body: ListView(
+      body: CenteredContent(
+          child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           _section('Change password', [
@@ -251,7 +254,7 @@ class _AccountManagementPageState extends ConsumerState<AccountManagementPage> {
             ),
           ]),
         ],
-      ),
+      )),
     );
   }
 

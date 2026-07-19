@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/artist_stats.dart';
@@ -33,7 +35,7 @@ class _ArtistDashboardPageState extends ConsumerState<ArtistDashboardPage> {
           message: e is ClubError ? e.message : 'Could not load your dashboard.',
           onRetry: ctrl.load,
         ),
-        data: (d) => _body(d, ctrl),
+        data: (d) => CenteredContent(child: _body(d, ctrl)),
       ),
     );
   }

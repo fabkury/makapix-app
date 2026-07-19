@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/hashtag.dart';
@@ -61,9 +63,9 @@ class _SearchPageState extends ConsumerState<SearchPage> with SingleTickerProvid
       body: _q.isEmpty
           ? const Center(child: Text('Type to search.', style: TextStyle(color: Colors.white38)))
           : TabBarView(controller: _tab, children: [
-              _ArtworksTab(query: _q),
-              _UsersTab(query: _q),
-              _HashtagsTab(query: _q),
+              _ArtworksTab(query: _q), // full-bleed adaptive grid
+              CenteredContent(child: _UsersTab(query: _q)),
+              CenteredContent(child: _HashtagsTab(query: _q)),
             ]),
     );
   }
