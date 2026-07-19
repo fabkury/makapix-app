@@ -62,17 +62,26 @@ void main() {
   });
 
   group('defaultRulerC', () {
-    test('same length as the baseline, 30 degrees off it, screen-CCW (above a rightward line)', () {
+    test('roughly baseline length, ~30 degrees off it, screen-CCW (above a rightward line)', () {
       const a = Offset(3, 7), b = Offset(13, 7);
       final c = defaultRulerC(a, b);
-      expect((c - a).distance, closeTo((b - a).distance, 1e-9));
-      expect(rulerAngleDeg(a, b, c), closeTo(30, 1e-9));
+      expect((c - a).distance, closeTo((b - a).distance, 1.0)); // whole-cell rounding jitter
+      expect(rulerAngleDeg(a, b, c), closeTo(30, 4));
       expect(c.dy, lessThan(a.dy)); // screen-CCW: y grows down, so "above" is smaller y
     });
-    test('degenerate A==B still yields a grabbable point away from A', () {
+    test('spawns on whole cells — A/B are whole cells and a fractional C would stick forever '
+        '(the grab-offset drag preserves the fraction), skewing snapped angles off 90.0', () {
+      const a = Offset(3, 7), b = Offset(13, 7);
+      final c = defaultRulerC(a, b);
+      expect(c.dx, c.dx.roundToDouble());
+      expect(c.dy, c.dy.roundToDouble());
+    });
+    test('degenerate A==B still yields a grabbable whole-cell point away from A', () {
       const a = Offset(5, 5);
       final c = defaultRulerC(a, a);
       expect((c - a).distance, greaterThan(1));
+      expect(c.dx, c.dx.roundToDouble());
+      expect(c.dy, c.dy.roundToDouble());
     });
   });
 

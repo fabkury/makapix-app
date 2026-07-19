@@ -381,14 +381,18 @@ double? rulerAngleDeg(Offset a, Offset b, Offset c) {
 }
 
 /// Default third point when Angle mode has no C yet: A→B rotated 30° about A, same length,
-/// screen-CCW (−30° with y growing down, so C sits above a left-to-right baseline). Degenerate
-/// A==B falls back to a short horizontal arm so C stays grabbable.
+/// screen-CCW (−30° with y growing down, so C sits above a left-to-right baseline), then
+/// ROUNDED to a whole cell — A and B are always whole cells (the gesture code floors the
+/// finger to a cell), and a fractional C would be permanent: the grab-offset drag preserves
+/// the fraction forever, so a visually snapped right angle would read 90.3° instead of 90.0°.
+/// Degenerate A==B falls back to a short horizontal arm so C stays grabbable.
 Offset defaultRulerC(Offset a, Offset b) {
   var v = b - a;
   if (v.distance == 0) v = const Offset(8, 0);
   const t = -math.pi / 6;
   final ct = math.cos(t), st = math.sin(t);
-  return a + Offset(v.dx * ct - v.dy * st, v.dx * st + v.dy * ct);
+  final c = a + Offset(v.dx * ct - v.dy * st, v.dx * st + v.dy * ct);
+  return Offset(c.dx.roundToDouble(), c.dy.roundToDouble());
 }
 
 /// Where the Angle-mode degree chip centres, in SCREEN px. Sits on the interior-angle bisector
