@@ -26,7 +26,7 @@ class _Region extends StatelessWidget {
 }
 
 /// Mirrors the editor's body arrangement: portrait stacks horizontal bands; landscape is
-/// palette · frames · [canvas / options] · layers · tools.
+/// frames · palette · [canvas / options] · layers · tools.
 class _EditorChromeHarness extends StatelessWidget {
   const _EditorChromeHarness();
   @override
@@ -34,8 +34,8 @@ class _EditorChromeHarness extends StatelessWidget {
     final landscape = editorUsesLandscape(MediaQuery.sizeOf(context));
     if (landscape) {
       return Row(children: const [
-        _Region(_palette, width: 72),
         _Region(_film, width: 70),
+        _Region(_palette, width: 72),
         Expanded(
           child: Column(children: [
             Expanded(child: _Region(_canvas)),
@@ -80,13 +80,13 @@ void main() {
     expect(tester.getRect(find.byKey(_tools)).width, 400);
   });
 
-  testWidgets('landscape flanks the canvas: palette | film | canvas+options | layers | tools',
+  testWidgets('landscape flanks the canvas: film | palette | canvas+options | layers | tools',
       (tester) async {
     await pumpAt(tester, const Size(1200, 600));
     double left(Key k) => tester.getRect(find.byKey(k)).left;
-    expect(left(_palette), 0);
-    expect(left(_palette), lessThan(left(_film)));
-    expect(left(_film), lessThan(left(_canvas)));
+    expect(left(_film), 0);
+    expect(left(_film), lessThan(left(_palette)));
+    expect(left(_palette), lessThan(left(_canvas)));
     expect(left(_canvas), lessThan(left(_layers)));
     expect(left(_layers), lessThan(left(_tools)));
     expect(tester.getRect(find.byKey(_tools)).right, 1200);

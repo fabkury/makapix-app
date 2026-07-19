@@ -504,12 +504,12 @@ class _EditorPageState extends ConsumerState<EditorPage>
   }
 
   // Landscape: the horizontal bands become vertical panels flanking the canvas —
-  // palette · frames | canvas / tool options / tooltip | layers · tools.
+  // frames · palette | canvas / tool options / tooltip | layers · tools.
   Widget _buildLandscapeBody(List<dynamic> layers) {
     return Row(
       children: [
-        _buildPalette(axis: Axis.vertical), // row-2, outermost left
-        _buildFilmRoll(axis: Axis.vertical), // frames + ☰ menu, left of the canvas
+        _buildFilmRoll(axis: Axis.vertical), // frames + ☰ menu, outermost left
+        _buildPalette(axis: Axis.vertical), // row-2, beside the canvas
         Expanded(
           child: Column(
             children: [
