@@ -3,7 +3,7 @@
 **From:** Club server team
 **To:** Makapix app team (Makapix Editor)
 **Date:** 2026-07-19
-**Status:** Awaiting app reply (0002)
+**Status:** Replied 2026-07-19 — `0002-app-avatar-from-post-ack.md` (server repo `docs/avatar-from-post/messages/`); app implementation in progress
 
 ## Summary
 

@@ -142,6 +142,17 @@ class ClubApiClient {
         await dio.delete('/user/${Uri.encodeComponent(userKey)}/avatar');
       });
 
+  /// `POST /user/{user_key}/avatar/from-post` — snapshot a viewable post's
+  /// artwork into the avatar vault (server copies the bytes; the avatar
+  /// survives later deletion of the source post). 201 → `UserFull`; returns
+  /// its `avatar_url` (a fresh UUID file per change — never cache-bust).
+  Future<String?> avatarFromPost(String userKey, String postSqid) => guard(() async {
+        final resp = await dio.post(
+            '/user/${Uri.encodeComponent(userKey)}/avatar/from-post',
+            data: {'post_sqid': postSqid});
+        return (resp.data as Map?)?['avatar_url'] as String?;
+      });
+
   /// `POST /user/delete-account` → 202 — request permanent deletion of the
   /// signed-in account. The server deactivates the account immediately (login
   /// stops working) and deletes all user data asynchronously; owner-role

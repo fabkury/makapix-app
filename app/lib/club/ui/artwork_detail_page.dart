@@ -464,7 +464,12 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
     // Report is visible to everyone (incl. signed-out) once the moderation key
     // is live, except on your own post and on playlists (D6/A14/A16).
     final showReport = cfg?.moderationEnabled == true && !post.isPlaylist && !_isOwner(post);
-    if (!showMkpx && !showMod && !showReport) return const [];
+    // Any signed-in user may snapshot any viewable artwork as their avatar
+    // (server copies the bytes — not ownership-gated by design).
+    final showUseAvatar = ref.watch(authControllerProvider).me != null &&
+        !post.isPlaylist &&
+        post.artUrl.isNotEmpty;
+    if (!showMkpx && !showMod && !showReport && !showUseAvatar) return const [];
     return [
       PopupMenuButton<String>(
         tooltip: 'More actions',
@@ -472,6 +477,7 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
           if (v == 'attach') _attachMkpx(context, post);
           if (v == 'detach') _detachMkpx(context, post);
           if (v == 'mod_hashtags') _editModHashtags(context, post);
+          if (v == 'use_avatar') _useAsProfilePhoto(context, post);
           if (v == 'report') {
             Navigator.push(context,
                 MaterialPageRoute(builder: (_) => ReportPage(target: ReportTarget.post(post))));
@@ -495,7 +501,17 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
                 Text('Edit mod hashtags…'),
               ]),
             ),
-          if (showReport && (showMkpx || showMod)) const PopupMenuDivider(),
+          if (showUseAvatar && (showMkpx || showMod)) const PopupMenuDivider(),
+          if (showUseAvatar)
+            const PopupMenuItem(
+              value: 'use_avatar',
+              child: Row(children: [
+                Icon(Icons.account_circle_outlined, size: 16),
+                SizedBox(width: 8),
+                Text('Use as profile photo…'),
+              ]),
+            ),
+          if (showReport && (showMkpx || showMod || showUseAvatar)) const PopupMenuDivider(),
           if (showReport)
             const PopupMenuItem(
               value: 'report',
@@ -515,6 +531,40 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
     // the entry only renders when the config key is present.
     final cap = ref.read(serverConfigProvider).valueOrNull?.maxModHashtagsPerPost ?? 16;
     showModHashtagsSheet(context, post: post, cap: cap);
+  }
+
+  /// Preview-confirm, then have the server snapshot this post's artwork into
+  /// the avatar vault (`POST /user/{key}/avatar/from-post`). The 201 returns a
+  /// fresh-UUID `avatar_url`, so a plain `reloadMe()` refreshes every avatar
+  /// surface — the URL-keyed image cache refetches naturally, no purge needed.
+  Future<void> _useAsProfilePhoto(BuildContext context, Post post) async {
+    final me = ref.read(authControllerProvider).me;
+    if (me == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final go = await showUseAsProfilePhotoDialog(context,
+        artUrl: post.artUrl, handle: me.user.handle);
+    if (go != true) return;
+    try {
+      await ref.read(clubApiClientProvider).avatarFromPost(me.user.userKey, post.sqid);
+      await ref.read(authControllerProvider.notifier).reloadMe();
+      messenger.showSnackBar(const SnackBar(content: Text('Profile photo updated.')));
+    } on ClubError catch (e) {
+      if (e.isAuth) {
+        messenger.showSnackBar(
+            const SnackBar(content: Text('Your session expired — sign in again.')));
+      } else if (e.isRateLimited) {
+        messenger.showSnackBar(const SnackBar(
+            content: Text('Too many profile-photo changes — try again later.')));
+      } else if (e.status == 507) {
+        messenger.showSnackBar(const SnackBar(
+            content: Text('Server storage is temporarily full — try again later.')));
+      } else {
+        messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } catch (_) {
+      messenger.showSnackBar(
+          const SnackBar(content: Text('Could not set the profile photo.')));
+    }
   }
 
   /// Golden-button action: download the post's .mkpx and open it in the editor
@@ -660,4 +710,35 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
           SnackBar(content: Text(e is ClubError ? e.message : 'Could not load artwork.')));
     }
   }
+}
+
+/// "Use as profile photo" confirmation: previews the artwork rendered
+/// avatar-size next to the user's handle — exactly how it will look once set.
+/// Pops `true` on confirm. Top-level (not a page method) so it's widget-testable.
+Future<bool?> showUseAsProfilePhotoDialog(BuildContext context,
+    {required String artUrl, required String handle}) {
+  return showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Use as profile photo?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            HandleAvatar(url: artUrl, handle: handle, radius: 24),
+            const SizedBox(width: 12),
+            Flexible(child: Text(handle, overflow: TextOverflow.ellipsis)),
+          ]),
+          const SizedBox(height: 12),
+          const Text('This artwork becomes your profile photo. It stays even if '
+              'the post is later deleted.'),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Use photo')),
+      ],
+    ),
+  );
 }
