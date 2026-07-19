@@ -1,5 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+
+import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
@@ -56,8 +58,12 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     _scroll.addListener(_onScroll);
   }
 
+  /// The collapse threshold — the header stack's height, refreshed each build (the scroll
+  /// listener has no context, and the height is tablet-dependent).
+  double _headerStackH = 176;
+
   void _onScroll() {
-    final v = _scroll.hasClients && _scroll.offset > _Body._kHeaderStackH;
+    final v = _scroll.hasClients && _scroll.offset > _headerStackH;
     if (v != _collapsed.value) _collapsed.value = v;
   }
 
@@ -70,6 +76,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    _headerStackH = _Body._headerStackH(isTabletish(context));
     final async = ref.watch(profileProvider(widget.sqid));
     // ref.watch so the menu appears once the config future resolves; the menu
     // needs the resolved profile (built before the fetch completes → hidden).
@@ -425,30 +432,35 @@ class _Body extends ConsumerWidget {
   // handle beside the avatar's protruding half, then the left-aligned info
   // block. The name block gets fixed room (the stack bottom), so handle and
   // tagline-free layout stay overflow-safe; tagline/bio flow below full-width.
-  static const double _kBackdropH = 120;
-  static const double _kAvatarR = 36;
+  // Tablet-aware header geometry: a taller backdrop and larger avatar at ≥600dp so the header
+  // keeps its proportions on tablets. The 56dp name band below the backdrop is constant, so
+  // headerStackH stays derived (176 = 120 + 56 on phones).
+  static double _backdropH(bool tablet) => tablet ? 180 : 120;
+  static double _avatarR(bool tablet) => tablet ? 48 : 36;
   static const double _kRing = 3;
-  static const double _kHeaderStackH = 176;
+  static double _headerStackH(bool tablet) => _backdropH(tablet) + 56;
 
   Widget _header(BuildContext context, WidgetRef ref, bool signedIn) {
     final p = profile;
     final cs = Theme.of(context).colorScheme;
-    final avatarD = 2 * (_kAvatarR + _kRing);
+    final tablet = isTabletish(context);
+    final backdropH = _backdropH(tablet);
+    final avatarD = 2 * (_avatarR(tablet) + _kRing);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       SizedBox(
-        height: _kHeaderStackH,
+        height: _headerStackH(tablet),
         width: double.infinity,
         child: Stack(children: [
           Positioned(
             top: 0,
             left: 0,
             right: 0,
-            height: _kBackdropH,
-            child: _HeaderBackdrop(profile: p, height: _kBackdropH),
+            height: backdropH,
+            child: _HeaderBackdrop(profile: p, height: backdropH),
           ),
           Positioned(
             left: 16,
-            top: _kBackdropH - avatarD / 2,
+            top: backdropH - avatarD / 2,
             child: Container(
               padding: const EdgeInsets.all(_kRing),
               decoration: BoxDecoration(color: cs.surface, shape: BoxShape.circle),
@@ -457,7 +469,7 @@ class _Body extends ConsumerWidget {
           ),
           Positioned(
             left: 16 + avatarD + 12,
-            top: _kBackdropH + 6,
+            top: backdropH + 6,
             right: 16,
             bottom: 0,
             child: Row(children: [
@@ -535,7 +547,7 @@ class _Body extends ConsumerWidget {
   /// The header avatar; when an image exists, tap opens a full-size
   /// nearest-neighbor viewer (pixel avatars deserve a crisp zoom).
   Widget _avatar(BuildContext context, UserProfile p) {
-    final avatar = HandleAvatar(url: p.avatarUrl, handle: p.handle, radius: 36);
+    final avatar = HandleAvatar(url: p.avatarUrl, handle: p.handle, radius: _avatarR(isTabletish(context)));
     if (p.avatarUrl == null || p.avatarUrl!.isEmpty) return avatar;
     final tag = 'profile-avatar-${p.sqid}';
     return GestureDetector(
@@ -926,10 +938,9 @@ class _HighlightsStrip extends StatelessWidget {
   final UserProfile profile;
   const _HighlightsStrip({required this.profile});
 
-  static const double _tile = 108;
-
   @override
   Widget build(BuildContext context) {
+    final tile = isTabletish(context) ? 132.0 : 108.0;
     final cs = Theme.of(context).colorScheme;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Padding(
@@ -946,7 +957,7 @@ class _HighlightsStrip extends StatelessWidget {
         ]),
       ),
       SizedBox(
-        height: _tile,
+        height: tile,
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -954,7 +965,7 @@ class _HighlightsStrip extends StatelessWidget {
           separatorBuilder: (_, _) => const SizedBox(width: 8),
           itemBuilder: (_, i) => _HighlightTile(
             post: profile.highlights[i],
-            size: _tile,
+            size: tile,
             onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(

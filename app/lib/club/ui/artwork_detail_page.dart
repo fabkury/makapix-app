@@ -1,5 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+
+import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -196,11 +198,9 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
         .watch(commentsProvider(post.id))
         .maybeWhen(data: countComments, orElse: () => post.commentCount);
 
-    return ListView(
-      children: [
-        _header(context, post, base, reactionTotal, commentTotal),
-        _stage(context, post),
-        Padding(
+    // One source of truth for the info block (title/meta/reactions/description/hashtags/comments):
+    // below the stage on phones, in the right-hand pane on wide viewports.
+    Widget infoBlock() => Padding(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             // Title (left) + Edit-in-Makapix (a single icon, right). The icon turns
@@ -229,9 +229,33 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
             const Divider(height: 24),
             Container(key: _commentsKey, child: CommentsSection(postId: post.id)),
           ]),
-        ),
-      ],
-    );
+        );
+
+    return LayoutBuilder(builder: (context, constraints) {
+      // Two-pane on wide viewports (tablet landscape, desktop): the artwork fills a dark stage on
+      // the left; owner header, title, reactions and comments scroll in a fixed-width right pane.
+      // Vertical drags stay inside the pane's ListView; horizontal drags still bubble up to the
+      // feed's PageView, so swiping between artworks keeps working from either pane.
+      if (constraints.maxWidth >= kWideDetailBreakpoint) {
+        return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Expanded(child: _stage(context, post, fillPane: true)),
+          SizedBox(
+            width: 400,
+            child: ListView(children: [
+              _header(context, post, base, reactionTotal, commentTotal),
+              infoBlock(),
+            ]),
+          ),
+        ]);
+      }
+      return ListView(
+        children: [
+          _header(context, post, base, reactionTotal, commentTotal),
+          _stage(context, post),
+          infoBlock(),
+        ],
+      );
+    });
   }
 
   /// The tappable hashtag row + (for moderators and the artist) the mod-tag
@@ -357,7 +381,9 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
   // When animations are off (the autoplay setting or OS reduce-motion), an animated post
   // shows its first frame with a small play/stop overlay — playback started here joins the
   // shared clock, so it is in phase with every other playing tile.
-  Widget _stage(BuildContext context, Post post) {
+  // `fillPane` (wide two-pane layout): the stage fills its bounded left pane instead of sizing
+  // from the screen — the AspectRatio grows the art as large as the pane allows.
+  Widget _stage(BuildContext context, Post post, {bool fillPane = false}) {
     final motionOff = post.isAnimated &&
         (!ref.watch(animationAutoplayProvider) || MediaQuery.disableAnimationsOf(context));
     Widget art = PixelArtImage(
@@ -384,6 +410,15 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
         ),
       ]);
     }
+    final ratio = post.height > 0 ? post.width / post.height : 1.0;
+    if (fillPane) {
+      return Container(
+        color: const Color(0xFF0E1012),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.all(16),
+        child: AspectRatio(aspectRatio: ratio, child: art),
+      );
+    }
     return Container(
       color: const Color(0xFF0E1012),
       alignment: Alignment.center,
@@ -392,7 +427,7 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
       child: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.70),
         child: AspectRatio(
-          aspectRatio: post.height > 0 ? post.width / post.height : 1,
+          aspectRatio: ratio,
           child: art,
         ),
       ),
