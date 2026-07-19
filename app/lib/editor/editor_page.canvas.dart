@@ -288,9 +288,11 @@ extension _EditorCanvas on _EditorPageState {
                   ),
                 ],
                 if (_isRuler && _hasRuler)
-                  // measurement line + endpoint coords + length (never drawn to the canvas)
+                  // measurement line + endpoint coords + length (never drawn to the canvas);
+                  // in Angle mode a second arm A→C plus the angle at the vertex
                   CustomPaint(
-                    painter: RulerPainter(_rulerA!, _rulerB!, vScale, vOff),
+                    painter: RulerPainter(_rulerA!, _rulerB!, vScale, vOff,
+                        c: _rulerAngle ? _rulerC : null),
                     size: Size.infinite,
                   ),
               ]),
@@ -933,20 +935,28 @@ extension _EditorCanvas on _EditorPageState {
       const tol = kRulerReticleRadius;
       final dA = (pos - screenOf(_rulerA!)).distance;
       final dB = (pos - screenOf(_rulerB!)).distance;
-      if (dA <= tol && dA <= dB) {
+      // C only competes for the grab in Angle mode — a hidden C must not steal presses.
+      final dC = (_rulerAngle && _rulerC != null)
+          ? (pos - screenOf(_rulerC!)).distance
+          : double.infinity;
+      if (dA <= tol && dA <= dB && dA <= dC) {
         _rulerDrag = 1;
         // Keep the endpoint where it is; remember the finger→endpoint offset for the drag.
         _rulerGrabOffset = _rulerA! - raw;
-      } else if (dB <= tol) {
+      } else if (dB <= tol && dB <= dC) {
         _rulerDrag = 2;
         _rulerGrabOffset = _rulerB! - raw;
+      } else if (dC <= tol) {
+        _rulerDrag = 5;
+        _rulerGrabOffset = _rulerC! - raw;
       } else {
-        // Off both reticles → drag the WHOLE ruler (both endpoints together). A tap with no movement
+        // Off all reticles → drag the WHOLE ruler (every point together). A tap with no movement
         // leaves it as-is (the move only happens on drag, in _continueRuler).
         _rulerDrag = 4;
         _rulerMoveAnchor = raw;
         _rulerMoveOrigA = _rulerA;
         _rulerMoveOrigB = _rulerB;
+        _rulerMoveOrigC = _rulerC; // hidden C rides along too, so the rig stays rigid
       }
     } else {
       // No measurement yet: a fresh drag lays one down (A fixed at the press, B follows the finger).
@@ -954,6 +964,7 @@ extension _EditorCanvas on _EditorPageState {
       _rulerGrabOffset = Offset.zero;
       _rulerA = raw;
       _rulerB = raw;
+      if (_rulerAngle) _rulerC = defaultRulerC(raw, raw); // live default while the line grows
     }
     setState(() {});
   }
@@ -970,19 +981,25 @@ extension _EditorCanvas on _EditorPageState {
       final p = raw + _rulerGrabOffset;
       if (_rulerDrag == 1) {
         _rulerA = p;
+      } else if (_rulerDrag == 5) {
+        _rulerC = p;
       } else {
         _rulerB = p; // dragging B, or growing a new measurement (A stays put)
+        // While a fresh measurement grows in Angle mode, C tracks its default 30° position so the
+        // whole rig is visible as it forms; on release it stays put and becomes independent.
+        if (_rulerDrag == 3 && _rulerAngle) _rulerC = defaultRulerC(_rulerA!, _rulerB!);
       }
     }
     setState(() {});
   }
 
-  // Translate both ruler endpoints by the drag delta (rigid move). Not clamped — the line may run
+  // Translate the ruler points by the drag delta (rigid move). Not clamped — the line may run
   // off-canvas.
   void _moveWholeRuler(Offset rawFinger) {
     final d = rawFinger - _rulerMoveAnchor!;
     _rulerA = _rulerMoveOrigA! + d;
     _rulerB = _rulerMoveOrigB! + d;
+    if (_rulerMoveOrigC != null) _rulerC = _rulerMoveOrigC! + d;
   }
 
   // Releasing leaves the draft in place (preview + handles persist); commit is an explicit button.

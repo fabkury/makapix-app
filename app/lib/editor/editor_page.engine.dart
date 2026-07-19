@@ -314,6 +314,7 @@ extension _EditorEngine on _EditorPageState {
       if (_hasRuler && (w != _canvasW || h != _canvasH)) {
         _rulerA = null;
         _rulerB = null;
+        _rulerC = null; // _rulerAngle stays: it's a UI preference, not a coordinate
         _rulerDrag = 0;
       }
       _canvasW = w;

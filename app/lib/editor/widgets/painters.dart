@@ -362,27 +362,116 @@ class TriangleTipHandlePainter extends CustomPainter {
 /// (shared with the gesture code), so "tap within the reticle to move that coordinate".
 const double kRulerReticleRadius = 52.0;
 
+/// Screen-space radius of the Angle-mode arc at the vertex — inside the reticle ring, outside its
+/// crosshair gap, so arc and vertex reticle read as one instrument.
+const double kRulerAngleArcRadius = 28.0;
+
+/// The Angle-mode arc colour: deliberately far from the ruler's yellow (0xFFFFC400) so the
+/// measured angle reads at a glance as "not another arm".
+const Color kRulerAngleArcColor = Color(0xFF00E5FF);
+
+/// Interior (undirected) angle at vertex [a] between arms a→b and a→c, in degrees 0..180.
+/// Null when either arm has zero length (the angle is undefined).
+double? rulerAngleDeg(Offset a, Offset b, Offset c) {
+  final u = b - a, v = c - a;
+  final lu = u.distance, lv = v.distance;
+  if (lu == 0 || lv == 0) return null;
+  final cosT = ((u.dx * v.dx + u.dy * v.dy) / (lu * lv)).clamp(-1.0, 1.0);
+  return math.acos(cosT) * 180 / math.pi;
+}
+
+/// Default third point when Angle mode has no C yet: A→B rotated 30° about A, same length,
+/// screen-CCW (−30° with y growing down, so C sits above a left-to-right baseline). Degenerate
+/// A==B falls back to a short horizontal arm so C stays grabbable.
+Offset defaultRulerC(Offset a, Offset b) {
+  var v = b - a;
+  if (v.distance == 0) v = const Offset(8, 0);
+  const t = -math.pi / 6;
+  final ct = math.cos(t), st = math.sin(t);
+  return a + Offset(v.dx * ct - v.dy * st, v.dx * st + v.dy * ct);
+}
+
+/// Where the Angle-mode degree chip centres, in SCREEN px. Sits on the interior-angle bisector
+/// just past the arc; when the wedge is too narrow for the chip to clear both arms, flips to the
+/// reverse bisector (the reflex side, which always has ≥180° of open space).
+Offset angleLabelAnchor(Offset pa, Offset pb, Offset pc, double arcRadius) {
+  const clearance = 18.0; // half chip height plus a gap
+  const minWedgeClear = 16.0; // required perpendicular distance from chip centre to each arm
+  final d = arcRadius + clearance;
+  final lu = (pb - pa).distance, lv = (pc - pa).distance;
+  if (lu == 0 || lv == 0) return pa + Offset(0, -d);
+  final u = (pb - pa) / lu, v = (pc - pa) / lv;
+  var bis = u + v;
+  // Arms opposite (≈180°): the bisector vanishes; either perpendicular side of the line is clear.
+  bis = bis.distance < 1e-6 ? Offset(-u.dy, u.dx) : bis / bis.distance;
+  // Chip centre at distance d along the bisector clears each arm by d·sin(θ/2).
+  final cosT = (u.dx * v.dx + u.dy * v.dy).clamp(-1.0, 1.0);
+  final sinHalf = math.sqrt((1 - cosT) / 2);
+  final dir = d * sinHalf < minWedgeClear ? -bis : bis;
+  return pa + dir * d;
+}
+
 /// The Ruler tool's overlay: a measurement line between two canvas points, a large draggable
 /// reticle targeting each end, each end's X,Y, and the straight-line length in pixels — plus the
 /// axis-aligned legs of the right triangle under the diagonal (the horizontal and vertical
-/// distances), drawn semitransparent so the main measurement stays dominant. Drawn in
-/// SCREEN space; never touches the pixel buffer.
+/// distances), drawn semitransparent so the main measurement stays dominant. When [c] is set
+/// (Angle mode) a second arm a→c joins in, the faint legs are dropped (main lines only), and an
+/// arc in a distinctive colour shows the interior angle in degrees at the shared vertex [a].
+/// Drawn in SCREEN space; never touches the pixel buffer.
 class RulerPainter extends CustomPainter {
   final Offset a, b; // endpoints in canvas-pixel coords (cell top-left)
+  final Offset? c; // Angle-mode second-arm endpoint; null = Length mode
   final double scale; // screen px per canvas px
   final Offset off; // canvas top-left in screen px
-  const RulerPainter(this.a, this.b, this.scale, this.off);
+  const RulerPainter(this.a, this.b, this.scale, this.off, {this.c});
 
   @override
   void paint(Canvas canvas, Size size) {
     if (scale <= 0) return;
     Offset sc(Offset c) => Offset(off.dx + (c.dx + 0.5) * scale, off.dy + (c.dy + 0.5) * scale);
     final pa = sc(a), pb = sc(b);
+    final pc = c == null ? null : sc(c!);
+    _drawArm(canvas, a, b, pa, pb);
+    if (pc != null) _drawArm(canvas, a, c!, pa, pc);
+    final deg = pc == null ? null : rulerAngleDeg(a, b, c!);
+    if (pc != null && deg != null) _drawArc(canvas, pa, pb, pc);
+    _reticle(canvas, pa);
+    _reticle(canvas, pb);
+    if (pc != null) _reticle(canvas, pc);
+    const lbl = kRulerReticleRadius * 0.72;
+    Offset? dir; // degree-chip direction from the vertex (steers A's coord chip away from it)
+    if (pc != null && deg != null) {
+      final anchor = angleLabelAnchor(pa, pb, pc, kRulerAngleArcRadius);
+      final d = anchor - pa;
+      dir = d.distance == 0 ? const Offset(0, -1) : d / d.distance;
+    }
+    if (dir == null) {
+      _label(canvas, '${a.dx.toInt()}, ${a.dy.toInt()}', pa + const Offset(lbl, lbl));
+    } else {
+      // Angle mode: A's coord chip sits diametrically opposite the degree chip, so the two
+      // vertex chips can never collide.
+      _label(canvas, '${a.dx.toInt()}, ${a.dy.toInt()}', pa - dir * (lbl + 8),
+          centerX: true, centerY: true);
+    }
+    _label(canvas, '${b.dx.toInt()}, ${b.dy.toInt()}', pb + const Offset(lbl, lbl));
+    if (pc != null) _label(canvas, '${c!.dx.toInt()}, ${c!.dy.toInt()}', pc + const Offset(lbl, lbl));
+    // The headline degree chip goes LAST, on top of everything at the vertex.
+    if (dir != null && deg != null) {
+      _label(canvas, '${deg.toStringAsFixed(1)}°', pa + dir * (kRulerAngleArcRadius + 18.0),
+          centerX: true, centerY: true);
+    }
+  }
+
+  /// One measurement arm: faint dx/dy right-triangle legs with labels (Length mode only), the
+  /// halo+yellow main line, and the length label at the midpoint. Canvas coords for the pixel
+  /// math, screen coords for drawing.
+  void _drawArm(Canvas canvas, Offset ca, Offset cb, Offset pa, Offset pb) {
     // The axis-aligned legs of the measurement triangle (drawn first, so the main diagonal and
     // the reticles stay on top). Skipped when the diagonal is itself axis-aligned (the triangle
-    // collapses onto the main line and the legs would just restate its length).
-    final dxPx = (b.dx - a.dx).abs(), dyPx = (b.dy - a.dy).abs();
-    if (dxPx >= 1 && dyPx >= 1) {
+    // collapses onto the main line and the legs would just restate its length) — and in Angle
+    // mode, where two overlapping leg triangles would just be noise around the vertex.
+    final dxPx = (cb.dx - ca.dx).abs(), dyPx = (cb.dy - ca.dy).abs();
+    if (c == null && dxPx >= 1 && dyPx >= 1) {
       final corner = Offset(pb.dx, pa.dy); // horizontal leg from A, vertical leg into B
       final haloF = Paint()..color = const Color(0x59000000)..strokeWidth = 3..isAntiAlias = true;
       final lineF = Paint()..color = const Color(0x59FFC400)..strokeWidth = 1.5..isAntiAlias = true;
@@ -400,13 +489,25 @@ class RulerPainter extends CustomPainter {
     }
     canvas.drawLine(pa, pb, Paint()..color = Colors.black..strokeWidth = 3..isAntiAlias = true);
     canvas.drawLine(pa, pb, Paint()..color = const Color(0xFFFFC400)..strokeWidth = 1.5..isAntiAlias = true);
-    _reticle(canvas, pa);
-    _reticle(canvas, pb);
-    final len = (b - a).distance;
-    const lbl = kRulerReticleRadius * 0.72;
-    _label(canvas, '${a.dx.toInt()}, ${a.dy.toInt()}', pa + const Offset(lbl, lbl));
-    _label(canvas, '${b.dx.toInt()}, ${b.dy.toInt()}', pb + const Offset(lbl, lbl));
+    final len = (cb - ca).distance;
     _label(canvas, '${len.toStringAsFixed(1)} px', Offset((pa.dx + pb.dx) / 2, (pa.dy + pb.dy) / 2));
+  }
+
+  /// The Angle-mode arc at the vertex, spanning exactly the measured interior angle. Skipped
+  /// when the arms are too short on screen for the arc to read.
+  void _drawArc(Canvas canvas, Offset pa, Offset pb, Offset pc) {
+    final lu = (pb - pa).distance, lv = (pc - pa).distance;
+    if (lu == 0 || lv == 0) return;
+    final arcR = math.min(kRulerAngleArcRadius, 0.8 * math.min(lu, lv));
+    if (arcR < 6) return;
+    final u = (pb - pa) / lu, v = (pc - pa) / lv;
+    final start = math.atan2(u.dy, u.dx);
+    final sweep = math.atan2(u.dx * v.dy - u.dy * v.dx, u.dx * v.dx + u.dy * v.dy);
+    final rect = Rect.fromCircle(center: pa, radius: arcR);
+    canvas.drawArc(rect, start, sweep, false,
+        Paint()..color = Colors.black..style = PaintingStyle.stroke..strokeWidth = 3..isAntiAlias = true);
+    canvas.drawArc(rect, start, sweep, false,
+        Paint()..color = kRulerAngleArcColor..style = PaintingStyle.stroke..strokeWidth = 1.5..isAntiAlias = true);
   }
 
   // A gun-sight reticle: a ring with crosshair arms and a clear centre (so the target pixel shows).
@@ -425,11 +526,11 @@ class RulerPainter extends CustomPainter {
     canvas.drawCircle(c, 1.8, Paint()..color = const Color(0xFFFFC400));
   }
 
-  /// `faint` renders the semitransparent style of the triangle legs; `centerX` centres the text
-  /// horizontally on `at`; `alignRight` puts the text's right edge at `at` (for labels that must
+  /// `faint` renders the semitransparent style of the triangle legs; `centerX`/`centerY` centre
+  /// the text on `at`; `alignRight` puts the text's right edge at `at` (for labels that must
   /// grow away from the vertical leg).
   void _label(Canvas canvas, String text, Offset at,
-      {bool faint = false, bool centerX = false, bool alignRight = false}) {
+      {bool faint = false, bool centerX = false, bool centerY = false, bool alignRight = false}) {
     final tp = TextPainter(
       text: TextSpan(
         text: ' $text ',
@@ -441,12 +542,14 @@ class RulerPainter extends CustomPainter {
     )..layout();
     var p = at;
     if (centerX) p = p.translate(-tp.width / 2, 0);
+    if (centerY) p = p.translate(0, -tp.height / 2);
     if (alignRight) p = p.translate(-tp.width, 0);
     tp.paint(canvas, p);
   }
 
   @override
-  bool shouldRepaint(RulerPainter old) => old.a != a || old.b != b || old.scale != scale || old.off != off;
+  bool shouldRepaint(RulerPainter old) =>
+      old.a != a || old.b != b || old.c != c || old.scale != scale || old.off != off;
 }
 
 /// The pixel grid: thin hairlines on every canvas-pixel boundary, drawn in SCREEN space so each

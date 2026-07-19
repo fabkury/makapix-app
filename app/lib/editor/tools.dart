@@ -93,7 +93,7 @@ const toolTips = <String, String>{
   'Gradient': 'Drag to set a gradient, then Commit to fill.',
   'Line': 'Drag to set a line, then Commit to draw.',
   'Shape': 'Drag to set a shape (Ellipse / Triangle / Rectangle toggle), then Commit to draw.',
-  'Ruler': 'Drag to measure a line. Shows each end and its length in pixels.',
+  'Ruler': 'Drag to measure a line. Angle mode shows the angle at the shared point.',
   'Dodge': 'Drag to lighten pixels. Set intensity.',
   'Burn': 'Drag to darken pixels. Set intensity.',
   'Eyedropper': 'Tap a pixel to pick its colour as primary.',

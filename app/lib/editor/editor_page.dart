@@ -164,13 +164,17 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // Ruler tool: a non-destructive measurement line (two draggable endpoints in canvas-pixel
   // coords). Never drawn to the canvas; cleared when switching tools.
   Offset? _rulerA, _rulerB;
-  int _rulerDrag = 0; // 0=none, 1=dragging A, 2=dragging B, 3=new measurement, 4=moving both ends
+  // Angle mode: a third point forming a second arm A→C (A is the vertex). C is kept while the
+  // mode is toggled off (hidden, remembered for the session); the mode itself resets on restart.
+  Offset? _rulerC;
+  bool _rulerAngle = false;
+  int _rulerDrag = 0; // 0=none, 1=dragging A, 2=dragging B, 3=new measurement, 4=moving all, 5=dragging C
   // Canvas-space offset from the finger to the grabbed endpoint, kept for the whole drag so the
   // endpoint stays visible beside the finger instead of snapping under it.
   Offset _rulerGrabOffset = Offset.zero;
-  // Whole-ruler drag (off both reticles): the finger anchor and both endpoints at the move start,
+  // Whole-ruler drag (off both reticles): the finger anchor and the points at the move start,
   // so the move is a rigid translation clamped on-canvas.
-  Offset? _rulerMoveAnchor, _rulerMoveOrigA, _rulerMoveOrigB;
+  Offset? _rulerMoveAnchor, _rulerMoveOrigA, _rulerMoveOrigB, _rulerMoveOrigC;
   int _canvasW = 0, _canvasH = 0; // last-seen canvas size; a change auto-clears the stale ruler
   bool _radial = false;
   bool _gradSmooth = false; // Gradient: ease each colour transition with the smoothstep curve

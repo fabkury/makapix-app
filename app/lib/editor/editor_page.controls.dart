@@ -179,10 +179,22 @@ extension _EditorControls on _EditorPageState {
     }
     if (_tool == 'Ruler') {
       label('Ruler');
+      // Length = one measured line; Angle = a second arm A→C and the angle at the shared vertex A.
+      // Purely local overlay state — the engine never hears about the Ruler.
+      children.add(_toggle(['Length', 'Angle'], _rulerAngle ? 1 : 0, (i) {
+        setState(() {
+          _rulerAngle = i == 1;
+          if (_rulerAngle && _hasRuler && _rulerC == null) {
+            _rulerC = defaultRulerC(_rulerA!, _rulerB!); // spawn 30° off A→B, same length
+          }
+          // Switching back to Length just hides C (kept for this session).
+        });
+      }));
       children.add(_miniBtn('Clear', () {
         setState(() {
           _rulerA = null;
           _rulerB = null;
+          _rulerC = null;
           _rulerDrag = 0;
         });
       }));
