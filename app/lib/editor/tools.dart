@@ -64,6 +64,16 @@ const redoToolDef = ToolDef('Redo', Icons.redo, 'Redo');
 /// filtered out, as in the 3-row toolbar where Play is pinned): [hidden] is reinserted at its
 /// index in [previousFull], clamped, so toggling the toolbar mode never churns the saved order.
 /// If [hidden] wasn't in [previousFull], [visible] is returned as-is (the 2-row path).
+/// Row-3 grid shape for [n] tiles. Tiles always flow row-major (left→right, top→bottom).
+/// Portrait (`vertical: false`): the grid scrolls horizontally in `bands` rows (2, or 3 in
+/// three-band mode) of up to `perBand` tiles each. Landscape (`vertical: true`): the transpose —
+/// `perBand` tiles per row (2/3), `bands` rows scrolling vertically. Pure math, unit-tested.
+({int bands, int perBand}) toolGridShape({required int n, required bool threeBands, required bool vertical}) {
+  final k = threeBands ? 3 : 2;
+  if (vertical) return (bands: (n + k - 1) ~/ k, perBand: k);
+  return (bands: k, perBand: (n + k - 1) ~/ k);
+}
+
 List<String> restoreHiddenTool(List<String> visible, List<String> previousFull, String hidden) {
   final at = previousFull.indexOf(hidden);
   if (at < 0) return visible;

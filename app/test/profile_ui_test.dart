@@ -175,6 +175,31 @@ void main() {
       expect(find.text('Create your first pixel art'), findsOneWidget);
     });
 
+    testWidgets('header geometry scales up on tablet-sized viewports', (tester) async {
+      Finder headerStack(double h) => find.byWidgetPredicate(
+          (w) => w is SizedBox && w.height == h && w.width == double.infinity);
+
+      // Phone: 120dp backdrop + 56dp name band = 176.
+      tester.view.physicalSize = const Size(400, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(_harness(_profile(own: true)));
+      await tester.pumpAndSettle();
+      expect(headerStack(176), findsOneWidget);
+
+      // Tablet (shortestSide ≥ 600): 180dp backdrop → 236 stack, larger avatar.
+      tester.view.physicalSize = const Size(820, 1180);
+      await tester.pumpWidget(_harness(_profile(own: true)));
+      await tester.pumpAndSettle();
+      expect(headerStack(236), findsOneWidget);
+      expect(headerStack(176), findsNothing);
+      expect(
+        find.byWidgetPredicate((w) => w is HandleAvatar && w.radius == 48),
+        findsOneWidget,
+      );
+    });
+
     testWidgets("scrolling someone else's profile collapses the app bar into the mini-bar",
         (tester) async {
       Finder inAppBar(Finder inner) =>

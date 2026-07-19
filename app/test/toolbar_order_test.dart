@@ -59,4 +59,36 @@ void main() {
       expect(restoreHiddenTool(visible, full, 'Bucket'), full);
     });
   });
+
+  group('toolGridShape', () {
+    test('portrait: fixed band count, tiles split across bands', () {
+      expect(toolGridShape(n: 14, threeBands: false, vertical: false), (bands: 2, perBand: 7));
+      expect(toolGridShape(n: 14, threeBands: true, vertical: false), (bands: 3, perBand: 5));
+      expect(toolGridShape(n: 15, threeBands: false, vertical: false), (bands: 2, perBand: 8));
+    });
+
+    test('landscape: the transpose — fixed tiles per row, rows grow with n', () {
+      expect(toolGridShape(n: 14, threeBands: false, vertical: true), (bands: 7, perBand: 2));
+      expect(toolGridShape(n: 14, threeBands: true, vertical: true), (bands: 5, perBand: 3));
+      expect(toolGridShape(n: 15, threeBands: true, vertical: true), (bands: 5, perBand: 3));
+    });
+
+    test('every tile fits and no band is empty, for all n and both orientations', () {
+      for (var n = 1; n <= 40; n++) {
+        for (final three in [false, true]) {
+          for (final vertical in [false, true]) {
+            final s = toolGridShape(n: n, threeBands: three, vertical: vertical);
+            expect(s.bands * s.perBand, greaterThanOrEqualTo(n),
+                reason: 'capacity for n=$n three=$three vertical=$vertical');
+            // Landscape derives its row count from n, so no row may be empty. (Portrait keeps a
+            // FIXED band count — 2/3 rows even for tiny n — matching the real toolbar.)
+            if (vertical) {
+              expect((s.bands - 1) * s.perBand, lessThan(n),
+                  reason: 'no empty row for n=$n three=$three vertical=$vertical');
+            }
+          }
+        }
+      }
+    });
+  });
 }

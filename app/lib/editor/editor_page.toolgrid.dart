@@ -203,12 +203,11 @@ extension _EditorToolgrid on _EditorPageState {
     final others = _dragTool == null ? order : _visibleOrder(_toolOrder.where((t) => t != _dragTool).toList());
     final n = order.length;
     final bandsN = _threeRowToolbar ? 3 : 2; // portrait: band count; landscape: tiles per row
-    final perBand = vertical ? bandsN : (n + bandsN - 1) ~/ bandsN;
-    final bandCount = vertical ? (n + perBand - 1) ~/ perBand : bandsN;
+    final shape = toolGridShape(n: n, threeBands: _threeRowToolbar, vertical: vertical);
     final gridRows = [
-      for (var r = 0; r < bandCount; r++)
+      for (var r = 0; r < shape.bands; r++)
         Row(mainAxisSize: MainAxisSize.min, children: [
-          for (var i = r * perBand; i < n && i < (r + 1) * perBand; i++) _toolTile(order[i], others),
+          for (var i = r * shape.perBand; i < n && i < (r + 1) * shape.perBand; i++) _toolTile(order[i], others),
         ]),
     ];
     // Undo / Redo (+ the configurable 3rd tile in 3-row/3-wide mode) pinned — fixed, don't scroll
