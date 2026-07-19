@@ -23,6 +23,7 @@ import 'package:makapix_club/club/state/edit_bridge.dart';
 import 'package:makapix_club/club/ui/publish_page.dart';
 import 'package:makapix_club/engine_ffi.dart';
 import 'package:makapix_club/share/image_share.dart';
+import 'package:makapix_club/ui/layout.dart';
 
 import 'gallery/gallery_page.dart';
 import 'palette_page.dart';
@@ -242,9 +243,17 @@ class _EditorPageState extends ConsumerState<EditorPage>
   Offset _pinchStartMid = Offset.zero, _pinchStartPan = Offset.zero;
   // configurable bottom toolbar
   List<String> _toolOrder = tools.map((t) => t.dsl).toList();
-  // ☰ → View → 3-row toolbar: the row-3 grid reflows to 3 rows and Play is pinned beside
-  // Undo/Redo (its grid tile hides, but it stays in _toolOrder so the saved order never churns).
-  bool _threeRowToolbar = false;
+  // ☰ → View → 3-row toolbar: the row-3 grid reflows to 3 rows (3 tiles per row in landscape) and
+  // the pinned tool joins Undo/Redo (its grid tile hides, but it stays in _toolOrder so the saved
+  // order never churns). The persisted choice always wins; until the user chooses, tablets default
+  // to 3-row (more room, more tools visible) and phones to 2-row. NEVER read the getter before the
+  // first build (it needs MediaQuery via context) — _loadToolOrder only writes the pref field.
+  bool? _threeRowPref;
+  bool get _threeRowToolbar => _threeRowPref ?? isTabletish(context);
+  set _threeRowToolbar(bool v) => _threeRowPref = v;
+  // Chrome scale: tablets get ~20% larger strips/tiles/swatches — bigger touch targets, and the
+  // bands don't look skeletal at tablet sizes. Applied multiplicatively in the region builders.
+  double get _chromeScale => isTabletish(context) ? 1.2 : 1.0;
   // 3-row mode: the tool pinned in the 3rd slot (below Undo/Redo). Defaults to Pencil; long-press the
   // slot to change. The pinned tool stays in _toolOrder (only hidden from the grid) so pinning never
   // churns the saved order — see _visibleOrder / _pinnedThirdTile / _pinnedThirdConfigSheet.
@@ -378,9 +387,6 @@ class _EditorPageState extends ConsumerState<EditorPage>
   @override
   void initState() {
     super.initState();
-    // The editor is portrait-only (the Club side is unaffected). The shell mounts one pillar at a
-    // time, so locking here / unlocking in dispose scopes the lock to the editor.
-    SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp, DeviceOrientation.portraitDown]);
     _antCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 700))..repeat();
     _loadToolOrder();
     try {
@@ -400,8 +406,6 @@ class _EditorPageState extends ConsumerState<EditorPage>
 
   @override
   void dispose() {
-    // Leaving the editor (e.g. back to Club) lifts the portrait lock so the Club side can rotate.
-    SystemChrome.setPreferredOrientations(const []);
     _playTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     // Flush the in-progress drawing to disk before the engine is freed so it survives this unmount
@@ -457,38 +461,68 @@ class _EditorPageState extends ConsumerState<EditorPage>
     }
     final layers = _layerList();
     // No top bar: the frame film-strip (with its leading ☰ menu) is the topmost area. SafeArea
-    // keeps it clear of the status bar; the bottom inset is handled by the tooltip band.
+    // keeps it clear of the status bar (and of landscape notches via its side insets); the bottom
+    // inset is handled by the tooltip band. The body arrangement follows the viewport aspect —
+    // a pure function of size, so desktop resizes and iPad Split View behave like rotations.
+    final landscape = editorUsesLandscape(MediaQuery.sizeOf(context));
     return Scaffold(
       body: SafeArea(
         bottom: false,
-        child: Column(
-          children: [
-            _buildFilmRoll(), // frame film-strip + ☰ menu — the topmost area
-            // ClipRect so a zoomed canvas can't paint outside its region (the CustomPaint draws the
-            // scaled image past its box otherwise) — it stays behind the film-strip and bottom rows.
-            // Two compact pills float over the canvas area, ABOVE the canvas Listener, so their taps
-            // never fall through and start a draw gesture beneath them: the selection-menu on the
-            // bottom-right and the commit-menu (cancel/commit of the pending draft) on the bottom-left.
-            Expanded(
-              child: ClipRect(
-                child: Stack(fit: StackFit.expand, children: [
-                  _buildCanvas(),
-                  if (_selectionEdges.isNotEmpty)
-                    Positioned(right: 10, bottom: 10, child: _selectionMenu()),
-                  if (_hasAnyDraft)
-                    Positioned(left: 10, bottom: 10, child: _commitMenu()),
-                ]),
-              ),
-            ),
-            const Divider(height: 1),
-            _buildLayers(layers), // layers film-strip, directly above the tool options
-            _buildToolOptions(), // row-1
-            _buildPalette(), // row-2
-            _buildToolBar(), // row-3 (also holds the pinned Undo/Redo and the Onion toggle)
-            _buildTooltipBand(context),
-          ],
-        ),
+        child: landscape ? _buildLandscapeBody(layers) : _buildPortraitBody(layers),
       ),
+    );
+  }
+
+  // ClipRect so a zoomed canvas can't paint outside its region (the CustomPaint draws the
+  // scaled image past its box otherwise) — it stays behind the film-strip and bottom rows.
+  // Two compact pills float over the canvas area, ABOVE the canvas Listener, so their taps
+  // never fall through and start a draw gesture beneath them: the selection-menu on the
+  // bottom-right and the commit-menu (cancel/commit of the pending draft) on the bottom-left.
+  Widget _buildCanvasStack() {
+    return ClipRect(
+      child: Stack(fit: StackFit.expand, children: [
+        _buildCanvas(),
+        if (_selectionEdges.isNotEmpty) Positioned(right: 10, bottom: 10, child: _selectionMenu()),
+        if (_hasAnyDraft) Positioned(left: 10, bottom: 10, child: _commitMenu()),
+      ]),
+    );
+  }
+
+  Widget _buildPortraitBody(List<dynamic> layers) {
+    return Column(
+      children: [
+        _buildFilmRoll(), // frame film-strip + ☰ menu — the topmost area
+        Expanded(child: _buildCanvasStack()),
+        const Divider(height: 1),
+        _buildLayers(layers), // layers film-strip, directly above the tool options
+        _buildToolOptions(), // row-1
+        _buildPalette(), // row-2
+        _buildToolBar(), // row-3 (also holds the pinned Undo/Redo and the Onion toggle)
+        _buildTooltipBand(context),
+      ],
+    );
+  }
+
+  // Landscape: the horizontal bands become vertical panels flanking the canvas —
+  // palette · frames | canvas / tool options / tooltip | layers · tools.
+  Widget _buildLandscapeBody(List<dynamic> layers) {
+    return Row(
+      children: [
+        _buildPalette(axis: Axis.vertical), // row-2, outermost left
+        _buildFilmRoll(axis: Axis.vertical), // frames + ☰ menu, left of the canvas
+        Expanded(
+          child: Column(
+            children: [
+              Expanded(child: _buildCanvasStack()),
+              const Divider(height: 1),
+              _buildToolOptions(), // row-1 stays horizontal, under the canvas
+              _buildTooltipBand(context, compact: true),
+            ],
+          ),
+        ),
+        _buildLayers(layers, axis: Axis.vertical), // right of the canvas
+        _buildToolBar(axis: Axis.vertical), // row-3, outermost right
+      ],
     );
   }
 }

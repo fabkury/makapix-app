@@ -14,7 +14,7 @@ extension _EditorEngine on _EditorPageState {
     try {
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getStringList(_prefsKey);
-      final threeRow = prefs.getBool(_prefs3RowKey) ?? false;
+      final threeRow = prefs.getBool(_prefs3RowKey); // null = never chosen → tablet-aware default
       final pinned3 = prefs.getString(_prefsPinnedThirdKey);
       final all = tools.map((t) => t.dsl).toList();
       List<String>? reconciled;
@@ -28,7 +28,7 @@ extension _EditorEngine on _EditorPageState {
       if (mounted) {
         setState(() {
           if (reconciled != null) _toolOrder = reconciled;
-          _threeRowToolbar = threeRow;
+          _threeRowPref = threeRow;
           // validate against the catalogue — a stale/removed dsl in old prefs falls back to the default
           if (pinned3 != null && tools.any((t) => t.dsl == pinned3)) _pinnedThirdTool = pinned3;
         });

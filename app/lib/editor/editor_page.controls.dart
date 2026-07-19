@@ -633,56 +633,64 @@ extension _EditorControls on _EditorPageState {
     );
   }
 
-  Widget _buildPalette() {
-    // Swatches are laid out in two rows that scroll horizontally together: each column holds the
-    // top swatch (even index) and the bottom swatch (odd index), filled column by column.
-    final cols = (_palette.length + 1) ~/ 2;
+  Widget _buildPalette({Axis axis = Axis.horizontal}) {
+    // Swatches are laid out in two lanes that scroll together along [axis]: in portrait, each
+    // column holds the top swatch (even index) and the bottom swatch (odd index), filled column by
+    // column; in landscape the grid transposes to two side-by-side columns filled row by row.
+    final vertical = axis == Axis.vertical;
+    final s = _chromeScale;
+    final pairs = (_palette.length + 1) ~/ 2;
+    final primarySwatch = GestureDetector(
+      onTap: () => _pickColor(initial: _primary, onPick: _setPrimary),
+      child: Container(
+        width: 38 * s, height: 38 * s, margin: const EdgeInsets.all(6),
+        decoration: BoxDecoration(color: _primary, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.white70, width: 2)),
+        child: const Icon(Icons.edit, size: 13, color: Colors.white70),
+      ),
+    );
+    // Long-press the empty area near the swatches → "Add current colour" (swatches keep
+    // their own long-press menu, which wins as the deeper gesture).
+    final strip = GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onLongPress: _addColorMenu,
+      child: ListView.builder(
+        scrollDirection: axis,
+        itemCount: pairs,
+        itemBuilder: (_, pair) => Flex(
+          direction: vertical ? Axis.horizontal : Axis.vertical,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [_paletteSwatch(pair * 2), _paletteSwatch(pair * 2 + 1)],
+        ),
+      ),
+    );
+    // palette management: opens the full-screen palette page
+    final manageBtn =
+        IconButton(iconSize: 18, tooltip: 'Palettes', onPressed: _openPalettePage, icon: const Icon(Icons.palette, color: Colors.white70));
     return Container(
       color: const Color(0xFF1C1F22),
       child: SizedBox(
         // Taller row-2 so the 20%-larger swatches have room — bigger, easier-to-tap colour targets.
-        height: 72,
-        child: Row(children: [
-          GestureDetector(
-            onTap: () => _pickColor(initial: _primary, onPick: _setPrimary),
-            child: Container(
-              width: 38, height: 38, margin: const EdgeInsets.all(6),
-              decoration: BoxDecoration(color: _primary, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.white70, width: 2)),
-              child: const Icon(Icons.edit, size: 13, color: Colors.white70),
-            ),
-          ),
-          Expanded(
-            // Long-press the empty area near the swatches → "Add current colour" (swatches keep
-            // their own long-press menu, which wins as the deeper gesture).
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onLongPress: _addColorMenu,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: cols,
-                itemBuilder: (_, col) => Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [_paletteSwatch(col * 2), _paletteSwatch(col * 2 + 1)],
-                ),
-              ),
-            ),
-          ),
-          // palette management: opens the full-screen palette page
-          IconButton(iconSize: 18, tooltip: 'Palettes', onPressed: _openPalettePage, icon: const Icon(Icons.palette, color: Colors.white70)),
+        height: vertical ? null : 72 * s,
+        width: vertical ? 72 * s : null,
+        child: Flex(direction: vertical ? Axis.vertical : Axis.horizontal, children: [
+          primarySwatch,
+          Expanded(child: strip),
+          manageBtn,
         ]),
       ),
     );
   }
 
   Widget _paletteSwatch(int i) {
-    if (i >= _palette.length) return const SizedBox(width: 35); // keep the column width for an odd last swatch
+    final s = _chromeScale;
+    if (i >= _palette.length) return SizedBox(width: 35 * s, height: 33 * s); // keep the lane size for an odd last swatch
     final c = _palette[i];
     return GestureDetector(
       onTap: () => _setPrimary(c),
       onLongPress: () => _paletteSwatchMenu(i, c),
       child: Container(
-        width: 31,
-        height: 29,
+        width: 31 * s,
+        height: 29 * s,
         margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
         decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(3), border: Border.all(color: Colors.black26)),
       ),
@@ -692,7 +700,7 @@ extension _EditorControls on _EditorPageState {
   // Long-pressing the empty swatch area surfaces the single "Add current colour" option (same action
   // as the palette controls menu).
   void _addColorMenu() {
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -728,7 +736,7 @@ extension _EditorControls on _EditorPageState {
     // left/right move a whole column (±2) and up/down swap the two rows of the column (±1). The
     // sheet follows the swatch as it moves so you can nudge it several steps without reopening.
     int cur = i;
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
       builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
         final n = _palette.length;

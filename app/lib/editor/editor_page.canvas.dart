@@ -10,17 +10,21 @@ extension _EditorCanvas on _EditorPageState {
 
   // Non-interactive help band at the very bottom. It moves the tool buttons up and out of
   // Android's bottom swipe-to-switch-app gesture zone, and teaches the current tool.
-  Widget _buildTooltipBand(BuildContext context) {
-    // Reserve the system gesture inset (min 16) as empty space below the text so the
-    // Android swipe-up-to-switch-app gesture isn't blocked by tool buttons.
+  // `compact` (landscape) drops to one text line and a smaller minimum gesture pad — vertical
+  // space is scarce there and the band sits under the canvas column, not the tool grid.
+  Widget _buildTooltipBand(BuildContext context, {bool compact = false}) {
+    // Reserve the system gesture inset (min 16, or 8 in compact mode) as empty space below the
+    // text so the Android swipe-up-to-switch-app gesture isn't blocked by tool buttons.
     final inset = MediaQuery.of(context).viewPadding.bottom;
-    final gesturePad = inset < 16 ? 16.0 : inset;
+    final minPad = compact ? 8.0 : 16.0;
+    final gesturePad = inset < minPad ? minPad : inset;
     final tip = toolTips[_tool] ?? '';
     final tool = tools.firstWhere((t) => t.dsl == _tool, orElse: () => tools.first);
-    // FIXED height = exactly two text lines + top padding + the reserved gesture pad, so the
+    // FIXED height = exactly the text lines + top padding + the reserved gesture pad, so the
     // band never changes height (no reflow of the rest of the screen).
     const lineH = 13.75; // 11px * 1.25
-    final bandHeight = 6 + lineH * 2 + 6 + gesturePad;
+    final lines = compact ? 1 : 2;
+    final bandHeight = 6 + lineH * lines + 6 + gesturePad;
     return Container(
       width: double.infinity,
       height: bandHeight,
@@ -34,7 +38,7 @@ extension _EditorCanvas on _EditorPageState {
           child: Text(
             tip,
             style: const TextStyle(fontSize: 11, color: Colors.white60, height: 1.25),
-            maxLines: 2,
+            maxLines: lines,
             overflow: TextOverflow.ellipsis,
           ),
         ),

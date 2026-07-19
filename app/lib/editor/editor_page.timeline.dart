@@ -31,74 +31,85 @@ extension _EditorTimeline on _EditorPageState {
     setState(() {});
   }
 
-  // Horizontal "film roll" of frame thumbnails at the top of the canvas area.
-  Widget _buildFilmRoll() {
+  // "Film roll" of frame thumbnails: a horizontal band at the top of the canvas area in portrait,
+  // or a vertical strip left of the canvas in landscape (same content, transposed — the ☰ menu
+  // stays the leading item, the + button the trailing one).
+  Widget _buildFilmRoll({Axis axis = Axis.horizontal}) {
+    final vertical = axis == Axis.vertical;
     final count = engine.frameCount;
     final active = engine.activeFrame;
     final (tw, th) = _thumbSize();
-    final tileW = (46.0 * tw / th).clamp(28.0, 84.0);
-    return Container(
-      height: 70,
-      color: const Color(0xFF15171A),
-      child: Row(children: [
-        _editorMenuButton(), // ☰ — the former top-bar items (file/import/export/grid/fit), left of the strip
-        Container(width: 1, color: Colors.black26),
-        Expanded(
-          // Long-press the empty area near the frames → "Add animation frame" (the thumbnails keep
-          // their own long-press menu, which wins as the deeper gesture).
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onLongPress: _addFrameMenu,
-            child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: count,
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            itemBuilder: (_, i) {
-              final hash = engine.frameHash(i);
-              final cached = _frameThumbs[i];
-              if (cached == null || cached.hash != hash) _genFrameThumb(i, hash);
-              final sel = i == active;
-              return GestureDetector(
-                onTap: () => _act('SetActiveFrame($i)'),
-                onLongPress: () => _frameMenu(i),
-                child: Container(
-                  width: tileW + 6,
-                  margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF101214),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: sel ? const Color(0xFF4080C0) : Colors.black26, width: sel ? 2 : 1),
+    // Main-axis tile extent follows the artwork's aspect; the cross axis fills the band.
+    // Vertical tiles get extra room for the frame-number line under the thumb.
+    final s = _chromeScale;
+    final tileMain =
+        vertical ? (46.0 * s * th / tw).clamp(28.0 * s, 84.0 * s) + 12 : (46.0 * s * tw / th).clamp(28.0 * s, 84.0 * s);
+    final strip = GestureDetector(
+      // Long-press the empty area near the frames → "Add animation frame" (the thumbnails keep
+      // their own long-press menu, which wins as the deeper gesture).
+      behavior: HitTestBehavior.translucent,
+      onLongPress: _addFrameMenu,
+      child: ListView.builder(
+        scrollDirection: axis,
+        itemCount: count,
+        padding: vertical ? const EdgeInsets.symmetric(vertical: 4) : const EdgeInsets.symmetric(horizontal: 4),
+        itemBuilder: (_, i) {
+          final hash = engine.frameHash(i);
+          final cached = _frameThumbs[i];
+          if (cached == null || cached.hash != hash) _genFrameThumb(i, hash);
+          final sel = i == active;
+          return GestureDetector(
+            onTap: () => _act('SetActiveFrame($i)'),
+            onLongPress: () => _frameMenu(i),
+            child: Container(
+              width: vertical ? null : tileMain + 6,
+              height: vertical ? tileMain + 6 : null,
+              margin: vertical
+                  ? const EdgeInsets.symmetric(horizontal: 5, vertical: 2)
+                  : const EdgeInsets.symmetric(horizontal: 2, vertical: 5),
+              decoration: BoxDecoration(
+                color: const Color(0xFF101214),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: sel ? const Color(0xFF4080C0) : Colors.black26, width: sel ? 2 : 1),
+              ),
+              child: Column(children: [
+                Expanded(
+                  child: Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.all(2),
+                    color: const Color(0xFF3A3D42),
+                    alignment: Alignment.center,
+                    child: cached != null
+                        ? RawImage(image: cached.img, fit: BoxFit.contain, filterQuality: FilterQuality.none)
+                        : const SizedBox.shrink(),
                   ),
-                  child: Column(children: [
-                    Expanded(
-                      child: Container(
-                        width: double.infinity,
-                        margin: const EdgeInsets.all(2),
-                        color: const Color(0xFF3A3D42),
-                        alignment: Alignment.center,
-                        child: cached != null
-                            ? RawImage(image: cached.img, fit: BoxFit.contain, filterQuality: FilterQuality.none)
-                            : const SizedBox.shrink(),
-                      ),
-                    ),
-                    Text('${i + 1}', style: TextStyle(fontSize: 9, color: sel ? Colors.white : Colors.white54)),
-                  ]),
                 ),
-              );
-            },
+                Text('${i + 1}', style: TextStyle(fontSize: 9, color: sel ? Colors.white : Colors.white54)),
+              ]),
             ),
-          ),
-        ),
-        Container(width: 1, color: Colors.black26),
-        IconButton(iconSize: 20, tooltip: 'Add frame', onPressed: () => _act('AddFrame()'), icon: const Icon(Icons.add_box)),
-      ]),
+          );
+        },
+      ),
+    );
+    final children = [
+      _editorMenuButton(), // ☰ — the former top-bar items (file/import/export/grid/fit), leading
+      Container(width: vertical ? null : 1, height: vertical ? 1 : null, color: Colors.black26),
+      Expanded(child: strip),
+      Container(width: vertical ? null : 1, height: vertical ? 1 : null, color: Colors.black26),
+      IconButton(iconSize: 20, tooltip: 'Add frame', onPressed: () => _act('AddFrame()'), icon: const Icon(Icons.add_box)),
+    ];
+    return Container(
+      height: vertical ? null : 70 * s,
+      width: vertical ? 70 * s : null,
+      color: const Color(0xFF15171A),
+      child: vertical ? Column(children: children) : Row(children: children),
     );
   }
 
   // Long-pressing the empty film-strip area surfaces the "Add animation frame" option (same action
   // as the + button at the end of the strip).
   void _addFrameMenu() {
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -186,7 +197,7 @@ extension _EditorTimeline on _EditorPageState {
   // A grouped submenu, as a bottom sheet (consistent with the frame/layer/palette menus). `rows`
   // builds the action tiles with the sheet's own context so each can dismiss itself.
   void _editorSubMenu(String title, List<Widget> Function(BuildContext) rows) {
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -338,10 +349,12 @@ extension _EditorTimeline on _EditorPageState {
     setState(() {});
   }
 
-  // Layers as a horizontal film-strip (mirrors the frame film-roll): each tile shows just that
-  // layer on a checkerboard (transparent) background. "Add layer" sits to the left; duplicate and
-  // the other per-layer actions live in the long-press menu.
-  Widget _buildLayers(List<dynamic> layers) {
+  // Layers film-strip (mirrors the frame film-roll): each tile shows just that layer on a
+  // checkerboard (transparent) background. Horizontal band in portrait, vertical strip right of
+  // the canvas in landscape. "Add layer" is the leading item; duplicate and the other per-layer
+  // actions live in the long-press menu.
+  Widget _buildLayers(List<dynamic> layers, {Axis axis = Axis.horizontal}) {
+    final vertical = axis == Axis.vertical;
     final frames = (_state['frame_detail'] as List?);
     int activeLayer = 0;
     if (frames != null && engine.activeFrame < frames.length) {
@@ -349,18 +362,21 @@ extension _EditorTimeline on _EditorPageState {
     }
     final frame = engine.activeFrame;
     final (tw, th) = _thumbSize();
-    final tileW = (40.0 * tw / th).clamp(26.0, 72.0);
+    final s = _chromeScale;
+    final tileMain =
+        vertical ? (40.0 * s * th / tw).clamp(26.0 * s, 72.0 * s) : (40.0 * s * tw / th).clamp(26.0 * s, 72.0 * s);
     return Container(
-      height: 56,
+      height: vertical ? null : 56 * s,
+      width: vertical ? 56 * s : null,
       color: const Color(0xFF1A1C1F),
-      child: Row(children: [
+      child: Flex(direction: vertical ? Axis.vertical : Axis.horizontal, children: [
         IconButton(iconSize: 20, tooltip: 'Add layer', onPressed: () => _act('AddLayer()'), icon: const Icon(Icons.add_box)),
-        Container(width: 1, color: Colors.black26),
+        Container(width: vertical ? null : 1, height: vertical ? 1 : null, color: Colors.black26),
         Expanded(
           child: ListView.builder(
-            scrollDirection: Axis.horizontal,
+            scrollDirection: axis,
             itemCount: layers.length,
-            padding: const EdgeInsets.symmetric(horizontal: 4),
+            padding: vertical ? const EdgeInsets.symmetric(vertical: 4) : const EdgeInsets.symmetric(horizontal: 4),
             itemBuilder: (_, i) {
               final l = layers[i] as Map<String, dynamic>;
               final sel = i == activeLayer;
@@ -374,8 +390,11 @@ extension _EditorTimeline on _EditorPageState {
                 onTap: () { setState(() => _selLayers.clear()); _act('SetActiveLayer($i)'); },
                 onLongPress: () => _layerOptions(i),
                 child: Container(
-                  width: tileW + 6,
-                  margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 5),
+                  width: vertical ? null : tileMain + 6,
+                  height: vertical ? tileMain + 6 : null,
+                  margin: vertical
+                      ? const EdgeInsets.symmetric(horizontal: 5, vertical: 2)
+                      : const EdgeInsets.symmetric(horizontal: 2, vertical: 5),
                   decoration: BoxDecoration(
                     color: const Color(0xFF101214),
                     borderRadius: BorderRadius.circular(4),

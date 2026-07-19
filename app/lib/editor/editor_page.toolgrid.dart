@@ -10,10 +10,11 @@ extension _EditorToolgrid on _EditorPageState {
   // `selected` = the active draw tool (blue). `active` = an on toggle like Onion/Play (amber).
   // `enabled` = false dims the tile (e.g. Undo/Redo when there's nothing to undo/redo).
   Widget _tileVisual(ToolDef t, {required bool selected, bool hover = false, bool active = false, bool enabled = true}) {
+    final s = _chromeScale;
     final fg = selected ? Colors.white : (active ? Colors.amber : Colors.white70);
     final tile = Container(
-      width: 54,
-      height: 42,
+      width: 54 * s,
+      height: 42 * s,
       margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
       decoration: BoxDecoration(
         color: selected ? const Color(0xFF4080C0) : const Color(0xFF26292E),
@@ -25,9 +26,10 @@ extension _EditorToolgrid on _EditorPageState {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          t.iconWidget(size: 18, color: fg),
+          t.iconWidget(size: 18 * s, color: fg),
           const SizedBox(height: 1),
-          Text(t.label, style: TextStyle(fontSize: 8.5, color: active ? Colors.amber : null), maxLines: 1, overflow: TextOverflow.clip),
+          Text(t.label,
+              style: TextStyle(fontSize: 8.5 * s, color: active ? Colors.amber : null), maxLines: 1, overflow: TextOverflow.clip),
         ],
       ),
     );
@@ -99,8 +101,8 @@ extension _EditorToolgrid on _EditorPageState {
       builder: (ctx, cand, rej) {
         // While dragged, this tile shows a placeholder gap at its live position (the preview slot).
         final gap = Container(
-          width: 54,
-          height: 42,
+          width: 54 * _chromeScale,
+          height: 42 * _chromeScale,
           margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(6),
@@ -160,7 +162,7 @@ extension _EditorToolgrid on _EditorPageState {
   // fixed slots 1&2 and never appear in `tools`); the choice hides the tool from the grid and
   // persists. Leading uses iconWidget (not a raw Icon) because tool icons can be custom MpxIcons.
   void _pinnedThirdConfigSheet() {
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
       showDragHandle: true,
       backgroundColor: const Color(0xFF1A1C1F),
@@ -186,40 +188,66 @@ extension _EditorToolgrid on _EditorPageState {
     );
   }
 
-  Widget _buildToolBar() {
+  Widget _buildToolBar({Axis axis = Axis.horizontal}) {
     // Render from the live display order (visible space: 3-row mode hides the pinned tile, which is
     // pinned beside Undo/Redo instead). Long-press any tile to drag it; the rest reflow in real time, and the order
     // is committed on release. The "others" list (visible order minus the dragged tool) is the
     // index space for drop positions.
+    //
+    // Portrait: N bands of tiles scrolling horizontally, pinned Undo/Redo column at the left.
+    // Landscape (vertical): the grid transposes — N tiles per row, rows scrolling vertically,
+    // pinned Undo/Redo (+3rd) as a fixed top row. Tiles flow row-major left→right in BOTH modes,
+    // so the drag-reorder drop-index math is shared.
+    final vertical = axis == Axis.vertical;
     final order = _displayToolOrder();
     final others = _dragTool == null ? order : _visibleOrder(_toolOrder.where((t) => t != _dragTool).toList());
     final n = order.length;
-    final rowsN = _threeRowToolbar ? 3 : 2;
-    final cols = (n + rowsN - 1) ~/ rowsN; // each row holds up to `cols` tiles
+    final bandsN = _threeRowToolbar ? 3 : 2; // portrait: band count; landscape: tiles per row
+    final perBand = vertical ? bandsN : (n + bandsN - 1) ~/ bandsN;
+    final bandCount = vertical ? (n + perBand - 1) ~/ perBand : bandsN;
     final gridRows = [
-      for (var r = 0; r < rowsN; r++)
-        Row(children: [
-          for (var i = r * cols; i < n && i < (r + 1) * cols; i++) _toolTile(order[i], others),
+      for (var r = 0; r < bandCount; r++)
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          for (var i = r * perBand; i < n && i < (r + 1) * perBand; i++) _toolTile(order[i], others),
         ]),
     ];
+    // Undo / Redo (+ the configurable 3rd tile in 3-row/3-wide mode) pinned — fixed, don't scroll
+    // with the rest.
+    final pinned = Flex(
+      direction: vertical ? Axis.horizontal : Axis.vertical,
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _pinnedActionTile(undoToolDef),
+        _pinnedActionTile(redoToolDef),
+        if (_threeRowToolbar) _pinnedThirdTile(),
+      ],
+    );
+    final grid = SingleChildScrollView(
+      scrollDirection: axis,
+      child: Column(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: gridRows),
+    );
+    // Band size derives from the (possibly tablet-scaled) tile size: tile + 3px margin each side,
+    // plus 4px of band padding in the fixed dimension.
+    final s = _chromeScale;
+    if (vertical) {
+      return Container(
+        width: bandsN * (54 * s + 6),
+        color: const Color(0xFF15171A),
+        child: Column(children: [
+          pinned,
+          Container(height: 1, color: Colors.black26),
+          Expanded(child: grid),
+        ]),
+      );
+    }
     return Container(
-      height: _threeRowToolbar ? 148 : 100,
+      height: bandsN * (42 * s + 6) + 4,
       color: const Color(0xFF15171A),
       child: Row(children: [
-        // Undo / Redo (+ the configurable 3rd tile in 3-row mode) pinned at the left — fixed, don't
-        // scroll with the rest.
-        Column(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
-          _pinnedActionTile(undoToolDef),
-          _pinnedActionTile(redoToolDef),
-          if (_threeRowToolbar) _pinnedThirdTile(),
-        ]),
+        pinned,
         Container(width: 1, color: Colors.black26),
-        Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Column(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: gridRows),
-          ),
-        ),
+        Expanded(child: grid),
       ]),
     );
   }
