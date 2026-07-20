@@ -106,10 +106,11 @@ class _EditorPageState extends ConsumerState<EditorPage>
   String _tool = 'Pencil';
   Color _primary = const Color(0xFF000000);
   List<Color> _palette = [];
-  // "Size" and "Spacing" are remembered PER TOOL (keyed by the active tool), not shared across
-  // tools. Each map holds a tool's last value; the getters fall back to the defaults.
+  // "Size", "Spacing" and "Intensity" are remembered PER TOOL (keyed by the active tool), not
+  // shared across tools. Each map holds a tool's last value; the getters fall back to the defaults.
   final Map<String, int> _sizeByTool = {};
   final Map<String, int> _spacingByTool = {};
+  final Map<String, int> _intensityByTool = {};
   // Default size when the user hasn't chosen one: 8px for the Airbrush (a 1px airbrush is useless),
   // 1px for everything else.
   int get _brushSize => _sizeByTool[_tool] ?? (_tool == 'Airbrush' ? 8 : 1);
@@ -178,7 +179,10 @@ class _EditorPageState extends ConsumerState<EditorPage>
   int _canvasW = 0, _canvasH = 0; // last-seen canvas size; a change auto-clears the stale ruler
   bool _radial = false;
   bool _gradSmooth = false; // Gradient: ease each colour transition with the smoothstep curve
-  int _intensity = 128;
+  // Airbrush spray density vs Dodge/Burn strength want different starting points: a 50 spray reads
+  // as a gentle airbrush, while 25 keeps the first Dodge/Burn stroke subtle.
+  int get _intensity => _intensityByTool[_tool] ?? (_tool == 'Airbrush' ? 50 : 25);
+  set _intensity(int v) => _intensityByTool[_tool] = v;
   int get _spacing => _spacingByTool[_tool] ?? 25; // Brush/Airbrush stamp spacing, % of brush size
   set _spacing(int v) => _spacingByTool[_tool] = v;
   String _selMode = 'Replace';

@@ -202,7 +202,7 @@ impl Default for ToolSettings {
             secondary: Rgba8::WHITE,
             brush_size: 1,
             brush_shape: BrushShape::Round,
-            intensity: 128,
+            intensity: 50,
             spacing: 25,
             threshold: 0,
             alpha_cutoff: 0,
