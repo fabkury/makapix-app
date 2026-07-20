@@ -512,7 +512,7 @@ class _NewDocumentDialogState extends State<_NewDocumentDialog> {
 // Tuning knob for the row-1 geared sliders: pixels of pointer travel per pixel of thumb travel.
 // 1.0 restores direct (ungeared) dragging; higher makes the sliders "heavier" and easier to land
 // on an exact number. Deliberately not user-configurable — adjust here on tester feedback.
-const double _kSliderGearRatio = 4.0;
+const double _kSliderGearRatio = 6.0;
 
 // Tuning knob for _labeledPowSlider's curve: 1.0 is linear, higher shifts ever more track toward
 // the low end (log-like). 2.0 (square-root positioning) is the middle-of-the-road choice.
