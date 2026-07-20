@@ -243,7 +243,7 @@ extension _EditorFileIo on _EditorPageState {
       _send('NewDocument(${req.width},${req.height})');
       ok = engine.importImage(req.bytes, mode: 1, asLayer: false, startFrame: 0);
     }
-    _send('SelectTool($_tool)');
+    _resendEngineTool();
     await _createFreshDrawing(title: req.sourceTitle);
     if (!mounted) return;
     if (!ok) _toast('Could not load this artwork into the editor.');

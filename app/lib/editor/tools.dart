@@ -33,10 +33,10 @@ const tools = <ToolDef>[
   ToolDef.custom('Eyedropper', MpxIcons.pick, 'Pick'),
   ToolDef('Move', Icons.open_with, 'Move'),
   ToolDef('CopyPaste', Icons.content_copy, 'Copy'),
-  // Select Shape concentrates Rectangle/Ellipse selection into one tool with a row-1 toggle (like the
-  // Shape tool groups Ellipse/Triangle/Rectangle); it drafts the selection before committing it.
+  // Select Shape concentrates Rectangle/Ellipse/Lasso selection into one tool with a row-1 toggle
+  // (like the Shape tool groups Ellipse/Triangle/Rectangle). Rect/Oval draft the selection before
+  // committing it; Lasso selects freeform immediately on release (the engine's SelectFree tool).
   ToolDef.custom('SelectShape', MpxIcons.select, 'Select'),
-  ToolDef.custom('SelectFree', MpxIcons.lasso, 'Lasso'),
   ToolDef.custom('SelectByColor', MpxIcons.selColor, 'Sel Color'),
   ToolDef.custom('SelectLayer', MpxIcons.selLyr, 'Sel Lyr'),
   ToolDef('HsvShift', Icons.palette, 'HSV'),
@@ -82,6 +82,13 @@ List<String> restoreHiddenTool(List<String> visible, List<String> previousFull, 
   return out;
 }
 
+/// The engine ToolKind for a Select-tool mode ('Rectangle' | 'Ellipse' | 'Lasso').
+String selectShapeEngineTool(String kind) => switch (kind) {
+      'Ellipse' => 'SelectEllipse',
+      'Lasso' => 'SelectFree',
+      _ => 'SelectRect',
+    };
+
 // Succinct, teach-as-you-go help shown in the gesture-safe band at the bottom. Keep each to two
 // short lines: brief, professional, the core of the tool (not its nuances), no em dashes.
 const toolTips = <String, String>{
@@ -99,10 +106,9 @@ const toolTips = <String, String>{
   'Eyedropper': 'Tap a pixel to pick its colour as primary.',
   'Move': 'Drag to move the selected pixels, or the whole layer if nothing is selected.',
   'CopyPaste': 'Clipboard for the selection: Copy, Cut, Paste, Clear. Paste drops a movable draft you position, then Commit.',
-  'SelectShape': 'Drag to draft a rectangular or elliptical selection. Drag the reticles to adjust, then Commit.',
+  'SelectShape': 'Rect / Oval: drag to draft a selection, adjust the reticles, then Commit. Lasso: draw freely around pixels.',
   'SelectCircle': 'Drag from the centre to select a circle.',
   'SelectPoly': 'Trace an outline to select an area.',
-  'SelectFree': 'Lasso freely around pixels to select them.',
   'SelectByColor': 'Tap to select similar colours. Threshold sets tolerance.',
   'SelectLayer': 'Turn the layer\'s opaque pixels into a selection. Tap a mode to apply.',
   'HsvShift': 'Shift hue, saturation and value, then Commit.',

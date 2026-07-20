@@ -29,5 +29,6 @@ generated — never edit it by hand.
 4. Reference it as `MpxIcons.<name>` (via `ToolDef.custom` for editor tools).
 
 Approved so far (2026-07-16): pencil, airbrush, eraser, fill, line, pick,
-selColor, selLyr, flip, select, lasso, onion — 12 of the 28 row-3 tool icons;
-the rest still use Material.
+selColor, selLyr, flip, select, lasso, onion — 12 approved glyphs; the other
+row-3 tools still use Material. (`lasso` stays in the set but no longer has its
+own row-3 tile — Lasso is a mode of the Select tool since 2026-07-20.)

@@ -68,7 +68,7 @@ Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending)
 | Eraser (square / round, size) | ✅ | |
 | **Figures** Line / Rectangle / Ellipse (draw → adjust → commit) | ✅ | drag previews an uncommitted figure with draggable endpoint handles; re-drag either handle (tap near, not on) to fine-tune; Fill/Outline updates the preview live; Commit ✓ rasterizes (one undo step), Cancel ✗ discards. Engine: `ShapeSet/ShapeCommit/ShapeCancel` |
 | Select by color threshold (cont/discont) | ✅ | |
-| Select rectangle / ellipse / circle / freeform | ✅ | polygon via freeform lasso path |
+| Select rectangle / ellipse / circle / freeform | ✅ | polygon via freeform lasso path; in the UI lasso is a mode of the Select tool (Rect · Oval · Lasso toggle), not a separate tile |
 | Selection ops Add / Subtract / Union / Intersect / Invert | ✅ | set-algebra tested |
 | HSV-shift selected pixels | ✅ | closed-form oracle |
 | Brightness/Contrast (layer/selection, Frame scope) | ✅ | HSV-style tool: live engine preview, ±255 brightness + ±100% contrast around the 128 pivot; a non-zero adjustment is a draft resolved by the commit-menu (Commit = one undo step); closed-form oracle |

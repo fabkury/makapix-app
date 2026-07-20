@@ -411,7 +411,7 @@ extension _EditorToolgrid on _EditorPageState {
       // A new canvas is a new library drawing; the previous one stays saved in My Drawings.
       await _switchToNewDrawing(title: 'Untitled', mutateEngine: () {
         _send('NewDocument($w,$h)');
-        _send('SelectTool($_tool)');
+        _resendEngineTool();
         _clubSource = null;
       });
       if (mounted) {

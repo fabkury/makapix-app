@@ -59,7 +59,7 @@ extension _EditorPersistence on _EditorPageState {
         case NewLocalDrawing():
           await _switchToNewDrawing(title: 'Untitled', mutateEngine: () {
             _send('NewDocument(64,64)');
-            _send('SelectTool($_tool)');
+            _resendEngineTool();
           });
           if (mounted) {
             _refreshState();
@@ -255,7 +255,7 @@ extension _EditorPersistence on _EditorPageState {
       case GalleryAction.newDrawing:
         await _switchToNewDrawing(title: 'Untitled', mutateEngine: () {
           _send('NewDocument(64,64)');
-          _send('SelectTool($_tool)');
+          _resendEngineTool();
         });
         if (mounted) {
           _refreshState();

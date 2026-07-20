@@ -384,12 +384,15 @@ extension _EditorControls on _EditorPageState {
       // Select None (and Invert) live on the floating selection-menu over the canvas.
     }
     if (_tool == 'SelectShape') {
-      // Which selection shape to draft. Switching the kind keeps any pending draft (re-previews it
-      // live) and re-points the engine tool so Commit combines the right shape.
-      const kinds = ['Rectangle', 'Ellipse'];
-      children.add(_toggle(['Rect', 'Oval'], kinds.indexOf(_selShapeKind), (i) {
+      // Which selection mode. Switching Rect↔Oval keeps any pending draft (re-previews it live)
+      // and re-points the engine tool so Commit combines the right shape. Flipping to Lasso
+      // discards a pending draft (it can't survive into the immediate freeform path) — same
+      // shell-side-only cancel as switching tools.
+      const kinds = ['Rectangle', 'Ellipse', 'Lasso'];
+      children.add(_toggle(['Rect', 'Oval', 'Lasso'], kinds.indexOf(_selShapeKind), (i) {
         setState(() => _selShapeKind = kinds[i]);
-        _send('SelectTool(${_selShapeKind == 'Ellipse' ? 'SelectEllipse' : 'SelectRect'})');
+        if (_selShapeKind == 'Lasso' && _hasSelDraft) _cancelSelDraft();
+        _send('SelectTool(${selectShapeEngineTool(_selShapeKind)})');
         if (_hasSelDraft) {
           _rebuildSelDraftEdges();
           setState(() {});
@@ -407,9 +410,10 @@ extension _EditorControls on _EditorPageState {
       // existing selection, which is exactly when that menu shows). Clipboard ops (Copy/Cut/Paste)
       // and Clear live in the dedicated Copy & Paste tool.
     }
-    if (_tool == 'SelectShape') {
+    if (_isSelDraftTool) {
       // Lock the selection's aspect ratio (width:height) to the slider value — e.g. ratio 1 makes the
       // Rectangle draft a square and the Ellipse a circle. Independent of the Shape tool's ratio.
+      // Hidden in Lasso mode (a freeform path has no aspect ratio).
       children.add(Padding(
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: FilterChip(

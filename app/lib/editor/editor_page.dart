@@ -148,7 +148,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // untouched until Commit (then replayed as one pointer drag, the engine's immediate-select path).
   // Two endpoints in canvas-pixel coords (or null when no draft is pending) plus the kind toggle.
   Offset? _selA, _selB;
-  String _selShapeKind = 'Rectangle'; // 'Rectangle' | 'Ellipse' (row-1 toggle → engine SelectRect/SelectEllipse)
+  String _selShapeKind = 'Rectangle'; // 'Rectangle' | 'Ellipse' | 'Lasso' (row-1 toggle → engine SelectRect/SelectEllipse/SelectFree)
   // The Select Shape tool keeps its OWN aspect-ratio lock, independent of the Shape tool's _lockRatio
   // /_ratio (so locking a square selection never disturbs a locked shape-draw ratio, and vice versa).
   bool _selLockRatio = false; // constrain the selection draft's width:height to _selRatio
@@ -305,9 +305,11 @@ class _EditorPageState extends ConsumerState<EditorPage>
   String _shapeKind = 'Rectangle';
   bool get _hasShapeDraft => _shapeA != null && _shapeB != null;
 
-  // The unified "Select Shape" tool: drag → adjust reticles → Commit, like the Shape tool but the
-  // payload is a selection (combined Replace/Add/Subtract/Intersect) rather than drawn pixels.
-  bool get _isSelShapeTool => _tool == 'SelectShape';
+  // The unified "Select" tool's Rect/Oval DRAFT flow: drag → adjust reticles → Commit, like the
+  // Shape tool but the payload is a selection (combined Replace/Add/Subtract/Intersect) rather
+  // than drawn pixels. The Lasso mode is excluded: it forwards raw pointer events to the engine
+  // (the immediate SelectFree path), like the other freehand selection tools.
+  bool get _isSelDraftTool => _tool == 'SelectShape' && _selShapeKind != 'Lasso';
   bool get _hasSelDraft => _selA != null && _selB != null;
 
   // The Ruler is a pure measurement overlay (no engine tool, no drawing).
@@ -373,7 +375,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // can exist at a time because every tool switch cancels the outgoing tool's draft.
   bool get _hasAnyDraft =>
       (_isDraftTool && _hasShapeDraft) ||
-      (_isSelShapeTool && _hasSelDraft) ||
+      (_isSelDraftTool && _hasSelDraft) ||
       (_isCopyPaste && _hasPasteDraft) ||
       (_tool == 'Move' && _hasMoveDraft) ||
       (_tool == 'Rotate' && _hasRotateDraft) ||

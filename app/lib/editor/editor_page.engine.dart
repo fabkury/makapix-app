@@ -463,8 +463,8 @@ extension _EditorEngine on _EditorPageState {
     if (t == 'Shape') {
       _send('SelectTool($_shapeKind)'); // 'Shape' is a shell grouping; engine draws by ToolKind
     } else if (t == 'SelectShape') {
-      // 'SelectShape' is a shell grouping over the engine's SelectRect/SelectEllipse selection tools.
-      _send('SelectTool(${_selShapeKind == 'Ellipse' ? 'SelectEllipse' : 'SelectRect'})');
+      // 'SelectShape' is a shell grouping over the engine's SelectRect/SelectEllipse/SelectFree.
+      _send('SelectTool(${selectShapeEngineTool(_selShapeKind)})');
     } else if (t != 'Ruler') {
       _send('SelectTool($t)'); // Ruler is a pure overlay; no engine draw tool
     } else if (leavingSelectLayer) {
@@ -490,6 +490,23 @@ extension _EditorEngine on _EditorPageState {
     }
     // Show Select Layer's overlay immediately on entry; clear it (redraw) when leaving it.
     if (t == 'SelectLayer' || leavingSelectLayer) _redraw();
+  }
+
+  // The engine ToolKind name for the current shell tool, or null for UI-only tools (the transform
+  // groups, Play, Ruler) that have no engine draw tool. Resolves the shell groupings ('Shape',
+  // 'SelectShape') to the concrete engine tool their mode toggle points at.
+  String? get _engineToolName {
+    if (_transformTools.contains(_tool) || _tool == 'PlayPause' || _tool == 'Ruler') return null;
+    if (_tool == 'Shape') return _shapeKind;
+    if (_tool == 'SelectShape') return selectShapeEngineTool(_selShapeKind);
+    return _tool;
+  }
+
+  // Re-point the engine at the current tool (used after NewDocument/load, when the session's tool
+  // may have reset). UI-only tools send nothing — the engine has no ToolKind for them.
+  void _resendEngineTool() {
+    final t = _engineToolName;
+    if (t != null) _send('SelectTool($t)');
   }
 
   // ---- HSV / Brightness-Contrast drafts (a non-identity pending adjustment) --------------------

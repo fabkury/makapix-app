@@ -60,7 +60,8 @@ matrix.
 - **Engine** (`crates/engine`, dependency-free): tiled copy-on-write buffers, sRGB+HSV color, document/
   frames/layers/palettes, global undo timeline with per-frame 128-state compaction, the reference
   compositor, ~20 tools (pencil/brush/airbrush/eraser/bucket/gradient/line/rect/ellipse/dodge/burn/
-  eyedropper/move/HSV-shift + selections rect/ellipse/circle/lasso/by-color with Replace/Add/Subtract/
+  eyedropper/move/HSV-shift + selections rect/ellipse/circle/lasso/by-color — one Select tool in the UI
+  with a Rect · Oval · Lasso mode toggle — with Replace/Add/Subtract/
   Intersect), copy/cut/paste, flip/invert, multi-layer group move, palette management, lossless `.mkpx`
   save/load (RLE-compressed), canvas ops (flip/rotate/resize/crop-to-selection), the action-script DSL, and
   the probe/oracle set. **77 tests green.**

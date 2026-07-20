@@ -122,7 +122,7 @@ extension _EditorCanvas on _EditorPageState {
   void _commitActiveDraft() {
     if (_isDraftTool && _hasShapeDraft) {
       _commitShape();
-    } else if (_isSelShapeTool && _hasSelDraft) {
+    } else if (_isSelDraftTool && _hasSelDraft) {
       _commitSelDraft();
     } else if (_isCopyPaste && _hasPasteDraft) {
       _act('PasteCommit()');
@@ -142,7 +142,7 @@ extension _EditorCanvas on _EditorPageState {
   void _cancelActiveDraft() {
     if (_isDraftTool && _hasShapeDraft) {
       _cancelShapeDraft();
-    } else if (_isSelShapeTool && _hasSelDraft) {
+    } else if (_isSelDraftTool && _hasSelDraft) {
       _cancelSelDraft();
     } else if (_isCopyPaste && _hasPasteDraft) {
       _act('PasteCancel()');
@@ -275,7 +275,7 @@ extension _EditorCanvas on _EditorPageState {
                         _resizeDraftCenter, _resizeSx, _resizeSy, _resizeDraftRect!, vScale, vOff),
                     size: Size.infinite,
                   ),
-                if (_isSelShapeTool && _hasSelDraft) ...[
+                if (_isSelDraftTool && _hasSelDraft) ...[
                   // The uncommitted selection draft: distinct cyan marching ants (vs the committed
                   // selection's black/white ants, still shown behind it) + draggable endpoint reticles.
                   CustomPaint(
@@ -340,7 +340,7 @@ extension _EditorCanvas on _EditorPageState {
       _beginShape(pos, box);
       return;
     }
-    if (_isSelShapeTool) {
+    if (_isSelDraftTool) {
       _beginSelDraft(pos, box);
       return;
     }
@@ -396,7 +396,7 @@ extension _EditorCanvas on _EditorPageState {
       _continueShape(pos, box);
       return;
     }
-    if (_isSelShapeTool) {
+    if (_isSelDraftTool) {
       _continueSelDraft(pos, box);
       return;
     }
@@ -491,7 +491,7 @@ extension _EditorCanvas on _EditorPageState {
       _endShape();
       return;
     }
-    if (_isSelShapeTool) {
+    if (_isSelDraftTool) {
       _endSelDraft();
       return;
     }
@@ -580,7 +580,7 @@ extension _EditorCanvas on _EditorPageState {
       setState(() {});
       return;
     }
-    if (_isSelShapeTool) {
+    if (_isSelDraftTool) {
       // Second finger interrupted a selection-draft gesture. Keep any established draft, but drop a
       // brand-new degenerate one (a single point) so a pinch over empty canvas leaves nothing behind.
       if (_selDrag == 3 && _hasSelDraft && _selA == _selB) {
