@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../anim/frame_cache.dart';
 import '../../cache/artwork_cache.dart';
+import '../../config/club_config.dart';
 import '../../state/animation_settings.dart';
 import 'synced_pixel_art_image.dart';
 
@@ -161,7 +162,9 @@ class HandleAvatar extends StatelessWidget {
     return CircleAvatar(
       radius: radius,
       backgroundColor: const Color(0xFF2A2D31),
-      backgroundImage: has ? CachedNetworkImageProvider(url!, cacheManager: avatarImageCache) : null,
+      backgroundImage: has
+          ? CachedNetworkImageProvider(resolveClubUrl(url!), cacheManager: avatarImageCache)
+          : null,
       child: has ? null : Text(handle.isNotEmpty ? handle[0].toUpperCase() : '?', style: TextStyle(fontSize: radius)),
     );
   }

@@ -5,6 +5,13 @@
 /// is `{baseUrl}/api/v1`.
 enum ClubEnvironment { dev, prod }
 
+/// Resolves a server-provided asset URL (avatar, artwork) to an absolute one.
+/// The server may emit relative paths (e.g. `/api/vault/avatar/...`) — prefix
+/// those with the API origin; absolute URLs pass through untouched. The env is
+/// compile-time, so `ClubConfig.defaultConfig` is always the active config.
+String resolveClubUrl(String url) =>
+    url.startsWith('http') ? url : '${ClubConfig.defaultConfig.baseUrl}$url';
+
 class ClubConfig {
   final ClubEnvironment env;
   const ClubConfig(this.env);

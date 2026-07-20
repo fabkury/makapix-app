@@ -246,7 +246,10 @@ class _AccountView extends ConsumerWidget {
           child: CircleAvatar(
             radius: 40,
             backgroundColor: const Color(0xFF2A2D31),
-            backgroundImage: hasAvatar ? CachedNetworkImageProvider(u.avatarUrl!, cacheManager: avatarImageCache) : null,
+            backgroundImage: hasAvatar
+                ? CachedNetworkImageProvider(resolveClubUrl(u.avatarUrl!),
+                    cacheManager: avatarImageCache)
+                : null,
             child: hasAvatar
                 ? null
                 : Text(u.handle.isNotEmpty ? u.handle[0].toUpperCase() : '?',

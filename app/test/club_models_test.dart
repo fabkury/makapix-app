@@ -225,6 +225,21 @@ void main() {
       expect(n.isRead, isFalse);
       expect(n.hasContentLink, isTrue);
       expect(n.asRead().isRead, isTrue);
+      // actor_public_sqid absent → null (anonymous/deleted actors, older servers).
+      expect(n.actorPublicSqid, isNull);
+    });
+
+    test('parses actor_public_sqid and keeps it through asRead', () {
+      final n = ClubNotification.fromJson({
+        'id': 'x',
+        'notification_type': 'follow',
+        'is_read': false,
+        'actor_handle': 'bob',
+        'actor_public_sqid': 'aB3d',
+        'created_at': '2026-01-01T00:00:00Z',
+      });
+      expect(n.actorPublicSqid, 'aB3d');
+      expect(n.asRead().actorPublicSqid, 'aB3d');
     });
   });
 }

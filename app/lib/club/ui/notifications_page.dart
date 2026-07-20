@@ -7,6 +7,7 @@ import '../models/club_notification.dart';
 import '../state/api_providers.dart';
 import '../state/notifications_providers.dart';
 import 'artwork_detail_page.dart';
+import 'profile_page.dart';
 import 'widgets/common.dart';
 
 class NotificationsPage extends ConsumerStatefulWidget {
@@ -64,10 +65,20 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
     // content_sqid carries — for a user-target report it isn't a post sqid, so
     // the default post link would open a broken page (ugc-safety R9).
     final canTap = x.hasContentLink && x.type != 'new_report';
+    // Actor avatar → profile (actor_public_sqid, nullable: anonymous/deleted
+    // actors get an inert avatar and the whole-tile post link keeps working).
+    final actorSqid = x.actorPublicSqid;
+    final avatarTap = actorSqid != null && actorSqid.isNotEmpty
+        ? () => Navigator.push(
+            context, MaterialPageRoute(builder: (_) => ProfilePage(sqid: actorSqid)))
+        : null;
     return ListTile(
       leading: _shieldTypes.contains(x.type)
           ? const CircleAvatar(radius: 18, child: Icon(Icons.shield, size: 18))
-          : HandleAvatar(url: x.actorAvatarUrl, handle: x.actorHandle ?? '?', radius: 18),
+          : GestureDetector(
+              onTap: avatarTap,
+              child: HandleAvatar(url: x.actorAvatarUrl, handle: x.actorHandle ?? '?', radius: 18),
+            ),
       title: Text(_text(x), maxLines: 2, overflow: TextOverflow.ellipsis),
       subtitle: Text(timeAgo(x.createdAt), style: const TextStyle(fontSize: 11)),
       trailing: hasThumb
@@ -101,6 +112,12 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
             '${x.commentPreview != null ? ': ${x.commentPreview}' : ''}';
       case 'reputation_change':
         return 'Your reputation changed';
+      case 'moderator_granted':
+        return x.actorHandle != null
+            ? '${x.actorHandle} made you a moderator'
+            : 'You are now a moderator';
+      case 'moderator_revoked':
+        return 'Your moderator role was removed';
       case 'new_report':
         // Server puts the summary ("New {target_type} report: {reason_code}")
         // in content_title; post_id/content_sqid are null (no in-app queue to

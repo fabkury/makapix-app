@@ -8,6 +8,7 @@ class ClubNotification {
   final DateTime? createdAt;
   final String? actorHandle;
   final String? actorAvatarUrl;
+  final String? actorPublicSqid; // null: anonymous actor, deleted account, or legacy row
   final String? contentTitle;
   final String? contentSqid;
   final String? contentArtUrl;
@@ -21,6 +22,7 @@ class ClubNotification {
     required this.createdAt,
     this.actorHandle,
     this.actorAvatarUrl,
+    this.actorPublicSqid,
     this.contentTitle,
     this.contentSqid,
     this.contentArtUrl,
@@ -37,6 +39,7 @@ class ClubNotification {
         createdAt: DateTime.tryParse((j['created_at'] ?? '').toString()),
         actorHandle: j['actor_handle'] as String?,
         actorAvatarUrl: j['actor_avatar_url'] as String?,
+        actorPublicSqid: j['actor_public_sqid'] as String?,
         contentTitle: j['content_title'] as String?,
         contentSqid: j['content_sqid'] as String?,
         contentArtUrl: j['content_art_url'] as String?,
@@ -51,6 +54,7 @@ class ClubNotification {
         createdAt: createdAt,
         actorHandle: actorHandle,
         actorAvatarUrl: actorAvatarUrl,
+        actorPublicSqid: actorPublicSqid,
         contentTitle: contentTitle,
         contentSqid: contentSqid,
         contentArtUrl: contentArtUrl,

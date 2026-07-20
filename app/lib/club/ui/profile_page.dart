@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../editor/gallery/drawing_library_grid.dart';
 import '../../editor/persistence/drawing_store_provider.dart';
 import '../cache/artwork_cache.dart';
+import '../config/club_config.dart';
 import '../models/club_error.dart';
 import '../models/post.dart';
 import '../models/report.dart';
@@ -508,7 +509,7 @@ class _Body extends ConsumerWidget {
                         ? null
                         : CircleAvatar(
                             backgroundColor: Colors.transparent,
-                            backgroundImage: CachedNetworkImageProvider(b.iconUrl16!)),
+                            backgroundImage: CachedNetworkImageProvider(resolveClubUrl(b.iconUrl16!))),
                     label: Text(b.label, style: const TextStyle(fontSize: 11)),
                     visualDensity: VisualDensity.compact,
                   ),
@@ -767,7 +768,8 @@ class _AvatarViewer extends StatelessWidget {
                 child: InteractiveViewer(
                   maxScale: 16,
                   child: Image(
-                    image: CachedNetworkImageProvider(url, cacheManager: avatarImageCache),
+                    image: CachedNetworkImageProvider(resolveClubUrl(url),
+                        cacheManager: avatarImageCache),
                     filterQuality: FilterQuality.none,
                     fit: BoxFit.contain,
                     semanticLabel: "@$handle's avatar",
