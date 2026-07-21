@@ -619,3 +619,69 @@ class CheckerPainter extends CustomPainter {
   @override
   bool shouldRepaint(CheckerPainter old) => false;
 }
+
+/// A colour swatch that reads alpha truthfully: the colour is composited over the same
+/// light-grey checker the canvas shows under transparent pixels (6-px cells — slightly finer
+/// than the canvas's 8 so small swatches still show a clean grid). With [split] the left half
+/// shows the colour forced opaque and the right half its real alpha over the checker, so hue
+/// and transparency read at a glance.
+class AlphaSwatch extends StatelessWidget {
+  final Color color;
+  final double width, height;
+  final bool split;
+  final double borderRadius;
+  final Color borderColor;
+  const AlphaSwatch({
+    super.key,
+    required this.color,
+    required this.width,
+    required this.height,
+    this.split = false,
+    this.borderRadius = 0,
+    this.borderColor = Colors.white24,
+  });
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(borderRadius),
+          border: Border.all(color: borderColor),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: CustomPaint(painter: _AlphaSwatchPainter(color, split)),
+      );
+}
+
+class _AlphaSwatchPainter extends CustomPainter {
+  final Color color;
+  final bool split;
+  const _AlphaSwatchPainter(this.color, this.split);
+
+  static const double _cell = 6;
+  // Same two greys as CanvasPainter's transparency checker, for visual continuity.
+  static final Paint _light = Paint()..color = const Color(0xFFC8C8C8);
+  static final Paint _dark = Paint()..color = const Color(0xFFA0A0A0);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, _light);
+    final cols = (size.width / _cell).ceil(), rows = (size.height / _cell).ceil();
+    for (var r = 0; r < rows; r++) {
+      for (var c = r.isEven ? 1 : 0; c < cols; c += 2) {
+        canvas.drawRect(Rect.fromLTWH(c * _cell, r * _cell, _cell, _cell), _dark);
+      }
+    }
+    if (split) {
+      final half = size.width / 2;
+      canvas.drawRect(Rect.fromLTWH(0, 0, half, size.height), Paint()..color = color.withValues(alpha: 1));
+      canvas.drawRect(Rect.fromLTWH(half, 0, size.width - half, size.height), Paint()..color = color);
+    } else {
+      canvas.drawRect(Offset.zero & size, Paint()..color = color);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_AlphaSwatchPainter o) => o.color != color || o.split != split;
+}

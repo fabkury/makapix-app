@@ -704,11 +704,9 @@ extension _EditorControls on _EditorPageState {
     return GestureDetector(
       onTap: () => _setPrimary(c),
       onLongPress: () => _paletteSwatchMenu(i, c),
-      child: Container(
-        width: 31 * s,
-        height: 29 * s,
-        margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-        decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(3), border: Border.all(color: Colors.black26)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+        child: AlphaSwatch(color: c, width: 31 * s, height: 29 * s, borderRadius: 3, borderColor: Colors.black26),
       ),
     );
   }
@@ -771,11 +769,7 @@ extension _EditorControls on _EditorPageState {
         return SafeArea(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             ListTile(
-              leading: Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.white24)),
-              ),
+              leading: AlphaSwatch(color: color, width: 28, height: 28, borderRadius: 4),
               title: Text('Color ${cur + 1} of $n'),
             ),
             Padding(
@@ -795,11 +789,7 @@ extension _EditorControls on _EditorPageState {
               _pickColor(initial: color, onPick: (nc) => _act('EditPaletteColor($cur, ${_hex(nc)})'));
             }),
             ListTile(
-              leading: Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(color: _primary, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.white24)),
-              ),
+              leading: AlphaSwatch(color: _primary, width: 24, height: 24, borderRadius: 4),
               title: const Text('Overwrite with primary color'),
               onTap: () { Navigator.pop(ctx); _act('EditPaletteColor($cur, ${_hex(_primary)})'); },
             ),

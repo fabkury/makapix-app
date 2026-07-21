@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/painters.dart';
+
 /// The traditional square+hue colour picker: a Saturation×Value square with a hue ramp beside it,
 /// an alpha slider, and a hex field. Dragging on the square or ramp updates the colour live.
 class ColorPickerDialog extends StatefulWidget {
@@ -196,14 +198,9 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
         children: [
           const Text('Pick color'),
           const Spacer(),
-          Container(
-            width: 40,
-            height: 24,
-            decoration: BoxDecoration(
-              color: _color,
-              border: Border.all(color: Colors.white24),
-            ),
-          ),
+          // Opaque | real-alpha halves over the transparency checker, so a translucent pick
+          // shows both its hue and how it will actually composite on the canvas.
+          AlphaSwatch(color: _color, width: 72, height: 24, split: true),
         ],
       ),
       content: SizedBox(
