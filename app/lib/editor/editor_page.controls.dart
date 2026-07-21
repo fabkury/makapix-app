@@ -794,6 +794,15 @@ extension _EditorControls on _EditorPageState {
               Navigator.pop(ctx);
               _pickColor(initial: color, onPick: (nc) => _act('EditPaletteColor($cur, ${_hex(nc)})'));
             }),
+            ListTile(
+              leading: Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(color: _primary, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.white24)),
+              ),
+              title: const Text('Overwrite with primary color'),
+              onTap: () { Navigator.pop(ctx); _act('EditPaletteColor($cur, ${_hex(_primary)})'); },
+            ),
             ListTile(leading: const Icon(Icons.copy), title: const Text('Duplicate'), onTap: () { Navigator.pop(ctx); _act('DuplicatePaletteColor($cur)'); }),
             ListTile(leading: const Icon(Icons.delete), title: const Text('Remove'), onTap: () { Navigator.pop(ctx); _act('RemovePaletteColor($cur)'); }),
           ]),
