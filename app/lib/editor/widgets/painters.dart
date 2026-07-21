@@ -669,6 +669,10 @@ class _AlphaSwatchPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // Same overflow guard as CheckerPainter: the ceil'd cell grid extends past the bounds,
+    // and the host Container's clip stops at its OUTER edge — a border insets this painter,
+    // so unclipped overflow cells would paint dashes over the border ring.
+    canvas.clipRect(Offset.zero & size);
     canvas.drawRect(Offset.zero & size, _light);
     final cols = (size.width / _cell).ceil(), rows = (size.height / _cell).ceil();
     for (var r = 0; r < rows; r++) {
