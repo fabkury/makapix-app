@@ -603,6 +603,9 @@ class CheckerPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // The cell grid is ceil'd past the bounds; without this clip the overflow cells paint
+    // over whatever surrounds the CustomPaint (e.g. a layer tile's selection border).
+    canvas.clipRect(Offset.zero & size);
     final light = Paint()..color = const Color(0xFF3A3D42);
     final dark = Paint()..color = const Color(0xFF26282C);
     canvas.drawRect(Offset.zero & size, light);
