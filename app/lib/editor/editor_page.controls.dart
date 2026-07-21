@@ -656,12 +656,17 @@ extension _EditorControls on _EditorPageState {
     final vertical = axis == Axis.vertical;
     final s = _chromeScale;
     final pairs = (_palette.length + 1) ~/ 2;
+    // Picker-style split: left half the colour forced opaque, right half its real alpha over
+    // the transparency checker. 60 wide fits the 72-wide landscape lane (6-px margins) as-is.
     final primarySwatch = GestureDetector(
       onTap: () => _pickColor(initial: _primary, onPick: _setPrimary),
-      child: Container(
-        width: 38 * s, height: 38 * s, margin: const EdgeInsets.all(6),
-        decoration: BoxDecoration(color: _primary, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.white70, width: 2)),
-        child: const Icon(Icons.edit, size: 13, color: Colors.white70),
+      child: Padding(
+        padding: const EdgeInsets.all(6),
+        child: Stack(alignment: Alignment.center, children: [
+          AlphaSwatch(
+              color: _primary, width: 60 * s, height: 38 * s, split: true, borderRadius: 4, borderColor: Colors.white70, borderWidth: 2),
+          const Icon(Icons.edit, size: 13, color: Colors.white70),
+        ]),
       ),
     );
     // Long-press the empty area near the swatches → "Add current colour" (swatches keep

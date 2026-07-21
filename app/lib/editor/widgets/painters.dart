@@ -634,6 +634,7 @@ class AlphaSwatch extends StatelessWidget {
   final bool split;
   final double borderRadius;
   final Color borderColor;
+  final double borderWidth;
   const AlphaSwatch({
     super.key,
     required this.color,
@@ -642,6 +643,7 @@ class AlphaSwatch extends StatelessWidget {
     this.split = false,
     this.borderRadius = 0,
     this.borderColor = Colors.white24,
+    this.borderWidth = 1,
   });
 
   @override
@@ -650,7 +652,7 @@ class AlphaSwatch extends StatelessWidget {
         height: height,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(borderRadius),
-          border: Border.all(color: borderColor),
+          border: Border.all(color: borderColor, width: borderWidth),
         ),
         clipBehavior: Clip.antiAlias,
         child: CustomPaint(painter: _AlphaSwatchPainter(color, split)),
