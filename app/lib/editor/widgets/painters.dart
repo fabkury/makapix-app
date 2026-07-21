@@ -663,29 +663,48 @@ class _AlphaSwatchPainter extends CustomPainter {
   const _AlphaSwatchPainter(this.color, this.split);
 
   static const double _cell = 6;
-  // Same two greys as CanvasPainter's transparency checker, for visual continuity.
-  static final Paint _light = Paint()..color = const Color(0xFFC8C8C8);
-  static final Paint _dark = Paint()..color = const Color(0xFFA0A0A0);
+  // Same two greys as CanvasPainter's transparency checker, for visual continuity. All fills
+  // are non-antialiased: the checker and the colour drawn over it share edge geometry, and
+  // with AA each boundary pixel is a partial-coverage blend of BOTH — a faint grey halo
+  // around opaque swatches. Binary coverage makes them coincide exactly; the host
+  // Container's own antialiased clip still smooths the rounded corners.
+  static final Paint _light = Paint()
+    ..isAntiAlias = false
+    ..color = const Color(0xFFC8C8C8);
+  static final Paint _dark = Paint()
+    ..isAntiAlias = false
+    ..color = const Color(0xFFA0A0A0);
 
   @override
   void paint(Canvas canvas, Size size) {
     // Same overflow guard as CheckerPainter: the ceil'd cell grid extends past the bounds,
     // and the host Container's clip stops at its OUTER edge — a border insets this painter,
     // so unclipped overflow cells would paint dashes over the border ring.
-    canvas.clipRect(Offset.zero & size);
-    canvas.drawRect(Offset.zero & size, _light);
-    final cols = (size.width / _cell).ceil(), rows = (size.height / _cell).ceil();
-    for (var r = 0; r < rows; r++) {
-      for (var c = r.isEven ? 1 : 0; c < cols; c += 2) {
-        canvas.drawRect(Rect.fromLTWH(c * _cell, r * _cell, _cell, _cell), _dark);
+    canvas.clipRect(Offset.zero & size, doAntiAlias: false);
+    // The checker only exists to show through translucent colour — skip it where an opaque
+    // fill would cover it entirely.
+    final opaque = color.a >= 1;
+    if (!opaque) {
+      canvas.drawRect(Offset.zero & size, _light);
+      final cols = (size.width / _cell).ceil(), rows = (size.height / _cell).ceil();
+      for (var r = 0; r < rows; r++) {
+        for (var c = r.isEven ? 1 : 0; c < cols; c += 2) {
+          canvas.drawRect(Rect.fromLTWH(c * _cell, r * _cell, _cell, _cell), _dark);
+        }
       }
     }
+    final fill = Paint()
+      ..isAntiAlias = false
+      ..color = color;
     if (split) {
       final half = size.width / 2;
-      canvas.drawRect(Rect.fromLTWH(0, 0, half, size.height), Paint()..color = color.withValues(alpha: 1));
-      canvas.drawRect(Rect.fromLTWH(half, 0, size.width - half, size.height), Paint()..color = color);
+      final opaqueFill = Paint()
+        ..isAntiAlias = false
+        ..color = color.withValues(alpha: 1);
+      canvas.drawRect(Rect.fromLTWH(0, 0, half, size.height), opaqueFill);
+      canvas.drawRect(Rect.fromLTWH(half, 0, size.width - half, size.height), fill);
     } else {
-      canvas.drawRect(Offset.zero & size, Paint()..color = color);
+      canvas.drawRect(Offset.zero & size, fill);
     }
   }
 
