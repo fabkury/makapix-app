@@ -521,7 +521,10 @@ impl Session {
         out
     }
 
-    /// Content hash (low 64 bits) of a single layer — for caching layer film-strip thumbnails.
+    /// Pixel-content hash (low 64 bits) of a single layer — for caching layer film-strip
+    /// thumbnails. Hashes only the pixel buffer, not layer metadata: `layer_thumb_bytes` renders
+    /// raw pixels, so name/visible/locked/opacity changes must not invalidate cached thumbnails
+    /// (a full `content_hash` here made the layer-sheet thumb flicker during opacity drags).
     /// Bounds-safe (clamps indices) so it is safe to call across the FFI with possibly stale
     /// indices, unlike the unchecked `layer_hash` used by the CLI probe.
     pub fn layer_thumb_hash(&self, frame: usize, layer: usize) -> u64 {
@@ -531,7 +534,7 @@ impl Session {
             return 0;
         }
         let li = layer.min(f.layers.len() - 1);
-        f.layers[li].content_hash() as u64
+        f.layers[li].pixels.content_hash() as u64
     }
 
     pub fn display_bytes(&self, onion: bool, grid: bool, checker: bool) -> Vec<u8> {

@@ -179,7 +179,7 @@ extension _EditorSheets on _EditorPageState {
 
         return _sheetScaffold(ctx, [
           _sheetHeader(
-            thumb: (cached != null && cached.hash == hash) ? cached : null,
+            thumb: cached, // stale-while-revalidate: old thumb beats a checkerboard flash
             title: '${l['name']}',
             subtitle: 'Layer ${cur + 1} of $count',
             onRename: () {
@@ -333,7 +333,7 @@ extension _EditorSheets on _EditorPageState {
 
         return _sheetScaffold(ctx, [
           _sheetHeader(
-            thumb: (cached != null && cached.hash == hash) ? cached : null,
+            thumb: cached, // stale-while-revalidate: old thumb beats a checkerboard flash
             title: 'Frame ${cur + 1} of $count',
             subtitle: '${ms.toStringAsFixed(1)} ms · ${(1000 / ms).toStringAsFixed(1)} fps',
           ),
