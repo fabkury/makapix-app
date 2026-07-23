@@ -248,7 +248,20 @@ extension _EditorSheets on _EditorPageState {
             ),
             SizedBox(
               width: 40,
-              child: Text('${(opacity * 100 / 255).round()}%', textAlign: TextAlign.end),
+              // Tap-to-type, the editor-wide slider convention (underline = tappable). Raw
+              // engine units (0–255), matching what the dialog accepts.
+              child: InkWell(
+                onTap: () => _editSliderValue('Opacity', opacity.toDouble(), 0, 255, (v) {
+                  _act('SetLayerOpacity($cur, ${v.round()})');
+                  setS(() {});
+                }, integer: true),
+                borderRadius: BorderRadius.circular(4),
+                child: Text('$opacity',
+                    textAlign: TextAlign.end,
+                    style: const TextStyle(
+                        decoration: TextDecoration.underline,
+                        decorationColor: Colors.white24)),
+              ),
             ),
           ]),
           _sheetSection('Arrange'),
