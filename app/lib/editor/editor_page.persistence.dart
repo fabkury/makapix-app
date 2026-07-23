@@ -161,22 +161,24 @@ extension _EditorPersistence on _EditorPageState {
         title: Text('Open $incoming?'),
         content: Text('What should happen to your current drawing, "$_drawingTitle"?'),
         // Discard sits alone at the far LEFT, opposite Keep, so a mis-click near the usual
-        // confirm corner can't destroy work; it also re-confirms below.
+        // confirm corner can't destroy work; it also re-confirms below. On narrow phones the
+        // row can't fit, so the dialog's OverflowBar stacks the buttons vertically — reversed
+        // (`up`) so Keep lands on top and Discard at the bottom, farthest from the thumb.
+        actionsAlignment: MainAxisAlignment.spaceBetween,
+        actionsOverflowDirection: VerticalDirection.up,
+        actionsOverflowAlignment: OverflowBarAlignment.end,
+        actionsOverflowButtonSpacing: 8,
         actions: [
-          Row(children: [
-            TextButton(
-              style: TextButton.styleFrom(foregroundColor: const Color(0xFFE06060)),
-              onPressed: () => Navigator.pop(ctx, _OutgoingChoice.discard),
-              child: const Text('Discard it'),
-            ),
-            const Spacer(),
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            const SizedBox(width: 8),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, _OutgoingChoice.save),
-              child: const Text('Keep in My Drawings'),
-            ),
-          ]),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: const Color(0xFFE06060)),
+            onPressed: () => Navigator.pop(ctx, _OutgoingChoice.discard),
+            child: const Text('Discard it'),
+          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, _OutgoingChoice.save),
+            child: const Text('Keep in My Drawings'),
+          ),
         ],
       ),
     );
