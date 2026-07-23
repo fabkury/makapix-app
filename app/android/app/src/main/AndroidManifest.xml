@@ -33,6 +33,20 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- STOPGAP for the PowerVR fixed-rate-compression crash (Pixel 10 / Tensor G5 and
+             PowerVR-GPU MediaTek devices): Impeller's Vulkan backend aborts/SIGSEGVs the raster
+             thread when the driver's compression pool exhausts during normal art browsing
+             (VK_ERROR_COMPRESSION_EXHAUSTED_EXT -> failed pass texture -> any saveLayer dies;
+             confirmed live 2026-07-23, see docs/reacted-tab-investigation/REPORT.md and upstream
+             flutter/flutter#187564). Disabling Impeller falls back to Skia/GLES, which has no
+             fixed-rate compression, so the whole family is unreachable. (The finer-grained
+             ImpellerBackend=opengles knob is compiled out of release engines — flutter_main.cc
+             guards it with #ifndef FLUTTER_RELEASE — so full disable is the only release-safe
+             switch.) REMOVE once the pinned Flutter carries flutter/flutter#187586
+             ("retry uncompressed"), then re-verify on a Pixel 10. -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false" />
         <!-- flutter_web_auth_2 callback for the server-brokered GitHub OAuth return leg.
              Preferred return is the HTTPS App Link (https://app[-dev].makapix.club/oauth/github);
              the custom scheme (club.makapix.app://oauth/github) is a fallback, kept allowlisted
