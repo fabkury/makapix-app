@@ -14,7 +14,7 @@ extension _EditorEngine on _EditorPageState {
     try {
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getStringList(_prefsKey);
-      final threeRow = prefs.getBool(_prefs3RowKey); // null = never chosen → tablet-aware default
+      final threeRow = prefs.getBool(_prefs3RowKey); // null = never chosen → 2-row default
       final pinned3 = prefs.getString(_prefsPinnedThirdKey);
       final all = tools.map((t) => t.dsl).toList();
       List<String>? reconciled;

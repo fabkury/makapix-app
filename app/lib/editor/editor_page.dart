@@ -253,11 +253,10 @@ class _EditorPageState extends ConsumerState<EditorPage>
   List<String> _toolOrder = tools.map((t) => t.dsl).toList();
   // ☰ → View → 3-row toolbar: the row-3 grid reflows to 3 rows (3 tiles per row in landscape) and
   // the pinned tool joins Undo/Redo (its grid tile hides, but it stays in _toolOrder so the saved
-  // order never churns). The persisted choice always wins; until the user chooses, tablets default
-  // to 3-row (more room, more tools visible) and phones to 2-row. NEVER read the getter before the
-  // first build (it needs MediaQuery via context) — _loadToolOrder only writes the pref field.
+  // order never churns). The persisted choice always wins; until the user chooses, every device
+  // defaults to 2-row (the former tablet-defaults-to-3-row rule was removed by decision 2026-07-24).
   bool? _threeRowPref;
-  bool get _threeRowToolbar => _threeRowPref ?? isTabletish(context);
+  bool get _threeRowToolbar => _threeRowPref ?? false;
   set _threeRowToolbar(bool v) => _threeRowPref = v;
   // Chrome scale: tablets get ~20% larger strips/tiles/swatches — bigger touch targets, and the
   // bands don't look skeletal at tablet sizes. Applied multiplicatively in the region builders.

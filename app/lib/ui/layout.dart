@@ -3,7 +3,7 @@
 import 'package:flutter/material.dart';
 
 /// A viewport whose shortest side reaches this is "tablet-ish" (iPad, wide desktop window):
-/// denser editor toolbars by default, scaled-up chrome, scaled profile header.
+/// scaled-up chrome, scaled profile header.
 const double kTabletBreakpoint = 600;
 
 /// The artwork detail page goes two-pane (stage left, info/comments right) at/above this width.
