@@ -721,7 +721,9 @@ extension _EditorControls on _EditorPageState {
       onLongPress: () => _paletteSwatchMenu(i, c),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-        child: AlphaSwatch(color: c, width: 31 * s, height: 29 * s, borderRadius: 3, borderColor: Colors.black26),
+        // diagonal: translucent palette colours read as a dual indicator (opaque top-left
+        // triangle / composited bottom-right); opaque ones stay a plain fill.
+        child: AlphaSwatch(color: c, width: 31 * s, height: 29 * s, diagonal: true, borderRadius: 3, borderColor: Colors.black26),
       ),
     );
   }

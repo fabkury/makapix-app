@@ -629,11 +629,15 @@ class CheckerPainter extends CustomPainter {
 /// shows the colour forced opaque on one half and its real alpha over the checker on the
 /// other, so hue and transparency read at a glance: [splitAxis] horizontal = opaque left /
 /// composited right (the default), vertical = opaque top / composited bottom.
+/// [diagonal] is the conditional variant of the same dual indicator: opaque colours paint as
+/// a plain fill, but a translucent colour splits along the anti-diagonal — top-left triangle
+/// forced opaque, bottom-right triangle real alpha over the checker.
 class AlphaSwatch extends StatelessWidget {
   final Color color;
   final double width, height;
   final bool split;
   final Axis splitAxis;
+  final bool diagonal;
   final double borderRadius;
   final Color borderColor;
   final double borderWidth;
@@ -644,10 +648,11 @@ class AlphaSwatch extends StatelessWidget {
     required this.height,
     this.split = false,
     this.splitAxis = Axis.horizontal,
+    this.diagonal = false,
     this.borderRadius = 0,
     this.borderColor = Colors.white24,
     this.borderWidth = 1,
-  });
+  }) : assert(!(split && diagonal), 'split and diagonal are mutually exclusive');
 
   @override
   Widget build(BuildContext context) => Container(
@@ -658,7 +663,7 @@ class AlphaSwatch extends StatelessWidget {
           border: Border.all(color: borderColor, width: borderWidth),
         ),
         clipBehavior: Clip.antiAlias,
-        child: CustomPaint(painter: _AlphaSwatchPainter(color, split, splitAxis)),
+        child: CustomPaint(painter: _AlphaSwatchPainter(color, split, splitAxis, diagonal)),
       );
 }
 
@@ -666,7 +671,8 @@ class _AlphaSwatchPainter extends CustomPainter {
   final Color color;
   final bool split;
   final Axis splitAxis;
-  const _AlphaSwatchPainter(this.color, this.split, this.splitAxis);
+  final bool diagonal;
+  const _AlphaSwatchPainter(this.color, this.split, this.splitAxis, this.diagonal);
 
   static const double _cell = 6;
   // Same two greys as CanvasPainter's transparency checker, for visual continuity. All fills
@@ -717,10 +723,22 @@ class _AlphaSwatchPainter extends CustomPainter {
       }
     } else {
       canvas.drawRect(Offset.zero & size, fill);
+      if (diagonal && !opaque) {
+        // Dual indicator for translucent colours: opaque top-left triangle over the composited
+        // full-rect fill just drawn. The triangle edge is a genuine colour-over-colour boundary
+        // (composited fill beneath, not bare checker), so AA here can't produce the grey halo
+        // the rect fills guard against — and it keeps the diagonal smooth at ~30-px sizes.
+        final tri = Path()
+          ..moveTo(0, 0)
+          ..lineTo(size.width, 0)
+          ..lineTo(0, size.height)
+          ..close();
+        canvas.drawPath(tri, Paint()..color = color.withValues(alpha: 1));
+      }
     }
   }
 
   @override
   bool shouldRepaint(_AlphaSwatchPainter o) =>
-      o.color != color || o.split != split || o.splitAxis != splitAxis;
+      o.color != color || o.split != split || o.splitAxis != splitAxis || o.diagonal != diagonal;
 }
