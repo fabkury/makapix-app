@@ -373,6 +373,25 @@ extension _EditorToolgrid on _EditorPageState {
     );
   }
 
+  // Icon variant of _toggle for options that read better as glyphs than words (e.g. the brush
+  // Shape toggle's circle/square). Slimmer segments than the text toggle (36 vs 44 min-width);
+  // [tooltips] keeps the old wording reachable via long-press.
+  Widget _iconToggle(List<IconData> icons, List<String> tooltips, int sel, ValueChanged<int> onTap) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: ToggleButtons(
+        isSelected: List.generate(icons.length, (i) => i == sel),
+        onPressed: onTap,
+        constraints: const BoxConstraints(minHeight: 30, minWidth: 36),
+        borderRadius: BorderRadius.circular(6),
+        children: [
+          for (var i = 0; i < icons.length; i++)
+            Tooltip(message: tooltips[i], child: Icon(icons[i], size: 16)),
+        ],
+      ),
+    );
+  }
+
   Widget _miniBtn(String s, VoidCallback onTap) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 3),

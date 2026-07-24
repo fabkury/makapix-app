@@ -214,7 +214,7 @@ extension _EditorControls on _EditorPageState {
     }
     if (shapeTools.contains(_tool)) {
       label('Shape');
-      children.add(_toggle(['Round', 'Square'], _round ? 0 : 1, (i) {
+      children.add(_iconToggle(const [Icons.circle, Icons.square], const ['Round', 'Square'], _round ? 0 : 1, (i) {
         setState(() => _round = i == 0);
         _send('SetBrushShape(${_round ? 'Round' : 'Square'})');
       }));
