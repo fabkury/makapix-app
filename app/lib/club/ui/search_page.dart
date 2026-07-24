@@ -86,7 +86,16 @@ class _ArtworksTab extends ConsumerWidget {
                   gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                       maxCrossAxisExtent: 132, mainAxisSpacing: 4, crossAxisSpacing: 4),
                   itemCount: posts.length,
+                  // Keyed by post id so a new result set can't recycle a tile's
+                  // decoded artwork into a different post's slot (stale frames
+                  // while the new artwork loads).
+                  findChildIndexCallback: (key) {
+                    if (key is! ValueKey<int>) return null;
+                    final ix = posts.indexWhere((p) => p.id == key.value);
+                    return ix >= 0 ? ix : null;
+                  },
                   itemBuilder: (ctx, i) => GestureDetector(
+                    key: ValueKey<int>(posts[i].id),
                     onTap: () => Navigator.push(
                         ctx,
                         MaterialPageRoute(

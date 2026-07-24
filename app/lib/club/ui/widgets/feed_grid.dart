@@ -115,6 +115,15 @@ class _FeedGridState extends State<FeedGrid> {
                 infoBarExtent: _PostTile.infoBarHeight,
                 superIndex: superIndex),
         itemCount: s.items.length + (s.atEnd ? 0 : 1),
+        // Match tiles to posts by identity, not by grid slot: when a refresh
+        // inserts new posts at the front, shifted tiles carry their decoded
+        // artwork with them and the new posts get fresh tiles (loading spinner)
+        // instead of inheriting the previous occupant's frames.
+        findChildIndexCallback: (key) {
+          if (key is! ValueKey<int>) return null;
+          final ix = s.items.indexWhere((p) => p.id == key.value);
+          return ix >= 0 ? ix : null;
+        },
         itemBuilder: (ctx, i) {
           if (i >= s.items.length) {
             return const Center(
@@ -123,7 +132,10 @@ class _FeedGridState extends State<FeedGrid> {
                     child: SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2))));
           }
           return _PostTile(
-              post: s.items[i], superSize: i == superIndex, onTap: () => widget.onTap(s.items[i]));
+              key: ValueKey<int>(s.items[i].id),
+              post: s.items[i],
+              superSize: i == superIndex,
+              onTap: () => widget.onTap(s.items[i]));
         },
       );
       if (widget.nested) {
@@ -158,7 +170,7 @@ class _PostTile extends ConsumerWidget {
   /// below the square artwork, which becomes a title/author line above the
   /// regular likes/comments bar.
   final bool superSize;
-  const _PostTile({required this.post, required this.onTap, this.superSize = false});
+  const _PostTile({super.key, required this.post, required this.onTap, this.superSize = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
