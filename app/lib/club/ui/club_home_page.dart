@@ -9,6 +9,7 @@ import '../state/notifications_providers.dart';
 import '../state/player_providers.dart';
 import '../state/rules_gate.dart';
 import '../state/super_post_provider.dart';
+import 'about_dialog.dart';
 import 'artist_dashboard_page.dart';
 import 'artwork_detail_page.dart';
 import 'auth/onboarding_wizard.dart';
@@ -185,14 +186,7 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
         _push(const SettingsPage());
         break;
       case 'about':
-        showDialog<void>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Makapix Club'),
-            content: const Text('A native client for the Makapix Club pixel-art social network.'),
-            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close'))],
-          ),
-        );
+        showMakapixAboutDialog(context);
         break;
       case 'signout':
         ref.read(authControllerProvider.notifier).logout();

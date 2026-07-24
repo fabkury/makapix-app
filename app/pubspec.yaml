@@ -54,6 +54,7 @@ dependencies:
   url_launcher: ^6.3.0            # community-rules / moderation-policy links + mailto contact (UGC safety)
   sign_in_with_apple: ^6.1.0      # iOS "Sign in with Apple" (Apple guideline 4.8). Gated off until the
                                   # server /auth/token apple grant ships — see kAppleSignInEnabled.
+  package_info_plus: ^9.0.1       # runtime app version for the About dialog
 
 dev_dependencies:
   flutter_test:
@@ -101,8 +102,10 @@ flutter:
   uses-material-design: true
 
   # Preset palettes shown on the editor's palette page (GIMP/Lospec .gpl files).
+  # The launcher-icon master doubles as the About-dialog app icon.
   assets:
     - assets/palettes/
+    - assets/icons/icon.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
