@@ -656,15 +656,25 @@ extension _EditorControls on _EditorPageState {
     final vertical = axis == Axis.vertical;
     final s = _chromeScale;
     final pairs = (_palette.length + 1) ~/ 2;
-    // Picker-style split: left half the colour forced opaque, right half its real alpha over
-    // the transparency checker. 60 wide fits the 72-wide landscape lane (6-px margins) as-is.
+    // Picker-style split: the colour forced opaque on one half, its real alpha over the
+    // transparency checker on the other. The swatch follows the row's orientation — landscape
+    // (vertical lane): 60×38 wide, opaque left / composited right (60 fits the 72-wide lane
+    // with 6-px margins); portrait (horizontal strip): 38×60 tall, opaque top / composited
+    // bottom (60 fits the 72-high band the same way).
     final primarySwatch = GestureDetector(
       onTap: () => _pickColor(initial: _primary, onPick: _setPrimary),
       child: Padding(
         padding: const EdgeInsets.all(6),
         child: Stack(alignment: Alignment.center, children: [
           AlphaSwatch(
-              color: _primary, width: 60 * s, height: 38 * s, split: true, borderRadius: 4, borderColor: Colors.white70, borderWidth: 2),
+              color: _primary,
+              width: (vertical ? 60 : 38) * s,
+              height: (vertical ? 38 : 60) * s,
+              split: true,
+              splitAxis: vertical ? Axis.horizontal : Axis.vertical,
+              borderRadius: 4,
+              borderColor: Colors.white70,
+              borderWidth: 2),
           const Icon(Icons.edit, size: 13, color: Colors.white70),
         ]),
       ),

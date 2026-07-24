@@ -625,13 +625,15 @@ class CheckerPainter extends CustomPainter {
 
 /// A colour swatch that reads alpha truthfully: the colour is composited over the same
 /// light-grey checker the canvas shows under transparent pixels (6-px cells — slightly finer
-/// than the canvas's 8 so small swatches still show a clean grid). With [split] the left half
-/// shows the colour forced opaque and the right half its real alpha over the checker, so hue
-/// and transparency read at a glance.
+/// than the canvas's 8 so small swatches still show a clean grid). With [split] the swatch
+/// shows the colour forced opaque on one half and its real alpha over the checker on the
+/// other, so hue and transparency read at a glance: [splitAxis] horizontal = opaque left /
+/// composited right (the default), vertical = opaque top / composited bottom.
 class AlphaSwatch extends StatelessWidget {
   final Color color;
   final double width, height;
   final bool split;
+  final Axis splitAxis;
   final double borderRadius;
   final Color borderColor;
   final double borderWidth;
@@ -641,6 +643,7 @@ class AlphaSwatch extends StatelessWidget {
     required this.width,
     required this.height,
     this.split = false,
+    this.splitAxis = Axis.horizontal,
     this.borderRadius = 0,
     this.borderColor = Colors.white24,
     this.borderWidth = 1,
@@ -655,14 +658,15 @@ class AlphaSwatch extends StatelessWidget {
           border: Border.all(color: borderColor, width: borderWidth),
         ),
         clipBehavior: Clip.antiAlias,
-        child: CustomPaint(painter: _AlphaSwatchPainter(color, split)),
+        child: CustomPaint(painter: _AlphaSwatchPainter(color, split, splitAxis)),
       );
 }
 
 class _AlphaSwatchPainter extends CustomPainter {
   final Color color;
   final bool split;
-  const _AlphaSwatchPainter(this.color, this.split);
+  final Axis splitAxis;
+  const _AlphaSwatchPainter(this.color, this.split, this.splitAxis);
 
   static const double _cell = 6;
   // Same two greys as CanvasPainter's transparency checker, for visual continuity. All fills
@@ -699,17 +703,24 @@ class _AlphaSwatchPainter extends CustomPainter {
       ..isAntiAlias = false
       ..color = color;
     if (split) {
-      final half = size.width / 2;
       final opaqueFill = Paint()
         ..isAntiAlias = false
         ..color = color.withValues(alpha: 1);
-      canvas.drawRect(Rect.fromLTWH(0, 0, half, size.height), opaqueFill);
-      canvas.drawRect(Rect.fromLTWH(half, 0, size.width - half, size.height), fill);
+      if (splitAxis == Axis.horizontal) {
+        final half = size.width / 2;
+        canvas.drawRect(Rect.fromLTWH(0, 0, half, size.height), opaqueFill);
+        canvas.drawRect(Rect.fromLTWH(half, 0, size.width - half, size.height), fill);
+      } else {
+        final half = size.height / 2;
+        canvas.drawRect(Rect.fromLTWH(0, 0, size.width, half), opaqueFill);
+        canvas.drawRect(Rect.fromLTWH(0, half, size.width, size.height - half), fill);
+      }
     } else {
       canvas.drawRect(Offset.zero & size, fill);
     }
   }
 
   @override
-  bool shouldRepaint(_AlphaSwatchPainter o) => o.color != color || o.split != split;
+  bool shouldRepaint(_AlphaSwatchPainter o) =>
+      o.color != color || o.split != split || o.splitAxis != splitAxis;
 }
