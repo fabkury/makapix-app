@@ -3019,6 +3019,18 @@ impl Session {
             self.doc.palettes[i].colors.clear();
         }
     }
+    /// Sort palette `i` into grays-first hue ramps — see
+    /// [`color::palette_sort_key`](crate::color::palette_sort_key). The sort is stable, so
+    /// entries with identical keys keep their existing relative order.
+    pub fn sort_palette_at(&mut self, i: usize) {
+        if i < self.doc.palettes.len() {
+            self.doc.palettes[i].colors.sort_by_key(|&c| crate::color::palette_sort_key(c));
+        }
+    }
+    /// [`sort_palette_at`](Self::sort_palette_at) on the active palette.
+    pub fn sort_palette(&mut self) {
+        self.sort_palette_at(self.doc.active_palette);
+    }
 
     // ---- animation / rng ----
 
@@ -5147,6 +5159,44 @@ mod tests {
         assert!(s.doc.palettes[0].colors.is_empty());
         assert_eq!(s.doc.palette().colors.len(), 1, "active (B) untouched");
         s.clear_palette_at(9); // OOB → no-op
+    }
+
+    #[test]
+    fn sort_palette_grays_first_then_hue_ramps() {
+        let mut s = Session::new(8, 8);
+        // Scrambled: light red, white, translucent green, dark red, black, green, transparent.
+        s.run_script(
+            "ClearPalette(); AddPaletteColor(#FF8080FF); AddPaletteColor(#FFFFFFFF); \
+             AddPaletteColor(#00FF0080); AddPaletteColor(#800000FF); AddPaletteColor(#000000FF); \
+             AddPaletteColor(#00FF00FF); AddPaletteColor(#00000000)",
+        )
+        .unwrap();
+        s.run_script("SortPalette()").unwrap();
+        let hex: Vec<String> = s.doc.palette().colors.iter().map(|c| c.to_hex()).collect();
+        assert_eq!(
+            hex,
+            [
+                "#000000FF", // gray ramp first, dark→light
+                "#FFFFFFFF",
+                "#800000FF", // red bucket, dark→light
+                "#FF8080FF",
+                "#00FF00FF", // green bucket: opaque before translucent
+                "#00FF0080",
+                "#00000000", // fully transparent last
+            ]
+        );
+    }
+
+    #[test]
+    fn sort_palette_at_targets_index_not_active() {
+        let mut s = Session::new(8, 8);
+        s.run_script("NewPalette(A); AddPaletteColor(#FFFFFFFF); AddPaletteColor(#000000FF)").unwrap();
+        s.run_script("NewPalette(B); AddPaletteColor(#FFFFFFFF); AddPaletteColor(#000000FF)").unwrap();
+        s.run_script("SortPaletteAt(1)").unwrap();
+        let hex = |p: usize| -> Vec<String> { s.doc.palettes[p].colors.iter().map(|c| c.to_hex()).collect() };
+        assert_eq!(hex(1), ["#000000FF", "#FFFFFFFF"]);
+        assert_eq!(hex(2), ["#FFFFFFFF", "#000000FF"], "active (B) untouched");
+        s.sort_palette_at(9); // OOB → no-op
     }
 
     #[test]

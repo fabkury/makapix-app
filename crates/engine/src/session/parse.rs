@@ -155,6 +155,8 @@ pub enum Action {
     MovePalette(usize, usize),
     RenamePaletteAt(usize, String),
     ClearPaletteAt(usize),
+    SortPalette,
+    SortPaletteAt(usize),
     Undo,
     Redo,
     /// Drop the whole undo/redo history (frees everything it retains). Used by the memory stress
@@ -333,6 +335,8 @@ impl Session {
             MovePalette(from, to) => self.move_palette(from, to),
             RenamePaletteAt(i, name) => self.rename_palette_at(i, name),
             ClearPaletteAt(i) => self.clear_palette_at(i),
+            SortPalette => self.sort_palette(),
+            SortPaletteAt(i) => self.sort_palette_at(i),
             Undo => {
                 self.doc.undo();
                 self.mem_recalibrate();
@@ -704,6 +708,8 @@ fn parse_line(line: &str) -> Result<Action, String> {
             RenamePaletteAt(i, rest.trim().to_string())
         }
         "ClearPaletteAt" => ClearPaletteAt(usza(0)?),
+        "SortPalette" => SortPalette,
+        "SortPaletteAt" => SortPaletteAt(usza(0)?),
         "Undo" => Undo,
         "Redo" => Redo,
         "ClearHistory" => ClearHistory,

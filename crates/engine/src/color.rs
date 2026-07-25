@@ -212,6 +212,46 @@ pub fn invert(c: Rgba8) -> Rgba8 {
     Rgba8::new(255 - c.r, 255 - c.g, 255 - c.b, c.a)
 }
 
+/// Ordering key for the `SortPalette` action: grays-first hue ramps (SPEC §13 palettes).
+/// Integer-only on purpose — palette order must never fork per platform.
+///
+/// Groups, in order: grays (saturation ≤ 10%, so black/white/near-grays form one leading
+/// dark→light ramp) · colored (12 hue buckets of 30° in wheel order red→yellow→green→cyan→
+/// blue→magenta, each bucket dark→light by Rec.709 luma) · fully transparent entries last.
+/// Alpha is the final tiebreak everywhere (opaque→translucent), so translucent variants sit
+/// right after their opaque parent. Callers must use a stable sort so exact ties keep their
+/// existing relative order.
+pub fn palette_sort_key(c: Rgba8) -> (u8, u8, u32, u16, u8, u8) {
+    let (r, g, b) = (c.r as i32, c.g as i32, c.b as i32);
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let chroma = max - min;
+    let luma = (2126 * r + 7152 * g + 722 * b) as u32;
+    let gray = chroma * 10 <= max; // saturation ≤ 10% (black included: 0 ≤ 0)
+    let group: u8 = if c.a == 0 {
+        2
+    } else if gray {
+        0
+    } else {
+        1
+    };
+    let (bucket, hue) = if chroma == 0 || gray {
+        (0u8, 0u16) // hue is meaningless/noisy for grays — luma alone orders the ramp
+    } else {
+        // Integer hue on a 0..1536 wheel (6 sectors × 256), red at 0.
+        let h = if max == r {
+            ((g - b) * 256 / chroma).rem_euclid(1536)
+        } else if max == g {
+            512 + (b - r) * 256 / chroma
+        } else {
+            1024 + (r - g) * 256 / chroma
+        };
+        ((h / 128) as u8, h as u16) // 1536/128 = 12 buckets of 30°
+    };
+    let sat = if max == 0 { 0 } else { (chroma * 255 / max) as u8 };
+    (group, bucket, luma, hue, sat, 255 - c.a)
+}
+
 /// Adjust brightness (`db` in [-255,255]) and contrast (`cf` multiplier around 128).
 pub fn brightness_contrast(c: Rgba8, db: i32, cf: f32) -> Rgba8 {
     let adj = |v: u8| -> u8 {
@@ -224,6 +264,38 @@ pub fn brightness_contrast(c: Rgba8, db: i32, cf: f32) -> Rgba8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn palette_sort_key_groups_and_ramps() {
+        let key = palette_sort_key;
+        // Grays (incl. black/white) precede colored entries; transparent goes last.
+        assert!(key(Rgba8::BLACK) < key(Rgba8::rgb(255, 0, 0)));
+        assert!(key(Rgba8::WHITE) < key(Rgba8::rgb(255, 0, 0)));
+        assert!(key(Rgba8::rgb(255, 0, 0)) < key(Rgba8::new(128, 128, 128, 0)));
+        // The gray ramp orders dark→light.
+        assert!(key(Rgba8::BLACK) < key(Rgba8::rgb(128, 128, 128)));
+        assert!(key(Rgba8::rgb(128, 128, 128)) < key(Rgba8::WHITE));
+        // Near-gray (sat ≤ 10%) joins the gray ramp; a saturated color of any hue does not.
+        assert_eq!(key(Rgba8::rgb(200, 190, 195)).0, 0);
+        assert_eq!(key(Rgba8::rgb(200, 100, 100)).0, 1);
+        // Hue wheel order: red < yellow < green < cyan < blue < magenta.
+        let (r, y, g, c, b, m) = (
+            Rgba8::rgb(255, 0, 0),
+            Rgba8::rgb(255, 255, 0),
+            Rgba8::rgb(0, 255, 0),
+            Rgba8::rgb(0, 255, 255),
+            Rgba8::rgb(0, 0, 255),
+            Rgba8::rgb(255, 0, 255),
+        );
+        assert!(key(r) < key(y) && key(y) < key(g) && key(g) < key(c));
+        assert!(key(c) < key(b) && key(b) < key(m));
+        // Within one hue bucket: dark→light by luma.
+        assert!(key(Rgba8::rgb(64, 0, 0)) < key(Rgba8::rgb(255, 0, 0)));
+        assert!(key(Rgba8::rgb(255, 0, 0)) < key(Rgba8::rgb(255, 128, 128)));
+        // Same RGB: opaque before translucent, both before fully transparent.
+        assert!(key(Rgba8::rgb(10, 200, 30)) < key(Rgba8::new(10, 200, 30, 128)));
+        assert!(key(Rgba8::new(10, 200, 30, 128)) < key(Rgba8::new(10, 200, 30, 0)));
+    }
 
     #[test]
     fn hex_roundtrip() {
