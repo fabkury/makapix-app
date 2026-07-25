@@ -412,7 +412,7 @@ extension _EditorToolgrid on _EditorPageState {
       padding: const EdgeInsets.symmetric(horizontal: 3),
       child: GestureDetector(
         onTap: onTap,
-        child: AlphaSwatch(color: c, width: 30, height: 30, borderRadius: 4, borderColor: Colors.white54),
+        child: AlphaSwatch(color: c, width: 30, height: 30, diagonal: true, borderRadius: 4, borderColor: Colors.white54),
       ),
     );
   }
