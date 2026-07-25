@@ -17,7 +17,7 @@ pub enum CodecError {
     Decode(String),
     Encode(String),
     /// The per-frame progress callback asked the encode to stop (user cancel).
-    Cancelled,
+    Canceled,
     Unsupported,
 }
 
@@ -26,14 +26,14 @@ impl std::fmt::Display for CodecError {
         match self {
             CodecError::Decode(s) => write!(f, "decode error: {}", s),
             CodecError::Encode(s) => write!(f, "encode error: {}", s),
-            CodecError::Cancelled => write!(f, "cancelled"),
+            CodecError::Canceled => write!(f, "canceled"),
             CodecError::Unsupported => write!(f, "unsupported format"),
         }
     }
 }
 
 /// Per-frame progress hook for the multi-frame encoders: called as `progress(done, total)` after
-/// each frame is encoded; return `false` to abort the encode with [`CodecError::Cancelled`].
+/// each frame is encoded; return `false` to abort the encode with [`CodecError::Canceled`].
 pub type EncodeProgress<'a> = &'a mut dyn FnMut(usize, usize) -> bool;
 
 const MAX_DIM: u32 = 4096;
@@ -133,7 +133,7 @@ fn decode_animated<'a>(decoder: impl AnimationDecoder<'a>) -> Result<Vec<Decoded
     Ok(out)
 }
 
-/// Integer nearest-neighbour upscale (each pixel becomes a `scale`×`scale` block) — crisp
+/// Integer nearest-neighbor upscale (each pixel becomes a `scale`×`scale` block) — crisp
 /// pixel-art enlargement for the export paths. `scale` ≤ 1 returns a plain copy.
 pub fn upscale_nearest(w: u32, h: u32, rgba: &[u8], scale: u32) -> Vec<u8> {
     if scale <= 1 {
@@ -187,7 +187,7 @@ pub fn encode_animated_webp(w: u32, h: u32, frames: &[(Vec<u8>, u32)]) -> Result
     encode_animated_webp_with(w, h, frames, 1, &mut |_, _| true)
 }
 
-/// [`encode_animated_webp`] with an integer nearest-neighbour upscale (`scale`, clamped to 1..=32
+/// [`encode_animated_webp`] with an integer nearest-neighbor upscale (`scale`, clamped to 1..=32
 /// and applied one frame at a time, so a big upscale never holds more than one enlarged frame)
 /// and a per-frame [`EncodeProgress`] hook (VP8L encoding dominates the runtime, so per-frame
 /// granularity tracks the real work).
@@ -208,7 +208,7 @@ pub fn encode_animated_webp_with(
     if frames.len() == 1 {
         let out = encode_webp(w, h, &up(&frames[0].0))?;
         if !progress(1, 1) {
-            return Err(CodecError::Cancelled);
+            return Err(CodecError::Canceled);
         }
         return Ok(out);
     }
@@ -219,7 +219,7 @@ pub fn encode_animated_webp_with(
         let chunk = extract_vp8l(&webp).ok_or_else(|| CodecError::Encode("missing VP8L chunk".into()))?;
         vp8l.push((chunk, (*dur_us / 1000).max(1)));
         if !progress(i + 1, frames.len()) {
-            return Err(CodecError::Cancelled);
+            return Err(CodecError::Canceled);
         }
     }
     // 2. Assemble the container body: VP8X, ANIM, then one ANMF per frame.
@@ -292,9 +292,9 @@ pub fn encode_gif(w: u32, h: u32, frames: &[(Vec<u8>, u32)]) -> Result<Vec<u8>, 
     encode_gif_with(w, h, frames, 1, &mut |_, _| true)
 }
 
-/// [`encode_gif`] with an integer nearest-neighbour upscale (`scale`, clamped to 1..=32 and
+/// [`encode_gif`] with an integer nearest-neighbor upscale (`scale`, clamped to 1..=32 and
 /// applied one frame at a time, so a big upscale never holds more than one enlarged frame) and a
-/// per-frame [`EncodeProgress`] hook (each frame's colour quantization dominates the runtime, so
+/// per-frame [`EncodeProgress`] hook (each frame's color quantization dominates the runtime, so
 /// per-frame granularity tracks the real work).
 pub fn encode_gif_with(
     w: u32,
@@ -316,7 +316,7 @@ pub fn encode_gif_with(
             enc.encode_frame(ImgFrame::from_parts(img, 0, 0, delay))
                 .map_err(|e| CodecError::Encode(e.to_string()))?;
             if !progress(i + 1, frames.len()) {
-                return Err(CodecError::Cancelled);
+                return Err(CodecError::Canceled);
             }
         }
     }
@@ -404,14 +404,14 @@ mod tests {
         });
         assert!(gif.is_ok());
         assert_eq!(seen, vec![(1, 3), (2, 3), (3, 3)]);
-        // Returning false aborts with Cancelled (both encoders).
+        // Returning false aborts with Canceled (both encoders).
         assert!(matches!(
             encode_gif_with(w, h, &frames, 1, &mut |done, _| done < 2),
-            Err(CodecError::Cancelled)
+            Err(CodecError::Canceled)
         ));
         assert!(matches!(
             encode_animated_webp_with(w, h, &frames, 1, &mut |done, _| done < 2),
-            Err(CodecError::Cancelled)
+            Err(CodecError::Canceled)
         ));
     }
 

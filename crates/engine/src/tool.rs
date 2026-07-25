@@ -125,7 +125,7 @@ impl Stop {
 pub struct GradientSpec {
     pub kind: GradientKind,
     pub stops: Vec<Stop>,
-    /// Ease each colour transition with the smoothstep curve instead of a linear ramp.
+    /// Ease each color transition with the smoothstep curve instead of a linear ramp.
     pub smoothstep: bool,
 }
 impl Default for GradientSpec {
@@ -182,13 +182,13 @@ pub struct ToolSettings {
     /// the shell (like `wrap`); it never affects paint tools, export or thumbnails. [SPEC §8]
     pub overscan_view: bool,
     /// Rotate tool: sample free-angle rotations through the cleanEdge edge-aware reconstruction
-    /// (`crate::cleanedge`) instead of plain nearest-neighbour. The default rotation mode.
+    /// (`crate::cleanedge`) instead of plain nearest-neighbor. The default rotation mode.
     pub clean_edge: bool,
     /// cleanEdge line width, 0.0..=2.0 (the sampler saturates the effective width to its
     /// internal [0.45, 1.142] identity-preserving band, like the reference shader).
     pub clean_edge_width: f32,
     /// Resize tool: sample upscales through the cleanEdge reconstruction (only applies when
-    /// both factors ≥ 1; downscaling is always nearest-neighbour). Independent from the Rotate
+    /// both factors ≥ 1; downscaling is always nearest-neighbor). Independent from the Rotate
     /// tool's `clean_edge`. The default resize mode.
     pub scale_clean_edge: bool,
     /// The Resize tool's cleanEdge line width, 0.0..=2.0 (same semantics as `clean_edge_width`,
@@ -300,7 +300,7 @@ pub fn stroke_segment(
 /// Flood fill from `seed` (SPEC §11.2). Returns true if any pixel changed.
 /// Flood-fill from `seed`. The fill is always written to `buf` (the active layer). The region to
 /// fill is decided by `reference` when `Some` — the composited image, for the "All layers" mode, so
-/// connectivity/colour-matching considers every layer — otherwise by `buf` itself (active layer).
+/// connectivity/color-matching considers every layer — otherwise by `buf` itself (active layer).
 #[allow(clippy::too_many_arguments)]
 pub fn flood_fill(
     buf: &mut RgbaBuffer,
@@ -368,7 +368,7 @@ pub fn smoothstep(t: f32) -> f32 {
 /// Sample a gradient's color at `t∈[0,1]` over stops **already sorted** ascending by `t`. The hot
 /// path: callers that fill many pixels sort once and call this per pixel (no per-pixel alloc). [F-14]
 /// When `smooth`, the local fraction between the two bounding stops is eased through `smoothstep`, so
-/// each colour transition eases in/out while the stop positions themselves stay put.
+/// each color transition eases in/out while the stop positions themselves stay put.
 pub fn gradient_color_at_sorted(s: &[Stop], t: f32, smooth: bool) -> Rgba8 {
     if s.is_empty() {
         return Rgba8::TRANSPARENT;

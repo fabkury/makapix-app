@@ -200,7 +200,7 @@ fn loop_mode_from_u8(v: u8) -> LoopMode {
     }
 }
 
-/// Bits needed to index `n` distinct colours: `0` for a solid tile, else `ceil(log2(n))` (≤8).
+/// Bits needed to index `n` distinct colors: `0` for a solid tile, else `ceil(log2(n))` (≤8).
 fn bits_needed(n: usize) -> u32 {
     if n <= 1 {
         return 0;
@@ -242,7 +242,7 @@ fn rle_encode(b: &[u8]) -> Vec<u8> {
     out
 }
 
-/// `INDEXED` payload if the tile uses ≤256 colours, else `None`.
+/// `INDEXED` payload if the tile uses ≤256 colors, else `None`.
 fn indexed_encode(b: &[u8]) -> Option<Vec<u8>> {
     let mut order: Vec<[u8; 4]> = Vec::new();
     let mut map: HashMap<[u8; 4], u8> = HashMap::new();
@@ -1056,7 +1056,7 @@ mod tests {
 
     #[test]
     fn rle_and_indexed_compress_and_roundtrip() {
-        // Flat fill (INDEXED-solid dedup) and a 2-colour checkerboard tile (INDEXED) both round-trip.
+        // Flat fill (INDEXED-solid dedup) and a 2-color checkerboard tile (INDEXED) both round-trip.
         let mut doc = Document::new(256, 256);
         doc.active_frame_mut().active_layer_mut().pixels.fill_all(Rgba8::rgb(20, 40, 60));
         let bytes = save_to_bytes(&doc);

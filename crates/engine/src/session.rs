@@ -42,7 +42,7 @@ struct Stroke {
     path: Vec<Point>,
     floating: Option<RgbaBuffer>, // for Move
     /// Pencil pixel-perfect: the tail of recently painted pixels (with their captured pre-stroke
-    /// colours), used to detect and undo the L-shaped "corner double" as the stroke is drawn. Only
+    /// colors), used to detect and undo the L-shaped "corner double" as the stroke is drawn. Only
     /// populated for a 1px Pencil with `pixel_perfect` on; empty otherwise. See [`pp_corner`].
     pp: Vec<(Point, Rgba8)>,
 }
@@ -58,7 +58,7 @@ struct MoveFloat {
 /// and paste drafts). **Non-destructive**: the document is never touched while the draft is open —
 /// the moved content is lifted into `floats` and shown only as a *display-time* preview (origin
 /// lifted, floating blitted at `offset`, washed soft cyan). **Only `move_draft_commit` materializes
-/// the move** (one undo step); cancelling, leaving the editor, or a crash all leave the document
+/// the move** (one undo step); canceling, leaving the editor, or a crash all leave the document
 /// exactly as it was. Covers the selected-pixels move (`is_selection` — the marquee follows) and the
 /// no-selection layer / move-group move.
 struct MoveDraft {
@@ -74,7 +74,7 @@ struct MoveDraft {
 /// active layer (or the selected pixels within it), or every layer of the active frame
 /// (`frame_scope`). Like [`MoveDraft`] it is **non-destructive**: the document is never touched
 /// while the draft is open (the rotation shows only as a *display-time* preview, nearest-
-/// neighbour resampled about `pivot`); only `rotate_draft_commit` materializes it as one undo step.
+/// neighbor resampled about `pivot`); only `rotate_draft_commit` materializes it as one undo step.
 /// The lifted sources (`layers`) are captured at begin so the preview, the commit, and the instant
 /// quarter-turn buttons all rotate the exact same pixels. See `session/canvas.rs`.
 struct RotateDraft {
@@ -92,7 +92,7 @@ struct RotateDraft {
     sh: i32,
     src_origin: Point, // where src(0,0) sits in canvas coords: bbox top-left, or (0,0) for a layer
     src_mask: Option<Mask>, // bbox-sized mask of the lifted pixels (selection only; None = whole layer)
-    pivot: PointF, // continuous canvas coords to rotate about: bbox centre, or canvas centre
+    pivot: PointF, // continuous canvas coords to rotate about: bbox center, or canvas center
     angle: f32,    // radians, clockwise (matches the Shape rotate handle's convention)
     /// Whole-pixel translation applied AFTER the rotation (drag-to-move on the draft body).
     /// Integer, so identity/quarter-turn exactness is preserved under a moved draft.
@@ -125,14 +125,14 @@ struct ScaleDraft {
     sh: i32,
     src_origin: Point, // where src(0,0) sits in canvas coords: bbox top-left, or (0,0) for a layer
     src_mask: Option<Mask>, // bbox-sized mask of the lifted pixels (selection only; None = whole layer)
-    pivot: PointF, // continuous canvas coords to scale about: bbox centre, or canvas centre
+    pivot: PointF, // continuous canvas coords to scale about: bbox center, or canvas center
     scale_x: f32,  // 1.0 = identity; the setter clamps to 0.1..=8.0 (thousandths over the DSL)
     scale_y: f32,
     /// Whole-pixel translation applied AFTER the scale (drag-to-move on the draft body).
     off: Point,
     /// cleanEdge for this draft — captured from `settings.scale_clean_edge*` at begin,
     /// live-updated by `SetScaleCleanEdge*` while open; the resampler applies it only when
-    /// upscaling (any shrinking axis → nearest-neighbour regardless).
+    /// upscaling (any shrinking axis → nearest-neighbor regardless).
     clean_edge: bool,
     clean_edge_width: f32,
 }
@@ -144,7 +144,7 @@ struct ScaleDraftLayer {
 }
 
 /// Stamp positions along `a`→`b`, one every `step` px of arc length. `acc` is the distance already
-/// travelled toward the next stamp (carried across calls so spacing stays even across a stroke that
+/// traveled toward the next stamp (carried across calls so spacing stays even across a stroke that
 /// arrives as many short segments); it is updated in place. The segment's own endpoints are not
 /// implicitly stamped — the caller stamps the stroke's first point on press.
 fn spaced_points(a: Point, b: Point, step: f32, acc: &mut f32) -> Vec<Point> {
@@ -172,7 +172,7 @@ fn spaced_points(a: Point, b: Point, step: f32, acc: &mut f32) -> Vec<Point> {
 }
 
 /// Apply a move draft's lift+move to `frame` in place: clear the origin (the selected pixels, or the
-/// whole layer for a layer move) and blit the lifted content at the current offset, honouring Wrap.
+/// whole layer for a layer move) and blit the lifted content at the current offset, honoring Wrap.
 /// Shared by the display preview (on a throwaway clone) and `move_draft_commit` (on the real frame),
 /// so both render identically. Returns the translated selection mask for a selection move (for the
 /// marquee + commit), else `None`.
@@ -232,7 +232,7 @@ fn sel_eq(a: &Option<Arc<Mask>>, b: &Option<Arc<Mask>>) -> bool {
 
 /// Smallest rectangle covering both `a` and `b`.
 /// Pixel-perfect corner test: is `b` the redundant middle of an L-shaped elbow `a → b → c`?
-/// True when `a` and `c` are diagonal neighbours (one step apart on both axes) and `b` is the
+/// True when `a` and `c` are diagonal neighbors (one step apart on both axes) and `b` is the
 /// orthogonal pixel wedged between them — the "corner double" a hand would never place.
 fn pp_corner(a: Point, b: Point, c: Point) -> bool {
     (a.x == b.x || a.y == b.y)
@@ -278,7 +278,7 @@ pub struct Session {
     clock: VirtualClock,
     playing: bool,
     stroke: Option<Stroke>,
-    /// Distance (canvas px) travelled since the last spaced Brush/Airbrush/Dodge/Burn stamp in the current
+    /// Distance (canvas px) traveled since the last spaced Brush/Airbrush/Dodge/Burn stamp in the current
     /// stroke. Carried across pointer/reticle moves so stamps stay evenly spaced regardless of how
     /// the path is chopped into events. Reset to 0 when a stroke begins.
     paint_acc: f32,
@@ -286,11 +286,11 @@ pub struct Session {
     /// defining endpoints in canvas pixels. The active tool decides how it renders. `None` when
     /// no draft is pending. Committed (rasterized) only on an explicit `shape_commit()`.
     shape_draft: Option<(Point, Point)>,
-    /// Rotation of the pending shape draft (radians, around the box centre). Only the figure shapes
-    /// (Rectangle/Ellipse/Triangle) honour it; Line/Gradient ignore it. Reset on commit/cancel.
+    /// Rotation of the pending shape draft (radians, around the box center). Only the figure shapes
+    /// (Rectangle/Ellipse/Triangle) honor it; Line/Gradient ignore it. Reset on commit/cancel.
     shape_rotation: f32,
     /// Horizontal skew of the pending Triangle draft's apex along its top edge, in [-1, 1] (0 = a
-    /// centred isosceles triangle; ±1 = apex over a base corner = a right triangle). Triangle-only;
+    /// centered isosceles triangle; ±1 = apex over a base corner = a right triangle). Triangle-only;
     /// reset on commit/cancel.
     triangle_tip: f32,
     last_gradient: Option<(GradientKind, Vec<Stop>, Point, Point, bool, u32, u32)>,
@@ -541,9 +541,9 @@ impl Session {
         let af = self.doc.active_frame;
         let n = self.doc.frames.len();
         let ov = render::Overlays {
-            // Onion neighbours wrap around the ends — all animations are loops, so frame 0's
+            // Onion neighbors wrap around the ends — all animations are loops, so frame 0's
             // "previous" is the last frame and the last frame's "next" is frame 0. A single frame
-            // has no neighbour; with two frames prev and next are the same frame, which is shown
+            // has no neighbor; with two frames prev and next are the same frame, which is shown
             // once (as prev) rather than blitted twice with both tints.
             onion_prev: if onion && n > 1 { Some(&self.doc.frames[(af + n - 1) % n]) } else { None },
             onion_next: if onion && n > 2 { Some(&self.doc.frames[(af + 1) % n]) } else { None },
@@ -565,7 +565,7 @@ impl Session {
         let frame = preview.as_ref().unwrap_or_else(|| self.doc.active_frame());
         // Render the whole storage area so the tool previews (which draw in storage coordinates) need
         // no offset; then crop to the canvas for the normal view, or emit the whole thing (gutter
-        // dimmed) for the overscan view. [perf: storage-sized checker fill — optimise if it bites]
+        // dimmed) for the overscan view. [perf: storage-sized checker fill — optimize if it bites]
         let mut buf = render::render_display(frame, self.doc.storage_rect(), &ov);
         self.draw_tool_preview(&mut buf);
         if self.settings.overscan_view {
@@ -594,7 +594,7 @@ impl Session {
 
     /// Live preview of a drag-in-progress for shape/selection/gradient/move tools, drawn on
     /// top of the display so the user can fine-tune before releasing.
-    /// Blend a figure (Line/Rectangle/Ellipse) between `a` and `b` into `buf`, honouring the
+    /// Blend a figure (Line/Rectangle/Ellipse) between `a` and `b` into `buf`, honoring the
     /// fill/outline + line-width settings. Used both for the live preview and the draft preview.
     fn render_shape_preview(&self, buf: &mut RgbaBuffer, a: Point, b: Point) {
         let color = self.settings.primary;
@@ -902,7 +902,7 @@ impl Session {
             None => "null".to_string(),
         };
         // The rotate draft carries its pre-rotation region bbox + the live angle so the shell can
-        // place the rotate handle (centre = bbox centre, arm reaches a corner) and show the angle.
+        // place the rotate handle (center = bbox center, arm reaches a corner) and show the angle.
         let rotate_draft = match self.rotate_draft_rect() {
             Some(r) => {
                 let (ox, oy) = self.rotate_draft_offset().unwrap_or((0, 0));
@@ -1089,7 +1089,7 @@ impl Session {
     }
 
     /// Restore a captured snapshot to the exact frame/layer it came from (mirrors `commit_edit`'s
-    /// id resolution), used when a stroke is cancelled. [audit F-29]
+    /// id resolution), used when a stroke is canceled. [audit F-29]
     fn restore_edit(&mut self, scope: &EditScope) {
         if let Some(fi) = self.doc.frame_index_by_id(scope.fid) {
             if let Some(li) = self.doc.frames[fi].layer_index_by_id(scope.lid) {
@@ -1191,7 +1191,7 @@ impl Session {
         self.paint_acc = 0.0; // fresh stroke → reset Brush/Airbrush spacing
         let mut floating = None;
         // Pixel-perfect Pencil: seeds the corner-double filter with the first painted pixel (captured
-        // with its pre-stroke colour so a later removal restores it). Empty for every other case.
+        // with its pre-stroke color so a later removal restores it). Empty for every other case.
         let mut pp = Vec::new();
         // The single Move tool moves the selected pixels when there's a selection, else the layer.
         let has_sel = self.doc.selection.as_ref().and_then(|s| s.bounds()).is_some();
@@ -1199,7 +1199,7 @@ impl Session {
         if self.active_editable() {
             match self.tool {
                 ToolKind::Pencil if self.pixel_perfect_active() => {
-                    // Plot the first pixel ourselves so we can record its pre-stroke colour as the
+                    // Plot the first pixel ourselves so we can record its pre-stroke color as the
                     // seed of the pixel-perfect sequence (see `pencil_perfect_step`).
                     let color = self.settings.primary;
                     let clip = self.paint_clip();
@@ -1277,7 +1277,7 @@ impl Session {
     pub fn pointer_move(&mut self, x: i32, y: i32) {
         // Eyedropper: continuous pick — the drag keeps sampling so an imprecise first touch can
         // be corrected by sliding to the wanted pixel. Raw (unclamped) coords like pointer_down:
-        // off-canvas and transparent pixels no-op, keeping the last opaque colour crossed.
+        // off-canvas and transparent pixels no-op, keeping the last opaque color crossed.
         if matches!(self.tool, ToolKind::Eyedropper) {
             let c = self.eyedrop_sample(x, y);
             if c.a != 0 {
@@ -1561,7 +1561,7 @@ impl Session {
         self.triangle_tip = 0.0;
     }
 
-    /// Set the pending shape draft's rotation (milliradians, around the box centre).
+    /// Set the pending shape draft's rotation (milliradians, around the box center).
     pub fn set_shape_rotation(&mut self, milliradians: i32) {
         self.shape_rotation = milliradians as f32 / 1000.0;
     }
@@ -1627,8 +1627,8 @@ impl Session {
     /// The pixel-perfect Pencil core, shared by the pointer stroke and the precision pen line:
     /// stamp each interpolated pixel from `a` to `b`, then drop the redundant "corner double"
     /// (the L-elbow) as soon as a turn completes, restoring the removed pixel to its captured
-    /// pre-stroke colour. `pp` is the running tail of recently painted pixels (with their
-    /// pre-stroke colours); the caller carries it across segments. See [`pp_corner`].
+    /// pre-stroke color. `pp` is the running tail of recently painted pixels (with their
+    /// pre-stroke colors); the caller carries it across segments. See [`pp_corner`].
     fn pencil_perfect_segment(&mut self, a: Point, b: Point, pp: &mut Vec<(Point, Rgba8)>) {
         let color = self.settings.primary;
         let clip = self.paint_clip();
@@ -1643,13 +1643,13 @@ impl Session {
                 if pp.last().map(|&(q, _)| q == c).unwrap_or(false) {
                     continue;
                 }
-                let orig = buf.get(c.x, c.y); // pre-stroke colour (stroke hasn't touched `c` yet)
+                let orig = buf.get(c.x, c.y); // pre-stroke color (stroke hasn't touched `c` yet)
                 tool::plot(buf, sel.as_ref(), clip, c.x, c.y, color, PaintMode::Replace);
                 pp.push((c, orig));
                 let n = pp.len();
                 if n >= 3 && pp_corner(pp[n - 3].0, pp[n - 2].0, pp[n - 1].0) {
                     // The middle pixel is the corner double: restore it and drop it from the tail so
-                    // its neighbours become adjacent and the filter continues cleanly.
+                    // its neighbors become adjacent and the filter continues cleanly.
                     let (mid, mid_orig) = pp[n - 2];
                     buf.set(mid.x, mid.y, mid_orig);
                     pp.remove(n - 2);
@@ -1728,7 +1728,7 @@ impl Session {
     // ---- precision mode (draw-by-button, reticle off the finger) ----
     //
     // Precision is a per-tool *mode* (toggled in the shell), not a tool of its own. The reticle
-    // path below honours whichever paint tool is active: Pencil replaces, Brush blends, Eraser
+    // path below honors whichever paint tool is active: Pencil replaces, Brush blends, Eraser
     // clears, Airbrush sprays, Dodge/Burn lighten/darken. `cursor_paint()` returns the stamp params
     // for the stamp-style tools, or `None` for the others (Airbrush dabs; Dodge/Burn adjust value).
 
@@ -1798,7 +1798,7 @@ impl Session {
                     self.pencil_perfect_segment(os, cs, &mut pp);
                     self.pen_pp = pp;
                 }
-                // Brush/Airbrush/Dodge/Burn honour the spacing setting; Pencil/Eraser stay continuous.
+                // Brush/Airbrush/Dodge/Burn honor the spacing setting; Pencil/Eraser stay continuous.
                 ToolKind::Brush => self.brush_stroke_spaced(os, cs, PaintMode::Over, self.settings.primary),
                 ToolKind::Airbrush => self.airbrush_stroke_spaced(os, cs),
                 // Dodge/Burn lighten/darken a stamp at each spaced step (as on the pointer path).
@@ -1856,7 +1856,7 @@ impl Session {
         self.pen_pp.clear();
         if self.tool == ToolKind::Pencil && self.pixel_perfect_active() {
             // Seed the corner filter with the reticle pixel — already painted by the Hold dab or
-            // the previous segment, so seeding with its current colour is visually a no-op.
+            // the previous segment, so seeding with its current color is visually a no-op.
             let p = self.cursor_storage();
             let c = self.doc.active_frame().active_layer().pixels.get(p.x, p.y);
             self.pen_pp.push((p, c));
@@ -1900,7 +1900,7 @@ impl Session {
         self.commit_edit(before);
     }
 
-    /// Sample the pixel under a canvas-relative coordinate for the eyedropper, honouring the
+    /// Sample the pixel under a canvas-relative coordinate for the eyedropper, honoring the
     /// source setting: Frame (default) = the composited frame; Layer = the active layer's raw
     /// stored pixel (layer opacity/visibility ignored). The Layer path translates to storage
     /// coords and bounds to the canvas window explicitly, so off-canvas coords stay transparent
@@ -1917,8 +1917,8 @@ impl Session {
         }
     }
 
-    /// Pick the colour under the reticle (off-finger eyedropper, Pick button) and set it as the
-    /// primary colour. No-op on a transparent pixel (mirrors the pointer eyedropper). Not an edit.
+    /// Pick the color under the reticle (off-finger eyedropper, Pick button) and set it as the
+    /// primary color. No-op on a transparent pixel (mirrors the pointer eyedropper). Not an edit.
     pub fn eyedrop_cursor(&mut self) {
         let c = self.eyedrop_sample(self.cursor.x, self.cursor.y);
         if c.a != 0 {
@@ -1926,8 +1926,8 @@ impl Session {
         }
     }
 
-    /// Apply the colour selection at the reticle (off-finger Select-by-Color, Select button):
-    /// the same mask a tap would build — threshold + contiguous honoured — combined into the
+    /// Apply the color selection at the reticle (off-finger Select-by-Color, Select button):
+    /// the same mask a tap would build — threshold + contiguous honored — combined into the
     /// current selection per the selection mode. One undo step (via `set_selection`).
     pub fn select_color_cursor(&mut self) {
         let s = self.doc.storage();
@@ -1938,7 +1938,7 @@ impl Session {
         self.combine_selection(&shape, self.selection_mode);
     }
 
-    /// Flood-fill seeded at `p` (storage coords) into the active layer, honouring the threshold,
+    /// Flood-fill seeded at `p` (storage coords) into the active layer, honoring the threshold,
     /// contiguous and "All layers" settings plus the selection. Shared by the Bucket pointer tap
     /// and `fill_cursor`; the caller owns the undo edit.
     fn flood_fill_at(&mut self, p: Point) {
@@ -1959,7 +1959,7 @@ impl Session {
     }
 
     /// Flood-fill at the reticle (off-finger Bucket, Fill button): the same fill a tap would do —
-    /// threshold, contiguous, "All layers" and the selection honoured. One undo step per press.
+    /// threshold, contiguous, "All layers" and the selection honored. One undo step per press.
     pub fn fill_cursor(&mut self) {
         if !self.active_editable() {
             return;
@@ -2009,7 +2009,7 @@ impl Session {
         m.intersect_rect(self.selection_clip()); // invert within the selectable window, not the gutter
         self.set_selection(Some(m));
     }
-    /// Translate the selection MASK (not the pixels) by (dx, dy), honouring the same off-canvas edge
+    /// Translate the selection MASK (not the pixels) by (dx, dy), honoring the same off-canvas edge
     /// modes as a pixel move: Wrap (cells re-enter the opposite edge), Protect (clamp so the whole
     /// selection stays on-canvas), or Regular (clip cells that leave the canvas). One undo step.
     /// Begin a coalesced selection-mask drag: snapshot the selection so the whole drag becomes one
@@ -2020,7 +2020,7 @@ impl Session {
         }
     }
 
-    /// Finalise a coalesced selection-mask drag: record a single undo step (drag-start → final) iff
+    /// Finalize a coalesced selection-mask drag: record a single undo step (drag-start → final) iff
     /// the mask actually moved. No-op when no drag is open. [audit: one drag = one undo]
     pub fn move_selection_commit(&mut self) {
         if let Some(before) = self.move_sel_before.take() {
@@ -2365,7 +2365,7 @@ impl Session {
         self.commit_edit(before);
     }
 
-    /// Apply a per-pixel colour transform to every layer of the ACTIVE frame (the Invert tool's
+    /// Apply a per-pixel color transform to every layer of the ACTIVE frame (the Invert tool's
     /// "Frame" scope), ignoring the selection — frame mode acts on everything, like
     /// `flip_frame`/`rotate_frame`. One undo step.
     pub fn map_frame(&mut self, f: impl Fn(Rgba8) -> Rgba8) {
@@ -2808,7 +2808,7 @@ impl Session {
     }
 
     /// Relocate the move draft by (dx, dy) — updates the offset only; the document is untouched
-    /// (the move shows as a display-time preview). Honours Wrap (both kinds) and Protect (layer move
+    /// (the move shows as a display-time preview). Honors Wrap (both kinds) and Protect (layer move
     /// only — pixel moves don't clamp, matching the immediate Move). No-op if no draft is open.
     pub fn move_draft_move(&mut self, dx: i32, dy: i32) {
         let (is_selection, mut off, bbox) = match &self.move_draft {
@@ -3297,7 +3297,7 @@ mod tests {
     }
 
     #[test]
-    fn move_selection_mask_honours_edge_modes() {
+    fn move_selection_mask_honors_edge_modes() {
         fn sel_2x2(s: &mut Session, x: i32, y: i32) {
             s.tool = ToolKind::SelectRect;
             s.stroke_path(&[(x, y), (x + 1, y + 1)]);
@@ -3472,7 +3472,7 @@ mod tests {
         let mut s = Session::new(8, 8);
         s.settings.primary = Rgba8::rgb(100, 100, 100);
         s.tool = ToolKind::Pencil;
-        s.tap(3, 3); // a mid-grey pixel to lighten
+        s.tap(3, 3); // a mid-gray pixel to lighten
         let before = s.pixel(0, 0, 3, 3);
         // Dodge in precision mode: aim the reticle and DRAW (plot_cursor) one stamp.
         s.tool = ToolKind::Dodge;
@@ -3557,7 +3557,7 @@ mod tests {
         s.settings.primary = Rgba8::rgb(0, 200, 0);
         s.tool = ToolKind::Pencil;
         s.tap(2, 2);
-        s.tap(5, 5); // same colour, NOT contiguous with (2,2)
+        s.tap(5, 5); // same color, NOT contiguous with (2,2)
         s.tool = ToolKind::SelectByColor;
         s.set_cursor(2, 2);
         s.select_color_cursor(); // contiguous default: only the (2,2) region
@@ -3748,7 +3748,7 @@ mod tests {
         assert_eq!(s.pixel(0, 0, 31, 31), Rgba8::WHITE);
         assert!(s.doc.undo());
 
-        // A mixed anchor (right edge, vertical centre): x shifts by the full delta, y by half.
+        // A mixed anchor (right edge, vertical center): x shifts by the full delta, y by half.
         s.resize_canvas(32, 32, 2, 1);
         assert_eq!(s.pixel(0, 0, 31, 23), Rgba8::WHITE); // (15+16, 15+8)
         assert!(s.doc.undo());
@@ -3785,7 +3785,7 @@ mod tests {
         s.add_layer();
         s.settings.primary = Rgba8::new(255, 0, 0, 255);
         s.tap(7, 0); // layer 1
-        s.rotate_frame(2); // 180° about the canvas centre
+        s.rotate_frame(2); // 180° about the canvas center
         assert_eq!(s.pixel(0, 0, 7, 7), Rgba8::WHITE);
         assert_eq!(s.pixel(0, 1, 0, 7), Rgba8::new(255, 0, 0, 255));
         assert!(s.doc.undo()); // ONE step restores both layers
@@ -3907,7 +3907,7 @@ mod tests {
         s.settings.primary = Rgba8::WHITE;
         s.tap(2, 5);
         let h = s.doc.content_hash();
-        s.rotate_layer(1); // 90° CW about the canvas centre — NO resize (unlike `rotate`)
+        s.rotate_layer(1); // 90° CW about the canvas center — NO resize (unlike `rotate`)
         assert_eq!(s.size(), (12, 12));
         assert_eq!(s.pixel(0, 0, 6, 2), Rgba8::WHITE); // (2,5) → (n-1-y, x) = (6,2)
         assert_eq!(s.pixel(0, 0, 2, 5), Rgba8::TRANSPARENT);
@@ -3925,7 +3925,7 @@ mod tests {
         s.tap(1, 1); // layer 0 (the default active layer)
         s.add_layer(); // appended and made active (index 1)
         s.tap(3, 3); // layer 1
-        s.rotate_layer(2); // 180° about the canvas centre
+        s.rotate_layer(2); // 180° about the canvas center
         assert_eq!(s.size(), (16, 16), "a layer rotation never resizes the canvas");
         assert_eq!(s.pixel(0, 0, 1, 1), Rgba8::WHITE, "the inactive layer is untouched");
         assert_eq!(s.pixel(0, 1, 12, 12), Rgba8::WHITE, "(3,3) → (15-3,15-3)");
@@ -3938,8 +3938,8 @@ mod tests {
         s.settings.primary = Rgba8::WHITE;
         s.tap(2, 4); // left end of a wide bar
         s.tool = ToolKind::SelectRect;
-        s.stroke_path(&[(2, 4), (7, 5)]); // a 6×2 selection, bbox centre (5,5)
-        s.rotate_layer(1); // 90° CW about the bbox centre
+        s.stroke_path(&[(2, 4), (7, 5)]); // a 6×2 selection, bbox center (5,5)
+        s.rotate_layer(1); // 90° CW about the bbox center
 
         // The pixel rotates with the selection (wide bar → tall bar).
         assert_eq!(s.pixel(0, 0, 5, 2), Rgba8::WHITE);
@@ -3955,10 +3955,10 @@ mod tests {
     fn rotate_layer_90_nonsquare_clips_to_canvas() {
         let mut s = Session::new(32, 16); // non-square
         s.settings.primary = Rgba8::WHITE;
-        s.tap(16, 8); // near the centre — stays on-canvas
+        s.tap(16, 8); // near the center — stays on-canvas
         s.tap(31, 8); // far edge — rotates off the (now taller-than-wide) footprint
         s.rotate_layer(1);
-        assert_eq!(s.size(), (32, 16), "rotate about centre + clip never resizes a non-square canvas");
+        assert_eq!(s.size(), (32, 16), "rotate about center + clip never resizes a non-square canvas");
         assert_eq!(s.pixel(0, 0, 15, 8), Rgba8::WHITE, "the central pixel lands back on-canvas");
         assert_eq!(s.pixel(0, 0, 31, 8), Rgba8::TRANSPARENT, "the edge pixel rotated off-canvas (clipped)");
     }
@@ -4070,7 +4070,7 @@ mod tests {
 
     #[test]
     fn clean_edge_quarter_turns_match_nn() {
-        // Quarter turns stay lossless under cleanEdge (identity at exact cell centres), so the
+        // Quarter turns stay lossless under cleanEdge (identity at exact cell centers), so the
         // 90°/180° buttons inheriting the default-on setting is invisible.
         for q in 1..=3u8 {
             let mut on = staircase_session();
@@ -4084,7 +4084,7 @@ mod tests {
     }
 
     #[test]
-    fn clean_edge_free_angle_differs_and_adds_no_colours() {
+    fn clean_edge_free_angle_differs_and_adds_no_colors() {
         let commit = |clean: bool| {
             let mut s = staircase_session();
             s.set_clean_edge(clean);
@@ -4139,7 +4139,7 @@ mod tests {
         assert!((s.settings.clean_edge_width - 0.707).abs() < 1e-6);
 
         // SetCleanEdge* mid-draft updates the OPEN draft (like RotateDraftSetAngle): turning it
-        // off after begin must commit a pure nearest-neighbour result.
+        // off after begin must commit a pure nearest-neighbor result.
         let mut a = staircase_session();
         a.run_script(
             "SetCleanEdge(true)\nRotateDraftBegin()\nRotateDraftSetAngle(524)\nSetCleanEdge(false)\nRotateDraftCommit()",
@@ -4247,8 +4247,8 @@ mod tests {
 
     #[test]
     fn scale_2x_nn_is_exact_block_replication() {
-        // NN 2× about the canvas centre: dest (x,y) shows source floor(c + (x+0.5−c)/2). The
-        // storage centre pivot equals the canvas centre in canvas coords (centred gutter).
+        // NN 2× about the canvas center: dest (x,y) shows source floor(c + (x+0.5−c)/2). The
+        // storage center pivot equals the canvas center in canvas coords (centered gutter).
         let orig = staircase_session();
         let mut s = staircase_session();
         s.set_scale_clean_edge(false);
@@ -4264,7 +4264,7 @@ mod tests {
     }
 
     #[test]
-    fn scale_2x_clean_edge_differs_and_adds_no_colours() {
+    fn scale_2x_clean_edge_differs_and_adds_no_colors() {
         let commit = |clean: bool| {
             let mut s = staircase_session();
             s.set_scale_clean_edge(clean);
@@ -4410,7 +4410,7 @@ mod tests {
         s.stroke_path(&[(1, 1), (3, 3)]);
         assert!(s.doc.selection.is_some());
         s.run_script("ScaleFrame(2000,2000)").unwrap();
-        // 2× about the canvas centre (c=4): source (3,3) → dest block {2,3}²; (4,4) → {4,5}².
+        // 2× about the canvas center (c=4): source (3,3) → dest block {2,3}²; (4,4) → {4,5}².
         assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::WHITE);
         assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::WHITE);
         assert_eq!(s.pixel(0, 1, 4, 4), Rgba8::new(255, 0, 0, 255));
@@ -4539,7 +4539,7 @@ mod tests {
         s.settings.primary = Rgba8::WHITE;
         s.tap(2, 4);
         s.tool = ToolKind::SelectRect;
-        s.stroke_path(&[(2, 4), (7, 5)]); // 6×2 selection, bbox centre (5,5)
+        s.stroke_path(&[(2, 4), (7, 5)]); // 6×2 selection, bbox center (5,5)
         s.rotate_draft_begin();
         s.rotate_draft_set_angle((std::f32::consts::FRAC_PI_2 * 1000.0) as i32); // 90° CW
 
@@ -4731,11 +4731,11 @@ mod tests {
 
     #[test]
     fn dodge_spacing_leaves_gaps_between_stamps() {
-        // Dodge honours the spacing setting just like the brush: dragged across a solid grey row
+        // Dodge honors the spacing setting just like the brush: dragged across a solid gray row
         // with a step far larger than the brush, it lightens discrete dots and leaves the gaps.
         let mut s = Session::new(32, 1);
         s.settings.brush_size = 1;
-        // Fill the row with mid-grey so there is something to lighten.
+        // Fill the row with mid-gray so there is something to lighten.
         s.settings.primary = Rgba8::rgb(100, 100, 100);
         s.tool = ToolKind::Pencil;
         s.pointer_down(0, 0);
@@ -4763,12 +4763,12 @@ mod tests {
         s.settings.primary = Rgba8::WHITE;
         s.settings.shape_fill = true;
         s.tool = ToolKind::Rectangle;
-        // An 8-wide × 2-tall rect rotated 90° → a 2-wide × 8-tall bar centred at (8,6). The corners
+        // An 8-wide × 2-tall rect rotated 90° → a 2-wide × 8-tall bar centered at (8,6). The corners
         // passed are the already-rotated ones (as the shell sends them).
         s.shape_set(9, 2, 7, 10);
         s.set_shape_rotation(1571); // ≈ 90° (π/2) in milliradians
         s.shape_commit();
-        assert_eq!(s.pixel(0, 0, 8, 6), Rgba8::WHITE); // centre
+        assert_eq!(s.pixel(0, 0, 8, 6), Rgba8::WHITE); // center
         assert_eq!(s.pixel(0, 0, 8, 4), Rgba8::WHITE); // up the (now) long axis
         assert_eq!(s.pixel(0, 0, 8, 8), Rgba8::WHITE);
         assert_eq!(s.pixel(0, 0, 12, 6), Rgba8::TRANSPARENT); // off the narrow axis
@@ -4832,8 +4832,8 @@ mod tests {
         assert_eq!(s.pixel(0, 0, 12, 2), Rgba8::WHITE, "apex at top-right");
         assert_eq!(s.pixel(0, 0, 12, 7), Rgba8::WHITE, "right edge is vertical");
         assert_eq!(s.pixel(0, 0, 12, 12), Rgba8::WHITE, "bottom-right corner");
-        // …and the top edge is NOT centred above the base any more (top-left has no apex).
-        assert_eq!(s.pixel(0, 0, 7, 2), Rgba8::TRANSPARENT, "no centred apex");
+        // …and the top edge is NOT centered above the base any more (top-left has no apex).
+        assert_eq!(s.pixel(0, 0, 7, 2), Rgba8::TRANSPARENT, "no centered apex");
         assert!(s.doc.undo());
     }
 
@@ -5754,7 +5754,7 @@ mod tests {
         assert_eq!(s.pixel(0, 0, 20, 0), Rgba8::WHITE, "the gutter pixel mirrored with the artwork");
     }
 
-    // ---- onion skin (loop-wrapped neighbours) ----
+    // ---- onion skin (loop-wrapped neighbors) ----
 
     #[test]
     fn onion_skin_wraps_around_the_loop() {
@@ -5798,7 +5798,7 @@ mod tests {
         let px = s.display_bytes(true, false, false);
         assert_eq!(at(&px, 1, 0), prev_ghost, "two frames: a single prev-tinted ghost");
 
-        // One frame: no neighbour, so onion must not ghost the frame onto itself.
+        // One frame: no neighbor, so onion must not ghost the frame onto itself.
         s.run_script("RemoveFrame(1)").unwrap();
         assert_eq!(s.display_bytes(true, false, false), s.display_bytes(false, false, false));
     }

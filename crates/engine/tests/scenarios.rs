@@ -59,7 +59,7 @@ fn pencil_pixel_perfect_off_keeps_corner() {
         {STAIRCASE}
     "#
     ));
-    // Every stepped pixel, corners included, is painted (today's behaviour — regression guard).
+    // Every stepped pixel, corners included, is painted (today's behavior — regression guard).
     assert_eq!(s.pixel(0, 0, 2, 1), RED);
     assert_eq!(s.pixel(0, 0, 3, 2), RED);
 }

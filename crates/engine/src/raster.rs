@@ -32,9 +32,9 @@ pub fn line(a: Point, b: Point, mut plot: impl FnMut(i32, i32)) {
 
 /// A line of the given pixel `thickness`: a `thickness × thickness` block swept along the Bresenham
 /// line (thickness 1 = a plain hairline). Used by the Line tool's Width and the outline stroker.
-/// The block is sized to the *exact* thickness so every unit adds one pixel of width — a centred
+/// The block is sized to the *exact* thickness so every unit adds one pixel of width — a centered
 /// odd-radius stamp (side `2r+1`) would instead collapse each even thickness onto the odd below it.
-/// Even widths bias half a pixel toward +x/+y, the closest the integer grid allows to centred.
+/// Even widths bias half a pixel toward +x/+y, the closest the integer grid allows to centered.
 pub fn thick_line(a: Point, b: Point, thickness: i32, mut plot: impl FnMut(i32, i32)) {
     let t = thickness.max(1);
     if t == 1 {
@@ -80,11 +80,11 @@ pub fn shape_outline(a: Point, b: Point, rot: f32, kind: u8, thickness: i32, plo
     let cx = (a.x + b.x) as f32 / 2.0;
     let cy = (a.y + b.y) as f32 / 2.0;
     let (sn, cs) = rot.sin_cos();
-    // Local half-extents = the un-rotated vector from the centre to corner `b`.
+    // Local half-extents = the un-rotated vector from the center to corner `b`.
     let (vbx, vby) = (b.x as f32 - cx, b.y as f32 - cy);
     let hw = (cs * vbx + sn * vby).abs().max(0.5);
     let hh = (-sn * vbx + cs * vby).abs().max(0.5);
-    // Map a local (lx,ly) to a world pixel, applying R(rot) about the centre.
+    // Map a local (lx,ly) to a world pixel, applying R(rot) about the center.
     let to_world = |lx: f32, ly: f32| {
         Point::new(
             (cx + cs * lx - sn * ly).round() as i32,
@@ -128,10 +128,10 @@ pub fn shape_outline(a: Point, b: Point, rot: f32, kind: u8, thickness: i32, plo
 
 /// Trace a closed 1px curve through the ordered boundary `samples` and remove "doubles". First build
 /// one ordered, de-duplicated, 8-connected pixel chain (a single Bresenham walk, not independent
-/// segments). Then drop any pixel whose two chain-neighbours are themselves 8-adjacent: the curve can
+/// segments). Then drop any pixel whose two chain-neighbors are themselves 8-adjacent: the curve can
 /// step diagonally straight between them, so that pixel is a redundant orthogonal corner — exactly a
-/// pixel-art "double". Removing it keeps the loop connected (the neighbours were already adjacent) and
-/// leaves clean diagonal runs (whose neighbours are 2+ apart) untouched. Used for the 1px ellipse
+/// pixel-art "double". Removing it keeps the loop connected (the neighbors were already adjacent) and
+/// leaves clean diagonal runs (whose neighbors are 2+ apart) untouched. Used for the 1px ellipse
 /// outline, where a rotated thin ring otherwise looks locally 2px-thick at every staircase corner.
 fn stroke_thin_loop(samples: &[Point], mut plot: impl FnMut(i32, i32)) {
     let n = samples.len();
@@ -241,13 +241,13 @@ pub fn ellipse_outline(a: Point, b: Point, thickness: i32, plot: impl FnMut(i32,
 }
 
 /// The three world-space vertices of the triangle inscribed in the box of `a`,`b`, rotated by `rot`
-/// radians and with its apex skewed horizontally by `tip` ∈ [-1, 1] along the top edge (0 = centred
+/// radians and with its apex skewed horizontally by `tip` ∈ [-1, 1] along the top edge (0 = centered
 /// isosceles; ±1 = apex over a base corner = a right triangle). Base runs along the bottom edge.
 fn triangle_vertices(a: Point, b: Point, rot: f32, tip: f32) -> [Point; 3] {
     let cx = (a.x + b.x) as f32 / 2.0;
     let cy = (a.y + b.y) as f32 / 2.0;
     let (sn, cs) = rot.sin_cos();
-    // Local half-extents = the un-rotated vector from the centre to corner `b`.
+    // Local half-extents = the un-rotated vector from the center to corner `b`.
     let (vbx, vby) = (b.x as f32 - cx, b.y as f32 - cy);
     let hw = (cs * vbx + sn * vby).abs().max(0.5);
     let hh = (-sn * vbx + cs * vby).abs().max(0.5);
@@ -273,7 +273,7 @@ pub fn triangle_filled(a: Point, b: Point, rot: f32, tip: f32, plot: impl FnMut(
 /// Triangle outline (rotated by `rot`, apex skewed by `tip`). 1px → the three edges stroked as a
 /// clean Bresenham polyline; thicker → an **inward distance band**: pixels inside the triangle and
 /// within `thickness` of one of the three edges, so the ring follows the silhouette and grows inward
-/// (a fat-brushed centreline would instead bulge out and round the corners off into a blob).
+/// (a fat-brushed centerline would instead bulge out and round the corners off into a blob).
 pub fn triangle_outline(a: Point, b: Point, rot: f32, tip: f32, thickness: i32, mut plot: impl FnMut(i32, i32)) {
     let v = triangle_vertices(a, b, rot, tip);
     if thickness <= 1 {
@@ -314,7 +314,7 @@ pub fn triangle_outline(a: Point, b: Point, rot: f32, tip: f32, thickness: i32, 
 ///   rotation of drawn pixels). A thick outline is the **inward distance band** — pixels inside the
 ///   shape and within `thickness` of the boundary — so the ring follows the true silhouette, keeps a
 ///   uniform width, grows inward, and degrades to a clean fill once `thickness` exceeds the inset
-///   (instead of a fat-brushed centreline bulging out into a blocky blob).
+///   (instead of a fat-brushed centerline bulging out into a blocky blob).
 pub fn rotated_shape(
     a: Point,
     b: Point,
@@ -331,7 +331,7 @@ pub fn rotated_shape(
     let cx = (a.x + b.x) as f32 / 2.0;
     let cy = (a.y + b.y) as f32 / 2.0;
     let (sn, cs) = rot.sin_cos();
-    // Local half-extents = the un-rotated vector from the centre to corner `b`.
+    // Local half-extents = the un-rotated vector from the center to corner `b`.
     let (vbx, vby) = (b.x as f32 - cx, b.y as f32 - cy);
     let hw = (cs * vbx + sn * vby).abs().max(0.5);
     let hh = (-sn * vbx + cs * vby).abs().max(0.5);
@@ -357,9 +357,9 @@ pub fn rotated_shape(
                 } else if fill {
                     true
                 } else {
-                    // Gradient-normalised distance to the ellipse boundary |f|/|∇f|, with f = q-1:
+                    // Gradient-normalized distance to the ellipse boundary |f|/|∇f|, with f = q-1:
                     // a near-uniform perpendicular inward distance, no closed form needed. |∇f| is
-                    // floored so the deep interior reports a finite distance (no centre pinhole at
+                    // floored so the deep interior reports a finite distance (no center pinhole at
                     // huge thickness) while the near-boundary band — where the floor never binds —
                     // stays uniform. Degrades to a clean fill once thickness exceeds the radius.
                     let (gx, gy) = (lx / (hw * hw), ly / (hh * hh));
@@ -449,7 +449,7 @@ mod tests {
     #[test]
     fn thick_line_width_changes_every_unit() {
         // A horizontal line: its pixel height must equal the requested thickness for every t, so
-        // widths 1,2,3,4,… are all distinct (the old centred-stamp made 2≡1, 4≡3, …).
+        // widths 1,2,3,4,… are all distinct (the old centered-stamp made 2≡1, 4≡3, …).
         for t in 1..=8 {
             use std::collections::HashSet;
             let mut ys: HashSet<i32> = HashSet::new();
@@ -463,7 +463,7 @@ mod tests {
     #[test]
     fn rotated_thin_ellipse_outline_is_8_connected() {
         // A steep ~4:1 ellipse rotated ~30° — the exact case that left gaps under the old band test.
-        // Approach A traces it as a Bresenham polyline, so every outline pixel must touch a neighbour
+        // Approach A traces it as a Bresenham polyline, so every outline pixel must touch a neighbor
         // (no discontinuities) — and being a single 1px curve, no pixel is isolated.
         use std::collections::HashSet;
         let mut set: HashSet<(i32, i32)> = HashSet::new();
@@ -512,7 +512,7 @@ mod tests {
             assert!(fill.contains(p), "thick outline pixel {p:?} bulged outside the ellipse");
         }
         assert!(ring.contains(&(0, 9)), "outer edge reaches the silhouette");
-        assert!(!ring.contains(&(15, 9)), "centre is hollow at moderate thickness");
+        assert!(!ring.contains(&(15, 9)), "center is hollow at moderate thickness");
     }
 
     #[test]
@@ -527,7 +527,7 @@ mod tests {
         ellipse_outline(a, b, 99, |x, y| {
             ring.insert((x, y));
         });
-        assert_eq!(fill, ring, "a thickness past the radius fills the exact shape (no centre pinhole)");
+        assert_eq!(fill, ring, "a thickness past the radius fills the exact shape (no center pinhole)");
     }
 
     #[test]
@@ -559,7 +559,7 @@ mod tests {
         ellipse_outline(Point::new(0, 0), Point::new(20, 12), 1, |x, y| {
             set.insert((x, y));
         });
-        assert!(!set.contains(&(10, 6)), "interior centre should be hollow");
+        assert!(!set.contains(&(10, 6)), "interior center should be hollow");
         assert!(set.contains(&(10, 0)) || set.contains(&(10, 12)), "top/bottom of ring present");
     }
 

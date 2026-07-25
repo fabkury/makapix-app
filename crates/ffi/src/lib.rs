@@ -394,7 +394,7 @@ pub extern "C" fn mkpx_import(
     0
 }
 
-/// Upscale (nearest-neighbour) then encode one frame's RGBA as PNG or lossless WebP, with coarse
+/// Upscale (nearest-neighbor) then encode one frame's RGBA as PNG or lossless WebP, with coarse
 /// 2-step progress (composite/extract done → encode done) and a cancel check between the steps.
 /// The shared tail of the four single-frame exports.
 fn still_out(w: u16, h: u16, rgba: Vec<u8>, scale: u32, webp: bool, out_len: *mut u64) -> *mut u8 {
@@ -446,7 +446,7 @@ fn export_layer_still(ptr: *mut Session, frame: u32, layer: u32, scale: u32, web
     still_out(w, h, rgba, scale, webp, out_len)
 }
 
-/// Export the active (or given) frame as PNG, upscaled ×`scale` (nearest-neighbour, clamped
+/// Export the active (or given) frame as PNG, upscaled ×`scale` (nearest-neighbor, clamped
 /// 1..=32). Returns a malloc'd buffer; len via `out_len`.
 #[no_mangle]
 pub extern "C" fn mkpx_export_png(ptr: *mut Session, frame: u32, scale: u32, out_len: *mut u64) -> *mut u8 {
@@ -454,7 +454,7 @@ pub extern "C" fn mkpx_export_png(ptr: *mut Session, frame: u32, scale: u32, out
 }
 
 /// Export the active (or given) frame as a LOSSLESS static WebP, upscaled ×`scale` — the still
-/// twin of `mkpx_export_png` (for artwork whose colours exceed formats like GIF; distinct from
+/// twin of `mkpx_export_png` (for artwork whose colors exceed formats like GIF; distinct from
 /// `mkpx_export_webp`, which exports the whole animation).
 #[no_mangle]
 pub extern "C" fn mkpx_export_frame_webp(ptr: *mut Session, frame: u32, scale: u32, out_len: *mut u64) -> *mut u8 {
@@ -462,7 +462,7 @@ pub extern "C" fn mkpx_export_frame_webp(ptr: *mut Session, frame: u32, scale: u
 }
 
 /// Export ONE layer of one frame as a PNG — the layer's own pixels (straight alpha), not the
-/// composite — upscaled ×`scale` (nearest-neighbour, clamped 1..=32). Stale indices clamp
+/// composite — upscaled ×`scale` (nearest-neighbor, clamped 1..=32). Stale indices clamp
 /// (bounds-safe). Returns a malloc'd buffer; len via `out_len`; null when the frame has no
 /// layers or on encode failure.
 #[no_mangle]
@@ -477,8 +477,8 @@ pub extern "C" fn mkpx_export_layer_webp(ptr: *mut Session, frame: u32, layer: u
     export_layer_still(ptr, frame, layer, scale, true, out_len)
 }
 
-/// Composite every frame with per-frame progress (steps 0..n of 2n) and honouring cancel.
-/// Returns `None` when cancelled mid-way.
+/// Composite every frame with per-frame progress (steps 0..n of 2n) and honoring cancel.
+/// Returns `None` when canceled mid-way.
 fn composite_frames_tracked(s: &mut Session) -> Option<Vec<(Vec<u8>, u32)>> {
     let n = s.doc.frames.len();
     EXPORT_CANCEL.store(false, Ordering::Relaxed);
@@ -500,7 +500,7 @@ fn encode_progress_hook(done: usize, total: usize) -> bool {
     !EXPORT_CANCEL.load(Ordering::Relaxed)
 }
 
-/// Export all frames as an animated GIF, upscaled ×`scale` (nearest-neighbour, clamped 1..=32,
+/// Export all frames as an animated GIF, upscaled ×`scale` (nearest-neighbor, clamped 1..=32,
 /// applied one frame at a time). Returns a malloc'd buffer; len via `out_len`. Progress is
 /// reported via `mkpx_export_progress`; null on failure OR `mkpx_export_cancel`.
 /// Whole-animation exports flatten every frame to RGBA first (`frames × w × h × 4`). Refuse
@@ -534,7 +534,7 @@ pub extern "C" fn mkpx_export_gif(ptr: *mut Session, scale: u32, out_len: *mut u
 }
 
 /// Export the artwork as a LOSSLESS WebP (static for one frame, animated WebP for many) — the
-/// recommended format for Makapix Club submissions — upscaled ×`scale` (nearest-neighbour,
+/// recommended format for Makapix Club submissions — upscaled ×`scale` (nearest-neighbor,
 /// clamped 1..=32, applied one frame at a time). Returns a malloc'd buffer; len via `out_len`.
 /// Progress is reported via `mkpx_export_progress`; null on failure OR `mkpx_export_cancel`.
 #[no_mangle]

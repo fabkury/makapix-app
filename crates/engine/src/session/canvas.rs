@@ -75,7 +75,7 @@ impl Session {
         }
 
         // No selection → flip the whole active layer across the **storage** dimensions. Because the
-        // canvas is centred in storage, a whole-storage flip maps the canvas onto itself (flipping
+        // canvas is centered in storage, a whole-storage flip maps the canvas onto itself (flipping
         // its content) and flips the gutter along with it. [SPEC §8 gutter preserve+transform]
         let storage = self.doc.storage();
         let (w, h) = (storage.w as i32, storage.h as i32);
@@ -102,8 +102,8 @@ impl Session {
         }
         let old = self.doc.size;
         let new_size = if q == 2 { old } else { Size::new(old.h, old.w) };
-        // Rotate the whole storage grid (canvas + gutter); the centred canvas rotates onto the new
-        // centred canvas. [SPEC §8 gutter preserve+transform]
+        // Rotate the whole storage grid (canvas + gutter); the centered canvas rotates onto the new
+        // centered canvas. [SPEC §8 gutter preserve+transform]
         let old_storage = self.doc.storage();
         let (ow, oh) = (old_storage.w as i32, old_storage.h as i32);
         let new_margin = crate::document::Document::gutter_for(new_size);
@@ -141,7 +141,7 @@ impl Session {
     /// document-wide transform. Dimension-preserving, so the selection mask mirrors with the pixels
     /// (the marquee stays aligned). One undo step.
     pub fn flip_document(&mut self, horizontal: bool) {
-        // Flip the whole storage (canvas + gutter); the centred canvas maps onto itself.
+        // Flip the whole storage (canvas + gutter); the centered canvas maps onto itself.
         let storage = self.doc.storage();
         let (w, h) = (storage.w as i32, storage.h as i32);
         self.edit_doc("flip", |s| {
@@ -213,7 +213,7 @@ impl Session {
     }
 
     /// Rotate every layer of the ACTIVE frame by `quarter_turns` × 90° clockwise about the canvas
-    /// centre (the Rotate tool's "Frame" scope) — canvas dimensions unchanged, content clips on a
+    /// center (the Rotate tool's "Frame" scope) — canvas dimensions unchanged, content clips on a
     /// non-square canvas exactly like `rotate_layer`. Ignores the selection scope (frame mode acts
     /// on everything); the mask is cleared like the document-wide rotate. One undo step.
     ///
@@ -235,7 +235,7 @@ impl Session {
 
     /// Resize the canvas, pinning existing content to an anchor (SPEC §28.1): `ax`/`ay` pick
     /// which edge/corner of the old canvas coincides with the same edge/corner of the new one —
-    /// 0 = left/top, 1 = centre, 2 = right/bottom (9 anchors total).
+    /// 0 = left/top, 1 = center, 2 = right/bottom (9 anchors total).
     pub fn resize_canvas(&mut self, nw: u16, nh: u16, ax: u8, ay: u8) {
         let new_size = Size::new(nw.clamp(MIN_DIM, MAX_DIM), nh.clamp(MIN_DIM, MAX_DIM));
         if new_size == self.doc.size {
@@ -250,7 +250,7 @@ impl Session {
         let old_origin = self.doc.origin();
         let new_margin = crate::document::Document::gutter_for(new_size);
         let new_storage = Size::new(new_size.w + 2 * new_margin.w, new_size.h + 2 * new_margin.h);
-        // Anchor offset: 0, half, or all of the size delta (per axis). Centre keeps the historical
+        // Anchor offset: 0, half, or all of the size delta (per axis). Center keeps the historical
         // truncation of `(new - old) / 2`.
         let coff = (
             (new_size.w as i32 - old.w as i32) * ax.min(2) as i32 / 2,
@@ -321,7 +321,7 @@ impl Session {
     //      above, which is now reached from the timeline ☰ menu's "Rotate canvas") ----
 
     /// Rotate the active layer (or the selected pixels within it) by `quarter_turns` × 90° clockwise,
-    /// about the layer/canvas centre — or the selection's bounding-box centre when pixels are
+    /// about the layer/canvas center — or the selection's bounding-box center when pixels are
     /// selected. Content that would leave the canvas is clipped; lossless on a square canvas. When a
     /// selection drives it, the selection mask rotates with the pixels. One undo step.
     ///
@@ -353,12 +353,12 @@ impl Session {
         let fi = self.doc.active_frame;
         let fid = self.doc.frames[fi].id;
         let lid = self.doc.frames[fi].active_layer().id;
-        // Rotate over the whole storage about its centre (= the canvas centre for a centred gutter),
+        // Rotate over the whole storage about its center (= the canvas center for a centered gutter),
         // so the canvas rotates in place and the gutter rotates with it. [SPEC §8]
         let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
         let sel_before = self.doc.selection.clone();
 
-        // Selection present (and non-empty) → lift just the masked pixels, pivot on the bbox centre.
+        // Selection present (and non-empty) → lift just the masked pixels, pivot on the bbox center.
         if let Some(sel) = self.selection_clone() {
             if let Some(bb) = sel.bounds() {
                 let layer = &self.doc.frames[fi].active_layer().pixels;
@@ -392,7 +392,7 @@ impl Session {
             }
         }
 
-        // No selection → lift the whole active layer, pivot on the canvas centre.
+        // No selection → lift the whole active layer, pivot on the canvas center.
         let src = self.doc.frames[fi].active_layer().pixels.clone();
         self.rotate_draft = Some(RotateDraft {
             fid,
@@ -413,7 +413,7 @@ impl Session {
     }
 
     /// Begin a frame-scope rotate draft: lift EVERY layer of the active frame so the whole frame
-    /// can be previewed rotating non-destructively about the canvas centre — the Rotate tool's
+    /// can be previewed rotating non-destructively about the canvas center — the Rotate tool's
     /// "Angle" mode in Frame scope. Matches `rotate_frame`'s quarter-turn policy: acts on
     /// everything (locks/visibility are not consulted) and ignores the selection, which commit
     /// clears. No-op if a draft is already open.
@@ -423,7 +423,7 @@ impl Session {
         }
         let fi = self.doc.active_frame;
         let fid = self.doc.frames[fi].id;
-        // Rotate over the whole storage about its centre (= the canvas centre for a centred gutter),
+        // Rotate over the whole storage about its center (= the canvas center for a centered gutter),
         // so the canvas rotates in place and the gutter rotates with it. [SPEC §8]
         let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
         let layers = self.doc.frames[fi]
@@ -503,7 +503,7 @@ impl Session {
             Some(fi) => fi,
             None => return,
         };
-        // Rotate over the whole storage about its centre (= the canvas centre for a centred gutter),
+        // Rotate over the whole storage about its center (= the canvas center for a centered gutter),
         // so the canvas rotates in place and the gutter rotates with it. [SPEC §8]
         let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
         let before = self.doc.frames[fi].clone();
@@ -535,7 +535,7 @@ impl Session {
             return None;
         }
         let mut frame = self.doc.frames[fi].clone();
-        // Rotate over the whole storage about its centre (= the canvas centre for a centred gutter),
+        // Rotate over the whole storage about its center (= the canvas center for a centered gutter),
         // so the canvas rotates in place and the gutter rotates with it. [SPEC §8]
         let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
         apply_rotation_to_frame(d, &mut frame, cw, ch);
@@ -543,13 +543,13 @@ impl Session {
     }
 
     /// Wash the rotated footprint of an open draft with the soft "draft" tint (the preview frame
-    /// already carries the rotated pixels at full colour). Used by `draw_tool_preview`.
+    /// already carries the rotated pixels at full color). Used by `draw_tool_preview`.
     pub(super) fn rotate_draft_wash_into(&self, buf: &mut RgbaBuffer) {
         let d = match self.rotate_draft.as_ref().filter(|d| d.fid == self.doc.active_frame().id) {
             Some(d) => d,
             None => return,
         };
-        // Rotate over the whole storage about its centre (= the canvas centre for a centred gutter),
+        // Rotate over the whole storage about its center (= the canvas center for a centered gutter),
         // so the canvas rotates in place and the gutter rotates with it. [SPEC §8]
         let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
         // Union the rotated footprints first, so pixels covered by several layers (frame scope)
@@ -579,7 +579,7 @@ impl Session {
     /// preview), else `None`. Used by `outline_mask`.
     pub(super) fn rotate_draft_outline(&self) -> Option<Mask> {
         let d = self.rotate_draft.as_ref().filter(|d| d.is_selection && d.fid == self.doc.active_frame().id)?;
-        // Rotate over the whole storage about its centre (= the canvas centre for a centred gutter),
+        // Rotate over the whole storage about its center (= the canvas center for a centered gutter),
         // so the canvas rotates in place and the gutter rotates with it. [SPEC §8]
         let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
         // A selection draft lifts exactly one layer.
@@ -622,12 +622,12 @@ impl Session {
         let fi = self.doc.active_frame;
         let fid = self.doc.frames[fi].id;
         let lid = self.doc.frames[fi].active_layer().id;
-        // Scale over the whole storage about its centre (= the canvas centre for a centred
+        // Scale over the whole storage about its center (= the canvas center for a centered
         // gutter), so the canvas scales in place and the gutter scales with it. [SPEC §8]
         let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
         let sel_before = self.doc.selection.clone();
 
-        // Selection present (and non-empty) → lift just the masked pixels, pivot on the bbox centre.
+        // Selection present (and non-empty) → lift just the masked pixels, pivot on the bbox center.
         if let Some(sel) = self.selection_clone() {
             if let Some(bb) = sel.bounds() {
                 let layer = &self.doc.frames[fi].active_layer().pixels;
@@ -662,7 +662,7 @@ impl Session {
             }
         }
 
-        // No selection → lift the whole active layer, pivot on the canvas centre.
+        // No selection → lift the whole active layer, pivot on the canvas center.
         let src = self.doc.frames[fi].active_layer().pixels.clone();
         self.scale_draft = Some(ScaleDraft {
             fid,
@@ -737,7 +737,7 @@ impl Session {
 
     /// Toggle cleanEdge resampling for the Resize tool — independent from the Rotate tool's
     /// toggle. Updates the sticky setting and any open scale draft (live preview). The sampler
-    /// only honours it when upscaling (both factors ≥ 1); downscaling is always nearest-neighbour.
+    /// only honors it when upscaling (both factors ≥ 1); downscaling is always nearest-neighbor.
     pub fn set_scale_clean_edge(&mut self, on: bool) {
         self.settings.scale_clean_edge = on;
         if let Some(d) = self.scale_draft.as_mut() {
@@ -832,7 +832,7 @@ impl Session {
     }
 
     /// Wash the scaled footprint of an open draft with the soft "draft" tint (the preview frame
-    /// already carries the scaled pixels at full colour). Used by `draw_tool_preview`.
+    /// already carries the scaled pixels at full color). Used by `draw_tool_preview`.
     pub(super) fn scale_draft_wash_into(&self, buf: &mut RgbaBuffer) {
         let d = match self.scale_draft.as_ref().filter(|d| d.fid == self.doc.active_frame().id) {
             Some(d) => d,
@@ -897,7 +897,7 @@ impl Session {
 /// Rotation of one lifted source `src` (a `sw`×`sh` region whose pixel (0,0) sits at
 /// `src_origin` in canvas coords; optionally masked by `src_mask`) by `angle` radians clockwise
 /// about `pivot`, into a `cw`×`ch` canvas-sized buffer, clipped to the canvas. Samples
-/// nearest-neighbour, or the cleanEdge reconstruction when the draft's toggle is on (same
+/// nearest-neighbor, or the cleanEdge reconstruction when the draft's toggle is on (same
 /// inverse mapping — cleanEdge only changes which neighborhood color a sample point takes).
 /// Returns the placed pixels and a matching 1-bit mask of where they landed. Integer-exact and
 /// deterministic: at multiples of 90° on a square region it reproduces the lossless
@@ -912,7 +912,7 @@ fn rotate_resample(d: &RotateDraft, src: &RgbaBuffer, cw: i32, ch: i32) -> (Rgba
     let mut out_mask = Mask::new(cw as u32, ch as u32);
     // Quarter-turn snap: quarter turns arrive as rounded milliradians (1570/1571, 3141/3142, …),
     // never exact multiples of π/2, so cos/sin carry ~1e-4 of drift that walks sample points off
-    // pixel centres on large canvases. Snapping inside a ±2 mrad window makes 90° multiples
+    // pixel centers on large canvases. Snapping inside a ±2 mrad window makes 90° multiples
     // literally exact — for NN (which only relied on floor absorbing the drift) and for
     // cleanEdge (whose identity margin at minimum line width is thinner than that drift).
     let quarter = (angle / std::f32::consts::FRAC_PI_2).round();
@@ -953,7 +953,7 @@ fn rotate_resample(d: &RotateDraft, src: &RgbaBuffer, cw: i32, ch: i32) -> (Rgba
 
     for dy in y0..y1 {
         for dx in x0..x1 {
-            // Inverse-rotate the destination pixel centre back into source space (undo the move
+            // Inverse-rotate the destination pixel center back into source space (undo the move
             // offset first, then R(-angle)).
             let (ddx, ddy) = (dx as f32 + 0.5 - offx - pivot.x, dy as f32 + 0.5 - offy - pivot.y);
             let sxf = pivot.x + cos * ddx + sin * ddy;
@@ -1038,7 +1038,7 @@ fn apply_rotation_to_frame(d: &RotateDraft, frame: &mut Frame, cw: i32, ch: i32)
 /// Scaling of one lifted source `src` (a `sw`×`sh` region whose pixel (0,0) sits at
 /// `src_origin` in canvas coords; optionally masked by `src_mask`) by the draft's X/Y factors
 /// about `pivot`, into a `cw`×`ch` canvas-sized buffer, clipped to the canvas. Samples
-/// nearest-neighbour, or the cleanEdge reconstruction when the draft's toggle is on AND both
+/// nearest-neighbor, or the cleanEdge reconstruction when the draft's toggle is on AND both
 /// factors upscale (≥ 1, not both exactly 1) — cleanEdge is a reconstruction sampler, not a
 /// minifier, so any shrinking axis forces plain NN. Factors are milli-exact (1000 → 1.0,
 /// 2000 → 2.0 with zero float drift), so identity and integer scales are integer-exact: 1× is
@@ -1068,7 +1068,7 @@ fn scale_resample(d: &ScaleDraft, src: &RgbaBuffer, cw: i32, ch: i32) -> (RgbaBu
 
     for dy in y0..y1 {
         for dx in x0..x1 {
-            // Inverse-scale the destination pixel centre back into source space (undo the move
+            // Inverse-scale the destination pixel center back into source space (undo the move
             // offset first).
             let sxf = pivot.x + (dx as f32 + 0.5 - offx - pivot.x) / sx;
             let syf = pivot.y + (dy as f32 + 0.5 - offy - pivot.y) / sy;

@@ -7,7 +7,7 @@
 //! edges via color-similarity rules (`slice_dist`, evaluated three times with mirrored
 //! neighborhoods for the corner/back/up quadrant slices), and redraws those edges as straight
 //! lines. Rotating pixel art = point-sampling this reconstruction at inverse-rotated
-//! destination pixel centres (`session/canvas.rs::rotate_resample`).
+//! destination pixel centers (`session/canvas.rs::rotate_resample`).
 //!
 //! Configuration baked into this port (the rotation use-case):
 //! - `similarThreshold = 0` — similarity is exact RGBA equality (integer-exact, the right
@@ -51,7 +51,7 @@ use crate::color::Rgba8;
 /// The reference shader's SLOPE-mode *internal* clamp on `lineWidth` ("clamped range prevents
 /// inaccurate identity (no change) result"). The user-facing range is 0–2 (matching the
 /// reference site's slider); values outside this band saturate here, exactly as upstream.
-/// The clamp is what guarantees `sample` at exact pixel centres is the identity — the property
+/// The clamp is what guarantees `sample` at exact pixel centers is the identity — the property
 /// the angle-0 and quarter-turn losslessness of the Rotate tool rest on.
 pub const MIN_LINE_WIDTH: f32 = 0.45;
 pub const MAX_LINE_WIDTH: f32 = 1.142;
@@ -453,7 +453,7 @@ mod tests {
     }
 
     #[test]
-    fn identity_at_pixel_centres() {
+    fn identity_at_pixel_centers() {
         // Mix of every edge shape: 45° staircase, 2:1 slope, checkerboard, 1px diagonal.
         let src = buf(16, 16, |x, y| {
             if x < 8 && y < 8 {
@@ -468,7 +468,7 @@ mod tests {
                 T
             }
         });
-        // The internal clamp guarantees identity at exact cell centres across the whole
+        // The internal clamp guarantees identity at exact cell centers across the whole
         // user-facing 0–2 range (extremes saturate to [0.45, 1.142]).
         for lw in WIDTHS {
             for y in 0..16 {
@@ -491,7 +491,7 @@ mod tests {
         let cut = sample(&src, 3.9, 3.1, 1.0);
         assert_eq!(cut.a, 0, "convex corner should be cut, got {cut:?}");
         assert_eq!(sample(&src, 4.1, 3.9, 1.0), A, "concave corner should be filled");
-        // And nearest-neighbour would disagree on both — the whole point of the algorithm.
+        // And nearest-neighbor would disagree on both — the whole point of the algorithm.
         assert_eq!(src.get(3, 3), A);
         assert_eq!(src.get(4, 3), T);
     }
@@ -545,7 +545,7 @@ mod tests {
     }
 
     #[test]
-    fn no_new_colours() {
+    fn no_new_colors() {
         let src = buf(12, 12, |x, y| {
             if y >= x {
                 if (x / 3 + y / 3) % 2 == 0 { A } else { L }

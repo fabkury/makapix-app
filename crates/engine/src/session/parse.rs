@@ -139,7 +139,7 @@ pub enum Action {
     ScaleDraftMove(i32, i32), // whole-pixel nudge of the open draft, relative (PasteMove style)
     ScaleDraftCommit,
     ScaleDraftCancel,
-    ResizeCanvas(u16, u16, u8, u8), // (w, h, anchor-x, anchor-y): 0 = left/top, 1 = centre, 2 = right/bottom
+    ResizeCanvas(u16, u16, u8, u8), // (w, h, anchor-x, anchor-y): 0 = left/top, 1 = center, 2 = right/bottom
     CropToSelection,
     AddPaletteColor(Rgba8),
     RemovePaletteColor(usize),
@@ -440,7 +440,7 @@ fn parse_stops(inner: &str) -> Result<Vec<Stop>, String> {
     Ok(stops)
 }
 
-/// Third `ResizeCanvas` argument → anchor cell (x, y), each 0 = left/top, 1 = centre,
+/// Third `ResizeCanvas` argument → anchor cell (x, y), each 0 = left/top, 1 = center,
 /// 2 = right/bottom. Accepts the 9 direction names (case-insensitive, dashes ignored) plus the
 /// legacy booleans `true`/`1` = Center and `false`/`0` = TopLeft. Unknown strings fall back to
 /// Center (the historical default), keeping the parser lenient.
@@ -454,7 +454,7 @@ fn resize_anchor(s: &str) -> (u8, u8) {
         "bottomleft" => (0, 2),
         "bottom" => (1, 2),
         "bottomright" => (2, 2),
-        _ => (1, 1), // "center" | "centre" | "true" | "1" | unknown
+        _ => (1, 1), // "center" | "center" | "true" | "1" | unknown
     }
 }
 
