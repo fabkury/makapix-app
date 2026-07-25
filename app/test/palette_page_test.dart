@@ -96,6 +96,7 @@ void main() {
 
     await t.longPress(find.text('Doomed'));
     await t.pumpAndSettle();
+    await t.ensureVisible(find.widgetWithText(ListTile, 'Delete')); // last tile, below the sheet fold
     await t.tap(find.widgetWithText(ListTile, 'Delete'));
     await t.pumpAndSettle();
     expect(find.text('Delete "Doomed"?'), findsOneWidget);
@@ -105,6 +106,7 @@ void main() {
 
     await t.longPress(find.text('Doomed'));
     await t.pumpAndSettle();
+    await t.ensureVisible(find.widgetWithText(ListTile, 'Delete'));
     await t.tap(find.widgetWithText(ListTile, 'Delete'));
     await t.pumpAndSettle();
     await t.tap(find.widgetWithText(FilledButton, 'Delete'));
@@ -197,7 +199,39 @@ void main() {
     await t.tap(find.widgetWithText(ListTile, 'From artwork colours'));
     await t.pumpAndSettle();
     expect(host.scripts, [
-      'NewPalette(Artwork colours)\nAddPaletteColor(#FF0000FF)\nAddPaletteColor(#00FF00FF)',
+      'NewPalette(Artwork colours)\nAddPaletteColor(#FF0000FF)\nAddPaletteColor(#00FF00FF)\nSortPalette()',
     ]);
+  });
+
+  testWidgets('sort reconfirms; cancel sends nothing, confirm sends SortPaletteAt; single-colour disabled',
+      (t) async {
+    final host = FakePaletteHost([
+      const PaletteInfo('One', [_red]),
+      const PaletteInfo('Messy', [_red, _green]),
+    ]);
+    await pumpPalettePage(t, host);
+
+    await t.longPress(find.text('One'));
+    await t.pumpAndSettle();
+    expect(t.widget<ListTile>(find.widgetWithText(ListTile, 'Sort')).enabled, isFalse);
+    await t.tapAt(const Offset(400, 50)); // dismiss the sheet
+    await t.pumpAndSettle();
+
+    await t.longPress(find.text('Messy'));
+    await t.pumpAndSettle();
+    await t.tap(find.widgetWithText(ListTile, 'Sort'));
+    await t.pumpAndSettle();
+    expect(find.text('Sort "Messy"?'), findsOneWidget);
+    await t.tap(find.widgetWithText(TextButton, 'Cancel'));
+    await t.pumpAndSettle();
+    expect(host.scripts, isEmpty);
+
+    await t.longPress(find.text('Messy'));
+    await t.pumpAndSettle();
+    await t.tap(find.widgetWithText(ListTile, 'Sort'));
+    await t.pumpAndSettle();
+    await t.tap(find.widgetWithText(FilledButton, 'Sort'));
+    await t.pumpAndSettle();
+    expect(host.scripts, ['SortPaletteAt(1)']);
   });
 }

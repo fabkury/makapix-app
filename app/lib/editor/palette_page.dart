@@ -178,8 +178,10 @@ class _PalettePageState extends State<PalettePage> {
     final p = _palettes[i];
     showAppSheet<void>(
       context: context,
+      // Scrollable: seven tiles exceed the sheet's 9/16-height cap on short screens.
       builder: (ctx) => SafeArea(
-        child: Wrap(children: [
+        child: SingleChildScrollView(
+            child: Wrap(children: [
           ListTile(
             title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.bold)),
             subtitle: Text('${p.colors.length} colours'),
@@ -209,6 +211,15 @@ class _PalettePageState extends State<PalettePage> {
             },
           ),
           ListTile(
+            leading: const Icon(Icons.sort),
+            title: const Text('Sort'),
+            enabled: p.colors.length > 1,
+            onTap: () {
+              Navigator.pop(ctx);
+              _sortPalette(i);
+            },
+          ),
+          ListTile(
             leading: const Icon(Icons.format_color_reset),
             title: const Text('Clear'),
             enabled: p.colors.isNotEmpty,
@@ -226,7 +237,7 @@ class _PalettePageState extends State<PalettePage> {
               _deletePalette(i);
             },
           ),
-        ]),
+        ])),
       ),
     );
   }
@@ -251,6 +262,17 @@ class _PalettePageState extends State<PalettePage> {
     await File(path).writeAsString(encodeGpl(p.name, p.colors));
     if (!mounted) return;
     _toast('Saved palette (${p.colors.length} colours)');
+  }
+
+  Future<void> _sortPalette(int i) async {
+    final p = _palettes[i];
+    if (p.colors.length < 2) return;
+    // Reconfirm like Clear/Delete: palette state sits outside undo, and sorting
+    // discards any hand-arranged swatch order for good.
+    final ok = await _confirm('Sort "${p.name}"?',
+        'Reorders all ${p.colors.length} colours into ramps: greys first, then by hue, dark to light. This cannot be undone.', 'Sort');
+    if (!ok) return;
+    _mutate('SortPaletteAt($i)');
   }
 
   Future<void> _clearPalette(int i) async {
@@ -354,7 +376,8 @@ class _PalettePageState extends State<PalettePage> {
       _toast('The artwork has no colours yet');
       return;
     }
-    _mutate(buildImportScript('Artwork colours', colors));
+    // Extraction order is raster discovery order — sort the fresh palette into ramps.
+    _mutate('${buildImportScript('Artwork colours', colors)}\nSortPalette()');
     _toast('Created "Artwork colours" (${colors.length} colours)');
   }
 
