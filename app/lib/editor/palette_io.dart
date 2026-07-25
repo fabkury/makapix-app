@@ -117,7 +117,7 @@ List<PaletteInfo> palettesFromState(Map<String, dynamic> state) {
 /// scrolling along its main axis — a horizontal strip in portrait, a vertical one in landscape
 /// ([vertical] = true). Portrait: prev/next pair (±2) is left/right and the lane swap (±1) is
 /// up/down; landscape transposes the grid, so ±2 becomes up/down and the lane swap becomes
-/// left/right. `null` = no neighbour that way (button disabled).
+/// left/right. `null` = no neighbor that way (button disabled).
 ({int? left, int? right, int? up, int? down}) paletteMoveTargets(int cur, int n,
     {required bool vertical}) {
   final prevPair = cur - 2 >= 0 ? cur - 2 : null; // toward the strip's start

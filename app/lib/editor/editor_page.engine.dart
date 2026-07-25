@@ -4,7 +4,7 @@ part of 'editor_page.dart';
 // @protected setState here is safe; the analyzer's check is a false positive for the
 // part/extension split that keeps each editor file focused and under ~400 lines.)
 
-// Engine/DSL plumbing, document state sync, tool selection, cursor, colour helpers,
+// Engine/DSL plumbing, document state sync, tool selection, cursor, color helpers,
 // view transform (fit/pan/zoom), playback, and tool-order persistence.
 extension _EditorEngine on _EditorPageState {
 
@@ -29,7 +29,7 @@ extension _EditorEngine on _EditorPageState {
         setState(() {
           if (reconciled != null) _toolOrder = reconciled;
           _threeRowPref = threeRow;
-          // validate against the catalogue — a stale/removed dsl in old prefs falls back to the default
+          // validate against the catalog — a stale/removed dsl in old prefs falls back to the default
           if (pinned3 != null && tools.any((t) => t.dsl == pinned3)) _pinnedThirdTool = pinned3;
         });
       }
@@ -234,7 +234,7 @@ extension _EditorEngine on _EditorPageState {
         // baked into the upscaled canvas where it would render as thick lines.
         // checker:false — likewise the transparency checker: CanvasPainter draws it in screen
         // space at a fixed cell size, so it does not zoom with the artwork (which is what lets
-        // painted grey checkers be distinguished from true transparency).
+        // painted gray checkers be distinguished from true transparency).
         : engine.display(onion: _onion, grid: false, checker: false);
     final (w, h) = _playing ? (engine.width, engine.height) : (engine.displayWidth, engine.displayHeight);
     final img = await _decode(bytes, w, h);
@@ -328,8 +328,8 @@ extension _EditorEngine on _EditorPageState {
         _hasRotateDraft = true;
         // A whole-layer rotate lifts the entire STORAGE (canvas + overscan gutter), so the engine's
         // rect can extend past the canvas. The handle should relate to the visible canvas — clamp.
-        // The centre is unaffected: the gutter is centred, so the storage centre (the engine's
-        // pivot) and the clamped rect's centre are both the canvas centre.
+        // The center is unaffected: the gutter is centered, so the storage center (the engine's
+        // pivot) and the clamped rect's center are both the canvas center.
         _rotDraftRect = Rect.fromLTWH(
           (rd['x'] as num).toDouble(),
           (rd['y'] as num).toDouble(),
@@ -351,7 +351,7 @@ extension _EditorEngine on _EditorPageState {
       if (sd is Map) {
         _hasResizeDraft = true;
         // Same canvas clamp as the rotate draft: a whole-layer lift spans the storage, and the
-        // centred gutter keeps the clamped rect's centre == the engine's pivot.
+        // centered gutter keeps the clamped rect's center == the engine's pivot.
         _resizeDraftRect = Rect.fromLTWH(
           (sd['x'] as num).toDouble(),
           (sd['y'] as num).toDouble(),
@@ -386,7 +386,7 @@ extension _EditorEngine on _EditorPageState {
 
   // Live eyedropper feedback: pull the primary back after each pointer pick so the row-2 swatch
   // tracks the finger during a drag. The scalar FFI getter is cheap; the full-page setState is
-  // gated on an actual colour change so uniform areas don't rebuild the strips per move event.
+  // gated on an actual color change so uniform areas don't rebuild the strips per move event.
   void _syncPickedPrimary() {
     final c = _colorFromPacked(engine.primaryColor);
     if (c != _primary) setState(() => _primary = c);
@@ -428,7 +428,7 @@ extension _EditorEngine on _EditorPageState {
     if (_hasShapeDraft) _cancelShapeDraft();
     // Likewise, a pending Select Shape draft is discarded (and its ants erased) when leaving the tool.
     if (_hasSelDraft) _cancelSelDraft();
-    // Likewise, a pending paste draft is cancelled & erased when leaving the Copy & Paste tool.
+    // Likewise, a pending paste draft is canceled & erased when leaving the Copy & Paste tool.
     if (_hasPasteDraft) {
       _send('PasteCancel()');
       _hasPasteDraft = false;
@@ -458,7 +458,7 @@ extension _EditorEngine on _EditorPageState {
       _redraw();
     }
     // A pending HSV / Brightness-Contrast adjustment (a display-only preview, like the drafts
-    // above) is likewise cancelled when leaving its tool, so returning starts clean instead of
+    // above) is likewise canceled when leaving its tool, so returning starts clean instead of
     // resuming a stale draft — same as the commit-menu's Cancel.
     if (_tool == 'HsvShift' && t != 'HsvShift' && _hasHsvDraft) _resetHsvDraft();
     if (_tool == 'BrightnessContrast' && t != 'BrightnessContrast' && _hasBcDraft) _resetBcDraft();
@@ -486,7 +486,7 @@ extension _EditorEngine on _EditorPageState {
     } else if (leavingSelectLayer) {
       _send('SelectTool(Move)'); // Ruler sends no draw tool — clear the Select Layer overlay
     }
-    // Entering a tool that remembers precision-on re-centres the reticle.
+    // Entering a tool that remembers precision-on re-centers the reticle.
     if (_precisionOn.contains(t)) {
       _setCursor(engine.width ~/ 2, engine.height ~/ 2);
       _redraw();
@@ -654,7 +654,7 @@ extension _EditorEngine on _EditorPageState {
         _precisionOn.remove(_tool);
       }
     });
-    if (on) _setCursor(engine.width ~/ 2, engine.height ~/ 2); // park the reticle in the centre
+    if (on) _setCursor(engine.width ~/ 2, engine.height ~/ 2); // park the reticle in the center
     _redraw();
   }
 
@@ -662,16 +662,16 @@ extension _EditorEngine on _EditorPageState {
     setState(() => _primary = c);
     _send('SetPrimaryColor(${_hex(c)})');
     if (_tool == 'Gradient') {
-      // The gradient's first colour IS the primary, so re-push the stops (refreshes a draft too).
+      // The gradient's first color IS the primary, so re-push the stops (refreshes a draft too).
       _sendGradientStops();
     } else if (_hasShapeDraft) {
-      // A pending figure draft (Line/Rect/Ellipse) is drawn in the primary colour — refresh its
+      // A pending figure draft (Line/Rect/Ellipse) is drawn in the primary color — refresh its
       // preview now instead of waiting for the next drag.
       _redraw();
     }
   }
 
-  // The gradient's colours: the primary first, then the independent extras, evenly spaced 0..1.
+  // The gradient's colors: the primary first, then the independent extras, evenly spaced 0..1.
   List<Color> _gradColors() => [_primary, ..._gradExtra.take(_gradCount - 1)];
 
   String _gradStopsDsl() {
@@ -722,7 +722,7 @@ extension _EditorEngine on _EditorPageState {
     return sx < sy ? sx : sy;
   }
 
-  // Top-left of the canvas, in screen pixels, if it were centred at scale [s].
+  // Top-left of the canvas, in screen pixels, if it were centered at scale [s].
   Offset _centeredOffset(Size box, double s) =>
       Offset((box.width - engine.width * s) / 2, (box.height - engine.height * s) / 2);
 

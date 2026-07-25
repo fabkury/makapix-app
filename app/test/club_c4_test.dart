@@ -40,7 +40,7 @@ void main() {
       expect(kMonitoredHashtags.length, 5);
     });
 
-    test('tag set is derived from the labelled list', () {
+    test('tag set is derived from the labeled list', () {
       expect(kMonitoredHashtagTags, {for (final h in kMonitoredHashtags) h.tag});
     });
   });

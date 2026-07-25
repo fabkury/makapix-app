@@ -51,7 +51,7 @@ extension _EditorCanvas on _EditorPageState {
   // Shown only while a selection exists (`_selectionEdges.isNotEmpty`; the engine treats zero
   // selected pixels as "no selection", so any op that empties the selection — including this
   // menu's own Select None — hides it). Hosts the two selection-wide actions that apply no matter
-  // which tool is active; they were removed from row-1 of the selection tools in favour of this
+  // which tool is active; they were removed from row-1 of the selection tools in favor of this
   // single always-visible spot.
   Widget _selectionMenu() {
     return Container(
@@ -246,7 +246,7 @@ extension _EditorCanvas on _EditorPageState {
                     size: Size.infinite,
                   ),
                 if (_tool == 'Shape' && _hasShapeDraft)
-                  // rotate handle: drag the reticle to rotate the shape about its centre
+                  // rotate handle: drag the reticle to rotate the shape about its center
                   CustomPaint(
                     painter: ShapeRotateHandlePainter(
                         (_shapeA! + _shapeB!) / 2, _shapeB!, _shapeRot, vScale, vOff),
@@ -303,7 +303,7 @@ extension _EditorCanvas on _EditorPageState {
     });
   }
 
-  // A finger left the canvas (lifted or cancelled). End the pinch or the draw as appropriate; once
+  // A finger left the canvas (lifted or canceled). End the pinch or the draw as appropriate; once
   // pinching, drawing stays suspended until every finger has lifted.
   void _endTouch(int pointer, {required bool cancel}) {
     _touchPos.remove(pointer);
@@ -467,7 +467,7 @@ extension _EditorCanvas on _EditorPageState {
     }
     _send('PointerMove(${p.dx.toInt()},${p.dy.toInt()})');
     // Eyedropper drags keep picking (the engine re-samples per move) so the user can slide to
-    // "find" a colour after an imprecise first touch — mirror each pick into the swatch.
+    // "find" a color after an imprecise first touch — mirror each pick into the swatch.
     if (_tool == 'Eyedropper') _syncPickedPrimary();
     // The hot path: freehand drawing. Repaint the canvas + overlays only — the film-roll and layer
     // strips (each doing per-tile FFI hashes) must NOT rebuild on every move. Only selection
@@ -505,7 +505,7 @@ extension _EditorCanvas on _EditorPageState {
     }
     if (_tool == 'Move' && _moveSelectionMode) {
       _moveSelDragLast = null; // releasing leaves the selection where it was dragged
-      _send('MoveSelectionCommit()'); // finalise the drag as a single undo step
+      _send('MoveSelectionCommit()'); // finalize the drag as a single undo step
       _refreshState(); // pick up the new undo/redo availability
       setState(() {});
       return;
@@ -558,7 +558,7 @@ extension _EditorCanvas on _EditorPageState {
     }
     if (_tool == 'Move' && _moveSelectionMode) {
       _moveSelDragLast = null; // a second finger interrupted; keep the selection where it is
-      _send('MoveSelectionCommit()'); // finalise the partial drag as one undo step (close the session)
+      _send('MoveSelectionCommit()'); // finalize the partial drag as one undo step (close the session)
       _refreshState();
       return;
     }
@@ -633,7 +633,7 @@ extension _EditorCanvas on _EditorPageState {
         setState(() {});
         return;
       }
-      // Triangle apex-skew handle wins next (it rides the top edge; default top-centre is clear of
+      // Triangle apex-skew handle wins next (it rides the top edge; default top-center is clear of
       // the corner handles). Grabbing it lets the tip slide horizontally even when it overlaps a
       // base corner at the extremes.
       if (_hasTipHandle && (pos - screenOf(_triApex())).distance <= 28.0) {
@@ -666,7 +666,7 @@ extension _EditorCanvas on _EditorPageState {
       _shapeDrag = 3;
       _newShapeStart = p;
       _shapeRot = 0; // a fresh shape starts unrotated
-      _triTip = 0; // …and a fresh triangle starts as a centred isosceles
+      _triTip = 0; // …and a fresh triangle starts as a centered isosceles
       _shapeA = p;
       _shapeB = p;
       _pushShape();
@@ -678,7 +678,7 @@ extension _EditorCanvas on _EditorPageState {
   void _continueShape(Offset pos, Size box) {
     if (_shapeDrag == 0) return;
     if (_shapeDrag == 5) {
-      // Rotate: the reticle's screen angle around the box centre sets the rotation; both endpoints
+      // Rotate: the reticle's screen angle around the box center sets the rotation; both endpoints
       // rotate rigidly with it (the box keeps its size).
       final (s, off) = _view(box);
       final c = (_rotOrigA! + _rotOrigB!) / 2;
@@ -873,12 +873,12 @@ extension _EditorCanvas on _EditorPageState {
 
   // Recompute the cached draft ants whenever the draft changes. The boundary segments trace the EXACT
   // pixels the rect/ellipse would select (mirroring the engine's `rect_filled`/`ellipse_filled`), so
-  // the cyan draft preview matches the selection that Commit will produce — only the colour differs.
+  // the cyan draft preview matches the selection that Commit will produce — only the color differs.
   void _rebuildSelDraftEdges() {
     _selDraftEdges = _hasSelDraft ? _computeSelDraftEdges() : const [];
   }
 
-  // The on-canvas cells (`y*w+x`) the current draft covers, clipped to the canvas. Centre and radii
+  // The on-canvas cells (`y*w+x`) the current draft covers, clipped to the canvas. Center and radii
   // for the ellipse use the UNCLIPPED box corners so an off-canvas endpoint still curves correctly.
   Set<int> _computeSelDraftCells() {
     final w = engine.width, h = engine.height;
@@ -1085,7 +1085,7 @@ extension _EditorCanvas on _EditorPageState {
 
   // The Rotate handle's arm length (screen px): half the bbox width, so at angle 0 the reticle
   // sits exactly ON the right border of the un-rotated bbox rather than out past the corner.
-  // Clamped to a small minimum so the knob (radius 11) never covers the centre on very narrow
+  // Clamped to a small minimum so the knob (radius 11) never covers the center on very narrow
   // regions. Shared by the painter and the drag hit-test so they can never disagree.
   double _rotDraftArm(double s) => math.max(28.0, _rotDraftRect!.width / 2 * s);
 
@@ -1104,7 +1104,7 @@ extension _EditorCanvas on _EditorPageState {
     _rotDraftMoveLast = _rotateDragging ? null : _toCanvas(pos, box);
   }
 
-  // Drag → set the angle to the finger's bearing around the bbox centre, live (the engine re-renders
+  // Drag → set the angle to the finger's bearing around the bbox center, live (the engine re-renders
   // the rotated preview + marquee). Mirrors the Shape rotate handle's atan2 math. Away from the
   // knob, the same drag moves the draft instead.
   void _continueRotateHandle(Offset pos, Size box) {
@@ -1169,7 +1169,7 @@ extension _EditorCanvas on _EditorPageState {
     setState(() {});
   }
 
-  // The Resize knob's screen position: the bottom-right corner of the SCALED rect (centre +
+  // The Resize knob's screen position: the bottom-right corner of the SCALED rect (center +
   // half-extents × factors). Shared by the painter and the drag hit-test so they can't disagree.
   Offset _resizeReticle(Size box) {
     final (s, off) = _view(box);
@@ -1186,7 +1186,7 @@ extension _EditorCanvas on _EditorPageState {
     _resizeDraftMoveLast = _resizeDragging ? null : _toCanvas(pos, box);
   }
 
-  // Drag → set the factors from the finger's offset from the bbox centre, live (the engine
+  // Drag → set the factors from the finger's offset from the bbox center, live (the engine
   // re-renders the scaled preview + marquee). Lock Ratio: uniform factor from the diagonal
   // distance ratio; unlocked: per-axis ratios. Clamped 0.1×–8× (no mirroring — Flip exists).
   void _continueResizeHandle(Offset pos, Size box) {

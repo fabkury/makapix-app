@@ -396,7 +396,7 @@ extension _EditorSheets on _EditorPageState {
     );
   }
 
-  // Prompt for a new layer name and apply it. Cancelling (or an empty name) leaves the layer as-is.
+  // Prompt for a new layer name and apply it. Canceling (or an empty name) leaves the layer as-is.
   // Newlines and ';' are stripped because they would split the DSL command; commas survive (the
   // parser keeps everything after the index as the name).
   Future<void> _renameLayer(int i, String current) async {
@@ -416,7 +416,7 @@ extension _EditorSheets on _EditorPageState {
         ],
       ),
     );
-    if (name == null) return; // cancelled
+    if (name == null) return; // canceled
     final clean = name.replaceAll(RegExp(r'[\r\n;]'), ' ').trim();
     if (clean.isEmpty) return;
     _act('RenameLayer($i, $clean)');

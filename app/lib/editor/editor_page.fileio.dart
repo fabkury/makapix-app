@@ -23,7 +23,7 @@ const _anchorHuman = [
 ];
 
 // Save/open .mkpx, image import, PNG/GIF export, Post-to-Club, edit/remix intake,
-// and the resize/duration dialogs + colour-picker entry point.
+// and the resize/duration dialogs + color-picker entry point.
 extension _EditorFileIo on _EditorPageState {
   // Export a portable .mkpx to a user-chosen location. (This is separate from the automatic library
   // autosave, which keeps the working drawing safe regardless — see editor_page.persistence.dart.)
@@ -39,7 +39,7 @@ extension _EditorFileIo on _EditorPageState {
         allowedExtensions: ['mkpx'],
         bytes: bytes, // required on Android/iOS — the picker writes the file itself there
       );
-      if (path == null) return; // the user cancelled
+      if (path == null) return; // the user canceled
       // On desktop, saveFile returns a path WITHOUT writing, so write here. On mobile the picker
       // already wrote the file (and `path` is a content URI that File() can't write to), so skip.
       if (!Platform.isAndroid && !Platform.isIOS) {
@@ -274,7 +274,7 @@ extension _EditorFileIo on _EditorPageState {
         allowedExtensions: [ext],
         bytes: bytes,
       );
-      if (path == null) return; // the user cancelled
+      if (path == null) return; // the user canceled
       if (!Platform.isAndroid && !Platform.isIOS) {
         await File(path).writeAsBytes(bytes);
       }
@@ -285,7 +285,7 @@ extension _EditorFileIo on _EditorPageState {
   }
 
   // export-dialog: every PNG/GIF/WebP export and every Share starts here (not .mkpx) — pick an
-  // integer upscale factor for the output (nearest-neighbour, so pixel edges stay crisp) and,
+  // integer upscale factor for the output (nearest-neighbor, so pixel edges stay crisp) and,
   // when `formats` are offered (Share of an animation: GIF vs lossless WebP), the file format.
   // Returns (scale, format) — format is '' when no choice was offered — or null on Cancel. When
   // the chosen size is very large (see _kExportWarnPixels), the first press of Export/Share only
@@ -312,7 +312,7 @@ extension _EditorFileIo on _EditorPageState {
   // Encode the document to `format` off the UI thread behind a modal progress dialog. The dialog
   // polls the engine library's process-wide export progress (one step per frame composited + one
   // per frame encoded — a 1,024-frame × 64-layer document can take minutes) and offers Cancel,
-  // which asks the encoder to stop at the next frame boundary. Returns (bytes, cancelled):
+  // which asks the encoder to stop at the next frame boundary. Returns (bytes, canceled):
   // bytes is empty on failure or cancellation.
   Future<(Uint8List, bool)> _encodeWithProgress(String format,
           {required String title, int frame = 0, int layer = 0, int scale = 1}) =>
@@ -350,10 +350,10 @@ extension _EditorFileIo on _EditorPageState {
     if (scale == 1) {
       bytes = await Engine.encodeInBackground(engine.save(), format: format, frame: frame, layer: layer); // [F-12]
     } else {
-      final (b, cancelled) =
+      final (b, canceled) =
           await _encodeWithProgress(format, frame: frame, layer: layer, scale: scale, title: 'Rendering $chosen…');
-      if (cancelled) {
-        _toast('Export cancelled');
+      if (canceled) {
+        _toast('Export canceled');
         return;
       }
       bytes = b;
@@ -376,9 +376,9 @@ extension _EditorFileIo on _EditorPageState {
     final choice = await _exportScaleDialog(frames: fc);
     if (choice == null) return;
     final (scale, _) = choice;
-    final (bytes, cancelled) = await _encodeWithProgress('gif', scale: scale, title: 'Rendering GIF…');
-    if (cancelled) {
-      _toast('Export cancelled');
+    final (bytes, canceled) = await _encodeWithProgress('gif', scale: scale, title: 'Rendering GIF…');
+    if (canceled) {
+      _toast('Export canceled');
       return;
     }
     if (bytes.isEmpty) {
@@ -398,9 +398,9 @@ extension _EditorFileIo on _EditorPageState {
     final choice = await _exportScaleDialog(frames: fc);
     if (choice == null) return;
     final (scale, _) = choice;
-    final (bytes, cancelled) = await _encodeWithProgress('webp', scale: scale, title: 'Rendering WebP…');
-    if (cancelled) {
-      _toast('Export cancelled');
+    final (bytes, canceled) = await _encodeWithProgress('webp', scale: scale, title: 'Rendering WebP…');
+    if (canceled) {
+      _toast('Export canceled');
       return;
     }
     if (bytes.isEmpty) {
@@ -415,7 +415,7 @@ extension _EditorFileIo on _EditorPageState {
 
   // Share the artwork with other apps via the system share sheet: animations as GIF (the format
   // chat/social apps handle best) or lossless WebP (needed when a frame exceeds GIF's 256
-  // colours — the choice is remembered across sessions); stills always as PNG — deliberately
+  // colors — the choice is remembered across sessions); stills always as PNG — deliberately
   // NEVER WebP, for receiver compatibility (the file EXPORTS offer WebP stills instead). The
   // bytes go to a temp file in the app's cache dir (no storage permission needed; share_plus
   // serves it to the receiver through its FileProvider).
@@ -445,10 +445,10 @@ extension _EditorFileIo on _EditorPageState {
     if (!animated && scale == 1) {
       bytes = await Engine.encodeInBackground(engine.save(), format: 'png', frame: engine.activeFrame); // [F-12]
     } else {
-      final (b, cancelled) = await _encodeWithProgress(format,
+      final (b, canceled) = await _encodeWithProgress(format,
           frame: engine.activeFrame, scale: scale, title: 'Rendering ${animated ? chosen : 'PNG'}…');
-      if (cancelled) {
-        _toast('Share cancelled');
+      if (canceled) {
+        _toast('Share canceled');
         return;
       }
       bytes = b;
@@ -468,7 +468,7 @@ extension _EditorFileIo on _EditorPageState {
   Future<void> _resizeCanvasDialog() async {
     double w = engine.width.toDouble();
     double h = engine.height.toDouble();
-    int ax = 1, ay = 1; // anchor cell: 0 = left/top, 1 = centre, 2 = right/bottom
+    int ax = 1, ay = 1; // anchor cell: 0 = left/top, 1 = center, 2 = right/bottom
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(

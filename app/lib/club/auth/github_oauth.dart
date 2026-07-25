@@ -51,10 +51,10 @@ class GithubOAuth {
       // the app — e.g. a broken server callback — the user still ends up closing
       // the tab, which surfaces here as CANCELED; that's a server-side problem,
       // not something the app can distinguish at this layer.)
-      final cancelled = e is PlatformException &&
+      final canceled = e is PlatformException &&
           (e.code.toUpperCase() == 'CANCELED' || e.code.toUpperCase() == 'CANCELLED');
-      if (cancelled) {
-        throw ClubError(code: 'oauth_cancelled', message: 'GitHub sign-in was cancelled.');
+      if (canceled) {
+        throw ClubError(code: 'oauth_canceled', message: 'GitHub sign-in was canceled.');
       }
       throw ClubError(
         code: 'oauth_failed',

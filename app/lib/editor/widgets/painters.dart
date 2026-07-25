@@ -11,11 +11,11 @@ class CanvasPainter extends CustomPainter {
 
   /// Checkerboard cell size in SCREEN (logical) pixels. Deliberately independent of [scale]:
   /// pixels the user paints grow and shrink with the zoom while true transparency always shows
-  /// the same-sized checker — that contrast is what lets a painted grey checker pattern be told
+  /// the same-sized checker — that contrast is what lets a painted gray checker pattern be told
   /// apart from actual transparent pixels.
   static const double checkerCell = 8;
 
-  // One 2×2-cell tile, tiled by an ImageShader. Same two greys the engine used when it baked
+  // One 2×2-cell tile, tiled by an ImageShader. Same two grays the engine used when it baked
   // the checker into the display buffer, for visual continuity. The shader is anchored to the
   // VIEWPORT (identity matrix), not the image: zooming moves the image origin on screen, so an
   // origin-anchored pattern darts around during a pinch — a perfectly still backdrop is what
@@ -134,7 +134,7 @@ class CursorOutlinePainter extends CustomPainter {
 /// flow). Deliberately a distinct cyan-on-dark identity from the committed selection's black/white
 /// ants ([OutlinePainter]) — the two can show at once (existing selection + the draft about to be
 /// combined into it), so the draft must never read as a live selection. The segments trace the exact
-/// pixels the draft would select, so the preview matches what Commit produces (only the colour differs).
+/// pixels the draft would select, so the preview matches what Commit produces (only the color differs).
 class SelectionDraftPainter extends CustomPainter {
   final List<List<int>> edges; // [x1,y1,x2,y2,t] in canvas-corner coords
   final double scale;
@@ -204,7 +204,7 @@ class HandlePainter extends CustomPainter {
       old.points != points || old.scale != scale || old.off != off;
 }
 
-/// The Shape tool's rotate handle: a line from the box centre out to a draggable reticle, drawn in
+/// The Shape tool's rotate handle: a line from the box center out to a draggable reticle, drawn in
 /// SCREEN space. By default the arm reaches just beyond the box corner so it never sits under the
 /// shape; an explicit [arm] (screen px) overrides that — the Rotate tool's draft uses it to pin the
 /// reticle to the bbox's right border when un-rotated.
@@ -228,7 +228,7 @@ class ShapeRotateHandlePainter extends CustomPainter {
     canvas.drawCircle(ret, 11, Paint()..color = Colors.black..style = PaintingStyle.stroke..strokeWidth = 4..isAntiAlias = true);
     canvas.drawCircle(ret, 11, Paint()..color = const Color(0xFF4DA3FF)..style = PaintingStyle.stroke..strokeWidth = 2.5..isAntiAlias = true);
     canvas.drawCircle(ret, 2.5, Paint()..color = Colors.white);
-    // A tiny live degree readout, centred just above the connecting arm.
+    // A tiny live degree readout, centered just above the connecting arm.
     final mid = Offset((cs.dx + ret.dx) / 2, (cs.dy + ret.dy) / 2);
     var perp = Offset(-(ret.dy - cs.dy), ret.dx - cs.dx);
     if (perp.distance > 0) perp = perp / perp.distance;
@@ -236,7 +236,7 @@ class ShapeRotateHandlePainter extends CustomPainter {
     _degLabel(canvas, '${_degrees(rotation)}°', mid + perp * 13);
   }
 
-  // Normalise radians to a signed whole degree in (-180, 180].
+  // Normalize radians to a signed whole degree in (-180, 180].
   int _degrees(double rad) {
     var d = (rad * 180 / math.pi) % 360;
     if (d > 180) d -= 360;
@@ -259,7 +259,7 @@ class ShapeRotateHandlePainter extends CustomPainter {
       o.center != center || o.corner != corner || o.rotation != rotation || o.scale != scale || o.off != off || o.arm != arm;
 }
 
-/// The Resize tool's scale handle: a dashed outline of the SCALED rect (centre ± half-extents ×
+/// The Resize tool's scale handle: a dashed outline of the SCALED rect (center ± half-extents ×
 /// factors), a knob circle at its bottom-right corner (the drag target — must match the shell's
 /// `_resizeReticle` hit-test), and a live "2.00×" readout ("2.00× · 1.50×" when the factors
 /// differ). Drawn in SCREEN space; knob styling matches [ShapeRotateHandlePainter] so the
@@ -325,7 +325,7 @@ class ResizeHandlePainter extends CustomPainter {
 
 /// The Triangle's apex-skew handle: a faint rail along the (rotated) top edge with a diamond reticle
 /// at the apex. Dragging the diamond slides the tip horizontally between the two base corners. Drawn
-/// in SCREEN space. A distinct amber colour so it never reads as a size or rotate handle.
+/// in SCREEN space. A distinct amber color so it never reads as a size or rotate handle.
 class TriangleTipHandlePainter extends CustomPainter {
   final Offset apex, railA, railB; // canvas-pixel coords (cell top-left)
   final double scale;
@@ -366,7 +366,7 @@ const double kRulerReticleRadius = 52.0;
 /// crosshair gap, so arc and vertex reticle read as one instrument.
 const double kRulerAngleArcRadius = 28.0;
 
-/// The Angle-mode arc colour: deliberately far from the ruler's yellow (0xFFFFC400) so the
+/// The Angle-mode arc color: deliberately far from the ruler's yellow (0xFFFFC400) so the
 /// measured angle reads at a glance as "not another arm".
 const Color kRulerAngleArcColor = Color(0xFF00E5FF);
 
@@ -395,12 +395,12 @@ Offset defaultRulerC(Offset a, Offset b) {
   return Offset(c.dx.roundToDouble(), c.dy.roundToDouble());
 }
 
-/// Where the Angle-mode degree chip centres, in SCREEN px. Sits on the interior-angle bisector
+/// Where the Angle-mode degree chip centers, in SCREEN px. Sits on the interior-angle bisector
 /// just past the arc; when the wedge is too narrow for the chip to clear both arms, flips to the
 /// reverse bisector (the reflex side, which always has ≥180° of open space).
 Offset angleLabelAnchor(Offset pa, Offset pb, Offset pc, double arcRadius) {
   const clearance = 18.0; // half chip height plus a gap
-  const minWedgeClear = 16.0; // required perpendicular distance from chip centre to each arm
+  const minWedgeClear = 16.0; // required perpendicular distance from chip center to each arm
   final d = arcRadius + clearance;
   final lu = (pb - pa).distance, lv = (pc - pa).distance;
   if (lu == 0 || lv == 0) return pa + Offset(0, -d);
@@ -408,7 +408,7 @@ Offset angleLabelAnchor(Offset pa, Offset pb, Offset pc, double arcRadius) {
   var bis = u + v;
   // Arms opposite (≈180°): the bisector vanishes; either perpendicular side of the line is clear.
   bis = bis.distance < 1e-6 ? Offset(-u.dy, u.dx) : bis / bis.distance;
-  // Chip centre at distance d along the bisector clears each arm by d·sin(θ/2).
+  // Chip center at distance d along the bisector clears each arm by d·sin(θ/2).
   final cosT = (u.dx * v.dx + u.dy * v.dy).clamp(-1.0, 1.0);
   final sinHalf = math.sqrt((1 - cosT) / 2);
   final dir = d * sinHalf < minWedgeClear ? -bis : bis;
@@ -420,7 +420,7 @@ Offset angleLabelAnchor(Offset pa, Offset pb, Offset pc, double arcRadius) {
 /// axis-aligned legs of the right triangle under the diagonal (the horizontal and vertical
 /// distances), drawn semitransparent so the main measurement stays dominant. When [c] is set
 /// (Angle mode) a second arm a→c joins in, the faint legs are dropped (main lines only), and an
-/// arc in a distinctive colour shows the interior angle in degrees at the shared vertex [a].
+/// arc in a distinctive color shows the interior angle in degrees at the shared vertex [a].
 /// Drawn in SCREEN space; never touches the pixel buffer.
 class RulerPainter extends CustomPainter {
   final Offset a, b; // endpoints in canvas-pixel coords (cell top-left)
@@ -514,7 +514,7 @@ class RulerPainter extends CustomPainter {
         Paint()..color = kRulerAngleArcColor..style = PaintingStyle.stroke..strokeWidth = 1.5..isAntiAlias = true);
   }
 
-  // A gun-sight reticle: a ring with crosshair arms and a clear centre (so the target pixel shows).
+  // A gun-sight reticle: a ring with crosshair arms and a clear center (so the target pixel shows).
   void _reticle(Canvas canvas, Offset c) {
     const r = kRulerReticleRadius;
     const gap = 6.0;
@@ -530,7 +530,7 @@ class RulerPainter extends CustomPainter {
     canvas.drawCircle(c, 1.8, Paint()..color = const Color(0xFFFFC400));
   }
 
-  /// `faint` renders the semitransparent style of the triangle legs; `centerX`/`centerY` centre
+  /// `faint` renders the semitransparent style of the triangle legs; `centerX`/`centerY` center
   /// the text on `at`; `alignRight` puts the text's right edge at `at` (for labels that must
   /// grow away from the vertical leg).
   void _label(Canvas canvas, String text, Offset at,
@@ -559,7 +559,7 @@ class RulerPainter extends CustomPainter {
 /// The pixel grid: thin hairlines on every canvas-pixel boundary, drawn in SCREEN space so each
 /// line stays 1 device pixel regardless of how large the canvas pixels are upscaled (unlike baking
 /// it into the canvas, which produced thick, upscaled gridlines). Hidden when cells get too small
-/// to be useful, so a zoomed-out large canvas doesn't turn into a grey wash.
+/// to be useful, so a zoomed-out large canvas doesn't turn into a gray wash.
 class GridPainter extends CustomPainter {
   final int cols, rows; // canvas size in pixels
   final double scale; // screen px per canvas px
@@ -623,14 +623,14 @@ class CheckerPainter extends CustomPainter {
   bool shouldRepaint(CheckerPainter old) => false;
 }
 
-/// A colour swatch that reads alpha truthfully: the colour is composited over the same
-/// light-grey checker the canvas shows under transparent pixels (6-px cells — slightly finer
+/// A color swatch that reads alpha truthfully: the color is composited over the same
+/// light-gray checker the canvas shows under transparent pixels (6-px cells — slightly finer
 /// than the canvas's 8 so small swatches still show a clean grid). With [split] the swatch
-/// shows the colour forced opaque on one half and its real alpha over the checker on the
+/// shows the color forced opaque on one half and its real alpha over the checker on the
 /// other, so hue and transparency read at a glance: [splitAxis] horizontal = opaque left /
 /// composited right (the default), vertical = opaque top / composited bottom.
-/// [diagonal] is the conditional variant of the same dual indicator: opaque colours paint as
-/// a plain fill, but a translucent colour splits along the anti-diagonal — top-left triangle
+/// [diagonal] is the conditional variant of the same dual indicator: opaque colors paint as
+/// a plain fill, but a translucent color splits along the anti-diagonal — top-left triangle
 /// forced opaque, bottom-right triangle real alpha over the checker.
 class AlphaSwatch extends StatelessWidget {
   final Color color;
@@ -675,9 +675,9 @@ class _AlphaSwatchPainter extends CustomPainter {
   const _AlphaSwatchPainter(this.color, this.split, this.splitAxis, this.diagonal);
 
   static const double _cell = 6;
-  // Same two greys as CanvasPainter's transparency checker, for visual continuity. All fills
-  // are non-antialiased: the checker and the colour drawn over it share edge geometry, and
-  // with AA each boundary pixel is a partial-coverage blend of BOTH — a faint grey halo
+  // Same two grays as CanvasPainter's transparency checker, for visual continuity. All fills
+  // are non-antialiased: the checker and the color drawn over it share edge geometry, and
+  // with AA each boundary pixel is a partial-coverage blend of BOTH — a faint gray halo
   // around opaque swatches. Binary coverage makes them coincide exactly; the host
   // Container's own antialiased clip still smooths the rounded corners.
   static final Paint _light = Paint()
@@ -693,7 +693,7 @@ class _AlphaSwatchPainter extends CustomPainter {
     // and the host Container's clip stops at its OUTER edge — a border insets this painter,
     // so unclipped overflow cells would paint dashes over the border ring.
     canvas.clipRect(Offset.zero & size, doAntiAlias: false);
-    // The checker only exists to show through translucent colour — skip it where an opaque
+    // The checker only exists to show through translucent color — skip it where an opaque
     // fill would cover it entirely.
     final opaque = color.a >= 1;
     if (!opaque) {
@@ -724,9 +724,9 @@ class _AlphaSwatchPainter extends CustomPainter {
     } else {
       canvas.drawRect(Offset.zero & size, fill);
       if (diagonal && !opaque) {
-        // Dual indicator for translucent colours: opaque top-left triangle over the composited
-        // full-rect fill just drawn. The triangle edge is a genuine colour-over-colour boundary
-        // (composited fill beneath, not bare checker), so AA here can't produce the grey halo
+        // Dual indicator for translucent colors: opaque top-left triangle over the composited
+        // full-rect fill just drawn. The triangle edge is a genuine color-over-color boundary
+        // (composited fill beneath, not bare checker), so AA here can't produce the gray halo
         // the rect fills guard against — and it keeps the diagonal smooth at ~30-px sizes.
         final tri = Path()
           ..moveTo(0, 0)

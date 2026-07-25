@@ -1,7 +1,7 @@
 // The full-screen palette page (replaces the old row-2 palette-controls bottom sheet):
 // previews every document palette as swatch cards, loads one on tap, and manages them —
 // rename / duplicate / export / clear / delete, drag-to-reorder, import, "from artwork
-// colours", and a read-only Presets section bundled as assets.
+// colors", and a read-only Presets section bundled as assets.
 //
 // The page talks to the engine only through [PaletteHost], so widget tests can drive it with
 // a fake and never need the native binary. Destructive operations (delete, clear) always
@@ -24,7 +24,7 @@ import 'palette_io.dart';
 /// letting the follow-up AddPaletteColor batch pollute the active palette.
 const int kMaxPalettes = 256;
 
-/// Colours per palette — the engine's used-colours scan aborts past this many uniques.
+/// Colors per palette — the engine's used-colors scan aborts past this many uniques.
 const int kMaxPaletteColors = 256;
 
 /// The bundled preset palettes (GIMP/Lospec .gpl), shown read-only below the document's own.
@@ -184,7 +184,7 @@ class _PalettePageState extends State<PalettePage> {
             child: Wrap(children: [
           ListTile(
             title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text('${p.colors.length} colours'),
+            subtitle: Text('${p.colors.length} colors'),
           ),
           ListTile(
             leading: const Icon(Icons.edit),
@@ -261,7 +261,7 @@ class _PalettePageState extends State<PalettePage> {
     if (path == null || !mounted) return;
     await File(path).writeAsString(encodeGpl(p.name, p.colors));
     if (!mounted) return;
-    _toast('Saved palette (${p.colors.length} colours)');
+    _toast('Saved palette (${p.colors.length} colors)');
   }
 
   Future<void> _sortPalette(int i) async {
@@ -270,7 +270,7 @@ class _PalettePageState extends State<PalettePage> {
     // Reconfirm like Clear/Delete: palette state sits outside undo, and sorting
     // discards any hand-arranged swatch order for good.
     final ok = await _confirm('Sort "${p.name}"?',
-        'Reorders all ${p.colors.length} colours into ramps: greys first, then by hue, dark to light. This cannot be undone.', 'Sort');
+        'Reorders all ${p.colors.length} colors into ramps: grays first, then by hue, dark to light. This cannot be undone.', 'Sort');
     if (!ok) return;
     _mutate('SortPaletteAt($i)');
   }
@@ -279,7 +279,7 @@ class _PalettePageState extends State<PalettePage> {
     final p = _palettes[i];
     if (p.colors.isEmpty) return;
     final ok = await _confirm('Clear "${p.name}"?',
-        'Removes all ${p.colors.length} colours from this palette. This cannot be undone.', 'Clear');
+        'Removes all ${p.colors.length} colors from this palette. This cannot be undone.', 'Clear');
     if (!ok) return;
     _mutate('ClearPaletteAt($i)');
   }
@@ -288,7 +288,7 @@ class _PalettePageState extends State<PalettePage> {
     if (_palettes.length <= 1) return;
     final p = _palettes[i];
     final ok = await _confirm('Delete "${p.name}"?',
-        'Deletes this palette and its ${p.colors.length} colours. This cannot be undone.', 'Delete');
+        'Deletes this palette and its ${p.colors.length} colors. This cannot be undone.', 'Delete');
     if (!ok) return;
     _mutate('DeletePalette($i)');
   }
@@ -326,7 +326,7 @@ class _PalettePageState extends State<PalettePage> {
           ),
           ListTile(
             leading: const Icon(Icons.auto_awesome),
-            title: const Text('From artwork colours'),
+            title: const Text('From artwork colors'),
             onTap: () {
               Navigator.pop(ctx);
               _fromArtwork();
@@ -352,11 +352,11 @@ class _PalettePageState extends State<PalettePage> {
     if (!mounted) return;
     final p = parsePaletteFile(text, fallbackName: res.files.single.name.split('.').first);
     if (p.colors.isEmpty) {
-      _toast('No colours found');
+      _toast('No colors found');
       return;
     }
     _mutate(buildImportScript(p.name, p.colors));
-    _toast('Imported "${p.name}" (${p.colors.length} colours)');
+    _toast('Imported "${p.name}" (${p.colors.length} colors)');
   }
 
   Future<void> _fromArtwork() async {
@@ -368,17 +368,17 @@ class _PalettePageState extends State<PalettePage> {
       return;
     }
     if (r['over_limit'] == true) {
-      _toast('The artwork uses more than $kMaxPaletteColors colours.');
+      _toast('The artwork uses more than $kMaxPaletteColors colors.');
       return;
     }
     final colors = [for (final h in (r['colors'] as List? ?? const [])) parseHexColor(h.toString())];
     if (colors.isEmpty) {
-      _toast('The artwork has no colours yet');
+      _toast('The artwork has no colors yet');
       return;
     }
     // Extraction order is raster discovery order — sort the fresh palette into ramps.
-    _mutate('${buildImportScript('Artwork colours', colors)}\nSortPalette()');
-    _toast('Created "Artwork colours" (${colors.length} colours)');
+    _mutate('${buildImportScript('Artwork colors', colors)}\nSortPalette()');
+    _toast('Created "Artwork colors" (${colors.length} colors)');
   }
 
   void _importPreset(PaletteInfo p) {
@@ -444,7 +444,7 @@ class _PalettePageState extends State<PalettePage> {
                   style: TextStyle(fontWeight: FontWeight.bold, color: active ? _green : null),
                 ),
               ),
-              Text('${p.colors.length} colours',
+              Text('${p.colors.length} colors',
                   style: const TextStyle(color: Colors.white54, fontSize: 12)),
               ReorderableDragStartListener(
                 index: i,
@@ -482,7 +482,7 @@ class _PalettePageState extends State<PalettePage> {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontWeight: FontWeight.bold)),
               ),
-              Text('${p.colors.length} colours',
+              Text('${p.colors.length} colors',
                   style: const TextStyle(color: Colors.white54, fontSize: 12)),
             ]),
             const SizedBox(height: 8),

@@ -26,7 +26,7 @@ const kExportWarnPixels = 64 * 1000 * 1000;
 // carries across both.
 const kShareFormatPref = 'share.animFormat_v1';
 
-// The integer upscale factors offered in the export/share dialog (nearest-neighbour, pixels stay
+// The integer upscale factors offered in the export/share dialog (nearest-neighbor, pixels stay
 // crisp). 2× was added to 1/4/8/16/32 so the smart default can land nearer the target on
 // non-power-of-2 canvases.
 const kExportScaleFactors = [1, 2, 4, 8, 16, 32];
@@ -177,7 +177,7 @@ Future<(int, String)?> showExportScaleDialog({
 }
 
 /// Run `encode` behind a modal progress dialog that polls the engine's process-wide export progress
-/// and offers Cancel (honoured at the next frame boundary). Returns (bytes, cancelled); bytes is
+/// and offers Cancel (honored at the next frame boundary). Returns (bytes, canceled); bytes is
 /// empty on failure or cancellation.
 Future<(Uint8List, bool)> encodeWithProgress({
   required BuildContext context,
@@ -185,12 +185,12 @@ Future<(Uint8List, bool)> encodeWithProgress({
   required Future<Uint8List> Function() encode,
 }) async {
   Engine.resetExportProgressStatic(); // the dialog must not briefly show the PREVIOUS export's bar
-  var cancelled = false;
+  var canceled = false;
   final future = encode();
   if (context.mounted) {
     var dialogOpen = true;
     Timer? poll;
-    var cancelling = false;
+    var canceling = false;
     unawaited(showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -211,14 +211,14 @@ Future<(Uint8List, bool)> encodeWithProgress({
           ]),
           actions: [
             TextButton(
-              onPressed: cancelling
+              onPressed: canceling
                   ? null
                   : () => setS(() {
-                        cancelling = true;
-                        cancelled = true;
-                        Engine.cancelExportStatic(); // honoured at the next frame boundary
+                        canceling = true;
+                        canceled = true;
+                        Engine.cancelExportStatic(); // honored at the next frame boundary
                       }),
-              child: Text(cancelling ? 'Cancelling…' : 'Cancel'),
+              child: Text(canceling ? 'Canceling…' : 'Cancel'),
             ),
           ],
         );
@@ -229,7 +229,7 @@ Future<(Uint8List, bool)> encodeWithProgress({
     }));
     final bytes = await future;
     if (dialogOpen && context.mounted) Navigator.of(context, rootNavigator: true).pop();
-    return (bytes, cancelled);
+    return (bytes, canceled);
   }
   return (await future, false);
 }
@@ -307,7 +307,7 @@ Future<bool> shareRasterArtwork({
           : ('gif', 'gif', 'image/gif');
 
   if (!context.mounted) return false;
-  final (bytes, cancelled) = await encodeWithProgress(
+  final (bytes, canceled) = await encodeWithProgress(
     context: context,
     title: 'Rendering ${animated ? chosen : 'PNG'}…',
     encode: () async {
@@ -321,7 +321,7 @@ Future<bool> shareRasterArtwork({
       }
     },
   );
-  if (cancelled) return false;
+  if (canceled) return false;
   if (bytes.isEmpty) {
     fail('Could not render the image to share.');
     return false;

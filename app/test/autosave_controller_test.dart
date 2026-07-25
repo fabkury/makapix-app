@@ -8,7 +8,7 @@ import 'package:makapix_club/editor/persistence/drawing_store.dart';
 
 Uint8List bytesOf(String s) => Uint8List.fromList(s.codeUnits);
 
-/// A store that counts doc writes and can be made to fail, for asserting write behaviour.
+/// A store that counts doc writes and can be made to fail, for asserting write behavior.
 class CountingStore extends DrawingStore {
   CountingStore(super.base);
   int docWrites = 0;

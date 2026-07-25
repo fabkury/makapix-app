@@ -143,7 +143,7 @@ extension _EditorToolgrid on _EditorPageState {
   // The pinned 3rd tile (3-row mode only): defaults to Play, but long-press picks any tool. It tap-
   // routes exactly like the grid's tile for that tool — an action tool (Onion) toggles via
   // _doToolAction; every other tool (incl. Play, whose controls live in row-1) selects via
-  // _selectTool — so each tool keeps the behaviour it has in the grid.
+  // _selectTool — so each tool keeps the behavior it has in the grid.
   Widget _pinnedThirdTile() {
     final dsl = _pinnedThirdTool;
     final isAction = _actionTools.contains(dsl);
@@ -260,7 +260,7 @@ extension _EditorToolgrid on _EditorPageState {
 
   // A row-1 slider with a tappable label: tapping the "Name value" label opens a numeric
   // text-entry dialog so the exact value can be typed instead of dragged. The text path and
-  // the drag path share the same [onChanged], keeping behaviour identical.
+  // the drag path share the same [onChanged], keeping behavior identical.
   void _labeledSlider(List<Widget> children, String name, double value, double min, double max,
       ValueChanged<double> onChanged, {bool integer = true, int decimals = 1}) {
     final shown = integer ? value.round().toString() : value.toStringAsFixed(decimals);
@@ -281,7 +281,7 @@ extension _EditorToolgrid on _EditorPageState {
   }
 
   // Like _labeledSlider, but the slider position is LOGARITHMIC across [min,max], so the geometric
-  // midpoint (e.g. 1.0 for 0.2..5) sits at the centre and each half spans the same ratio. The label
+  // midpoint (e.g. 1.0 for 0.2..5) sits at the center and each half spans the same ratio. The label
   // taps to type an exact value. `onChanged` receives the real value (not the slider position).
   void _labeledLogSlider(List<Widget> children, String name, double value, double min, double max,
       ValueChanged<double> onChanged) {
@@ -307,7 +307,7 @@ extension _EditorToolgrid on _EditorPageState {
 
   // Like _labeledSlider, but the slider position follows a POWER curve across [min,max]
   // (value = min + (max−min)·t^γ with γ = _kPowSliderGamma): the low end of the range gets more
-  // track than linear without the full log treatment (for 1..400, the track centre sits at ~100
+  // track than linear without the full log treatment (for 1..400, the track center sits at ~100
   // vs linear's 200 and log's ~20). `onChanged` receives the real value (not the slider position).
   void _labeledPowSlider(List<Widget> children, String name, double value, double min, double max,
       ValueChanged<double> onChanged, {bool integer = true}) {

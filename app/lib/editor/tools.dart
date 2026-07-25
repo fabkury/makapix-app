@@ -1,4 +1,4 @@
-// Editor tool catalogue: the row-3 tool grid's DSL/icon/label definitions and the
+// Editor tool catalog: the row-3 tool grid's DSL/icon/label definitions and the
 // teach-as-you-go help text shown in the gesture-safe band. Pure data, no engine coupling.
 import 'package:flutter/material.dart';
 
@@ -92,30 +92,30 @@ String selectShapeEngineTool(String kind) => switch (kind) {
 // Succinct, teach-as-you-go help shown in the gesture-safe band at the bottom. Keep each to two
 // short lines: brief, professional, the core of the tool (not its nuances), no em dashes.
 const toolTips = <String, String>{
-  'Pencil': 'Drag to draw hard pixels in the primary colour.',
+  'Pencil': 'Drag to draw hard pixels in the primary color.',
   'Brush': 'Drag to paint, blending onto existing pixels.',
-  'Airbrush': 'Drag to spray the primary colour. Set size and intensity.',
+  'Airbrush': 'Drag to spray the primary color. Set size and intensity.',
   'Eraser': 'Drag to erase pixels to transparent.',
-  'Bucket': 'Tap an area to flood-fill. Threshold sets colour tolerance.',
+  'Bucket': 'Tap an area to flood-fill. Threshold sets color tolerance.',
   'Gradient': 'Drag to set a gradient, then Commit to fill.',
   'Line': 'Drag to set a line, then Commit to draw.',
   'Shape': 'Drag to set a shape (Ellipse / Triangle / Rectangle toggle), then Commit to draw.',
   'Ruler': 'Drag to measure a line. Angle mode shows the angle at the shared point.',
   'Dodge': 'Drag to lighten pixels. Set intensity.',
   'Burn': 'Drag to darken pixels. Set intensity.',
-  'Eyedropper': 'Tap a pixel to pick its colour as primary. Drag to keep picking as you move.',
+  'Eyedropper': 'Tap a pixel to pick its color as primary. Drag to keep picking as you move.',
   'Move': 'Drag to move the selected pixels, or the whole layer if nothing is selected.',
   'CopyPaste': 'Clipboard for the selection: Copy, Cut, Paste, Clear. Paste drops a movable draft you position, then Commit.',
   'SelectShape': 'Rect / Oval: drag to draft a selection, adjust the reticles, then Commit. Lasso: draw freely around pixels.',
-  'SelectCircle': 'Drag from the centre to select a circle.',
+  'SelectCircle': 'Drag from the center to select a circle.',
   'SelectPoly': 'Trace an outline to select an area.',
-  'SelectByColor': 'Tap to select similar colours. Threshold sets tolerance.',
+  'SelectByColor': 'Tap to select similar colors. Threshold sets tolerance.',
   'SelectLayer': 'Turn the layer\'s opaque pixels into a selection. Tap a mode to apply.',
   'HsvShift': 'Shift hue, saturation and value, then Commit.',
   'BrightnessContrast': 'Adjust brightness and contrast, then Commit.',
   'Flip': 'Mirror the layer horizontally or vertically. Acts on the selection if any.',
   'Rotate': 'Rotate the layer or the whole frame 90°, 180°, or by a free Angle. cleanEdge keeps slanted edges clean. Acts on the selection if any. (Whole canvas: ☰ menu.)',
   'Resize': 'Scale the layer or frame: ½×, 2×, or drag a free Scale. cleanEdge keeps upscaled edges clean. Acts on the selection if any.',
-  'Invert': 'Invert the image colours.',
+  'Invert': 'Invert the image colors.',
   'PlayPause': 'Play or pause the animation. Step to the previous or next frame, or jump to one.',
 };

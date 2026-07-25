@@ -40,7 +40,7 @@ class PendingPatch {
       );
 }
 
-/// What "Send to Player" should send, set by the page the user is browsing (the app's analogue
+/// What "Send to Player" should send, set by the page the user is browsing (the app's analog
 /// of the website's `selectedArtwork` / `currentChannel`).
 sealed class PlayerSendTarget {
   const PlayerSendTarget();

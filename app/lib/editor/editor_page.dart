@@ -122,7 +122,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   bool _round = true;
   bool _eyedropLayer = false; // Eyedropper source: false = composited frame (default), true = active layer's raw pixels
   bool _perfect = false; // Pencil pixel-perfect: drop L-corner doubles on a 1px stroke
-  int _threshold = 0; // Bucket / Select-by-Color colour tolerance: exact-match by default
+  int _threshold = 0; // Bucket / Select-by-Color color tolerance: exact-match by default
   bool _contiguous = true;
   bool _fillAllLayers = false; // Bucket: decide the fill region from the composited image
   bool _shapeFill = false; // shapes default to Outline (the engine is told on tool select)
@@ -143,11 +143,11 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // Whole-draft reposition (drag off the handles): the canvas point where the move began and the
   // two endpoints at that moment, so each move is a rigid translation from the originals.
   Offset? _shapeMoveAnchor, _shapeMoveOrigA, _shapeMoveOrigB;
-  // Shape-tool rotation (radians, around the box centre) + the rotate-handle drag origin.
+  // Shape-tool rotation (radians, around the box center) + the rotate-handle drag origin.
   double _shapeRot = 0;
   Offset? _rotOrigA, _rotOrigB;
   double _rotOrigAngle = 0;
-  // Triangle apex skew along its top edge, in [-1, 1] (0 = centred isosceles; ±1 = right triangle).
+  // Triangle apex skew along its top edge, in [-1, 1] (0 = centered isosceles; ±1 = right triangle).
   double _triTip = 0;
   // ---- Select Shape draft (Rectangle/Ellipse): an uncommitted selection the user drafts on the
   // canvas before it becomes a real selection. PURELY shell-side — the engine's selection is
@@ -183,7 +183,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   Offset? _rulerMoveAnchor, _rulerMoveOrigA, _rulerMoveOrigB, _rulerMoveOrigC;
   int _canvasW = 0, _canvasH = 0; // last-seen canvas size; a change auto-clears the stale ruler
   bool _radial = false;
-  bool _gradSmooth = false; // Gradient: ease each colour transition with the smoothstep curve
+  bool _gradSmooth = false; // Gradient: ease each color transition with the smoothstep curve
   // Airbrush spray density vs Dodge/Burn strength want different starting points: a 50 spray reads
   // as a gentle airbrush, while 25 keeps the first Dodge/Burn stroke subtle.
   int get _intensity => _intensityByTool[_tool] ?? (_tool == 'Airbrush' ? 50 : 25);
@@ -192,8 +192,8 @@ class _EditorPageState extends ConsumerState<EditorPage>
   set _spacing(int v) => _spacingByTool[_tool] = v;
   String _selMode = 'Replace';
   int _alphaCutoff = 0; // Sel Lyr: alpha cutoff (0..254); pixels with alpha > this (opaque) are "selected"
-  // Gradient: the first colour is ALWAYS the primary colour; the remaining (count-1) colours are
-  // independent (_gradExtra). _gradCount is the total number of evenly-spaced colours (2/3/4).
+  // Gradient: the first color is ALWAYS the primary color; the remaining (count-1) colors are
+  // independent (_gradExtra). _gradCount is the total number of evenly-spaced colors (2/3/4).
   int _gradCount = 2;
   final List<Color> _gradExtra = [
     const Color(0xFFFFFFFF),
@@ -210,13 +210,13 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // engine). Layer is the default.
   bool _flipFrame = false, _rotateFrame = false, _resizeFrame = false, _invertFrame = false, _hsvFrame = false, _bcFrame = false;
   // Rotate tool cleanEdge resampling (SetCleanEdge/SetCleanEdgeWidth): free-angle rotations
-  // sample the edge-aware cleanEdge reconstruction instead of nearest-neighbour. On by default
+  // sample the edge-aware cleanEdge reconstruction instead of nearest-neighbor. On by default
   // (must match the engine's ToolSettings default). Width 0–2 like the reference site's slider.
   bool _cleanEdge = true;
   double _cleanEdgeWidth = 1.0;
   // Resize tool cleanEdge (SetScaleCleanEdge/SetScaleCleanEdgeWidth) — INDEPENDENT from the
   // Rotate tool's pair above by design; defaults must match the engine's. Only applies when
-  // upscaling (both factors ≥ 1); downscaling is always nearest-neighbour engine-side.
+  // upscaling (both factors ≥ 1); downscaling is always nearest-neighbor engine-side.
   bool _resizeCleanEdge = true;
   double _resizeCleanEdgeWidth = 1.0;
   // Move tool layer-move edge modes (mutually exclusive; both off = Regular = pixels clip off):
@@ -242,7 +242,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   Offset? _lastTouch;
   double _accX = 0, _accY = 0;
   int _cursorX = 0, _cursorY = 0; // reticle position (canvas px), mirrored from the engine
-  int? _eraserX, _eraserY; // eraser footprint centre (canvas px) during an active erase drag
+  int? _eraserX, _eraserY; // eraser footprint center (canvas px) during an active erase drag
   // Canvas view transform: _zoom is relative to fit-to-screen (1.0 = fit), _pan is an extra
   // screen-pixel offset. Two fingers pan/zoom; the app-bar Fit button resets both.
   double _zoom = 1.0;
@@ -350,8 +350,8 @@ class _EditorPageState extends ConsumerState<EditorPage>
   Offset _rotDraftOff = Offset.zero; // whole-pixel drag-to-move offset (JSON "rotate_draft".ox/oy)
   Offset? _rotDraftMoveLast; // canvas pos while dragging the draft body (move mode)
   bool get _isRotateHandleActive => _tool == 'Rotate' && _hasRotateDraft;
-  // Handle geometry in the painter's cell-index space (sc() adds +0.5 to reach the cell centre, so
-  // the geometric bbox centre is bbox-centre − 0.5), shifted by the drag-to-move offset so the
+  // Handle geometry in the painter's cell-index space (sc() adds +0.5 to reach the cell center, so
+  // the geometric bbox center is bbox-center − 0.5), shifted by the drag-to-move offset so the
   // handle follows the moved draft. The handle's arm is half the bbox width, so at angle 0 the
   // reticle sits on the bbox's right border (see _rotDraftReticle).
   Offset get _rotDraftCenter => Offset(
@@ -372,7 +372,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   Offset _resizeDraftOff = Offset.zero; // whole-pixel drag-to-move offset (JSON "scale_draft".ox/oy)
   Offset? _resizeDraftMoveLast; // canvas pos while dragging the draft body (move mode)
   bool get _isResizeHandleActive => _tool == 'Resize' && _hasResizeDraft;
-  // Same cell-index-space convention as _rotDraftCenter (sc() adds +0.5 to reach cell centres),
+  // Same cell-index-space convention as _rotDraftCenter (sc() adds +0.5 to reach cell centers),
   // shifted by the drag-to-move offset so the outline + knob follow the moved draft.
   Offset get _resizeDraftCenter => Offset(
       _resizeDraftRect!.left + _resizeDraftRect!.width / 2 - 0.5 + _resizeDraftOff.dx,

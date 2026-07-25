@@ -239,13 +239,13 @@ void main() {
       final c = _container(fake);
       final ctrl = c.read(registrationControllerProvider.notifier);
 
-      var signalled = false;
-      await ctrl.submitDetails('a@b.co', 'abcd1234', onAlreadyExists: () => signalled = true);
+      var signaled = false;
+      await ctrl.submitDetails('a@b.co', 'abcd1234', onAlreadyExists: () => signaled = true);
 
       final st = c.read(registrationControllerProvider);
       expect(st.step, RegStep.details);
       expect(st.error, isNotNull);
-      expect(signalled, isTrue);
+      expect(signaled, isTrue);
       expect(fake.otpRequests, 0);
     });
 

@@ -21,7 +21,7 @@ class MpxSeg {
   const MpxSeg(this.fill, this.ops);
 }
 
-/// Renders an [MpxIcon] at [size]. Like [Icon], the colour defaults to the
+/// Renders an [MpxIcon] at [size]. Like [Icon], the color defaults to the
 /// ambient [IconTheme] so it works inside buttons, list tiles, etc.
 class MakapixIcon extends StatelessWidget {
   final MpxIcon icon;

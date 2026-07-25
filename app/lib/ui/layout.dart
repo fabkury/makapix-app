@@ -41,7 +41,7 @@ class CenteredContent extends StatelessWidget {
   }
 }
 
-/// The app-wide replacement for [showModalBottomSheet]: identical behaviour on phones, width-capped
+/// The app-wide replacement for [showModalBottomSheet]: identical behavior on phones, width-capped
 /// (and therefore centered) on wider viewports. Every sheet in the app goes through here.
 Future<T?> showAppSheet<T>({
   required BuildContext context,

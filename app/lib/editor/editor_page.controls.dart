@@ -44,7 +44,7 @@ extension _EditorControls on _EditorPageState {
       children.add(IconButton(iconSize: 20, tooltip: 'Nudge right', onPressed: () => _nudgeCursor(1, 0), icon: const Icon(Icons.chevron_right)));
       children.add(const SizedBox(width: 4));
       if (_tool == 'Eyedropper') {
-        // PICK (one-time colour pick at the reticle, off-finger). The eyedropper has no continuous
+        // PICK (one-time color pick at the reticle, off-finger). The eyedropper has no continuous
         // "Hold" mode — picking is a single operation.
         children.add(Padding(
           padding: const EdgeInsets.symmetric(horizontal: 3),
@@ -56,8 +56,8 @@ extension _EditorControls on _EditorPageState {
           ),
         ));
       } else if (_tool == 'SelectByColor') {
-        // SELECT (one-time colour selection at the reticle, off-finger). Applies the same mask a
-        // tap would — Threshold/Contiguous and the selection mode honoured. Like Pick, no "Hold":
+        // SELECT (one-time color selection at the reticle, off-finger). Applies the same mask a
+        // tap would — Threshold/Contiguous and the selection mode honored. Like Pick, no "Hold":
         // selecting is a single operation, one undo step per press.
         children.add(Padding(
           padding: const EdgeInsets.symmetric(horizontal: 3),
@@ -70,7 +70,7 @@ extension _EditorControls on _EditorPageState {
         ));
       } else if (_tool == 'Bucket') {
         // FILL (one flood-fill at the reticle, off-finger). The same fill a tap would do —
-        // Threshold/Contiguous/All-layers and the selection honoured. Like Pick, no "Hold":
+        // Threshold/Contiguous/All-layers and the selection honored. Like Pick, no "Hold":
         // filling is a single operation, one undo step per press.
         children.add(Padding(
           padding: const EdgeInsets.symmetric(horizontal: 3),
@@ -231,7 +231,7 @@ extension _EditorControls on _EditorPageState {
     }
     if (_tool == 'Pencil') {
       // Pixel-perfect: drop the redundant "corner double" pixels as a 1px stroke turns, keeping the
-      // line a clean 1px. Only meaningful at Size 1 (the engine no-ops it above), so grey it out
+      // line a clean 1px. Only meaningful at Size 1 (the engine no-ops it above), so gray it out
       // there while keeping it visible/discoverable.
       final perfectEnabled = _brushSize == 1;
       children.add(Padding(
@@ -332,7 +332,7 @@ extension _EditorControls on _EditorPageState {
         ),
       ));
       if (_lockRatio) {
-        // Logarithmic 0.2..5 with 1.0 at the centre (each half spans an equal ratio range).
+        // Logarithmic 0.2..5 with 1.0 at the center (each half spans an equal ratio range).
         _labeledLogSlider(children, 'Ratio', _ratio, 0.2, 5.0, (v) {
           setState(() => _ratio = v);
           _reapplyRatio();
@@ -340,13 +340,13 @@ extension _EditorControls on _EditorPageState {
       }
     }
     if (_tool == 'Gradient') {
-      // Changing the gradient (type, colour count or any colour) updates a pending draft instantly.
+      // Changing the gradient (type, color count or any color) updates a pending draft instantly.
       children.add(_toggle(['Linear', 'Radial'], _radial ? 1 : 0, (i) {
         setState(() => _radial = i == 1);
         _send('SetGradientType(${_radial ? 'Radial' : 'Linear'})');
         if (_hasShapeDraft) _redraw();
       }));
-      // Smoothstep: ease each colour transition (S-curve) instead of a straight linear ramp.
+      // Smoothstep: ease each color transition (S-curve) instead of a straight linear ramp.
       children.add(Padding(
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: FilterChip(
@@ -360,13 +360,13 @@ extension _EditorControls on _EditorPageState {
           },
         ),
       ));
-      // Number of evenly-spaced colours in the gradient (2 / 3 / 4); the swatch count follows.
+      // Number of evenly-spaced colors in the gradient (2 / 3 / 4); the swatch count follows.
       children.add(_toggle(['2', '3', '4'], _gradCount - 2, (i) {
         setState(() => _gradCount = i + 2);
         _sendGradientStops();
       }));
-      // First colour = the primary (same as the row-2 primary swatch); tapping it changes the
-      // primary colour. The rest are independent gradient colours.
+      // First color = the primary (same as the row-2 primary swatch); tapping it changes the
+      // primary color. The rest are independent gradient colors.
       children.add(_swatchButton(_primary, () => _pickColor(initial: _primary, onPick: _setPrimary)));
       for (var i = 0; i < _gradCount - 1; i++) {
         final idx = i;
@@ -437,7 +437,7 @@ extension _EditorControls on _EditorPageState {
         ),
       ));
       if (_selLockRatio) {
-        // Logarithmic 0.2..5 with 1.0 at the centre (each half spans an equal ratio range).
+        // Logarithmic 0.2..5 with 1.0 at the center (each half spans an equal ratio range).
         _labeledLogSlider(children, 'Ratio', _selRatio, 0.2, 5.0, (v) {
           setState(() => _selRatio = v);
           _reapplySelRatio();
@@ -462,7 +462,7 @@ extension _EditorControls on _EditorPageState {
         _redraw();
       }
 
-      // The scope lives in the engine too (SetHsvScope) so the live preview honours it.
+      // The scope lives in the engine too (SetHsvScope) so the live preview honors it.
       children.add(_toggle(const ['Layer', 'Frame'], _hsvFrame ? 1 : 0, (i) {
         setState(() => _hsvFrame = i == 1);
         _send('SetHsvScope(${_hsvFrame ? 'Frame' : 'Layer'})');
@@ -618,7 +618,7 @@ extension _EditorControls on _EditorPageState {
     if (_tool == 'Invert') {
       label(_invertFrame ? 'Invert frame' : (_outlineEdges.isNotEmpty ? 'Invert selection' : 'Invert layer'));
       children.add(_toggle(const ['Layer', 'Frame'], _invertFrame ? 1 : 0, (i) => setState(() => _invertFrame = i == 1)));
-      children.add(_miniBtn('Invert colours', () => _act(_invertFrame ? 'InvertFrame()' : 'Invert()')));
+      children.add(_miniBtn('Invert colors', () => _act(_invertFrame ? 'InvertFrame()' : 'Invert()')));
     }
     if (_tool == 'PlayPause') {
       final n = engine.frameCount;
@@ -666,7 +666,7 @@ extension _EditorControls on _EditorPageState {
     final vertical = axis == Axis.vertical;
     final s = _chromeScale;
     final pairs = (_palette.length + 1) ~/ 2;
-    // Picker-style split: the colour forced opaque on one half, its real alpha over the
+    // Picker-style split: the color forced opaque on one half, its real alpha over the
     // transparency checker on the other. The swatch follows the row's orientation — landscape
     // (vertical lane): 60×38 wide, opaque left / composited right (60 fits the 72-wide lane
     // with 6-px margins); portrait (horizontal strip): 38×60 tall, opaque top / composited
@@ -689,7 +689,7 @@ extension _EditorControls on _EditorPageState {
         ]),
       ),
     );
-    // Long-press the empty area near the swatches → "Add current colour" (swatches keep
+    // Long-press the empty area near the swatches → "Add current color" (swatches keep
     // their own long-press menu, which wins as the deeper gesture).
     final strip = GestureDetector(
       behavior: HitTestBehavior.translucent,
@@ -713,7 +713,7 @@ extension _EditorControls on _EditorPageState {
     return Container(
       color: const Color(0xFF1C1F22),
       child: SizedBox(
-        // Taller row-2 so the 20%-larger swatches have room — bigger, easier-to-tap colour targets.
+        // Taller row-2 so the 20%-larger swatches have room — bigger, easier-to-tap color targets.
         height: vertical ? null : 72 * s,
         width: vertical ? 72 * s : null,
         child: Flex(direction: vertical ? Axis.vertical : Axis.horizontal, children: [
@@ -735,7 +735,7 @@ extension _EditorControls on _EditorPageState {
       onLongPress: () => _paletteSwatchMenu(i, c, vertical: vertical),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-        // diagonal: translucent palette colours read as a dual indicator (opaque top-left
+        // diagonal: translucent palette colors read as a dual indicator (opaque top-left
         // triangle / composited bottom-right); opaque ones stay a plain fill.
         child: AlphaSwatch(color: c, width: 31 * s, height: 29 * s, diagonal: true, borderRadius: 3, borderColor: Colors.black26),
       ),
@@ -747,7 +747,7 @@ extension _EditorControls on _EditorPageState {
     return swatch;
   }
 
-  // Long-pressing the empty swatch area surfaces the single "Add current colour" option (same action
+  // Long-pressing the empty swatch area surfaces the single "Add current color" option (same action
   // as the palette controls menu).
   void _addColorMenu() {
     showAppSheet(
@@ -756,7 +756,7 @@ extension _EditorControls on _EditorPageState {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ListTile(
             leading: const Icon(Icons.add_circle_outline),
-            title: const Text('Add current colour'),
+            title: const Text('Add current color'),
             onTap: () {
               Navigator.pop(ctx);
               _act('AddPaletteColor(${_hex(_primary)})');
@@ -768,7 +768,7 @@ extension _EditorControls on _EditorPageState {
   }
 
   // The palette page owns palette-level management (switch/new/rename/duplicate/reorder/
-  // import/export/clear/delete + presets); the row-2 strip keeps colour-level editing.
+  // import/export/clear/delete + presets); the row-2 strip keeps color-level editing.
   Future<void> _openPalettePage() async {
     await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => PalettePage(
@@ -926,7 +926,7 @@ extension _EditorControls on _EditorPageState {
         ],
       ),
     );
-    if (raw == null || !mounted) return false; // cancelled
+    if (raw == null || !mounted) return false; // canceled
     // Same DSL/JSON-safety scrub as palette names; an empty fallback keeps "" = clear.
     final name = sanitizePaletteName(raw, fallback: '');
     _act('NamePaletteColor($i, $name)');

@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../widgets/painters.dart';
 
-/// The traditional square+hue colour picker: a Saturation×Value square with a hue ramp beside it,
-/// an alpha slider, and a hex field. Dragging on the square or ramp updates the colour live.
+/// The traditional square+hue color picker: a Saturation×Value square with a hue ramp beside it,
+/// an alpha slider, and a hex field. Dragging on the square or ramp updates the color live.
 class ColorPickerDialog extends StatefulWidget {
   final Color initial;
   const ColorPickerDialog({super.key, required this.initial});
@@ -67,7 +67,7 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
     return (a.round() < 255 ? '$base${two(a.round())}' : base).toUpperCase();
   }
 
-  // Push the current colour into every text field. `skip*` leaves the group the user is actively
+  // Push the current color into every text field. `skip*` leaves the group the user is actively
   // typing in untouched, so the caret doesn't jump while editing it.
   void _syncFromColor({bool skipRgb = false, bool skipHsv = false, bool skipAlpha = false}) {
     _hexCtrl.text = _hex;
@@ -93,7 +93,7 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
     _syncFromColor(skipAlpha: true);
   }
 
-  // Apply the R/G/B fields (0–255 each) as the colour. A blank/invalid field keeps its channel.
+  // Apply the R/G/B fields (0–255 each) as the color. A blank/invalid field keeps its channel.
   void _applyRgb() {
     final cur = _color;
     int chan(TextEditingController ctrl, double curChannel) =>
@@ -116,7 +116,7 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
     _syncFromColor(skipRgb: true);
   }
 
-  // Apply the H (0–360) / S (0–100) / V (0–100) fields as the colour.
+  // Apply the H (0–360) / S (0–100) / V (0–100) fields as the color.
   void _applyHsv() {
     final hh = double.tryParse(_hCtrl.text.trim());
     final ss = double.tryParse(_sCtrl.text.trim());
@@ -289,7 +289,7 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
                 ],
               ),
               const SizedBox(height: 8),
-              // Type RGB (0–255) or HSV (H 0–360, S/V 0–100) directly; updates the colour live.
+              // Type RGB (0–255) or HSV (H 0–360, S/V 0–100) directly; updates the color live.
               Row(
                 children: [
                   const SizedBox(

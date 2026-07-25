@@ -59,8 +59,8 @@ void main() {
     await pumpPalettePage(t, host);
     expect(find.text('Warm'), findsOneWidget);
     expect(find.text('Blank'), findsOneWidget);
-    expect(find.text('2 colours'), findsOneWidget);
-    expect(find.text('0 colours'), findsOneWidget);
+    expect(find.text('2 colors'), findsOneWidget);
+    expect(find.text('0 colors'), findsOneWidget);
     expect(find.byIcon(Icons.check_circle), findsOneWidget); // only the active card
     expect(find.text('empty'), findsOneWidget);
   });
@@ -71,7 +71,7 @@ void main() {
     ]);
     await pumpPalettePage(t, host);
     expect(find.text('…'), findsOneWidget);
-    expect(find.text('200 colours'), findsOneWidget);
+    expect(find.text('200 colors'), findsOneWidget);
   });
 
   testWidgets('tapping a palette loads it and returns to the editor', (t) async {
@@ -174,7 +174,7 @@ void main() {
     expect(find.byType(PalettePage), findsNothing); // popped back
   });
 
-  testWidgets('from-artwork over the colour limit shows the toast and sends nothing', (t) async {
+  testWidgets('from-artwork over the color limit shows the toast and sends nothing', (t) async {
     final host = FakePaletteHost(
       [const PaletteInfo('Mine', [_red])],
       usedColors: '{"over_limit":true}',
@@ -182,13 +182,13 @@ void main() {
     await pumpPalettePage(t, host);
     await t.tap(find.byTooltip('Add palette'));
     await t.pumpAndSettle();
-    await t.tap(find.widgetWithText(ListTile, 'From artwork colours'));
+    await t.tap(find.widgetWithText(ListTile, 'From artwork colors'));
     await t.pumpAndSettle();
     expect(host.scripts, isEmpty);
-    expect(find.textContaining('more than 256 colours'), findsOneWidget);
+    expect(find.textContaining('more than 256 colors'), findsOneWidget);
   });
 
-  testWidgets('from-artwork with colours creates the Artwork colours palette', (t) async {
+  testWidgets('from-artwork with colors creates the Artwork colors palette', (t) async {
     final host = FakePaletteHost(
       [const PaletteInfo('Mine', [_red])],
       usedColors: '{"colors":["#FF0000FF","#00FF00FF"]}',
@@ -196,14 +196,14 @@ void main() {
     await pumpPalettePage(t, host);
     await t.tap(find.byTooltip('Add palette'));
     await t.pumpAndSettle();
-    await t.tap(find.widgetWithText(ListTile, 'From artwork colours'));
+    await t.tap(find.widgetWithText(ListTile, 'From artwork colors'));
     await t.pumpAndSettle();
     expect(host.scripts, [
-      'NewPalette(Artwork colours)\nAddPaletteColor(#FF0000FF)\nAddPaletteColor(#00FF00FF)\nSortPalette()',
+      'NewPalette(Artwork colors)\nAddPaletteColor(#FF0000FF)\nAddPaletteColor(#00FF00FF)\nSortPalette()',
     ]);
   });
 
-  testWidgets('sort reconfirms; cancel sends nothing, confirm sends SortPaletteAt; single-colour disabled',
+  testWidgets('sort reconfirms; cancel sends nothing, confirm sends SortPaletteAt; single-color disabled',
       (t) async {
     final host = FakePaletteHost([
       const PaletteInfo('One', [_red]),

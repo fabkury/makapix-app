@@ -30,7 +30,7 @@ import 'widgets/reactions_bar.dart';
 import 'widgets/send_target_binder.dart';
 import 'package:makapix_club/share/image_share.dart';
 
-/// The grid an artwork detail was opened from, so the page can swipe to its neighbours and
+/// The grid an artwork detail was opened from, so the page can swipe to its neighbors and
 /// "inherit" its position. Built with [ArtworkFeedSource.fixed] for a flat list (search) or
 /// [pagedArtworkSource] for a cursor-paged feed (home / hashtag / gallery — auto-loads more).
 class ArtworkFeedSource {
@@ -269,7 +269,7 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
     final showModMarker = post.modHashtags.isNotEmpty && (canModerate || _isOwner(post));
     return [
       Wrap(spacing: 10, runSpacing: 6, children: [
-        // Borderless, vivid-coloured text — reads as a tappable link, not a badge.
+        // Borderless, vivid-colored text — reads as a tappable link, not a badge.
         for (final tag in post.hashtags)
           GestureDetector(
             onTap: () => Navigator.push(
@@ -652,7 +652,7 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
     final res = await FilePicker.pickFiles(
         type: FileType.custom, allowedExtensions: ['mkpx'], withData: true);
     final bytes = res?.files.single.bytes;
-    if (bytes == null) return; // cancelled
+    if (bytes == null) return; // canceled
     if (!MkpxApi.looksLikeMkpx(bytes)) {
       messenger.showSnackBar(const SnackBar(content: Text('Not a valid .mkpx file.')));
       return;

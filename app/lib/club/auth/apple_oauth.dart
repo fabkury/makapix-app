@@ -88,7 +88,7 @@ class AppleOAuth {
       );
     } on SignInWithAppleAuthorizationException catch (e) {
       if (e.code == AuthorizationErrorCode.canceled) {
-        throw ClubError(code: 'apple_cancelled', message: 'Apple sign-in was cancelled.');
+        throw ClubError(code: 'apple_canceled', message: 'Apple sign-in was canceled.');
       }
       throw ClubError(
         code: 'apple_failed',

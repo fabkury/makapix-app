@@ -24,7 +24,7 @@ class ProfileApi {
         return ((resp.data as Map?)?['follower_count'] as num?)?.toInt() ?? -1;
       });
 
-  /// Posts the user reacted to (favourites). Tolerates either a Page or a bare
+  /// Posts the user reacted to (favorites). Tolerates either a Page or a bare
   /// `{items:[...]}` response; a server that ignores `cursor` simply yields a
   /// single page (no `next_cursor` → the caller's paging ends).
   Future<Page<Post>> reactedPosts(String sqid, {String? cursor}) => client.guard(() async {

@@ -314,7 +314,7 @@ class Engine {
     return ok;
   }
 
-  // `scale` on every export is an integer nearest-neighbour upscale (1..=32, clamped engine-side).
+  // `scale` on every export is an integer nearest-neighbor upscale (1..=32, clamped engine-side).
   Uint8List exportPng(int frame, {int scale = 1}) {
     final lenPtr = malloc<Uint64>();
     final p = _exportPng(_s, frame, scale, lenPtr);

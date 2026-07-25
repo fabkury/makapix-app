@@ -1,5 +1,5 @@
 // The transparency checker is drawn by CanvasPainter in SCREEN space at a fixed cell size —
-// it must NOT scale with the zoom (that contrast is what distinguishes painted grey checkers
+// it must NOT scale with the zoom (that contrast is what distinguishes painted gray checkers
 // from true transparency). These tests rasterize the painter and inspect actual pixels.
 import 'dart:async';
 import 'dart:typed_data';
@@ -67,7 +67,7 @@ void main() {
     final src = sourceImage(4, 4, red: const Rect.fromLTWH(0, 0, 1, 1));
     final bytes = await rasterize(src, 10, Offset.zero, 40, 40);
     expect(pixel(bytes, 40, 5, 5), const Color(0xFFFF0000)); // inside the red canvas pixel
-    expect(pixel(bytes, 40, 15, 5).a, 1.0); // transparent neighbour shows opaque checker
+    expect(pixel(bytes, 40, 15, 5).a, 1.0); // transparent neighbor shows opaque checker
     expect(pixel(bytes, 40, 15, 5), isNot(const Color(0xFFFF0000)));
   });
 
@@ -107,7 +107,7 @@ void main() {
 
   test('checker pattern is fixed to the viewport (stays still under pan and zoom)', () async {
     final src = sourceImage(4, 4);
-    // The same screen point shows the same checker colour while the artwork pans/zooms under
+    // The same screen point shows the same checker color while the artwork pans/zooms under
     // it — a pattern anchored to the image origin would dart around during a pinch.
     final a = await rasterize(src, 10, Offset.zero, 40, 40);
     final b = await rasterize(src, 13, const Offset(3, 7), 40, 40);

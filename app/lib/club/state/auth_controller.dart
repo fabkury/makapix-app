@@ -187,8 +187,8 @@ class AuthController extends StateNotifier<AuthState> {
       );
       await _loadMe();
     } on ClubError catch (e) {
-      // A user-cancelled sheet returns to the form quietly rather than as an error.
-      if (e.code == 'apple_cancelled') {
+      // A user-canceled sheet returns to the form quietly rather than as an error.
+      if (e.code == 'apple_canceled') {
         state = const AuthState.signedOut();
       } else {
         state = AuthState.failure(e.message, code: e.code);

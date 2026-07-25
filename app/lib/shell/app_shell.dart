@@ -33,7 +33,7 @@ class AppShell extends ConsumerStatefulWidget {
   /// shell without the editor's FFI engine.
   final Widget clubPillar;
 
-  /// The editor pillar (reachable without login via the centre ⊕ Create button).
+  /// The editor pillar (reachable without login via the center ⊕ Create button).
   final Widget editorPillar;
 
   @override

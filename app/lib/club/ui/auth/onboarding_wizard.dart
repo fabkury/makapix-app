@@ -257,7 +257,7 @@ class _OnboardingWizardState extends ConsumerState<OnboardingWizard> {
 
   List<Widget> _profileStep() => [
         _title('Add a touch (optional)',
-            'A photo and a short bio help people recognise you. You can skip and do this later.'),
+            'A photo and a short bio help people recognize you. You can skip and do this later.'),
         Center(
           child: GestureDetector(
             onTap: _pickAvatar,

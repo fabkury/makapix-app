@@ -1,5 +1,5 @@
 // The Select tool's three modes (Rect / Oval / Lasso): the mode → engine ToolKind mapping, and the
-// catalogue after Lasso's demotion from a standalone row-3 tool to a Select-tool mode.
+// catalog after Lasso's demotion from a standalone row-3 tool to a Select-tool mode.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:makapix_club/editor/tools.dart';
 
@@ -12,7 +12,7 @@ void main() {
     });
   });
 
-  group('tool catalogue', () {
+  group('tool catalog', () {
     test('SelectFree is no longer a standalone tool; SelectShape hosts all three modes', () {
       expect(tools.any((t) => t.dsl == 'SelectFree'), isFalse);
       expect(tools.any((t) => t.dsl == 'SelectShape'), isTrue);

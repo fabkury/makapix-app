@@ -147,7 +147,7 @@ extension _EditorPersistence on _EditorPageState {
   // Interactive release, for every path that replaces the canvas (Club edit, Open, gallery,
   // New). A blank canvas has nothing to protect and releases silently (deleted, so empty
   // Untitled entries never accumulate); otherwise the user chooses: keep the current drawing
-  // in My Drawings, discard it (re-confirmed), or cancel. Returns false when cancelled — the
+  // in My Drawings, discard it (re-confirmed), or cancel. Returns false when canceled — the
   // caller must abort.
   Future<bool> _releaseOutgoingDrawingInteractive(String incoming) async {
     if (!_engineReady || !mounted) return false;
@@ -200,7 +200,7 @@ extension _EditorPersistence on _EditorPageState {
           ],
         ),
       );
-      if (sure != true) return false; // declined → the whole load is cancelled
+      if (sure != true) return false; // declined → the whole load is canceled
     }
     await _releaseOutgoing(discard: choice == _OutgoingChoice.discard);
     return true;

@@ -9,5 +9,5 @@ final pendingWelcomePasswordProvider = StateProvider<String?>((_) => null);
 
 /// Session-local "skip the welcome wizard for now" flag. A safety hatch so a
 /// `complete-welcome` outage can never hard-lock a signed-in user out of the app:
-/// the `needs_welcome` gate also honours this. Resets each app launch.
+/// the `needs_welcome` gate also honors this. Resets each app launch.
 final welcomeDismissedProvider = StateProvider<bool>((_) => false);

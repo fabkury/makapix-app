@@ -406,7 +406,7 @@ class _BdrTileState extends ConsumerState<_BdrTile> {
         allowedExtensions: ['zip'],
         bytes: Uint8List.fromList(bytes),
       );
-      if (path == null) return; // cancelled
+      if (path == null) return; // canceled
       // Desktop returns a path without writing; mobile already wrote via the picker.
       if (!Platform.isAndroid && !Platform.isIOS) {
         await File(path).writeAsBytes(bytes);

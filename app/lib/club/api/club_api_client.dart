@@ -9,7 +9,7 @@ import '../models/club_error.dart';
 /// 401, performs a single-flight refresh (via [ClubSession]) and retries the
 /// original request once.
 ///
-/// Two clients share that behaviour: [dio] (the versioned `/api/v1` base, used by
+/// Two clients share that behavior: [dio] (the versioned `/api/v1` base, used by
 /// almost everything) and [dioRoot] (the unversioned `/api` base, used by the Post
 /// Management Dashboard `/pmd/*`, which the server mounts outside `/v1`).
 class ClubApiClient {
