@@ -8,7 +8,7 @@ implementing the app-side of:
 - **`SPEC-CLUB.md` §19** — Artist dashboard, **aggregate** screen (totals + breakdowns + per-post table).
 - **`SPEC-CLUB.md` §21** — Settings → **monitored hashtags** (content-filter opt-in).
 
-All work is Dart-only in `app/lib/club/`. The Rust engine is untouched. Reference for the source behaviour is
+All work is Dart-only in `app/lib/club/`. The Rust engine is untouched. Reference for the source behavior is
 the read-only website snapshot in `reference/makapix-club/` (FastAPI `api/` + Next.js `web/`).
 
 ## Decisions (locked with the user)

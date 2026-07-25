@@ -120,7 +120,7 @@ A new part file `app/lib/editor/editor_page.persistence.dart` (keep `editor_page
   create a new id; Open selects an existing id), then load — so each is its own file and the prior
   WIP stays in the library.
 
-### Behaviour changes to flag
+### Behavior changes to flag
 - **`EditorSession.docSnapshot` (static in-memory) is removed**; pillar-switch restore now loads
   the current drawing from disk (authoritative, and crash-safe).
 - **New** no longer just resets the in-memory doc — it creates a new library drawing and switches to

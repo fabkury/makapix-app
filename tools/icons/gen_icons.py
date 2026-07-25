@@ -242,7 +242,7 @@ def i_copy(g):
 
 
 def i_select(g):
-    # marching-ants rect: 2px corner Ls + one 4px dash per edge centre
+    # marching-ants rect: 2px corner Ls + one 4px dash per edge center
     for cx, cy, dx, dy in [(2, 3, 1, 1), (13, 3, -1, 1),
                            (2, 12, 1, -1), (13, 12, -1, -1)]:
         g.px(cx, cy); g.px(cx + dx, cy); g.px(cx, cy + dy)
@@ -469,7 +469,7 @@ V["lasso"] = [
     '''<ellipse cx="12.2" cy="9.3" rx="7.4" ry="4.9"/><circle cx="7.7" cy="13.4" r="1.5" fill="currentColor" stroke="none"/><path d="M7.2 14.9c-2.3.9-3 2.6-1.6 3.7 1.2.9 2.8.3 2.6-1-.2-1.2-1.9-1.3-3.4-.7"/>''',
 ]
 V["hsv"] = [
-    # colour wheel: circle + 6 segment ticks + hub
+    # color wheel: circle + 6 segment ticks + hub
     '''<circle cx="12" cy="12" r="7.6"/><path d="M12 8.8V4.4M14.8 10.4l3.8-2.2M14.8 13.6l3.8 2.2M12 15.2v4.4M9.2 13.6l-3.8 2.2M9.2 10.4 5.4 8.2"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/>''',
     # three sliders with knobs (the HSV panel itself)
     ('<path d="M4.5 6.2h15M4.5 12h15M4.5 17.8h15"/>'
@@ -649,8 +649,8 @@ def build_html(px_svgs, sm_svgs, mat_svgs):
 <h1>Makapix — row-3 tool icons, two custom options</h1>
 <p class="note">All 28 row-3 symbols (26 tools + pinned Undo/Redo). <b>Option A</b> is a
 16×16 hard-pixel grid (drawn like pixel art, dithers for gradients/ghosts). <b>Option B</b>
-is a rounded 2px-stroke outline set on a 24×24 grid. Both are single-colour and inherit
-the theme colour. The toolbar strips below render at <b>18 px — the exact size row 3
+is a rounded 2px-stroke outline set on a 24×24 grid. Both are single-color and inherit
+the theme color. The toolbar strips below render at <b>18 px — the exact size row 3
 uses today</b>; the table shows each tool at 18/32/48 px on light and dark.</p>
 {bars}
 <div class="wrap"><table>

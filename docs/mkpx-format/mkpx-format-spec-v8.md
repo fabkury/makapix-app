@@ -166,7 +166,7 @@ repeat palette_count:
     colors       : [r,g,b,a] × color_count   (straight RGBA, 4 bytes each)
 ```
 
-If `palette_count == 0` the loader injects the built-in default 16-colour ramp (as the engine
+If `palette_count == 0` the loader injects the built-in default 16-color ramp (as the engine
 does today). `active_palette` (from `MHDR`) is clamped to `palette_count-1`.
 
 ### 3.3 `TILS` — the deduplicated tile pool
@@ -209,13 +209,13 @@ scan, until `Σ run == 1024`. `run ∈ 1..=1024`. Reader: `run == 0` or `Σ run 
 `Corrupt("bad RLE run")`. Best for flat/low-frequency tiles; can expand on noise, which is why
 the chooser exists.
 
-**`method = 0x02` — `INDEXED` (colour-count coherence).**
-For tiles using ≤ 256 distinct colours (the overwhelming pixel-art case, and the case where
-`RLE` loses to dithering). Subsumes "solid tile" as the 1-colour degenerate.
+**`method = 0x02` — `INDEXED` (color-count coherence).**
+For tiles using ≤ 256 distinct colors (the overwhelming pixel-art case, and the case where
+`RLE` loses to dithering). Subsumes "solid tile" as the 1-color degenerate.
 
 ```
 count_minus_1 : u8                     (ncolors = count_minus_1 + 1, so 1..=256)
-table         : [r,g,b,a] × ncolors    (the tile's distinct colours, in first-appearance
+table         : [r,g,b,a] × ncolors    (the tile's distinct colors, in first-appearance
                                          order under the row-major scan — deterministic)
 indices       : ceil(1024 * bpp / 8) bytes
 ```
@@ -227,7 +227,7 @@ in the high bits; the final byte is zero-padded in its low bits. Reader validate
 the derived `bpp`, `table` length, `indices` length against `entry_len`/remaining, and that
 every unpacked index is `< ncolors` → else `Corrupt`.
 
-*Why indexed wins where RLE loses:* a 2-colour dithered/checkerboard tile encodes to `1` (count)
+*Why indexed wins where RLE loses:* a 2-color dithered/checkerboard tile encodes to `1` (count)
 `+ 8` (table) `+ 128` (1 bpp × 1024) `= 137` bytes, versus `RLE`'s worst-case `6144` and `RAW`'s
 `4096`.
 
@@ -469,7 +469,7 @@ what the input can supply, a hostile file is rejected in bounded time and memory
 Chunk overhead = 12 bytes each (`length` 4 + `type` 4 + `crc` 4); signature = 8. Figures are
 rounded; the point is the ratio and *where* the bytes go.
 
-### A. Empty 256×256 document (1 frame, 1 empty layer, default 16-colour palette)
+### A. Empty 256×256 document (1 frame, 1 empty layer, default 16-color palette)
 
 Storage `768×768` → `24×24 = 576` tiles, all absent.
 
@@ -477,7 +477,7 @@ Storage `768×768` → `24×24 = 576` tiles, all absent.
 |---|---|---|
 | Signature | 8 | |
 | `MHDR` | 29 | 17 data + 12 |
-| `PLTS` | 86 | name "Default" + 16×4 colours |
+| `PLTS` | 86 | name "Default" + 16×4 colors |
 | `TILS` | 13 | `pool_count = 0` |
 | `FRMS` | 38 | 1 frame, 1 layer, `present_count = 0` |
 | `hash` | 28 | |
@@ -490,7 +490,7 @@ v4, ~1 byte in v8).
 
 ### B. 64-frame animation, 128×128, one detailed **static** background layer (a "hold")
 
-Storage `384×384` → `12×12` tiles; canvas occupies the centre `4×4 = 16` tiles. The background
+Storage `384×384` → `12×12` tiles; canvas occupies the center `4×4 = 16` tiles. The background
 is identical in every frame.
 
 - **v8:** the background's 16 tiles dedup to **16 pool entries**, referenced 64×. `TILS` holds
@@ -501,9 +501,9 @@ is identical in every frame.
 - **v8 is ~29× smaller** here — the dedup dividend. (Add a changing foreground layer and the
   ratio moderates toward the foreground's own entropy, but the static portion stays 1×.)
 
-### C. One noisy 128×128 frame, fully dithered (2-colour checkerboard — RLE's worst case)
+### C. One noisy 128×128 frame, fully dithered (2-color checkerboard — RLE's worst case)
 
-16 canvas tiles, each a 2-colour checkerboard.
+16 canvas tiles, each a 2-color checkerboard.
 
 - **v8 `INDEXED` (1 bpp):** per tile `1 + 8 + 128 ≈ 137` B → 16 × 137 ≈ **2.2 KiB** for the pool
   (+ tiny grid). The chooser rejects `RLE` (would be ~6 KiB/tile) and `RAW` (4 KiB/tile).

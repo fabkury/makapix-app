@@ -9,7 +9,7 @@
 > maps directly onto types that already exist in the engine; no new engine dependencies are
 > introduced.
 >
-> **Charter constraints honoured.** Pure-Rust, **dependency-free** codec; `#![forbid(unsafe_code)]`
+> **Charter constraints honored.** Pure-Rust, **dependency-free** codec; `#![forbid(unsafe_code)]`
 > compatible; **little-endian, integer-exact, no floats** in the persisted pixel path; a
 > **panic-free** loader that rejects hostile input with typed errors and bounded allocations;
 > deterministic, **byte-identical output for identical documents** so goldens never fork per platform.
@@ -18,7 +18,7 @@
 
 ## 1. Design goals and priorities
 
-v7 is optimised, in strict priority order, for:
+v7 is optimized, in strict priority order, for:
 
 1. **Faithful, lossless capture** of the engine's document model — canvas, gutter/storage, frames,
    layers, palettes, animation, and the live selection — with a `load(save(doc))` semantic
@@ -104,7 +104,7 @@ Criticality is encoded in **the case of the type's first letter** (as in PNG): *
 letter ⇒ *critical*; lowercase first letter ⇒ *ancillary*.** The remaining three letters' case is
 free (they are chosen here for readability).
 
-A reader that encounters a chunk type it does not recognise:
+A reader that encounters a chunk type it does not recognize:
 
 * **Ancillary** (first letter lowercase): **skip it** (use `length`) and continue. This is the
   mechanism by which a future minor version can add optional data (new metadata forms, extra
@@ -114,7 +114,7 @@ A reader that encounters a chunk type it does not recognise:
   rather than silently produce a wrong document.
 
 This makes "ignore unknown chunks" a *real, enforced* property — not the incidental "reader happens
-to stop early" behaviour of the previous format.
+to stop early" behavior of the previous format.
 
 ### 2.5 Ordering rules (canonical writer, tolerant reader)
 
@@ -215,8 +215,8 @@ repeat palette_count:
 ```
 
 Palettes are stored in document order; `active_palette` (in `HEAD`) indexes into them. If
-`palette_count == 0`, the loader injects the built-in default 16-colour ramp
-(`Palette::default_palette`) and clamps `active_palette` to 0 — matching current behaviour so a
+`palette_count == 0`, the loader injects the built-in default 16-color ramp
+(`Palette::default_palette`) and clamps `active_palette` to 0 — matching current behavior so a
 palette-less file still opens usefully.
 
 **Primitive: `uvarint`** (used throughout). Unsigned LEB128, little-endian 7-bit groups, high bit =
@@ -242,7 +242,7 @@ how many layers, frames, or grid positions use it.
 
 The engine's `RgbaBuffer` is a grid of 32×32 tiles; identical tiles are `Arc`-shared in RAM
 (copy-on-write). A static background repeated across 1024 frames is *one* `Arc<Tile>` in memory. The
-prior format serialised every frame's every tile in full, so that one shared tile hit the disk up to
+prior format serialized every frame's every tile in full, so that one shared tile hit the disk up to
 1024 times. v7 restores the sharing: tiles live in a content-addressed pool and are referenced by
 index. This also deduplicates a tile that appears at *different grid positions* (a repeated motif),
 which even the in-RAM COW does not, because COW is per-buffer-slot.
@@ -279,7 +279,7 @@ A tile is 1024 pixels in **row-major local order** (y·32 + x), each a straight 
 than `1 + 4096` bytes, so encoding **never expands** (unlike the prior RLE, which could bloat noisy
 tiles to 1.5×).
 
-**`0x01` SOLID** — 4 bytes `[r,g,b,a]`. The entire tile is this one colour. Covers flat fills and,
+**`0x01` SOLID** — 4 bytes `[r,g,b,a]`. The entire tile is this one color. Covers flat fills and,
 notably, a *materialised-but-transparent* tile (`SOLID 00 00 00 00`), so presence is preserved
 losslessly (§6.3).
 
@@ -294,22 +294,22 @@ short runs cheaper than the prior fixed `u16`.
 **`0x03` INDEXED** — a per-tile local palette plus bit-packed indices. This is the pixel-art
 workhorse and the single biggest size win on dithered/limited-palette tiles, exactly where RLE lost.
 ```
-ncolors : u8                        // 2..=255 literal; 0 encodes 256. (1 colour would be SOLID.)
-palette : { r,g,b,a } × ncolors     // distinct colours in first-appearance (row-major) order
+ncolors : u8                        // 2..=255 literal; 0 encodes 256. (1 color would be SOLID.)
+palette : { r,g,b,a } × ncolors     // distinct colors in first-appearance (row-major) order
 indices : bit-packed, k bits each, 1024 indices, row-major
           where k = ceil(log2(ncolors))  ∈ 1..=8   (derived, not stored)
           packed LSB-first within each byte, low index first
           → exactly ceil(1024*k / 8) = 128*k bytes
 ```
 The reader derives `k`, reads `128*k` index bytes, and validates every index `< ncolors`
-(`Corrupt("index")`). Sizes: a 2-colour tile = `1+8+128 = 137 B`; 16-colour = `1+64+512 = 577 B`;
-256-colour = `1+1024+1024 = 2049 B` — all well under RAW's 4096.
+(`Corrupt("index")`). Sizes: a 2-color tile = `1+8+128 = 137 B`; 16-color = `1+64+512 = 577 B`;
+256-color = `1+1024+1024 = 2049 B` — all well under RAW's 4096.
 
 ### 5.5 Canonical method choice (writer)
 
 For each unique tile the canonical writer computes the encoded size of every *applicable* method and
 picks the **smallest**; ties break toward the **lowest method id**. Applicability: SOLID iff all
-1024 pixels equal; INDEXED iff distinct-colour count ≤ 256; RLE and RAW always. This is pure integer
+1024 pixels equal; INDEXED iff distinct-color count ≤ 256; RLE and RAW always. This is pure integer
 logic (no float), so the choice is identical on every platform → byte-identical goldens.
 
 ---
@@ -543,16 +543,16 @@ Beyond sizes: strict UTF-8 for strings; `Σ run == 1024` and `run ≥ 1` for RLE
 
 Fixed overheads: signature 8 B; per-chunk framing 12 B (4 len + 4 type + 4 CRC); `HEAD` = 34 + 12 =
 46 B; `ENDF` = 12 B. "Current" figures use the prior format's positional stream (per-tile 1-byte
-present flag over the **storage** grid + per-tile RLE + full re-serialisation per frame).
+present flag over the **storage** grid + per-tile RLE + full re-serialization per frame).
 
-### 13.1 Empty 256×256 document (1 frame, 1 empty layer, default 16-colour palette)
+### 13.1 Empty 256×256 document (1 frame, 1 empty layer, default 16-color palette)
 
 Storage 768×768 → `num_tiles = 576`, all absent.
 
 | Chunk | v7 bytes | Note |
 |-------|----------|------|
 | signature + HEAD | 8 + 46 | |
-| PALT | ≈ 86 | name "Default" + 16×4 colours |
+| PALT | ≈ 86 | name "Default" + 16×4 colors |
 | TILE | 13 | `tile_count = 0` |
 | CELS | 14 | one empty cel |
 | FRMS | ≈ 39 | 1 frame, 1 layer "Layer 1" |
@@ -563,11 +563,11 @@ Storage 768×768 → `num_tiles = 576`, all absent.
 (one per gutter tile) plus a 16-byte unverified footer. v7 is **~3.3× smaller**, and pays **zero**
 for empty gutter.
 
-### 13.2 64-frame 128×128 animation: one static flat-colour background + one distinct 32×32 sprite per frame
+### 13.2 64-frame 128×128 animation: one static flat-color background + one distinct 32×32 sprite per frame
 
-Storage 384×384 → `num_tiles = 144`; the canvas occupies the centre 4×4 = 16 tiles.
+Storage 384×384 → `num_tiles = 144`; the canvas occupies the center 4×4 = 16 tiles.
 
-* **Background:** a full-canvas flat fill = 16 canvas tiles of one colour → all identical → **1**
+* **Background:** a full-canvas flat fill = 16 canvas tiles of one color → all identical → **1**
   tile-pool entry (`SOLID`, 5 B) + **1** cel (~48 B) referenced by all 64 frames.
 * **Foreground:** 64 distinct noisy sprites → 64 tile-pool entries (INDEXED, ~600 B each) + 64
   one-tile cels (~3 B each).
@@ -581,19 +581,19 @@ Storage 384×384 → `num_tiles = 144`; the canvas occupies the centre 4×4 = 16
 | ENDF | 12 |
 | **Total** | **≈ 41.5 KB** |
 
-**Current format: ≈ 281 KB** — every frame re-serialises the background layer (present bytes + tile
+**Current format: ≈ 281 KB** — every frame re-serializes the background layer (present bytes + tile
 data) *and* the foreground, with **no** dedup: the static background alone costs ~15 KB across the
 64 frames instead of ~50 B. v7 is **~6.8× smaller**, and if the sprites reused tiles (a looping walk
 cycle) v7 would dedup those too, while the current format cannot.
 
 ### 13.3 One noisy dithered 256×256 frame (RLE's worst case)
 
-Content fills the canvas centre = 64 tiles, each highly varied.
+Content fills the canvas center = 64 tiles, each highly varied.
 
-* **16-colour dither (typical pixel art):** each tile → INDEXED `1+64+512 = 577 B` → ≈ **37 KB**.
+* **16-color dither (typical pixel art):** each tile → INDEXED `1+64+512 = 577 B` → ≈ **37 KB**.
   The current format's RLE, defeated by ~1-pixel runs, spends up to `1024 runs × 6 B = 6144 B`/tile →
   ≈ **393 KB**. v7 is **~10× smaller** on the exact case RLE loses.
-* **True 24-bit noise (not pixel art):** > 256 distinct colours/tile → RAW `4097 B`/tile → ≈
+* **True 24-bit noise (not pixel art):** > 256 distinct colors/tile → RAW `4097 B`/tile → ≈
   **262 KB**; the current format's RLE *expands* to ≈ 393 KB. v7 wins by **never expanding** (RAW is
   the floor).
 

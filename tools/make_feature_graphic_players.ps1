@@ -153,12 +153,12 @@ $g.DrawImage($logo, $destRect, $logoSrc, [System.Drawing.GraphicsUnit]::Pixel)
 
 $fTag = [System.Drawing.Font]::new("Segoe UI", 25, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Pixel)
 $white = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(255, 240, 244, 252))
-$grey  = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(255, 148, 158, 178))
+$gray  = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(255, 148, 158, 178))
 $fmt = [System.Drawing.StringFormat]::new()
 $fmt.Alignment = [System.Drawing.StringAlignment]::Center
 $tagY = 42 + $logoH + 22
 $g.DrawString("Pixel art on real displays.", $fTag, $white, $cx, $tagY, $fmt)
-$g.DrawString("Sync the club to Makapix players.", $fTag, $grey, $cx, $tagY + 34, $fmt)
+$g.DrawString("Sync the club to Makapix players.", $fTag, $gray, $cx, $tagY + 34, $fmt)
 
 $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::None
 $stripW = 7*30 - 8
@@ -170,7 +170,7 @@ for ($i = 0; $i -lt 7; $i++) {
     $br.Dispose()
 }
 
-$fTag.Dispose(); $white.Dispose(); $grey.Dispose(); $fmt.Dispose()
+$fTag.Dispose(); $white.Dispose(); $gray.Dispose(); $fmt.Dispose()
 $g.Dispose(); $logo.Dispose(); $detail.Dispose()
 
 $final = $bmp.Clone([System.Drawing.Rectangle]::new(0,0,$W,$H), [System.Drawing.Imaging.PixelFormat]::Format24bppRgb)

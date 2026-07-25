@@ -92,7 +92,7 @@ The same fact is written down in multiple places that must be hand-synced:
 Each duplication is a future bug waiting for someone to edit one copy and miss another. **Centralize each into one table/helper.**
 
 ### T6 — **Errors are swallowed**, so the app degrades invisibly
-Failures vanish instead of surfacing: editor DSL errors go to `debugPrint` (invisible in release), state-parse is wrapped in empty `catch (_) {}`, `engine.load()` return is ignored in `initState` (silent loss of the user's work to a blank canvas); comment like/delete is `catch (_) {}`; OAuth maps *every* failure to "cancelled"; `serverConfig`/`licenses` cache the failure path forever; and the forced-logout path (F-4b) never tells the auth controller. The user sees a frozen spinner or a silently-reverted action, never a cause. See F-4b, F-5, F-24, F-25.
+Failures vanish instead of surfacing: editor DSL errors go to `debugPrint` (invisible in release), state-parse is wrapped in empty `catch (_) {}`, `engine.load()` return is ignored in `initState` (silent loss of the user's work to a blank canvas); comment like/delete is `catch (_) {}`; OAuth maps *every* failure to "canceled"; `serverConfig`/`licenses` cache the failure path forever; and the forced-logout path (F-4b) never tells the auth controller. The user sees a frozen spinner or a silently-reverted action, never a cause. See F-4b, F-5, F-24, F-25.
 
 ### T7 — The **determinism invariant** has an undocumented float dependence and a dead premultiply path
 SPEC says "integer-exact, premultiplied internally." In fact `lerp_srgb` is float math *and is mislabeled* `/// Integer-exact`; ellipse/circle/polygon rasterizers use `f32`; and the `Premul8`/`to_premul`/`from_premul` type is **dead code** — the compositor blends in straight-alpha space. Cross-platform golden stability currently holds only because Rust emits non-contracted IEEE ops; a future `mul_add`/fast-math flag could silently fork goldens. **Make the docs match reality now** (fix the mislabeled `/// Integer-exact` comment; delete-or-wire the dead `Premul8` path) — those are no-regret. Whether to go further and pin/convert the float ops (no FMA/transcendentals, or fixed-point) **depends on an open team decision** on strict-vs-tolerant goldens. See F-24.
@@ -143,7 +143,7 @@ Severity: **High** = can crash / hang / lose data / leak in normal-ish use · **
 | F-27 | Data-owning constructors (`Document::new`, `RgbaBuffer::new`) don't enforce size invariants | Low | `document.rs:136`, `buffer.rs:53` |
 | F-28 | Unchecked indexing in public read API (`pixel`, `layer_hash`) | Low | `session.rs:374-379` |
 | F-29 | Mid-stroke `SetActiveLayer`/`SetActiveFrame` can record an undo patch on the wrong layer | Med | `session.rs:415-426,454,616` |
-| F-30 | Swallowed errors throughout (debugPrint / empty catch / all-OAuth→"cancelled" / cached failure) | Med | editor + club, see §4 |
+| F-30 | Swallowed errors throughout (debugPrint / empty catch / all-OAuth→"canceled" / cached failure) | Med | editor + club, see §4 |
 | F-31 | Marching-ants `AnimationController` repaints forever even with no selection | Low | `editor_page.dart:175`, `painters.dart:63` |
 | F-32 | Deprecated `Color.red/.green/.blue/.alpha` on SDK 3.12 + duplicated hex helpers | Low | `engine.dart:144`, `controls.dart:494`, `color_picker_dialog.dart:38` |
 | F-33 | Misc: magic numbers/dead tooltips, `ok_or` eager alloc, inconsistent null-param idioms, `isExpired` dead, `state_json` under-escaping | Low | see §4 |
@@ -267,7 +267,7 @@ Global grep for `autoDispose|keepAlive|onDispose` across `app/lib` = **0 matches
 **Recommendation:** add a monotonic generation counter (ignore stale responses); have `refresh`/`loadInitial` supersede an in-flight `loadMore`; dedup appended items by id. Make comment like/delete optimistic+local with rollback (the reaction/follow controllers already do this) and surface failures.
 
 #### F-30 (Med, club slice) — More swallowed errors
-GitHub OAuth maps *all* `authenticate()` exceptions to "cancelled" (`github_oauth.dart:44-46`), masking a missing browser or scheme-registration bug. `serverConfig`/`licenses` are non-autoDispose `FutureProvider`s that `catch (_)` → fallback, so one transient failure caches a degraded result (empty license list → publish page shows none) for the whole session (`publish_providers.dart:15-29`). A refresh response that omits a rotated `refresh_token` throws `parse_error` → forced logout (`auth_tokens.dart:17-25`).
+GitHub OAuth maps *all* `authenticate()` exceptions to "canceled" (`github_oauth.dart:44-46`), masking a missing browser or scheme-registration bug. `serverConfig`/`licenses` are non-autoDispose `FutureProvider`s that `catch (_)` → fallback, so one transient failure caches a degraded result (empty license list → publish page shows none) for the whole session (`publish_providers.dart:15-29`). A refresh response that omits a rotated `refresh_token` throws `parse_error` → forced logout (`auth_tokens.dart:17-25`).
 **Recommendation:** distinguish OAuth user-cancel from real errors; make config providers `autoDispose`/retryable; on the refresh path fall back to the existing refresh token when the response omits one.
 
 #### F-22 / F-33 (Low, club) — Boilerplate & inconsistency

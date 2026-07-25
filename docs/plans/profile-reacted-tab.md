@@ -5,7 +5,7 @@ green, `flutter analyze` clean; on-device manual checklist pending. Revised same
 (11 findings, all incorporated; the pinned-sliver TabBar was replaced by the simpler
 TabBar-in-body layout, killing the sliver-overlap problem outright).
 
-Closes the "Reacted/favourites tab" gap (SPEC-CLUB §14, §29 row "Reacted/favourites tab"). The profile
+Closes the "Reacted/favorites tab" gap (SPEC-CLUB §14, §29 row "Reacted/favorites tab"). The profile
 page grows a Material TabBar with a collapsing header: **🖼 Gallery** (today's grid) · **⚡ Reacted**
 (posts this user reacted to) · **💎 Highlights** (display-only, when present).
 
@@ -13,7 +13,7 @@ page grows a Material TabBar with a collapsing header: **🖼 Gallery** (today's
 
 1. **Visibility:** the Reacted tab appears on **all profiles, but only when the viewer is signed in**.
    Signed-out viewers see Gallery (+ Highlights) only.
-2. **Naming:** the tab is called **"Reacted"**, iconed ⚡. (Deviation from SPEC-CLUB §14's "Favourites"
+2. **Naming:** the tab is called **"Reacted"**, iconed ⚡. (Deviation from SPEC-CLUB §14's "Favorites"
    vocabulary — update §14/§29 wording when this ships.)
 3. **UI shape:** **Material TabBar + swipeable `TabBarView`**, profile header collapsing on scroll
    (`NestedScrollView`).
@@ -135,7 +135,7 @@ Rework `_Body` (keeping `_header`, `_blockedBanner`, `_FollowButton`, and the
 
 ### 5. Docs on ship
 
-- `STATUS.md`: move "reacted/favourites tab" from the C4-rest ○ row to its own ✅ row.
+- `STATUS.md`: move "reacted/favorites tab" from the C4-rest ○ row to its own ✅ row.
 - `SPEC-CLUB.md` §14: rename the tab vocabulary to "Reacted ⚡" (record the deviation); §29 row →
   app ✅.
 

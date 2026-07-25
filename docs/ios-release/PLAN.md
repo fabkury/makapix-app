@@ -245,7 +245,7 @@ fallback. On iOS:
   works for **both** dev and prod on iOS. `oauthCallbackScheme` on iOS should be the custom scheme.
 - **Optional polish: Universal Links.** Add the **Associated Domains** entitlement
   (`applinks:app.makapix.club`, `applinks:app-dev.makapix.club`) and have the **server repo host an
-  `apple-app-site-association` (AASA)** file (the iOS analogue of `assetlinks.json`). Only pursue if the
+  `apple-app-site-association` (AASA)** file (the iOS analog of `assetlinks.json`). Only pursue if the
   custom-scheme UX proves janky on the test iPhone (OD2). Note the same prod-topology subtlety flagged in
   `ClubConfig`: prefer the custom scheme on prod unless testing shows Universal Links behave better under
   `ASWebAuthenticationSession` than they did under Android's Chrome Custom Tab.

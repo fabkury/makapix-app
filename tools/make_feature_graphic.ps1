@@ -43,7 +43,7 @@ $bgBrush = [System.Drawing.Drawing2D.LinearGradientBrush]::new(
     [System.Drawing.Color]::FromArgb(255, 6, 8, 14))
 $g.FillRectangle($bgBrush, 0, 0, $W, $H)
 
-# --- pixel-square accents (crisp, no AA), editor palette colours, low alpha
+# --- pixel-square accents (crisp, no AA), editor palette colors, low alpha
 $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::None
 $palette = @(
     @(91,127,232), @(232,132,60), @(124,193,68), @(78,201,196),
@@ -104,7 +104,7 @@ foreach ($cardDef in $cards) {
     $img.Dispose()
 }
 
-# --- left column: logo + taglines + palette strip, centred on cx
+# --- left column: logo + taglines + palette strip, centered on cx
 $cx = 245.0
 $logoW = 350.0
 $logoH = $logoW * $srcRect.Height / $srcRect.Width
@@ -114,13 +114,13 @@ $g.DrawImage($logo, $destRect, $srcRect, [System.Drawing.GraphicsUnit]::Pixel)
 
 $fTag = [System.Drawing.Font]::new("Segoe UI", 25, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Pixel)
 $white = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(255, 240, 244, 252))
-$grey  = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(255, 148, 158, 178))
+$gray  = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(255, 148, 158, 178))
 $fmt = [System.Drawing.StringFormat]::new()
 $fmt.Alignment = [System.Drawing.StringAlignment]::Center
 
 $tagY = 42 + $logoH + 22
 $g.DrawString("Animated pixel art.", $fTag, $white, $cx, $tagY, $fmt)
-$g.DrawString("Draw it. Share it. Remix it.", $fTag, $grey, $cx, $tagY + 34, $fmt)
+$g.DrawString("Draw it. Share it. Remix it.", $fTag, $gray, $cx, $tagY + 34, $fmt)
 
 $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::None
 $stripW = 7*30 - 8
@@ -132,7 +132,7 @@ for ($i = 0; $i -lt 7; $i++) {
     $br.Dispose()
 }
 
-$fTag.Dispose(); $white.Dispose(); $grey.Dispose(); $fmt.Dispose()
+$fTag.Dispose(); $white.Dispose(); $gray.Dispose(); $fmt.Dispose()
 $g.Dispose(); $logo.Dispose()
 
 $final = $bmp.Clone([System.Drawing.Rectangle]::new(0,0,$W,$H), [System.Drawing.Imaging.PixelFormat]::Format24bppRgb)

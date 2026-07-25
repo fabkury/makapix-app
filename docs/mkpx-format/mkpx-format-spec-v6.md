@@ -74,9 +74,9 @@ Every chunk has an 9-byte header followed by its payload:
 | payload | `[u8;length]` | length | Chunk body (defined per type in §3). |
 
 **Skipping unknown chunks.** A reader advances by `9 + length` per chunk. If it meets a `type` it
-does not recognise: if bit0 (critical) is set it returns `IoError::UnknownCriticalChunk`; otherwise
+does not recognize: if bit0 (critical) is set it returns `IoError::UnknownCriticalChunk`; otherwise
 it skips the payload and continues. This makes "ignore unknown data" a *real* guarantee, not the
-incidental "reader stops early" behaviour of v4.
+incidental "reader stops early" behavior of v4.
 
 **Where chunks end.** The reader knows the total slice length `N`. Chunk scanning runs over
 `[8 .. N-16]`; the final 16 bytes are the trailer checksum and are never parsed as a chunk. A chunk
@@ -114,7 +114,7 @@ but the last byte. Two hard rules for determinism and safety:
 
 `varint(v)` is used for counts and indices (`palette_count`, `pool_count`, `tile_ref_count`,
 delta grid indices, pool references, RLE runs). Fixed-width LE is used for ids, sizes, timestamps,
-colours, and hashes. The spec below always names which.
+colors, and hashes. The spec below always names which.
 
 ### 2.4 String encoding
 
@@ -160,8 +160,8 @@ repeat palette_count times:
     colors      : rgba × color_count
 ```
 
-If `palette_count == 0`, the loader injects the built-in default 16-colour ramp
-(`Palette::default_palette()`), matching engine behaviour. `active_palette` (from `MHDR`) is clamped.
+If `palette_count == 0`, the loader injects the built-in default 16-color ramp
+(`Palette::default_palette()`), matching engine behavior. `active_palette` (from `MHDR`) is clamped.
 
 ### 3.3 `TILE` — the content-addressed tile pool (critical, required)
 
@@ -332,15 +332,15 @@ the **smallest**; ties break to the **lowest codec id**. Fully deterministic; no
 | 0 | `RAW`     | always (the ceiling) | 1024 × `rgba` | `1 + 4096 = 4097` |
 | 1 | `SOLID`   | all 1024 px equal    | one `rgba` | `1 + 4 = 5` |
 | 2 | `RLE`     | always               | `(run:var, rgba)*` until Σrun=1024 | `1 + Σ(len(run)+4)` |
-| 3 | `IDX4`    | ≤ 16 distinct colours | `n:u8` + `n×rgba` + 1024 × 4-bit index (512 B) | `1 + 1 + 4n + 512` |
-| 4 | `IDX8`    | ≤ 256 distinct colours| `n_minus_1:u8` + `n×rgba` + 1024 × 8-bit index (1024 B) | `1 + 1 + 4n + 1024` |
+| 3 | `IDX4`    | ≤ 16 distinct colors | `n:u8` + `n×rgba` + 1024 × 4-bit index (512 B) | `1 + 1 + 4n + 512` |
+| 4 | `IDX8`    | ≤ 256 distinct colors| `n_minus_1:u8` + `n×rgba` + 1024 × 8-bit index (1024 B) | `1 + 1 + 4n + 1024` |
 
 - **`RAW`** guarantees no tile is ever more than 1 byte over its raw pixel bytes — the hard ceiling
   that fixes v4's worst-case RLE expansion.
 - **`SOLID`** captures flat fills and (critically) transparent-but-present tiles cheaply.
 - **`RLE`** captures ordinary coherent pixel art; `run` is a varint so a long run costs 1–2 bytes.
   Decode rejects `run == 0` or `Σrun > 1024` (`Corrupt`).
-- **`IDX4/IDX8`** capture the noisy/dithered case that RLE inflates: a 2-colour dither tile is
+- **`IDX4/IDX8`** capture the noisy/dithered case that RLE inflates: a 2-color dither tile is
   `IDX4` at `1+1+8+512 = 522` bytes instead of RLE's ~6 KB. Index tables are ordered by first
   appearance (deterministic); the 4-bit variant packs two indices per byte, low nibble first.
   Decoders reject any index `≥ n` (`Corrupt`).
@@ -350,12 +350,12 @@ or a hand-rolled DEFLATE, both of which fight priorities 1–3 (determinism knob
 audit surface). The pool already removes the dominant redundancy (duplication); the per-tile menu
 removes the second (poor coding of a single tile). See §11.
 
-### 4.4 Indexed colour, honestly
+### 4.4 Indexed color, honestly
 
 v6 does **not** tie pixels to the document's named palettes. Those palettes are swatch lists, not a
 constraint on pixels — a layer may contain any RGBA. Instead, indexed coding is **per-tile and
-local** (`IDX4/IDX8` above): a small colour table derived from the tile's own pixels. This is
-lossless and adaptive (it helps exactly the tiles that have few colours, whatever those colours are),
+local** (`IDX4/IDX8` above): a small color table derived from the tile's own pixels. This is
+lossless and adaptive (it helps exactly the tiles that have few colors, whatever those colors are),
 where a global indexed mode would be either lossy or inapplicable to arbitrary imported art.
 
 ---
@@ -438,7 +438,7 @@ Both are **optional, ancillary, and deliberately outside the deterministic core*
 ### 8.3 Forward-compatibility
 
 - **Ancillary chunks are skippable.** A future `Cxyz` ancillary chunk (e.g. layer groups, tags,
-  colour-profile) is added with `critical=0`; every existing reader skips it by `length` and loses
+  color-profile) is added with `critical=0`; every existing reader skips it by `length` and loses
   nothing it understood. New readers pick it up.
 - **Critical chunks are gated.** A genuinely load-bearing new section is added with `critical=1`; old
   readers correctly refuse rather than silently mis-load — `UnknownCriticalChunk`.
@@ -486,7 +486,7 @@ Hardening rules (each maps to a concrete check):
 2. **Every read is bounds-checked** against the slice (the `Reader` primitive returns `Truncated`
    rather than indexing out of range).
 3. **Every index is domain-checked:** `pool_ref < pool_count`; `grid_index < tiles_per_layer` and
-   strictly ascending; colour-table index `< n`; active indices clamped.
+   strictly ascending; color-table index `< n`; active indices clamped.
 4. **No unbounded loops.** Id generators are seeded with `IdGen::starting_at(max_id + 1)` (never a
    warm-up loop), so a crafted id like `0xFFFF_FFFF` cannot spin the loader — preserving the v4 [F-2]
    mitigation. RLE/varint decoders make monotonic progress with a per-step bound (`Σrun ≤ 1024`;
@@ -532,9 +532,9 @@ v6 win: **~4–5×**, dominated entirely by collapsing the duplicated background
 Load is also *faster*: each unique tile is decoded once (not 64×), and references become `Arc`
 clones.
 
-### 10.3 Noisy 128×128 frame fully covered by a 2-colour dither
+### 10.3 Noisy 128×128 frame fully covered by a 2-color dither
 
-Canvas region = 16 tiles, each an identical 2-colour checkerboard.
+Canvas region = 16 tiles, each an identical 2-color checkerboard.
 
 | | v4 | v6 |
 |---|---:|---:|
@@ -563,9 +563,9 @@ Things considered and **rejected**, to keep the format simple, deterministic, an
 - **Random access / streaming / partial (single-frame) loads.** Rejected: the whole-file, in-memory
   model comfortably meets the < 300 ms budget (the loader is one pass; unique tiles decode once). The
   chunk framing means we *could* add an index later, but building one now is speculative.
-- **A global indexed-colour mode keyed to document palettes.** Rejected as lossy/inapplicable to
+- **A global indexed-color mode keyed to document palettes.** Rejected as lossy/inapplicable to
   arbitrary art; per-tile local `IDX4/IDX8` gets the win losslessly (§4.4).
-- **Free-form key/value metadata soup.** Rejected in favour of a small fixed `META` field set — fewer
+- **Free-form key/value metadata soup.** Rejected in favor of a small fixed `META` field set — fewer
   ways to be non-deterministic or oversized, and everything the shell actually needs.
 - **Reserved padding / alignment.** Rejected: growth is via chunks, not reserved bytes; alignment
   buys nothing for a byte-oriented, whole-file parse.
@@ -593,8 +593,8 @@ TILE: pool_count:var  [ codec:u8 body… ]…          # body per §4.3, self-de
       codec 0 RAW  : rgba×1024
       codec 1 SOLID: rgba
       codec 2 RLE  : (run:var, rgba)…  until Σrun=1024
-      codec 3 IDX4 : n:u8         (n×rgba) (4-bit index × 1024)   # ≤16 colours
-      codec 4 IDX8 : n_minus_1:u8 (n×rgba) (8-bit index × 1024)   # ≤256 colours
+      codec 3 IDX4 : n:u8         (n×rgba) (4-bit index × 1024)   # ≤16 colors
+      codec 4 IDX8 : n_minus_1:u8 (n×rgba) (8-bit index × 1024)   # ≤256 colors
 FRMS: [ frame_id:u32 duration_us:u32 active_layer:u16 layer_count:u16
         [ layer_id:u32 name:str flags:u8 opacity:u8 blend:u8
           tile_ref_count:var  [ grid_delta:var pool_ref:var ]… ]… ]…

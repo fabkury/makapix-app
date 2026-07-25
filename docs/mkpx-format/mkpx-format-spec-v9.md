@@ -201,8 +201,8 @@ repeat palette_count:
     color_count : varint               (0..=65536; else Corrupt)
     colors      : rgba × color_count
 ```
-If `palette_count == 0`, the loader injects the built-in default 16-colour ramp
-(`Palette::default_palette`) and clamps `active_palette` to 0 — matching engine behaviour.
+If `palette_count == 0`, the loader injects the built-in default 16-color ramp
+(`Palette::default_palette`) and clamps `active_palette` to 0 — matching engine behavior.
 
 ### 3.3 `TILS` — the deduplicated tile pool
 
@@ -237,22 +237,22 @@ costs more than `1 + 4096` bytes — fixes v4's worst-case RLE expansion.
 `Σ run == 1024`. Reader rejects `run == 0` or `Σ run > 1024` ⇒ `Corrupt("bad rle")`. Varint runs
 make short runs cheaper than v4's fixed `u16`.
 
-**`0x02 INDEXED` (colour-count coherence — the pixel-art workhorse; subsumes "solid").** For tiles
-with ≤ 256 distinct colours — the overwhelming case, and exactly where RLE loses to dithering.
+**`0x02 INDEXED` (color-count coherence — the pixel-art workhorse; subsumes "solid").** For tiles
+with ≤ 256 distinct colors — the overwhelming case, and exactly where RLE loses to dithering.
 ```
 count_minus_1 : u8                     (ncolors = count_minus_1 + 1, so 1..=256)
-table         : rgba × ncolors         (the tile's distinct colours in first-appearance row-major order)
+table         : rgba × ncolors         (the tile's distinct colors in first-appearance row-major order)
 indices       : ceil(1024 * k / 8) bytes, k-bit indices, row-major, packed LSB-first, low index first
                 where k = bits_needed(ncolors) = (ncolors<=1 ? 0 : ceil_log2(ncolors)), k ∈ 0..=8 (derived, not stored)
 ```
-`k` is derived from `ncolors` (full granularity 0..8, not rounded to powers of two — a 5–8-colour
-tile packs at 3 bpp, a 17–32-colour tile at 5 bpp, etc.). For `k = 0` (a **solid** tile, `ncolors
+`k` is derived from `ncolors` (full granularity 0..8, not rounded to powers of two — a 5–8-color
+tile packs at 3 bpp, a 17–32-color tile at 5 bpp, etc.). For `k = 0` (a **solid** tile, `ncolors
 == 1`) there are **zero** index bytes ⇒ 5 bytes total, so `INDEXED` cleanly absorbs the old `SOLID`
 method (including a materialised-but-transparent tile, `INDEXED ncolors=1 rgba=0000`, preserving
 present-vs-absent fidelity through the round-trip and the content-hash check). The reader derives
 `k`, reads exactly `ceil(1024*k/8)` index bytes, and validates every unpacked index `< ncolors` ⇒
-else `Corrupt("index")`. Sizes: 2-colour tile `1+8+128 = 137 B`; 16-colour `1+64+512 = 577 B`;
-256-colour `1+1024+1024 = 2049 B` — all under `RAW`.
+else `Corrupt("index")`. Sizes: 2-color tile `1+8+128 = 137 B`; 16-color `1+64+512 = 577 B`;
+256-color `1+1024+1024 = 2049 B` — all under `RAW`.
 
 ### 3.4 `CELS` — the deduplicated cel pool
 
@@ -505,7 +505,7 @@ The Tier-1 round-trip gate holds: `load(save(doc))` yields a document with an eq
 Chunk overhead = 12 bytes each (`length` 4 + `type` 4 + `crc` 4); signature = 8. Figures rounded; the
 point is the ratio and *where the bytes go*.
 
-### A. Empty 256×256 document (1 frame, 1 empty layer, default 16-colour palette)
+### A. Empty 256×256 document (1 frame, 1 empty layer, default 16-color palette)
 Storage 768×768 → 576 tiles, all absent.
 
 | Section | v9 |
@@ -522,7 +522,7 @@ Storage 768×768 → 576 tiles, all absent.
 gap widens with every added layer/frame (v4 adds 576 flag bytes each; v9 adds ~1).
 
 ### B. 64-frame 128×128 animation, one detailed **static** background + one small moving sprite
-Storage 384×384 → 144 tiles; canvas = centre 4×4 = 16 tiles. Background identical in all 64 frames;
+Storage 384×384 → 144 tiles; canvas = center 4×4 = 16 tiles. Background identical in all 64 frames;
 sprite touches a few unique tiles per frame.
 
 - **Background:** 16 unique tiles → pooled **once** in `TILS`; its layout → **one** cel in `CELS`,
@@ -533,8 +533,8 @@ sprite touches a few unique tiles per frame.
   dedup): **~7–11× smaller**. At **1024 frames**, v4's static background alone would balloon ~16×
   while v9's stays ~5 KB — the cel pool is what keeps long holds flat.
 
-### C. One noisy 128×128 frame fully covered by a 2-colour dither (RLE's worst case)
-16 canvas tiles, each a 2-colour checkerboard.
+### C. One noisy 128×128 frame fully covered by a 2-color dither (RLE's worst case)
+16 canvas tiles, each a 2-color checkerboard.
 
 - **v9 `INDEXED` (1 bpp):** `1+8+128 = 137 B`/tile; if the 16 tiles share the pattern they dedup to
   **one** pool tile ⇒ **~0.2 KB**, else ~2.2 KB.

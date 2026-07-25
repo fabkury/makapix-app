@@ -151,7 +151,7 @@ signals (and `pendingClubEditProvider` for edit/remix).
 - **Editor UI:** `app/lib/editor/`, mirroring `lib/club/` — `editor_page.dart` (the `EditorPage` +
   `_EditorPageState`: the three-row UI of tool options · palette · tools, plus canvas, timeline, layers,
   palette manager, pickers, import/export; holds an `Engine` and renders the RGBA bytes it returns) ·
-  `tools.dart` (tool catalogue) · `thumbnail.dart` · `widgets/painters.dart` · `dialogs/` (crop + colour
+  `tools.dart` (tool catalog) · `thumbnail.dart` · `widgets/painters.dart` · `dialogs/` (crop + color
   picker).
 - **Club social layer:** `app/lib/club/`, modular and written in Dart. The engine⇄Club rule is a
   **dependency direction, not a language ban**: the Rust engine never depends on or knows about Club — no
@@ -209,7 +209,7 @@ C5 real-time & players · C6 moderation & extras. Commits and branch work are ta
   `Scaffold`s mounted simultaneously (Club + editor) crashes the Windows app on resize: the accessibility
   bridge aborts with `Failed to update ui::AXTree: Nodes left pending` (exit `0xC000041D`). `AppShell` mounts
   only the active pillar; the editor preserves its document across switches via `EditorSession` (`.mkpx`
-  snapshot in `dispose`/`initState`) and Club state lives in long-lived Riverpod providers. Don't "optimise"
+  snapshot in `dispose`/`initState`) and Club state lives in long-lived Riverpod providers. Don't "optimize"
   this back into an always-both keep-alive.
 - **Android Gradle pinning:** the Flutter template generates AGP 9 / Gradle 9 / Kotlin 2.3, which
   `file_picker` can't compile against. The repo pins AGP 8.11.1 / Gradle 8.14 / Kotlin 2.2.20 in

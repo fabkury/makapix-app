@@ -203,17 +203,17 @@ unknown id ⇒ `Corrupt`.
 |---:|------|-----------|---------|------|
 | 0 | `RAW` | always (the floor) | `rgba × 1024` | `1 + 4096` |
 | 1 | `RLE` | always | `(run:varint(1..=1024), rgba)` until Σrun = 1024 | `1 + Σ(len(run)+4)` |
-| 2 | `INDEXED` | ≤ 256 distinct colours | `count_minus_1:u8` + `rgba × ncolors` + packed indices | `1 + 1 + 4·ncolors + ceil(1024·k/8)` |
+| 2 | `INDEXED` | ≤ 256 distinct colors | `count_minus_1:u8` + `rgba × ncolors` + packed indices | `1 + 1 + 4·ncolors + ceil(1024·k/8)` |
 
 - **`RAW`** — the ceiling; no tile ever exceeds `1 + 4096` bytes (fixes v4's RLE inflation on noise).
 - **`RLE`** — identical-consecutive-pixel runs over the row-major scan; `run ≥ 1`, `Σ run == 1024`
   (else `Corrupt`). Varint runs make short runs cheap.
-- **`INDEXED`** — `ncolors = count_minus_1 + 1 ∈ 1..=256`; local colour table in first-appearance
+- **`INDEXED`** — `ncolors = count_minus_1 + 1 ∈ 1..=256`; local color table in first-appearance
   (row-major) order; `k = bits_needed(ncolors)` (`0` for a solid tile, up to `8`), **not stored**;
   1024 indices packed **MSB-first**, pixel 0 in the high bits, `ceil(1024·k/8)` bytes. `k = 0` (solid)
   writes **zero** index bytes ⇒ 5-byte tile, so `INDEXED` subsumes the old `SOLID` and preserves a
   materialised-but-transparent tile (`INDEXED, ncolors=1, rgba=0000`). Reader validates every index
-  `< ncolors` ⇒ else `Corrupt`. A 2-colour dither tile = `1+8+128 = 137 B` (where v4's RLE bloated to
+  `< ncolors` ⇒ else `Corrupt`. A 2-color dither tile = `1+8+128 = 137 B` (where v4's RLE bloated to
   ~6 KB). Indexing is **per-tile and local** — lossless for any RGBA (imports, gradients, alpha), and
   never tied to the document palettes.
 
@@ -259,7 +259,7 @@ loader. Ids do not participate in `content_hash`.
 ## 9. `UPAL` — user palettes (ancillary)
 
 Named swatch sets the artist curates — a UI concern, **not** compression (a palette may list unused
-colours and omit used ones; pixels are never palette-constrained).
+colors and omit used ones; pixels are never palette-constrained).
 
 ```
 varint palette_count                      (≤ 256)
@@ -269,11 +269,11 @@ repeat palette_count:
     rgba × color_count
 ```
 `HEAD.active_palette` indexes this list; if absent/empty the loader injects the built-in default
-16-colour ramp and clamps `active_palette`.
+16-color ramp and clamps `active_palette`.
 
-### 9.1 `UPCN` — palette colour names (ancillary)
+### 9.1 `UPCN` — palette color names (ancillary)
 
-Optional per-entry display names for `UPAL` colours ("Sky blue", "Skin shadow"). A **separate**
+Optional per-entry display names for `UPAL` colors ("Sky blue", "Skin shadow"). A **separate**
 ancillary chunk rather than a `UPAL` extension so pre-names readers keep loading new files
 unchanged (they skip unknown ancillary chunks). Written only when at least one name exists —
 an all-unnamed document produces byte-identical output to a pre-names writer.
@@ -284,10 +284,10 @@ repeat palette_count:
     u16     color_count
     str × color_count                     ("" = unnamed)
 ```
-The reader is tolerant of any mismatch with `UPAL`: names beyond a palette's actual colour count
+The reader is tolerant of any mismatch with `UPAL`: names beyond a palette's actual color count
 are consumed and dropped, and palettes past `UPAL`'s count are ignored. Names belong to the
 palette *slot* (they follow their entry through swap/sort/duplicate/remove and survive an
-in-place colour edit) and do not participate in `content_hash`.
+in-place color edit) and do not participate in `content_hash`.
 
 ---
 
@@ -378,7 +378,7 @@ and hashing unambiguous.
 ## 14. Determinism contract
 
 - **Pixels are integer-exact.** 8-bit straight sRGB; out-of-bounds tile pixels canonically
-  `(0,0,0,0)`; all engine colour math is integer-exact, so decoded buffers are byte-identical across
+  `(0,0,0,0)`; all engine color math is integer-exact, so decoded buffers are byte-identical across
   platforms and rendered goldens never fork.
 - **Byte-determinism, per profile.** For a fixed engine build (including the pinned `miniz_oxide` used
   by the compact envelope), a given document encodes to a **byte-identical** file within each profile:
@@ -388,7 +388,7 @@ and hashing unambiguous.
     at a **fixed level**; byte-deterministic for the pinned dependency version.
   The canonical encoder fixes: chunk order (§4.2), dictionary order (first-appearance traversal),
   smallest-wins codec choice with lowest-id tie-break (§7.1), maximal-run RLE (§8), and first-
-  appearance colour tables (§7.1). No floats anywhere in the persisted path.
+  appearance color tables (§7.1). No floats anywhere in the persisted path.
 - **Correctness gate.** The Tier-1 gate remains `decode(encode(doc)) ≡ doc` by content hash
   (`assert.roundtrip`); byte-exact goldens are additionally viable on the `plain` profile and are the
   regression tripwire. (Chosen over v5's looser "encoders may drift" stance: v10's encoder is fixed and

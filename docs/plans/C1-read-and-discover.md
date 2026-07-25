@@ -15,7 +15,7 @@ app:
 - **Artwork detail:** the viewer + metadata + license + owner, with **view registration**, **download/share**.
 - **Reactions:** the curated 5-emoji set, totals + who-reacted, optimistic add/remove (≤5/user).
 - **Comments:** threaded (depth ≤2) with replies, likes, create/edit/delete.
-- **Profiles:** header (avatar/bio/tagline/badges/stats), follow/unfollow, gallery + favourites + highlights.
+- **Profiles:** header (avatar/bio/tagline/badges/stats), follow/unfollow, gallery + favorites + highlights.
 - **Search:** artworks / users / hashtags.
 - **Notifications:** list + unread badge (polling), mark read.
 
@@ -88,7 +88,7 @@ app:
 - `widgets/feed_grid.dart` — paginated square grid (`Image.network(art_url)`, infinite scroll) → detail.
 - `artwork_detail_page.dart` — viewer + counts + reactions bar + comments + owner/follow + download/share.
 - `widgets/reactions_bar.dart`, `widgets/comments_section.dart`.
-- `profile_page.dart` — header + Gallery/Favourites tabs + Highlights + follow.
+- `profile_page.dart` — header + Gallery/Favorites tabs + Highlights + follow.
 - `search_page.dart` — Artworks/Users/Hashtags tabs.
 - `notifications_page.dart` — list + mark-all-read.
 
@@ -151,7 +151,7 @@ app:
 - [x] ui/ profile + search + notifications
 - [x] analyze + test + Android build green — **C1 code-complete**; live device smoke remains (user)
 
-> Deferred polish within C1 (functional without them): profile Favourites/Highlights tabs
+> Deferred polish within C1 (functional without them): profile Favorites/Highlights tabs
 > (gallery shipped), inline follow on the detail page (follow lives on the profile), and
 > richer downloads/share (copy-link shipped; byte download is C2-adjacent).
 

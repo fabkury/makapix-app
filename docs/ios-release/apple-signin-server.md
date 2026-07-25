@@ -42,7 +42,7 @@ Content-Type: application/json
 
 **Failure:** the app surfaces `ClubError.fromDio`, so return the project's standard error envelope
 (e.g. `400/401 { "error": "apple_token_invalid", "error_description": "…" }`). The app maps a
-user-cancelled sheet to `apple_cancelled` **client-side** — the server never sees cancellations.
+user-canceled sheet to `apple_canceled` **client-side** — the server never sees cancellations.
 
 ---
 
@@ -65,7 +65,7 @@ user-cancelled sheet to `apple_cancelled` **client-side** — the server never s
 3. **Identity:** `sub` is Apple's **stable, app-scoped user id**. Treat `(provider='apple', sub)` as
    the account key — the same way GitHub's provider id keys that account.
 
-`authorization_code`, if you want defence-in-depth, can be exchanged at
+`authorization_code`, if you want defense-in-depth, can be exchanged at
 `https://appleid.apple.com/auth/token` (with the team's Apple **client secret** JWT) to independently
 confirm the token and obtain a refresh token. Not strictly required if the identity-token checks pass.
 
