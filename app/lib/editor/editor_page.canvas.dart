@@ -374,6 +374,7 @@ extension _EditorCanvas on _EditorPageState {
       _eraserY = p.dy.toInt();
     }
     _send('PointerDown(${p.dx.toInt()},${p.dy.toInt()})');
+    if (_tool == 'Eyedropper') _syncPickedPrimary(); // swatch shows the pick immediately
     // Overlay-only repaint; the strips refresh on stroke end. Selection tools/Move re-pull the
     // marquee. [audit F-9/F-11]
     _redraw(full: false, refetchSelection: _isSelectionTool || _tool == 'Move');
@@ -465,6 +466,9 @@ extension _EditorCanvas on _EditorPageState {
       _eraserY = p.dy.toInt();
     }
     _send('PointerMove(${p.dx.toInt()},${p.dy.toInt()})');
+    // Eyedropper drags keep picking (the engine re-samples per move) so the user can slide to
+    // "find" a colour after an imprecise first touch — mirror each pick into the swatch.
+    if (_tool == 'Eyedropper') _syncPickedPrimary();
     // The hot path: freehand drawing. Repaint the canvas + overlays only — the film-roll and layer
     // strips (each doing per-tile FFI hashes) must NOT rebuild on every move. Only selection
     // tools / Move re-pull the marquee; Eraser's footprint is recombined cheaply. [audit F-9/F-11]

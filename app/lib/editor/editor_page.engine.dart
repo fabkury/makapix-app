@@ -371,9 +371,19 @@ extension _EditorEngine on _EditorPageState {
       }
       final pal = (_state['palette'] as List?)?.cast<String>() ?? [];
       _palette = pal.map(_parseHex).toList();
-      final pc = engine.primaryColor;
-      _primary = Color.fromARGB(pc & 0xFF, (pc >> 24) & 0xFF, (pc >> 16) & 0xFF, (pc >> 8) & 0xFF);
+      _primary = _colorFromPacked(engine.primaryColor);
     } catch (_) {}
+  }
+
+  Color _colorFromPacked(int pc) =>
+      Color.fromARGB(pc & 0xFF, (pc >> 24) & 0xFF, (pc >> 16) & 0xFF, (pc >> 8) & 0xFF);
+
+  // Live eyedropper feedback: pull the primary back after each pointer pick so the row-2 swatch
+  // tracks the finger during a drag. The scalar FFI getter is cheap; the full-page setState is
+  // gated on an actual colour change so uniform areas don't rebuild the strips per move event.
+  void _syncPickedPrimary() {
+    final c = _colorFromPacked(engine.primaryColor);
+    if (c != _primary) setState(() => _primary = c);
   }
 
   Future<ui.Image> _decode(Uint8List bytes, int w, int h) {

@@ -1275,6 +1275,16 @@ impl Session {
     }
 
     pub fn pointer_move(&mut self, x: i32, y: i32) {
+        // Eyedropper: continuous pick — the drag keeps sampling so an imprecise first touch can
+        // be corrected by sliding to the wanted pixel. Raw (unclamped) coords like pointer_down:
+        // off-canvas and transparent pixels no-op, keeping the last opaque colour crossed.
+        if matches!(self.tool, ToolKind::Eyedropper) {
+            let c = render::composite_active(&self.doc).get(x, y);
+            if c.a != 0 {
+                self.settings.primary = c;
+            }
+            return;
+        }
         let p = self.clamp_pointer(Point::new(x, y)); // bound off-canvas input [F-6]
         let last = match &self.stroke {
             Some(s) => s.last,
@@ -3435,6 +3445,28 @@ mod tests {
         s.set_cursor(0, 0);
         s.eyedrop_cursor();
         assert_eq!(s.settings.primary, Rgba8::rgb(0, 200, 0));
+    }
+
+    #[test]
+    fn eyedropper_drag_picks_continuously() {
+        let mut s = Session::new(8, 8);
+        s.tool = ToolKind::Pencil;
+        s.settings.primary = Rgba8::rgb(200, 0, 0);
+        s.tap(1, 1); // a red pixel
+        s.settings.primary = Rgba8::rgb(0, 200, 0);
+        s.tap(5, 5); // a green pixel
+        s.settings.primary = Rgba8::rgb(10, 10, 10);
+        s.tool = ToolKind::Eyedropper;
+        s.pointer_down(1, 1); // first touch samples red...
+        assert!(s.stroke.is_none(), "eyedropper must not open a stroke");
+        assert_eq!(s.settings.primary, Rgba8::rgb(200, 0, 0));
+        s.pointer_move(3, 3); // ...sliding over transparent keeps it...
+        assert_eq!(s.settings.primary, Rgba8::rgb(200, 0, 0));
+        s.pointer_move(5, 5); // ...and reaching the green pixel re-picks
+        assert_eq!(s.settings.primary, Rgba8::rgb(0, 200, 0));
+        s.pointer_move(-3, 20); // off-canvas is a no-op too
+        assert_eq!(s.settings.primary, Rgba8::rgb(0, 200, 0));
+        s.pointer_up();
     }
 
     #[test]
