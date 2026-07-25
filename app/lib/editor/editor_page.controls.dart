@@ -700,7 +700,10 @@ extension _EditorControls on _EditorPageState {
         itemBuilder: (_, pair) => Flex(
           direction: vertical ? Axis.horizontal : Axis.vertical,
           mainAxisAlignment: MainAxisAlignment.center,
-          children: [_paletteSwatch(pair * 2), _paletteSwatch(pair * 2 + 1)],
+          children: [
+            _paletteSwatch(pair * 2, vertical: vertical),
+            _paletteSwatch(pair * 2 + 1, vertical: vertical),
+          ],
         ),
       ),
     );
@@ -722,13 +725,14 @@ extension _EditorControls on _EditorPageState {
     );
   }
 
-  Widget _paletteSwatch(int i) {
+  Widget _paletteSwatch(int i, {required bool vertical}) {
     final s = _chromeScale;
     if (i >= _palette.length) return SizedBox(width: 35 * s, height: 33 * s); // keep the lane size for an odd last swatch
     final c = _palette[i];
-    return GestureDetector(
+    final name = i < _paletteNames.length ? _paletteNames[i] : null;
+    Widget swatch = GestureDetector(
       onTap: () => _setPrimary(c),
-      onLongPress: () => _paletteSwatchMenu(i, c),
+      onLongPress: () => _paletteSwatchMenu(i, c, vertical: vertical),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
         // diagonal: translucent palette colours read as a dual indicator (opaque top-left
@@ -736,6 +740,11 @@ extension _EditorControls on _EditorPageState {
         child: AlphaSwatch(color: c, width: 31 * s, height: 29 * s, diagonal: true, borderRadius: 3, borderColor: Colors.black26),
       ),
     );
+    if (name != null) {
+      // Hover-only (manual trigger mode): a long press must keep opening the menu, not a tooltip.
+      swatch = Tooltip(message: name, waitDuration: const Duration(milliseconds: 500), triggerMode: TooltipTriggerMode.manual, child: swatch);
+    }
+    return swatch;
   }
 
   // Long-pressing the empty swatch area surfaces the single "Add current colour" option (same action
@@ -772,42 +781,76 @@ extension _EditorControls on _EditorPageState {
     setState(() {});
   }
 
-  void _paletteSwatchMenu(int i, Color c) {
-    // The palette is a 2-row column-major grid (even index = top of its column, odd = bottom), so
-    // left/right move a whole column (±2) and up/down swap the two rows of the column (±1). The
-    // sheet follows the swatch as it moves so you can nudge it several steps without reopening.
+  void _paletteSwatchMenu(int i, Color c, {required bool vertical}) {
+    // The sheet follows the swatch as it moves so you can nudge it several steps without
+    // reopening; the four arrows are remapped per orientation (paletteMoveTargets) so they always
+    // point the way the swatch visually travels — the strip transposes in landscape.
     int cur = i;
     showAppSheet(
       context: context,
       builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
         final n = _palette.length;
         final color = (cur >= 0 && cur < n) ? _palette[cur] : c;
-        final row = cur % 2;
-        final left = cur - 2 >= 0 ? cur - 2 : null;
-        final right = cur + 2 < n ? cur + 2 : null;
-        final up = row == 1 ? cur - 1 : null;
-        final down = (row == 0 && cur + 1 < n) ? cur + 1 : null;
+        final name = (cur >= 0 && cur < _paletteNames.length) ? _paletteNames[cur] : null;
+        final t = paletteMoveTargets(cur, n, vertical: vertical);
         void move(int? partner) {
           if (partner == null) return;
           _act('SwapPaletteColors($cur, $partner)');
           setS(() => cur = partner); // follow the swatch to its new slot
         }
 
+        // Compact arrow: the header packs [left | up/down | right] into one ListTile-high cluster.
+        Widget arrow(IconData icon, String tip, int? partner) => IconButton(
+              iconSize: 20,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(width: 34, height: 26),
+              tooltip: tip,
+              onPressed: partner == null ? null : () => move(partner),
+              icon: Icon(icon),
+            );
+
         return SafeArea(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            ListTile(
-              leading: AlphaSwatch(color: color, width: 28, height: 28, borderRadius: 4),
-              title: Text('Color ${cur + 1} of $n'),
-            ),
+            // Sheet header: identity on the left, the move cluster on the right — one shared band.
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                IconButton(tooltip: 'Move left', onPressed: left == null ? null : () => move(left), icon: const Icon(Icons.arrow_back)),
-                Column(mainAxisSize: MainAxisSize.min, children: [
-                  IconButton(iconSize: 20, tooltip: 'Move up', onPressed: up == null ? null : () => move(up), icon: const Icon(Icons.arrow_upward)),
-                  IconButton(iconSize: 20, tooltip: 'Move down', onPressed: down == null ? null : () => move(down), icon: const Icon(Icons.arrow_downward)),
+              padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
+              child: Row(children: [
+                AlphaSwatch(color: color, width: 28, height: 28, borderRadius: 4),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Row(children: [
+                    Text('Color ${cur + 1} of $n'),
+                    if (name != null) ...[
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          name,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 13, color: Color(0xFFFFD54F)),
+                        ),
+                      ),
+                    ],
+                    IconButton(
+                      iconSize: 15,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints.tightFor(width: 30, height: 30),
+                      tooltip: name == null ? 'Name this color' : 'Edit name',
+                      onPressed: () async {
+                        final renamed = await _editColorName(cur, name);
+                        if (renamed) setS(() {});
+                      },
+                      icon: const Icon(Icons.edit, size: 15, color: Colors.white54),
+                    ),
+                  ]),
+                ),
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  arrow(Icons.arrow_back, 'Move left', t.left),
+                  Column(mainAxisSize: MainAxisSize.min, children: [
+                    arrow(Icons.arrow_upward, 'Move up', t.up),
+                    arrow(Icons.arrow_downward, 'Move down', t.down),
+                  ]),
+                  arrow(Icons.arrow_forward, 'Move right', t.right),
                 ]),
-                IconButton(tooltip: 'Move right', onPressed: right == null ? null : () => move(right), icon: const Icon(Icons.arrow_forward)),
               ]),
             ),
             const Divider(height: 1),
@@ -818,14 +861,76 @@ extension _EditorControls on _EditorPageState {
             ListTile(
               leading: AlphaSwatch(color: _primary, width: 24, height: 24, borderRadius: 4),
               title: const Text('Overwrite with primary color'),
-              onTap: () { Navigator.pop(ctx); _act('EditPaletteColor($cur, ${_hex(_primary)})'); },
+              onTap: () async {
+                Navigator.pop(ctx);
+                // Palette state lives OUTSIDE the engine's undo history, so overwriting is
+                // irreversible — reconfirm (same rule as the palette page's destructive ops).
+                if (await _confirmPaletteAction(
+                    'Overwrite color?', 'Replaces this palette color with the primary color. This cannot be undone.', 'Overwrite')) {
+                  _act('EditPaletteColor($cur, ${_hex(_primary)})');
+                }
+              },
             ),
             ListTile(leading: const Icon(Icons.copy), title: const Text('Duplicate'), onTap: () { Navigator.pop(ctx); _act('DuplicatePaletteColor($cur)'); }),
-            ListTile(leading: const Icon(Icons.delete), title: const Text('Remove'), onTap: () { Navigator.pop(ctx); _act('RemovePaletteColor($cur)'); }),
+            ListTile(
+              leading: const Icon(Icons.delete),
+              title: const Text('Remove'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                if (await _confirmPaletteAction(
+                    'Remove color?', 'Removes this color from the palette. This cannot be undone.', 'Remove')) {
+                  _act('RemovePaletteColor($cur)');
+                }
+              },
+            ),
           ]),
         );
       }),
     );
+  }
+
+  /// Reconfirm an irreversible palette operation (palette edits sit outside undo).
+  Future<bool> _confirmPaletteAction(String title, String message, String action) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(action)),
+        ],
+      ),
+    );
+    return ok == true && mounted;
+  }
+
+  /// Edit the optional display name of palette entry [i]; saving an empty field clears the name.
+  /// Returns true when a change was sent to the engine (so the sheet can refresh its header).
+  Future<bool> _editColorName(int i, String? current) async {
+    final ctrl = TextEditingController(text: current ?? '');
+    final raw = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(current == null ? 'Name this color' : 'Edit color name'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          maxLength: 64,
+          decoration: const InputDecoration(labelText: 'Name', helperText: 'Leave empty to remove the name'),
+          onSubmitted: (v) => Navigator.pop(ctx, v),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('Save')),
+        ],
+      ),
+    );
+    if (raw == null || !mounted) return false; // cancelled
+    // Same DSL/JSON-safety scrub as palette names; an empty fallback keeps "" = clear.
+    final name = sanitizePaletteName(raw, fallback: '');
+    _act('NamePaletteColor($i, $name)');
+    return true;
   }
 
   // The static visual of a tool tile (icon + label, highlighted when selected/hovered).

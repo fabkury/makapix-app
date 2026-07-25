@@ -371,6 +371,12 @@ extension _EditorEngine on _EditorPageState {
       }
       final pal = (_state['palette'] as List?)?.cast<String>() ?? [];
       _palette = pal.map(_parseHex).toList();
+      // Optional per-entry display names, aligned with _palette ('' = unnamed → null).
+      final palNames = (_state['palette_color_names'] as List?)?.cast<String>() ?? [];
+      _paletteNames = [
+        for (var i = 0; i < _palette.length; i++)
+          (i < palNames.length && palNames[i].isNotEmpty) ? palNames[i] : null,
+      ];
       _primary = _colorFromPacked(engine.primaryColor);
     } catch (_) {}
   }

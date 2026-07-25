@@ -505,13 +505,16 @@ class _PalettePageState extends State<PalettePage> {
       final lay = swatchLayout(p.colors.length, cols);
       return Wrap(spacing: 4, runSpacing: 4, children: [
         for (var k = 0; k < lay.shown; k++)
-          Container(
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(
-              color: p.colors[k],
-              border: Border.all(color: Colors.white24),
-              borderRadius: BorderRadius.circular(3),
+          _maybeNamed(
+            p.nameOf(k),
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: p.colors[k],
+                border: Border.all(color: Colors.white24),
+                borderRadius: BorderRadius.circular(3),
+              ),
             ),
           ),
         if (lay.trimmed)
@@ -523,6 +526,17 @@ class _PalettePageState extends State<PalettePage> {
       ]);
     });
   }
+
+  /// Wraps a swatch in a hover-only tooltip when the entry has a display name (manual trigger:
+  /// the page's tap/long-press gestures must never be shadowed by a tooltip).
+  Widget _maybeNamed(String? name, Widget child) => name == null
+      ? child
+      : Tooltip(
+          message: name,
+          waitDuration: const Duration(milliseconds: 500),
+          triggerMode: TooltipTriggerMode.manual,
+          child: child,
+        );
 
   Widget _presetsFooter() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

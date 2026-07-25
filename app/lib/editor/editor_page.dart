@@ -26,6 +26,7 @@ import 'package:makapix_club/share/image_share.dart';
 import 'package:makapix_club/ui/layout.dart';
 
 import 'gallery/gallery_page.dart';
+import 'palette_io.dart';
 import 'palette_page.dart';
 import 'persistence/autosave_controller.dart';
 import 'persistence/drawing_meta.dart';
@@ -106,6 +107,9 @@ class _EditorPageState extends ConsumerState<EditorPage>
   String _tool = 'Pencil';
   Color _primary = const Color(0xFF000000);
   List<Color> _palette = [];
+  // Optional per-entry display names, aligned with _palette (null = unnamed). Slot-bound in the
+  // engine: they follow swaps/sorts/duplicates and survive in-place color edits.
+  List<String?> _paletteNames = [];
   // "Size", "Spacing" and "Intensity" are remembered PER TOOL (keyed by the active tool), not
   // shared across tools. Each map holds a tool's last value; the getters fall back to the defaults.
   final Map<String, int> _sizeByTool = {};

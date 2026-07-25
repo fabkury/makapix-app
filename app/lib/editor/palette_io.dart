@@ -5,11 +5,16 @@
 import 'dart:convert';
 import 'dart:ui' show Color;
 
-/// One palette as shown on the palette page: a name plus its swatch colors.
+/// One palette as shown on the palette page: a name plus its swatch colors, with optional
+/// per-entry display names ([names] is aligned with [colors] when non-empty; null = unnamed).
 class PaletteInfo {
-  const PaletteInfo(this.name, this.colors);
+  const PaletteInfo(this.name, this.colors, {this.names = const []});
   final String name;
   final List<Color> colors;
+  final List<String?> names;
+
+  /// The display name of entry [i], or null when it has none.
+  String? nameOf(int i) => (i >= 0 && i < names.length) ? names[i] : null;
 }
 
 /// '#RRGGBBAA' — the hex form the DSL and the engine state JSON use.
@@ -100,8 +105,28 @@ List<PaletteInfo> palettesFromState(Map<String, dynamic> state) {
         PaletteInfo(
           (p['name'] ?? 'Palette').toString(),
           [for (final h in (p['colors'] as List? ?? const [])) parseHexColor(h.toString())],
+          names: [
+            for (final n in (p['names'] as List? ?? const [])) n.toString().isEmpty ? null : n.toString(),
+          ],
         ),
   ];
+}
+
+/// Swap partners for moving swatch [cur] of [n] around the row-2 strip, expressed in the four
+/// on-screen directions. The strip is two lanes of pairs (even index = first lane, odd = second)
+/// scrolling along its main axis — a horizontal strip in portrait, a vertical one in landscape
+/// ([vertical] = true). Portrait: prev/next pair (±2) is left/right and the lane swap (±1) is
+/// up/down; landscape transposes the grid, so ±2 becomes up/down and the lane swap becomes
+/// left/right. `null` = no neighbour that way (button disabled).
+({int? left, int? right, int? up, int? down}) paletteMoveTargets(int cur, int n,
+    {required bool vertical}) {
+  final prevPair = cur - 2 >= 0 ? cur - 2 : null; // toward the strip's start
+  final nextPair = cur + 2 < n ? cur + 2 : null; // toward its end
+  final firstLane = cur % 2 == 1 ? cur - 1 : null; // odd → its pair's first slot
+  final secondLane = (cur % 2 == 0 && cur + 1 < n) ? cur + 1 : null; // even → second slot
+  return vertical
+      ? (left: firstLane, right: secondLane, up: prevPair, down: nextPair)
+      : (left: prevPair, right: nextPair, up: firstLane, down: secondLane);
 }
 
 /// How many swatches fit in one row of [rowWidth] (never less than 1).

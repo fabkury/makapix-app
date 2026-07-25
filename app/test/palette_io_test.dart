@@ -113,6 +113,46 @@ void main() {
       expect(palettesFromState({}), isEmpty);
     });
 
+    test('palettesFromState reads per-entry color names, "" meaning unnamed', () {
+      final state = {
+        'palettes': [
+          {
+            'name': 'Named',
+            'colors': ['#FF0000FF', '#00FF00FF', '#0000FFFF'],
+            'names': ['Fire', '', 'Sea, deep'],
+          },
+          {
+            'name': 'Legacy',
+            'colors': ['#112233FF'], // pre-names state JSON: no "names" key at all
+          },
+        ],
+      };
+      final ps = palettesFromState(state);
+      expect(ps[0].nameOf(0), 'Fire');
+      expect(ps[0].nameOf(1), isNull);
+      expect(ps[0].nameOf(2), 'Sea, deep');
+      expect(ps[1].nameOf(0), isNull);
+      expect(ps[0].nameOf(99), isNull, reason: 'out of range is just unnamed');
+    });
+
+    test('paletteMoveTargets maps arrows to the strip orientation', () {
+      // Portrait (horizontal strip): ±2 is left/right, the lane swap (±1) is up/down.
+      var t = paletteMoveTargets(4, 8, vertical: false);
+      expect((t.left, t.right, t.up, t.down), (2, 6, null, 5)); // even index = first lane → down
+      t = paletteMoveTargets(5, 8, vertical: false);
+      expect((t.left, t.right, t.up, t.down), (3, 7, 4, null)); // odd index = second lane → up
+      // Landscape (vertical strip): the grid transposes — ±2 becomes up/down, ±1 left/right.
+      t = paletteMoveTargets(4, 8, vertical: true);
+      expect((t.left, t.right, t.up, t.down), (null, 5, 2, 6));
+      t = paletteMoveTargets(5, 8, vertical: true);
+      expect((t.left, t.right, t.up, t.down), (4, null, 3, 7));
+      // Edges: first and last entries lose their outward arrows in both orientations.
+      t = paletteMoveTargets(0, 3, vertical: false);
+      expect((t.left, t.right, t.up, t.down), (null, 2, null, 1));
+      t = paletteMoveTargets(2, 3, vertical: false); // last, even, no pair partner below
+      expect((t.left, t.right, t.up, t.down), (0, null, null, null));
+    });
+
     test('buildImportScript batches NewPalette + AddPaletteColor with sanitised name', () {
       final script = buildImportScript('bad;name', [const Color(0xFFFF0000)]);
       expect(script, 'NewPalette(bad name)\nAddPaletteColor(#FF0000FF)');
