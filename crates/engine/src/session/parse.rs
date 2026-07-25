@@ -145,6 +145,8 @@ pub enum Action {
     RemovePaletteColor(usize),
     EditPaletteColor(usize, Rgba8),
     DuplicatePaletteColor(usize),
+    /// Set/clear the optional display name of active-palette entry `i` (empty name = clear).
+    NamePaletteColor(usize, String),
     SwapPaletteColors(usize, usize),
     NewPalette(String),
     RenamePalette(String),
@@ -325,6 +327,7 @@ impl Session {
             RemovePaletteColor(i) => self.remove_palette_color(i),
             EditPaletteColor(i, c) => self.set_palette_color(i, c),
             DuplicatePaletteColor(i) => self.duplicate_palette_color(i),
+            NamePaletteColor(i, name) => self.name_palette_color(i, &name),
             SwapPaletteColors(i, j) => self.swap_palette_colors(i, j),
             NewPalette(name) => self.new_palette(name),
             RenamePalette(name) => self.rename_palette(name),
@@ -692,6 +695,14 @@ fn parse_line(line: &str) -> Result<Action, String> {
         "RemovePaletteColor" => RemovePaletteColor(usza(0)?),
         "EditPaletteColor" => EditPaletteColor(usza(0)?, color(1)?),
         "DuplicatePaletteColor" => DuplicatePaletteColor(usza(0)?),
+        "NamePaletteColor" => {
+            // index, then the rest is the (free-text) name — split on the first comma only so
+            // names may themselves contain commas (same contract as RenamePaletteAt). An empty
+            // name is the documented way to clear: NamePaletteColor(3,) or NamePaletteColor(3, ).
+            let (idx, rest) = inner.split_once(',').ok_or("NamePaletteColor needs index, name")?;
+            let i = idx.trim().parse::<usize>().map_err(|_| "bad palette index".to_string())?;
+            NamePaletteColor(i, rest.trim().to_string())
+        }
         "SwapPaletteColors" => SwapPaletteColors(usza(0)?, usza(1)?),
         "NewPalette" => NewPalette(inner.trim().to_string()),
         "RenamePalette" => RenamePalette(inner.trim().to_string()),

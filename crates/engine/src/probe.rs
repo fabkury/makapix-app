@@ -83,6 +83,15 @@ pub fn state_json(doc: &Document) -> String {
         s.push_str(&format!("\"{}\"", c.to_hex()));
     }
     s.push_str("],");
+    // Optional per-entry display names, aligned with "palette" ("" = unnamed).
+    s.push_str("\"palette_color_names\":[");
+    for (i, n) in doc.palette().color_names.iter().enumerate() {
+        if i > 0 {
+            s.push(',');
+        }
+        s.push_str(&format!("\"{}\"", n.as_deref().unwrap_or("").replace('"', "'")));
+    }
+    s.push_str("],");
     s.push_str("\"palettes\":[");
     for (i, p) in doc.palettes.iter().enumerate() {
         if i > 0 {
@@ -94,6 +103,13 @@ pub fn state_json(doc: &Document) -> String {
                 s.push(',');
             }
             s.push_str(&format!("\"{}\"", c.to_hex()));
+        }
+        s.push_str("],\"names\":[");
+        for (j, n) in p.color_names.iter().enumerate() {
+            if j > 0 {
+                s.push(',');
+            }
+            s.push_str(&format!("\"{}\"", n.as_deref().unwrap_or("").replace('"', "'")));
         }
         s.push_str("]}");
     }
@@ -535,14 +551,15 @@ mod tests {
     #[test]
     fn state_json_lists_all_palettes_with_colors() {
         let mut d = Document::new(8, 8);
-        d.palettes.push(crate::document::Palette {
-            name: "Two".into(),
-            colors: vec![Rgba8::rgb(255, 0, 0)],
-        });
+        let mut two = crate::document::Palette::new("Two", vec![Rgba8::rgb(255, 0, 0)]);
+        two.color_names[0] = Some("Red".into());
+        d.palettes.push(two);
         let s = state_json(&d);
         // The full-preview array: every palette with its colors, not just the active one.
         assert!(s.contains("\"palettes\":[{\"name\":\"Default\",\"colors\":[\"#140C1CFF\""), "{s}");
-        assert!(s.contains("{\"name\":\"Two\",\"colors\":[\"#FF0000FF\"]}"), "{s}");
+        assert!(s.contains("{\"name\":\"Two\",\"colors\":[\"#FF0000FF\"],\"names\":[\"Red\"]}"), "{s}");
+        // The active palette's names, aligned with "palette" ("" = unnamed).
+        assert!(s.contains("\"palette_color_names\":[\"\",\"\""), "{s}");
         // Legacy keys survive (the row-2 strip reads them).
         assert!(s.contains("\"palette_names\":[\"Default\",\"Two\"]"), "{s}");
         assert!(s.contains("\"palette\":["), "{s}");

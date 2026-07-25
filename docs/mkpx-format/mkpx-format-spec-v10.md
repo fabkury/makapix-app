@@ -123,12 +123,13 @@ fixed order below (part of byte-determinism, §14).
 | `TILE` | ✔ | 1 | 7 |
 | `FRMS` | ✔ | 1 | 8 |
 | `UPAL` | – | 0–1 | 9 |
+| `UPCN` | – | 0–1 | 9.1 |
 | `SELC` | – | 0–1 | 10 |
 | `THMB` | – | 0–1 | 11 |
 | `META` | – | 0–1 | 11 |
 | `INTG` | ✔ | 1, last | 12 |
 
-Canonical writer order: `HEAD, TILE, FRMS[, UPAL][, SELC][, THMB][, META], INTG`. The engine core
+Canonical writer order: `HEAD, TILE, FRMS[, UPAL[, UPCN]][, SELC][, THMB][, META], INTG`. The engine core
 never emits `THMB`/`META` (those are shell/periphery additions, §11/§14).
 
 ---
@@ -269,6 +270,24 @@ repeat palette_count:
 ```
 `HEAD.active_palette` indexes this list; if absent/empty the loader injects the built-in default
 16-colour ramp and clamps `active_palette`.
+
+### 9.1 `UPCN` — palette colour names (ancillary)
+
+Optional per-entry display names for `UPAL` colours ("Sky blue", "Skin shadow"). A **separate**
+ancillary chunk rather than a `UPAL` extension so pre-names readers keep loading new files
+unchanged (they skip unknown ancillary chunks). Written only when at least one name exists —
+an all-unnamed document produces byte-identical output to a pre-names writer.
+
+```
+varint palette_count                      (writer: == UPAL's; reader: excess ignored)
+repeat palette_count:
+    u16     color_count
+    str × color_count                     ("" = unnamed)
+```
+The reader is tolerant of any mismatch with `UPAL`: names beyond a palette's actual colour count
+are consumed and dropped, and palettes past `UPAL`'s count are ignored. Names belong to the
+palette *slot* (they follow their entry through swap/sort/duplicate/remove and survive an
+in-place colour edit) and do not participate in `content_hash`.
 
 ---
 
@@ -549,6 +568,7 @@ FRMS: frame_count:varint
           { layer_id:u32 name:str flags:u8 opacity:u8 blend:u8
             { run_len:varint tile_index:varint }×  (Σrun_len==cells) }× }×
 UPAL?: palette_count:varint { name:str color_count:u16 rgba×color_count }×
+UPCN?: palette_count:varint { color_count:u16 name:str×color_count }×   # "" = unnamed
 SELC?: tag:u8 [ bbox_x:u16 bbox_y:u16 bbox_w:u16 bbox_h:u16 [packed bits LSB-first] ]
 THMB?: tw:u16 th:u16 codec:u8 payload…
 META?: entry_count:varint { key:str value_type:u8 value }×

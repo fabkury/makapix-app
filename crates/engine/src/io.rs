@@ -598,6 +598,21 @@ pub fn save_to_bytes(doc: &Document) -> Vec<u8> {
             }
         }
         write_chunk(&mut w, b"UPAL", false, &upal.buf);
+        // UPCN: optional per-entry color names, mirroring UPAL's shape (palette count, then per
+        // palette a u16 entry count + one string per entry, "" = unnamed). A separate
+        // non-critical chunk — not folded into UPAL — so older builds keep opening new files
+        // (they skip unknown ancillary chunks); only written when at least one name exists.
+        if doc.palettes.iter().any(|p| p.color_names.iter().any(|n| n.is_some())) {
+            let mut upcn = Writer::new();
+            upcn.varint(doc.palettes.len() as u32);
+            for p in &doc.palettes {
+                upcn.u16(p.color_names.len() as u16);
+                for n in &p.color_names {
+                    upcn.str(n.as_deref().unwrap_or(""));
+                }
+            }
+            write_chunk(&mut w, b"UPCN", false, &upcn.buf);
+        }
     }
     if let Some(mask) = &doc.selection {
         write_chunk(&mut w, b"SELC", false, &encode_selection(mask));
@@ -615,12 +630,13 @@ struct Chunks<'a> {
     tile: Option<&'a [u8]>,
     frms: Option<&'a [u8]>,
     upal: Option<&'a [u8]>,
+    upcn: Option<&'a [u8]>,
     selc: Option<&'a [u8]>,
 }
 
 /// Single forward walk of `[8 .. body_end]`; enforces `HEAD` first + one-of each critical.
 fn walk_chunks<'a>(data: &'a [u8], body_end: usize) -> Result<Chunks<'a>, IoError> {
-    let mut c = Chunks { head: None, tile: None, frms: None, upal: None, selc: None };
+    let mut c = Chunks { head: None, tile: None, frms: None, upal: None, upcn: None, selc: None };
     let mut pos = 8usize;
     let mut first = true;
     while pos < body_end {
@@ -648,6 +664,7 @@ fn walk_chunks<'a>(data: &'a [u8], body_end: usize) -> Result<Chunks<'a>, IoErro
             b"TILE" => &mut c.tile,
             b"FRMS" => &mut c.frms,
             b"UPAL" => &mut c.upal,
+            b"UPCN" => &mut c.upcn,
             b"SELC" => &mut c.selc,
             b"THMB" | b"META" => {
                 pos = end;
@@ -828,7 +845,22 @@ pub fn load_from_bytes_budgeted(data: &[u8], hard_budget: usize) -> Result<Docum
                 let b = pr.take(4)?;
                 colors.push(crate::Rgba8::new(b[0], b[1], b[2], b[3]));
             }
-            palettes.push(Palette { name, colors });
+            palettes.push(Palette::new(name, colors));
+        }
+    }
+    // --- UPCN (optional per-entry color names; tolerant of any mismatch with UPAL) ---
+    if let Some(nl) = chunks.upcn {
+        let mut nr = Reader::new(nl);
+        let pc = (nr.varint()? as usize).min(palettes.len());
+        for p in palettes.iter_mut().take(pc) {
+            let cc = nr.u16()? as usize;
+            for j in 0..cc {
+                let name = nr.str()?;
+                // Entries beyond the palette's actual colors are read (to stay in sync) but dropped.
+                if j < p.color_names.len() && !name.is_empty() {
+                    p.color_names[j] = Some(name);
+                }
+            }
         }
     }
     if palettes.is_empty() {
@@ -903,6 +935,35 @@ mod tests {
         assert_eq!(back.frames.len(), 2);
         assert_eq!(back.frames[0].layers[1].opacity, 128);
         assert_eq!(back.frames[1].duration_us, 50_000);
+    }
+
+    #[test]
+    fn roundtrips_palette_color_names() {
+        let mut doc = Document::new(16, 16);
+        doc.palettes[0].color_names[0] = Some("Ink".into());
+        doc.palettes[0].color_names[3] = Some("Slate, cool".into());
+        let mut two = Palette::new("Two", vec![Rgba8::rgb(255, 0, 0), Rgba8::rgb(0, 255, 0)]);
+        two.color_names[1] = Some("Leaf".into());
+        doc.palettes.push(two);
+
+        let bytes = save_to_bytes(&doc);
+        let back = load_from_bytes(&bytes).unwrap();
+        assert_eq!(back.palettes[0].color_names, doc.palettes[0].color_names);
+        assert_eq!(back.palettes[1].color_names, doc.palettes[1].color_names);
+        // Save→load→save is byte-stable with names present.
+        assert_eq!(save_to_bytes(&back), bytes);
+    }
+
+    #[test]
+    fn unnamed_palettes_write_no_upcn_and_old_files_load_unnamed() {
+        // No names anywhere → the file must not grow a UPCN chunk (bytes identical to the
+        // pre-names format, so older builds see exactly what they always did).
+        let doc = Document::new(16, 16);
+        let bytes = save_to_bytes(&doc);
+        assert!(!bytes.windows(4).any(|w| w == b"UPCN"), "UPCN must be omitted when no name exists");
+        let back = load_from_bytes(&bytes).unwrap();
+        assert!(back.palettes[0].color_names.iter().all(|n| n.is_none()));
+        assert_eq!(back.palettes[0].color_names.len(), back.palettes[0].colors.len());
     }
 
     #[test]

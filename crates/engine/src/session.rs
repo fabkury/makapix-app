@@ -2921,18 +2921,30 @@ impl Session {
     // ---- palettes ----
 
     pub fn add_palette_color(&mut self, c: Rgba8) {
-        self.doc.palette_mut().colors.push(c);
+        let p = self.doc.palette_mut();
+        p.colors.push(c);
+        p.color_names.push(None);
     }
     pub fn remove_palette_color(&mut self, i: usize) {
         let p = self.doc.palette_mut();
         if i < p.colors.len() {
             p.colors.remove(i);
+            p.color_names.remove(i);
         }
     }
     pub fn set_palette_color(&mut self, i: usize, c: Rgba8) {
+        // The entry's name (if any) survives: names belong to the slot, not the RGBA value.
         let p = self.doc.palette_mut();
         if i < p.colors.len() {
             p.colors[i] = c;
+        }
+    }
+    /// Set or clear the optional display name of entry `i` (empty/whitespace clears it).
+    pub fn name_palette_color(&mut self, i: usize, name: &str) {
+        let p = self.doc.palette_mut();
+        if i < p.colors.len() {
+            let t = name.trim();
+            p.color_names[i] = if t.is_empty() { None } else { Some(t.to_string()) };
         }
     }
     pub fn duplicate_palette_color(&mut self, i: usize) {
@@ -2940,6 +2952,8 @@ impl Session {
         if i < p.colors.len() {
             let c = p.colors[i];
             p.colors.insert(i + 1, c);
+            let n = p.color_names[i].clone();
+            p.color_names.insert(i + 1, n);
         }
     }
     /// Swap two palette entries (used by the shell to move a swatch left/right/up/down in the grid).
@@ -2947,13 +2961,14 @@ impl Session {
         let p = self.doc.palette_mut();
         if i != j && i < p.colors.len() && j < p.colors.len() {
             p.colors.swap(i, j);
+            p.color_names.swap(i, j);
         }
     }
     pub fn new_palette(&mut self, name: impl Into<String>) {
         if self.doc.palettes.len() >= crate::document::MAX_PALETTES {
             return; // past this the .mkpx loader would refuse the document
         }
-        self.doc.palettes.push(crate::document::Palette { name: name.into(), colors: Vec::new() });
+        self.doc.palettes.push(crate::document::Palette::new(name, Vec::new()));
         self.doc.active_palette = self.doc.palettes.len() - 1;
     }
     pub fn set_active_palette(&mut self, i: usize) {
@@ -2965,7 +2980,9 @@ impl Session {
         self.doc.palette_mut().name = name.into();
     }
     pub fn clear_palette(&mut self) {
-        self.doc.palette_mut().colors.clear();
+        let p = self.doc.palette_mut();
+        p.colors.clear();
+        p.color_names.clear();
     }
     /// Delete palette `i`. The last remaining palette can never be deleted (a document always
     /// keeps at least one, matching the `.mkpx` loader). The active palette object stays active
@@ -3017,6 +3034,7 @@ impl Session {
     pub fn clear_palette_at(&mut self, i: usize) {
         if i < self.doc.palettes.len() {
             self.doc.palettes[i].colors.clear();
+            self.doc.palettes[i].color_names.clear();
         }
     }
     /// Sort palette `i` into grays-first hue ramps — see
@@ -3024,7 +3042,15 @@ impl Session {
     /// entries with identical keys keep their existing relative order.
     pub fn sort_palette_at(&mut self, i: usize) {
         if i < self.doc.palettes.len() {
-            self.doc.palettes[i].colors.sort_by_key(|&c| crate::color::palette_sort_key(c));
+            // Co-sort colors and their names: permute both through one stable index sort so
+            // each name stays glued to its entry.
+            let p = &mut self.doc.palettes[i];
+            let mut order: Vec<usize> = (0..p.colors.len()).collect();
+            order.sort_by_key(|&k| crate::color::palette_sort_key(p.colors[k]));
+            let colors: Vec<_> = order.iter().map(|&k| p.colors[k]).collect();
+            let names: Vec<_> = order.iter().map(|&k| p.color_names[k].take()).collect();
+            p.colors = colors;
+            p.color_names = names;
         }
     }
     /// [`sort_palette_at`](Self::sort_palette_at) on the active palette.
@@ -4917,6 +4943,45 @@ mod tests {
         assert_eq!(after[1], before[0]);
         s.swap_palette_colors(0, 99); // out of range → no-op
         assert_eq!(s.doc.palette().colors, after);
+    }
+
+    #[test]
+    fn color_names_set_clear_and_follow_their_entry() {
+        let mut s = Session::new(16, 16);
+        s.run_script("ClearPalette(); AddPaletteColor(#FF0000FF); AddPaletteColor(#00FF00FF); AddPaletteColor(#0000FFFF)").unwrap();
+        s.run_script("NamePaletteColor(0, Fire red)").unwrap();
+        s.run_script("NamePaletteColor(2, Sea, deep)").unwrap(); // commas allowed in the name
+        fn names(s: &Session) -> Vec<Option<String>> {
+            s.doc.palette().color_names.clone()
+        }
+        assert_eq!(names(&s), vec![Some("Fire red".into()), None, Some("Sea, deep".into())]);
+        // The name belongs to the slot: it survives an in-place color edit…
+        s.run_script("EditPaletteColor(0, #123456FF)").unwrap();
+        assert_eq!(names(&s)[0].as_deref(), Some("Fire red"));
+        // …follows swaps and duplication…
+        s.run_script("SwapPaletteColors(0, 1)").unwrap();
+        assert_eq!(names(&s), vec![None, Some("Fire red".into()), Some("Sea, deep".into())]);
+        s.run_script("DuplicatePaletteColor(2)").unwrap();
+        assert_eq!(names(&s)[3].as_deref(), Some("Sea, deep"));
+        // …and dies with its entry.
+        s.run_script("RemovePaletteColor(1)").unwrap();
+        assert_eq!(names(&s), vec![None, Some("Sea, deep".into()), Some("Sea, deep".into())]);
+        // Empty (or whitespace) name clears; lockstep length is preserved throughout.
+        s.run_script("NamePaletteColor(1, )").unwrap();
+        assert_eq!(names(&s), vec![None, None, Some("Sea, deep".into())]);
+        assert_eq!(s.doc.palette().color_names.len(), s.doc.palette().colors.len());
+    }
+
+    #[test]
+    fn color_names_co_sort_with_their_colors() {
+        let mut s = Session::new(16, 16);
+        // A gray and a saturated red: sort puts grays first, so the pair reverses.
+        s.run_script("ClearPalette(); AddPaletteColor(#FF0000FF); AddPaletteColor(#808080FF)").unwrap();
+        s.run_script("NamePaletteColor(0, red); NamePaletteColor(1, gray)").unwrap();
+        s.run_script("SortPalette()").unwrap();
+        let p = s.doc.palette();
+        assert_eq!(p.colors[0], Rgba8::rgb(128, 128, 128));
+        assert_eq!(p.color_names, vec![Some("gray".into()), Some("red".into())]);
     }
 
     #[test]

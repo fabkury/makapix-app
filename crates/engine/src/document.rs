@@ -126,19 +126,27 @@ pub const MAX_PALETTE_COLORS: usize = 256;
 pub struct Palette {
     pub name: String,
     pub colors: Vec<Rgba8>,
+    /// Optional per-entry display names, kept in lockstep with `colors` (always the same
+    /// length; `None` = unnamed). Names belong to the *slot*: they follow their entry through
+    /// swap/sort/duplicate/remove and survive an in-place color edit.
+    pub color_names: Vec<Option<String>>,
 }
 
 impl Palette {
+    /// A palette with all entries unnamed — the invariant-preserving constructor every
+    /// creation site should use.
+    pub fn new(name: impl Into<String>, colors: Vec<Rgba8>) -> Palette {
+        let color_names = vec![None; colors.len()];
+        Palette { name: name.into(), colors, color_names }
+    }
+
     pub fn default_palette() -> Palette {
         // A compact, useful default ramp (DawnBringer-ish 16).
         let hex = [
             "#140c1c", "#442434", "#30346d", "#4e4a4e", "#854c30", "#346524", "#d04648", "#757161",
             "#597dce", "#d27d2c", "#8595a1", "#6daa2c", "#d2aa99", "#6dc2ca", "#dad45e", "#deeed6",
         ];
-        Palette {
-            name: "Default".into(),
-            colors: hex.iter().filter_map(|h| Rgba8::from_hex(h)).collect(),
-        }
+        Palette::new("Default", hex.iter().filter_map(|h| Rgba8::from_hex(h)).collect())
     }
 }
 
