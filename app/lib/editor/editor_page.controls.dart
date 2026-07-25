@@ -360,8 +360,8 @@ extension _EditorControls on _EditorPageState {
           },
         ),
       ));
-      // Number of evenly-spaced colors in the gradient (2 / 3 / 4); the swatch count follows.
-      children.add(_toggle(['2', '3', '4'], _gradCount - 2, (i) {
+      // Number of evenly-spaced colors in the gradient (2..6); the swatch count follows.
+      children.add(_toggle(['2', '3', '4', '5', '6'], _gradCount - 2, (i) {
         setState(() => _gradCount = i + 2);
         _sendGradientStops();
       }));

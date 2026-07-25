@@ -72,7 +72,7 @@ Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending)
 | Selection ops Add / Subtract / Union / Intersect / Invert | ✅ | set-algebra tested |
 | HSV-shift selected pixels | ✅ | closed-form oracle |
 | Brightness/Contrast (layer/selection, Frame scope) | ✅ | HSV-style tool: live engine preview, ±255 brightness + ±100% contrast around the 128 pivot; a non-zero adjustment is a draft resolved by the commit-menu (Commit = one undo step); closed-form oracle |
-| Gradient (2/3 colors, positions, alpha) | ✅ | linear + radial; tri-color; alpha; optional seeded dither |
+| Gradient (2–6 colors, positions, alpha) | ✅ | linear + radial; up to 6 evenly-spaced colors; alpha; optional seeded dither |
 | Darkener / Lightener brush (intensity, size) | ✅ | dodge/burn via HSV-V |
 | Selected pixels move / copy / cut / paste | ✅ | |
 | Copy pixels frame→frame | ✅ | `PasteToFrame` in engine/DSL (UI pastes to active frame) |
