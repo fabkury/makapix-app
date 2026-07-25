@@ -67,7 +67,7 @@ Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending)
 | Bucket fill (contiguous / discontiguous, threshold) | ✅ | flood oracle-tested |
 | Eraser (square / round, size) | ✅ | |
 | **Figures** Line / Rectangle / Ellipse (draw → adjust → commit) | ✅ | drag previews an uncommitted figure with draggable endpoint handles; re-drag either handle (tap near, not on) to fine-tune; Fill/Outline updates the preview live; Commit ✓ rasterizes (one undo step), Cancel ✗ discards. Engine: `ShapeSet/ShapeCommit/ShapeCancel` |
-| Select by color threshold (cont/discont) | ✅ | |
+| Select by color threshold (cont/discont) | ✅ | source toggle: composited frame (default) or active layer's raw pixels (`SetSelectColorSource`) |
 | Select rectangle / ellipse / circle / freeform | ✅ | polygon via freeform lasso path; in the UI lasso is a mode of the Select tool (Rect · Oval · Lasso toggle), not a separate tile |
 | Selection ops Add / Subtract / Union / Intersect / Invert | ✅ | set-algebra tested |
 | HSV-shift selected pixels | ✅ | closed-form oracle |

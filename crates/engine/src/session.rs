@@ -1450,7 +1450,7 @@ impl Session {
                 self.combine_selection(&shape, self.selection_mode);
             }
             ToolKind::SelectByColor => {
-                let buf = self.doc.active_frame().active_layer().pixels.clone();
+                let buf = self.select_color_buffer();
                 let shape = Mask::from_color(sw, sh, &buf, start, self.settings.threshold, self.settings.contiguous);
                 self.combine_selection(&shape, self.selection_mode);
             }
@@ -1926,13 +1926,26 @@ impl Session {
         }
     }
 
+    /// The storage-indexed pixel buffer Select-by-Color builds its mask from, honoring the source
+    /// setting: Frame (default) = the visible layers composited over the whole storage area (the
+    /// Bucket "All layers" reference pattern, so coordinates line up with the mask); Layer = the
+    /// active layer's raw stored pixels (its opacity/visibility ignored).
+    fn select_color_buffer(&self) -> RgbaBuffer {
+        if self.settings.select_color_layer {
+            self.doc.active_frame().active_layer().pixels.clone()
+        } else {
+            render::composite_frame(self.doc.active_frame(), self.doc.storage_rect())
+        }
+    }
+
     /// Apply the color selection at the reticle (off-finger Select-by-Color, Select button):
-    /// the same mask a tap would build — threshold + contiguous honored — combined into the
-    /// current selection per the selection mode. One undo step (via `set_selection`).
+    /// the same mask a tap would build — threshold + contiguous + the source setting honored —
+    /// combined into the current selection per the selection mode. One undo step (via
+    /// `set_selection`).
     pub fn select_color_cursor(&mut self) {
         let s = self.doc.storage();
         let (sw, sh) = (s.w as u32, s.h as u32);
-        let buf = self.doc.active_frame().active_layer().pixels.clone();
+        let buf = self.select_color_buffer();
         let p = self.cursor_storage();
         let shape = Mask::from_color(sw, sh, &buf, p, self.settings.threshold, self.settings.contiguous);
         self.combine_selection(&shape, self.selection_mode);
@@ -3549,6 +3562,34 @@ mod tests {
         s.run_script("SetEyedropSource(Frame)").unwrap();
         s.tap(2, 2);
         assert_eq!(s.settings.primary, Rgba8::rgb(200, 0, 0));
+    }
+
+    #[test]
+    fn select_by_color_source_frame_vs_layer() {
+        let mut s = Session::new(8, 8);
+        s.settings.primary = Rgba8::rgb(200, 0, 0); // bottom layer: red at (2,2)
+        s.tap(2, 2);
+        s.run_script("AddLayer()").unwrap(); // top layer becomes active
+        s.settings.primary = Rgba8::rgb(0, 200, 0); // top layer: green at (4,4)
+        s.tap(4, 4);
+        s.tool = ToolKind::SelectByColor;
+        // Frame (the default): the composite shows the bottom layer's red through the empty top
+        // layer, so tapping (2,2) selects just that red pixel.
+        s.tap(2, 2);
+        assert!(SelCanvas(&s).get(2, 2));
+        assert!(!SelCanvas(&s).get(3, 3), "frame source: background isn't selected");
+        assert!(!SelCanvas(&s).get(4, 4));
+        // Layer (via the DSL to cover the parse path): the active top layer is transparent at
+        // (2,2) — the same tap now floods the layer's transparent region instead, reaching (3,3)
+        // but stopping at the green pixel.
+        s.run_script("SetSelectColorSource(Layer)").unwrap();
+        s.tap(2, 2);
+        assert!(SelCanvas(&s).get(2, 2) && SelCanvas(&s).get(3, 3), "layer source: transparent region selected");
+        assert!(!SelCanvas(&s).get(4, 4), "the layer's green pixel bounds the flood");
+        // and back to Frame — the red pixel is selectable again
+        s.run_script("SetSelectColorSource(Frame)").unwrap();
+        s.tap(2, 2);
+        assert!(SelCanvas(&s).get(2, 2) && !SelCanvas(&s).get(3, 3));
     }
 
     #[test]

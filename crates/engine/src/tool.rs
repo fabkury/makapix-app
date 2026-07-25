@@ -198,6 +198,10 @@ pub struct ToolSettings {
     /// opacity/visibility ignored — the paint you'd re-apply editing that layer) instead of the
     /// composited frame (the default).
     pub eyedrop_layer: bool,
+    /// Select Color source: when true, the color mask is built from the active layer's raw stored
+    /// pixels (layer opacity/visibility ignored) instead of the composited frame (the default).
+    /// Independent from `eyedrop_layer`.
+    pub select_color_layer: bool,
 }
 impl Default for ToolSettings {
     fn default() -> Self {
@@ -228,6 +232,7 @@ impl Default for ToolSettings {
             scale_clean_edge: true,
             scale_clean_edge_width: 1.0,
             eyedrop_layer: false,
+            select_color_layer: false,
         }
     }
 }

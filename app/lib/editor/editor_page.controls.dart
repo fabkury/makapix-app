@@ -274,6 +274,16 @@ extension _EditorControls on _EditorPageState {
         setState(() => _contiguous = i == 0);
         _send('SetContiguous($_contiguous)');
       }));
+      if (_tool == 'SelectByColor') {
+        // Source: Frame = the composited frame (default, "what you see is what you select");
+        // Layer = the active layer's raw stored pixels (its opacity/visibility ignored).
+        // Applies to taps and the precision-mode Select button alike.
+        label('Source');
+        children.add(_toggle(['Frame', 'Layer'], _selColorLayer ? 1 : 0, (i) {
+          setState(() => _selColorLayer = i == 1);
+          _send('SetSelectColorSource(${_selColorLayer ? 'Layer' : 'Frame'})');
+        }));
+      }
       if (_tool == 'Bucket') {
         // Decide which pixels to fill from the whole composited image (all visible layers), while
         // still writing the fill into the active layer only.
