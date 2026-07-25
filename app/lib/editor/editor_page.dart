@@ -116,6 +116,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   int get _brushSize => _sizeByTool[_tool] ?? (_tool == 'Airbrush' ? 8 : 1);
   set _brushSize(int v) => _sizeByTool[_tool] = v;
   bool _round = true;
+  bool _eyedropLayer = false; // Eyedropper source: false = composited frame (default), true = active layer's raw pixels
   bool _perfect = false; // Pencil pixel-perfect: drop L-corner doubles on a 1px stroke
   int _threshold = 0; // Bucket / Select-by-Color colour tolerance: exact-match by default
   bool _contiguous = true;

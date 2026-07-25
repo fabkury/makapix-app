@@ -1179,7 +1179,7 @@ impl Session {
         // Tools that act once on press.
         match self.tool {
             ToolKind::Eyedropper => {
-                let c = render::composite_active(&self.doc).get(x, y);
+                let c = self.eyedrop_sample(x, y);
                 if c.a != 0 {
                     self.settings.primary = c;
                 }
@@ -1279,7 +1279,7 @@ impl Session {
         // be corrected by sliding to the wanted pixel. Raw (unclamped) coords like pointer_down:
         // off-canvas and transparent pixels no-op, keeping the last opaque colour crossed.
         if matches!(self.tool, ToolKind::Eyedropper) {
-            let c = render::composite_active(&self.doc).get(x, y);
+            let c = self.eyedrop_sample(x, y);
             if c.a != 0 {
                 self.settings.primary = c;
             }
@@ -1900,10 +1900,27 @@ impl Session {
         self.commit_edit(before);
     }
 
+    /// Sample the pixel under a canvas-relative coordinate for the eyedropper, honouring the
+    /// source setting: Frame (default) = the composited frame; Layer = the active layer's raw
+    /// stored pixel (layer opacity/visibility ignored). The Layer path translates to storage
+    /// coords and bounds to the canvas window explicitly, so off-canvas coords stay transparent
+    /// (a no-op pick) instead of reaching parked gutter pixels.
+    fn eyedrop_sample(&self, x: i32, y: i32) -> Rgba8 {
+        if self.settings.eyedrop_layer {
+            let cr = self.doc.canvas_rect();
+            if x < 0 || y < 0 || x >= cr.w as i32 || y >= cr.h as i32 {
+                return Rgba8::TRANSPARENT;
+            }
+            self.doc.active_frame().active_layer().pixels.get(x + cr.x, y + cr.y)
+        } else {
+            render::composite_active(&self.doc).get(x, y)
+        }
+    }
+
     /// Pick the colour under the reticle (off-finger eyedropper, Pick button) and set it as the
     /// primary colour. No-op on a transparent pixel (mirrors the pointer eyedropper). Not an edit.
     pub fn eyedrop_cursor(&mut self) {
-        let c = render::composite_active(&self.doc).get(self.cursor.x, self.cursor.y);
+        let c = self.eyedrop_sample(self.cursor.x, self.cursor.y);
         if c.a != 0 {
             self.settings.primary = c;
         }
@@ -3467,6 +3484,33 @@ mod tests {
         s.pointer_move(-3, 20); // off-canvas is a no-op too
         assert_eq!(s.settings.primary, Rgba8::rgb(0, 200, 0));
         s.pointer_up();
+    }
+
+    #[test]
+    fn eyedropper_layer_source_samples_raw_active_layer() {
+        let mut s = Session::new(8, 8);
+        s.settings.primary = Rgba8::rgb(200, 0, 0); // bottom layer: red at (2,2)
+        s.tap(2, 2);
+        s.run_script("AddLayer()").unwrap(); // empty top layer becomes active
+        s.settings.primary = Rgba8::new(0, 200, 0, 128); // top layer: semi-green at (4,4)
+        s.tap(4, 4);
+        s.settings.primary = Rgba8::rgb(10, 10, 10);
+        s.tool = ToolKind::Eyedropper;
+        // Frame (the default): the composite shows the bottom layer's red through the empty
+        // top layer.
+        s.tap(2, 2);
+        assert_eq!(s.settings.primary, Rgba8::rgb(200, 0, 0));
+        // Layer (via the DSL to cover the parse path): the active top layer is transparent at
+        // (2,2) → no-op pick; at (4,4) it returns the raw stored semi-transparent green.
+        s.run_script("SetEyedropSource(Layer)").unwrap();
+        s.tap(2, 2);
+        assert_eq!(s.settings.primary, Rgba8::rgb(200, 0, 0), "transparent layer pixel no-ops");
+        s.tap(4, 4);
+        assert_eq!(s.settings.primary, Rgba8::new(0, 200, 0, 128));
+        // and back to Frame
+        s.run_script("SetEyedropSource(Frame)").unwrap();
+        s.tap(2, 2);
+        assert_eq!(s.settings.primary, Rgba8::rgb(200, 0, 0));
     }
 
     #[test]

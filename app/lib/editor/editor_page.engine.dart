@@ -491,6 +491,7 @@ extension _EditorEngine on _EditorPageState {
     _send('SetSpacing($_spacing); SetFillAllLayers($_fillAllLayers)');
     _send('SetSelectionMode($_selMode); SetProtectPixels($_protectPixels); SetWrap($_wrap)');
     _send('SetPixelPerfect($_perfect); SetOverscanView(${_overscan ? 1 : 0})');
+    _send('SetEyedropSource(${_eyedropLayer ? 'Layer' : 'Frame'})');
     _send('SetCleanEdge($_cleanEdge); SetCleanEdgeWidth(${(_cleanEdgeWidth * 1000).round()})');
     _send('SetScaleCleanEdge($_resizeCleanEdge); SetScaleCleanEdgeWidth(${(_resizeCleanEdgeWidth * 1000).round()})');
     if (t == 'Gradient') {

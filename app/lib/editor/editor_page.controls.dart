@@ -219,6 +219,16 @@ extension _EditorControls on _EditorPageState {
         _send('SetBrushShape(${_round ? 'Round' : 'Square'})');
       }));
     }
+    if (_tool == 'Eyedropper') {
+      // Pick source: Frame = the composited frame (default); Layer = the active layer's raw
+      // stored pixels (its opacity/visibility ignored). Applies to taps, drags, and the
+      // precision-mode Pick button alike.
+      label('Source');
+      children.add(_toggle(['Frame', 'Layer'], _eyedropLayer ? 1 : 0, (i) {
+        setState(() => _eyedropLayer = i == 1);
+        _send('SetEyedropSource(${_eyedropLayer ? 'Layer' : 'Frame'})');
+      }));
+    }
     if (_tool == 'Pencil') {
       // Pixel-perfect: drop the redundant "corner double" pixels as a 1px stroke turns, keeping the
       // line a clean 1px. Only meaningful at Size 1 (the engine no-ops it above), so grey it out

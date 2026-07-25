@@ -194,6 +194,10 @@ pub struct ToolSettings {
     /// The Resize tool's cleanEdge line width, 0.0..=2.0 (same semantics as `clean_edge_width`,
     /// independent value).
     pub scale_clean_edge_width: f32,
+    /// Eyedropper source: when true, picks sample the active layer's raw stored pixel (layer
+    /// opacity/visibility ignored — the paint you'd re-apply editing that layer) instead of the
+    /// composited frame (the default).
+    pub eyedrop_layer: bool,
 }
 impl Default for ToolSettings {
     fn default() -> Self {
@@ -223,6 +227,7 @@ impl Default for ToolSettings {
             clean_edge_width: 1.0,
             scale_clean_edge: true,
             scale_clean_edge_width: 1.0,
+            eyedrop_layer: false,
         }
     }
 }
