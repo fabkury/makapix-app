@@ -281,6 +281,7 @@ extension _EditorSheets on _EditorPageState {
             _sheetBtn(Icons.call_merge, 'Merge down', (cur > 0 && !belowLocked)
                 ? () {
                     Navigator.pop(ctx);
+                    _clearLayerGroup(); // the engine collapses its group to the merged layer
                     _act('MergeDown($cur)');
                   }
                 : null),
@@ -289,10 +290,12 @@ extension _EditorSheets on _EditorPageState {
           _sheetBtnRow([
             _sheetBtn(Icons.control_point_duplicate, 'Duplicate', () {
               Navigator.pop(ctx);
+              _clearLayerGroup(); // focus moves to the copy; the engine resets its group too
               _act('DuplicateLayer($cur)');
             }),
             _sheetBtn(Icons.add_box_outlined, 'New layer above', () {
               Navigator.pop(ctx);
+              _clearLayerGroup();
               _act('AddLayerAt(${cur + 1})');
             }),
           ]),
@@ -302,7 +305,10 @@ extension _EditorSheets on _EditorPageState {
             final all = List.generate(engine.frameCount, (k) => k)
                 .where((k) => k != engine.activeFrame)
                 .join(',');
-            if (all.isNotEmpty) _act('SetActiveLayer($cur); DuplicateLayerToFrames($all)');
+            if (all.isNotEmpty) {
+              _clearLayerGroup(); // SetActiveLayer collapses the engine group to [cur]
+              _act('SetActiveLayer($cur); DuplicateLayerToFrames($all)');
+            }
           }),
           const SizedBox(height: 8),
           const Divider(height: 1),
@@ -310,6 +316,7 @@ extension _EditorSheets on _EditorPageState {
           _sheetDelete('Delete layer', count > 1
               ? () {
                   Navigator.pop(ctx);
+                  _remapLayerGroupRemoved(cur); // matches the engine's own remap
                   _act('RemoveLayer($cur)');
                 }
               : null),
@@ -353,6 +360,7 @@ extension _EditorSheets on _EditorPageState {
           const SizedBox(height: 12),
           _sheetBtn(Icons.timer_outlined, 'Edit duration…', () {
             Navigator.pop(ctx);
+            if (cur != engine.activeFrame) _clearLayerGroup(); // frame switch invalidates the group
             _act('SetActiveFrame($cur)');
             _editDuration();
           }),
@@ -375,10 +383,12 @@ extension _EditorSheets on _EditorPageState {
           _sheetBtnRow([
             _sheetBtn(Icons.control_point_duplicate, 'Duplicate', () {
               Navigator.pop(ctx);
+              _clearLayerGroup(); // a different frame becomes active
               _act('DuplicateFrame($cur)');
             }),
             _sheetBtn(Icons.add_box_outlined, 'New frame after', () {
               Navigator.pop(ctx);
+              _clearLayerGroup();
               _act('AddFrameAt(${cur + 1})');
             }),
           ]),
@@ -388,6 +398,7 @@ extension _EditorSheets on _EditorPageState {
           _sheetDelete('Delete frame', count > 1
               ? () {
                   Navigator.pop(ctx);
+                  _clearLayerGroup(); // a different frame (with its own layer stack) may become active
                   _act('RemoveFrame($cur)');
                 }
               : null),

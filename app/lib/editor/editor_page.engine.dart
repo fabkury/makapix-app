@@ -811,6 +811,7 @@ extension _EditorEngine on _EditorPageState {
     final n = engine.frameCount;
     if (n <= 1) return;
     final next = ((engine.activeFrame + delta) % n + n) % n;
+    _clearLayerGroup(); // the move-group indexed the previous frame's layer stack
     _act('SetActiveFrame($next)');
   }
 
@@ -839,7 +840,9 @@ extension _EditorEngine on _EditorPageState {
       ),
     );
     if (entered == null || !mounted) return;
-    _act('SetActiveFrame(${(entered - 1).clamp(0, n - 1)})');
+    final target = (entered - 1).clamp(0, n - 1);
+    if (target != engine.activeFrame) _clearLayerGroup();
+    _act('SetActiveFrame($target)');
   }
 
 }

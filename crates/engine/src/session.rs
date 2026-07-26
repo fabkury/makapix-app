@@ -2402,6 +2402,7 @@ impl Session {
             s.doc.frames.push(Frame { id, duration_us: dur, layers, active_layer: 0 });
             s.doc.active_frame = s.doc.frames.len() - 1;
         });
+        self.reset_layer_sel(); // the move-group indexes the active frame's layers — a new frame is active
     }
 
     pub fn duplicate_frame(&mut self, i: usize) {
@@ -2417,6 +2418,7 @@ impl Session {
             s.doc.frames.insert(i + 1, copy);
             s.doc.active_frame = i + 1;
         });
+        self.reset_layer_sel();
     }
 
     /// Insert a fresh blank frame at index `at` (clamped to the end), making it active. Used by the
@@ -2433,16 +2435,25 @@ impl Session {
             s.doc.frames.insert(at, Frame { id, duration_us: dur, layers, active_layer: 0 });
             s.doc.active_frame = at;
         });
+        self.reset_layer_sel();
     }
 
     pub fn remove_frame(&mut self, i: usize) {
         if self.doc.frames.len() <= 1 || i >= self.doc.frames.len() {
             return;
         }
+        let before = self.doc.active_frame().id;
         self.edit_doc("remove_frame", |s| {
             s.doc.frames.remove(i);
             s.doc.active_frame = s.doc.active_frame.min(s.doc.frames.len() - 1);
         });
+        // A different frame may now be active (its layer stack too); keep the group only when the
+        // active frame survived as-is.
+        if self.doc.active_frame().id != before {
+            self.reset_layer_sel();
+        } else {
+            self.sanitize_layer_sel();
+        }
     }
 
     pub fn reorder_frame(&mut self, from: usize, to: usize) {
@@ -2458,8 +2469,9 @@ impl Session {
     }
 
     pub fn set_active_frame(&mut self, i: usize) {
-        if i < self.doc.frames.len() {
+        if i < self.doc.frames.len() && i != self.doc.active_frame {
             self.doc.active_frame = i;
+            self.reset_layer_sel(); // the move-group indexed the previous frame's layer stack
         }
     }
 
@@ -2495,6 +2507,7 @@ impl Session {
             let n = s.doc.active_frame().layers.len();
             s.doc.active_frame_mut().active_layer = n - 1;
         });
+        self.reset_layer_sel(); // focus moved to the new layer; a stale group would drag the old one
     }
 
     /// Insert a fresh blank layer at index `at` (clamped) in the active frame, making it active. Used
@@ -2511,6 +2524,7 @@ impl Session {
             s.doc.active_frame_mut().layers.insert(at, layer);
             s.doc.active_frame_mut().active_layer = at;
         });
+        self.reset_layer_sel();
     }
 
     pub fn remove_layer(&mut self, i: usize) {
@@ -2523,6 +2537,7 @@ impl Session {
             let a = s.doc.active_frame().active_layer.min(n - 1);
             s.doc.active_frame_mut().active_layer = a;
         });
+        self.remap_layer_sel_removed(i);
     }
 
     pub fn duplicate_layer(&mut self, i: usize) {
@@ -2539,6 +2554,7 @@ impl Session {
             s.doc.active_frame_mut().layers.insert(i + 1, copy);
             s.doc.active_frame_mut().active_layer = i + 1;
         });
+        self.reset_layer_sel();
     }
 
     /// Merge layer `i` down onto the layer below it: composite `i`'s pixels — with its opacity,
@@ -2572,6 +2588,7 @@ impl Session {
             }
             f.active_layer = i - 1;
         });
+        self.reset_layer_sel();
     }
 
     pub fn reorder_layer(&mut self, from: usize, to: usize) {
@@ -2584,6 +2601,7 @@ impl Session {
             s.doc.active_frame_mut().layers.insert(to, l);
             s.doc.active_frame_mut().active_layer = to;
         });
+        self.remap_layer_sel_reorder(from, to);
     }
 
     pub fn set_active_layer(&mut self, i: usize) {
@@ -2616,6 +2634,60 @@ impl Session {
             v.push(self.doc.active_frame().active_layer.min(n.saturating_sub(1)));
         }
         self.layer_sel = v;
+    }
+
+    // ---- move-group consistency ----
+    // `layer_sel` holds layer *indices* into the active frame, so every operation that changes
+    // which frame is active, which layer is active, or the layer list itself must keep it in
+    // sync. A stale group makes the Move tool and nudges act on the wrong layer(s) — AddLayer
+    // used to leave the group on the previous layer, so dragging the freshly added empty layer
+    // moved the old layer's pixels out from under the user.
+
+    /// Collapse the move-group to just the active layer of the active frame. Used by every
+    /// operation that hands focus to a different layer (add/duplicate/merge) or frame.
+    fn reset_layer_sel(&mut self) {
+        self.layer_sel = vec![self.doc.active_frame().active_layer];
+    }
+
+    /// Remap the move-group after layer `removed` was deleted from the active frame: drop it,
+    /// shift higher indices down, and collapse to the active layer if the group empties.
+    fn remap_layer_sel_removed(&mut self, removed: usize) {
+        self.layer_sel.retain(|&li| li != removed);
+        for li in &mut self.layer_sel {
+            if *li > removed {
+                *li -= 1;
+            }
+        }
+        if self.layer_sel.is_empty() {
+            self.reset_layer_sel();
+        }
+    }
+
+    /// Remap the move-group across the remove-then-insert permutation `reorder_layer` performs,
+    /// so membership keeps following the same layers through the stack.
+    fn remap_layer_sel_reorder(&mut self, from: usize, to: usize) {
+        for li in &mut self.layer_sel {
+            *li = if *li == from {
+                to
+            } else if from < to && *li > from && *li <= to {
+                *li - 1
+            } else if to < from && *li >= to && *li < from {
+                *li + 1
+            } else {
+                *li
+            };
+        }
+        self.layer_sel.sort_unstable();
+    }
+
+    /// Drop move-group indices the active frame no longer has (undo/redo/load can shrink or swap
+    /// the layer list), collapsing to the active layer if the group empties.
+    pub(crate) fn sanitize_layer_sel(&mut self) {
+        let n = self.doc.active_frame().layers.len();
+        self.layer_sel.retain(|&li| li < n);
+        if self.layer_sel.is_empty() {
+            self.reset_layer_sel();
+        }
     }
 
     /// Union of the opaque bounding boxes of the given layers (in the active frame), or `None` if
@@ -2753,8 +2825,9 @@ impl Session {
     // to read as "pending". Commit records one undo step; cancel restores the pre-lift frame.
 
     /// Begin a move draft from the current selection (the selected pixels) or, with no selection,
-    /// the move-group layers. No-op if a draft is already open, the active layer isn't editable, or
-    /// (selection case) the selection is empty. The shell calls this on the first drag movement.
+    /// the move-group layers. No-op if a draft is already open, the active layer isn't editable,
+    /// (selection case) the selection is empty, or (layer case) the group has no opaque pixels —
+    /// moving nothing is a clean no-op. The shell calls this on the first drag movement.
     pub fn move_draft_begin(&mut self) {
         if self.move_draft.is_some() || !self.active_editable() {
             return;
@@ -2817,6 +2890,12 @@ impl Session {
             (Some(a), Some(b)) => Some(union_irect(a, b)),
             (a, b) => a.or(b),
         });
+        if bbox.is_none() {
+            // Nothing opaque to move → refuse the draft. A bbox-less draft is invisible to the
+            // shell (`move_draft_rect` → None → no Commit/Cancel UI) yet blocks every later
+            // `move_draft_begin`, wedging the Move tool until the session is replaced.
+            return;
+        }
         self.move_draft = Some(MoveDraft { fid, sel_before, floats, is_selection: false, bbox, offset: Point::new(0, 0) });
     }
 
@@ -3119,6 +3198,7 @@ impl Session {
         self.paste_draft = None;
         self.move_draft = None; // a stale draft would reference the previous document's frame [F-29]
         self.move_sel_before = None; // drop any half-open selection-move drag
+        self.reset_layer_sel(); // the move-group indexed the previous document's layers
         Ok(())
     }
 
@@ -4689,6 +4769,81 @@ mod tests {
         assert_eq!(s.layer_sel, vec![0, 1]); // but the move-group is those two
     }
 
+    // The reported bug: draw on layer 0, AddLayer (new empty layer becomes active), drag with the
+    // Move tool → the stale move-group ([0]) dragged layer 0's pixels out from under the user.
+    #[test]
+    fn move_after_add_layer_drags_only_the_new_empty_layer() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(3, 3); // the "circle" on layer 0
+        s.add_layer(); // new empty layer becomes active
+        assert_eq!(s.layer_sel, vec![1], "the move-group must follow the new active layer");
+        s.tool = ToolKind::Move;
+        s.pointer_down(8, 8);
+        s.pointer_move(11, 8); // drag +3x
+        s.pointer_up();
+        assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::WHITE, "layer 0's pixel must not move");
+        assert_eq!(s.pixel(0, 0, 6, 3), Rgba8::TRANSPARENT);
+    }
+
+    #[test]
+    fn remove_layer_remaps_move_group() {
+        let mut s = Session::new(16, 16);
+        s.add_layer();
+        s.add_layer(); // layers 0,1,2
+        s.set_move_group(&[1, 2]);
+        s.remove_layer(0); // below the group → both indices shift down
+        assert_eq!(s.layer_sel, vec![0, 1]);
+        s.remove_layer(1); // a group member → dropped
+        assert_eq!(s.layer_sel, vec![0]);
+    }
+
+    #[test]
+    fn reorder_layer_remaps_move_group_membership() {
+        let mut s = Session::new(16, 16);
+        s.add_layer();
+        s.add_layer(); // layers 0,1,2
+        s.set_move_group(&[0, 2]);
+        s.reorder_layer(0, 2); // old 0 → 2; old 1 → 0; old 2 → 1
+        assert_eq!(s.layer_sel, vec![1, 2], "membership follows the same layers through the stack");
+    }
+
+    #[test]
+    fn duplicate_and_merge_collapse_move_group_to_active() {
+        let mut s = Session::new(16, 16);
+        s.add_layer(); // layers 0,1
+        s.set_move_group(&[0, 1]);
+        s.duplicate_layer(0); // the copy (index 1) becomes active
+        assert_eq!(s.layer_sel, vec![1]);
+        s.set_move_group(&[0, 2]);
+        s.merge_down(2); // the merged layer (index 1) becomes active
+        assert_eq!(s.layer_sel, vec![1]);
+    }
+
+    #[test]
+    fn frame_switch_resets_move_group_redundant_switch_keeps_it() {
+        let mut s = Session::new(16, 16);
+        s.add_layer(); // frame 0: layers 0,1
+        s.set_move_group(&[0, 1]);
+        s.add_frame(); // a new (1-layer) frame becomes active
+        assert_eq!(s.layer_sel, vec![0]);
+        s.set_active_frame(0);
+        s.set_move_group(&[0, 1]);
+        s.set_active_frame(0); // no actual switch → the group survives
+        assert_eq!(s.layer_sel, vec![0, 1]);
+        s.set_active_frame(1); // a real switch → reset to the new frame's active layer
+        assert_eq!(s.layer_sel, vec![0]);
+    }
+
+    #[test]
+    fn undo_sanitizes_move_group() {
+        let mut s = Session::new(16, 16);
+        s.run_script("AddLayer()").unwrap();
+        assert_eq!(s.layer_sel, vec![1]);
+        s.run_script("Undo()").unwrap(); // layer 1 is gone again
+        assert_eq!(s.layer_sel, vec![0], "a dangling index must collapse to the active layer");
+    }
+
     #[test]
     fn rename_layer_via_dsl_and_undo() {
         let mut s = Session::new(16, 16);
@@ -5682,6 +5837,30 @@ mod tests {
         s.run_script("MoveDraftBegin(); MoveDraftMove(4,0); MoveDraftCommit()").unwrap();
         assert_eq!(s.pixel(0, 0, 7, 3), Rgba8::WHITE);
         assert!(s.doc.can_undo());
+    }
+
+    // The reported bug: on a fresh document, Move over the (empty) layer opened a bbox-less draft
+    // the shell couldn't see (`move_draft_rect` → None → no Commit/Cancel UI) while blocking every
+    // later `move_draft_begin` — the Move tool went dead until the session was replaced.
+    #[test]
+    fn move_draft_begin_refuses_an_all_empty_layer_and_does_not_wedge() {
+        let mut s = Session::new(16, 16);
+        s.tool = ToolKind::Move;
+        s.move_draft_begin(); // fresh document → layer 0 is empty → refused
+        s.move_draft_move(3, 3); // and the follow-up drag deltas are clean no-ops
+        assert!(s.move_draft_rect().is_none(), "no draft over nothing to move");
+        s.move_draft_cancel(); // the shell's leave-tool cancel must also stay a no-op
+        // The tool is NOT wedged: draw something and the next drag opens a working draft.
+        s.settings.primary = Rgba8::WHITE;
+        s.tool = ToolKind::Pencil;
+        s.tap(3, 3);
+        s.tool = ToolKind::Move;
+        s.move_draft_begin();
+        s.move_draft_move(2, 0);
+        assert!(s.move_draft_rect().is_some(), "a real draft opens after the refused one");
+        s.move_draft_commit();
+        assert_eq!(s.pixel(0, 0, 5, 3), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::TRANSPARENT);
     }
 
     // ---- off-canvas gutter (SPEC §8, §15) ----

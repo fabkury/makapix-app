@@ -345,10 +345,12 @@ impl Session {
             Undo => {
                 self.doc.undo();
                 self.mem_recalibrate();
+                self.sanitize_layer_sel(); // undo can shrink the active frame's layer stack
             }
             Redo => {
                 self.doc.redo();
                 self.mem_recalibrate();
+                self.sanitize_layer_sel();
             }
             ClearHistory => self.doc.history = crate::history::History::new(),
             SetMemBudget(soft, hard) => self.set_mem_budgets(soft as usize, hard as usize),

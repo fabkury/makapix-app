@@ -355,7 +355,11 @@ extension _EditorCanvas on _EditorPageState {
     }
     if (_isMoveDrafting) {
       // Move pixels / layer: the draft begins on the first actual MOVEMENT (see _continueDraw), so a
-      // tap leaves the selection untouched. Just record the anchor here.
+      // tap leaves the selection untouched. Just record the anchor here. `_moveDraftStarted` is a
+      // per-drag latch: re-arm it from the engine's actual draft state, because a refused begin
+      // (e.g. an empty layer — nothing to move) would otherwise leave it latched true and every
+      // later drag would skip MoveDraftBegin, deadening the tool.
+      _moveDraftStarted = _hasMoveDraft;
       _moveDragLast = _toCanvas(pos, box);
       return;
     }

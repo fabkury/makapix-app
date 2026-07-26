@@ -59,7 +59,10 @@ extension _EditorTimeline on _EditorPageState {
           if (cached == null || cached.hash != hash) _genFrameThumb(i, hash);
           final sel = i == active;
           return GestureDetector(
-            onTap: () => _act('SetActiveFrame($i)'),
+            onTap: () {
+              if (i != active) _clearLayerGroup(); // the group indexed the previous frame's layers
+              _act('SetActiveFrame($i)');
+            },
             onLongPress: () => _frameMenu(i),
             child: Container(
               width: vertical ? null : tileMain + 6,
@@ -96,7 +99,14 @@ extension _EditorTimeline on _EditorPageState {
       Container(width: vertical ? null : 1, height: vertical ? 1 : null, color: Colors.black26),
       Expanded(child: strip),
       Container(width: vertical ? null : 1, height: vertical ? 1 : null, color: Colors.black26),
-      IconButton(iconSize: 20, tooltip: 'Add frame', onPressed: () => _act('AddFrame()'), icon: const Icon(Icons.add_box)),
+      IconButton(
+          iconSize: 20,
+          tooltip: 'Add frame',
+          onPressed: () {
+            _clearLayerGroup();
+            _act('AddFrame()');
+          },
+          icon: const Icon(Icons.add_box)),
     ];
     return Container(
       height: vertical ? null : 70 * s,
@@ -118,6 +128,7 @@ extension _EditorTimeline on _EditorPageState {
             title: const Text('Add animation frame'),
             onTap: () {
               Navigator.pop(ctx);
+              _clearLayerGroup();
               _act('AddFrame()');
             },
           ),
@@ -293,6 +304,23 @@ extension _EditorTimeline on _EditorPageState {
     return 0;
   }
 
+  // The move-group is a set of layer indices into the active frame. The engine resets or remaps
+  // its own copy (Session.layer_sel) whenever the layer list or the active frame changes; these
+  // two helpers mirror that locally so the UI chips never point at the wrong layer.
+  void _clearLayerGroup() {
+    if (_selLayers.isNotEmpty) setState(() => _selLayers.clear());
+  }
+
+  // After deleting layer `removed`: drop it from the group and shift higher indices down,
+  // matching the engine's own remap.
+  void _remapLayerGroupRemoved(int removed) {
+    if (_selLayers.isEmpty) return;
+    final next = _selLayers.where((li) => li != removed).map((li) => li > removed ? li - 1 : li).toSet();
+    setState(() => _selLayers
+      ..clear()
+      ..addAll(next));
+  }
+
   // Push the current move-group to the engine's layer selection so both the Move-tool layer drag
   // and the nudge buttons act on the whole group (or just the active layer when none is grouped).
   void _syncLayerSel() {
@@ -370,7 +398,14 @@ extension _EditorTimeline on _EditorPageState {
       width: vertical ? 56 * s : null,
       color: const Color(0xFF1A1C1F),
       child: Flex(direction: vertical ? Axis.vertical : Axis.horizontal, children: [
-        IconButton(iconSize: 20, tooltip: 'Add layer', onPressed: () => _act('AddLayer()'), icon: const Icon(Icons.add_box)),
+        IconButton(
+            iconSize: 20,
+            tooltip: 'Add layer',
+            onPressed: () {
+              _clearLayerGroup(); // focus moves to the new layer; the engine resets its group too
+              _act('AddLayer()');
+            },
+            icon: const Icon(Icons.add_box)),
         Container(width: vertical ? null : 1, height: vertical ? 1 : null, color: Colors.black26),
         Expanded(
           child: ListView.builder(
