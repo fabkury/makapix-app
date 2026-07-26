@@ -28,8 +28,8 @@ import 'widgets/hashtag_bar.dart';
 import 'widgets/send_target_binder.dart';
 
 /// The social hub. Top bar (left → right): the Makapix Club menu · my profile · notifications,
-/// then Contribute · Recommended · Recent · Following · Search. The selected page (Contribute or a
-/// feed) fills the body, and horizontal swipes move between them.
+/// then Contribute · Recommended · Recent · Following · Search. The selected page (Contribute, a
+/// feed, or Search) fills the body, and horizontal swipes move between them.
 class ClubHomePage extends ConsumerStatefulWidget {
   const ClubHomePage({super.key});
   @override
@@ -37,48 +37,58 @@ class ClubHomePage extends ConsumerStatefulWidget {
 }
 
 class _ClubHomePageState extends ConsumerState<ClubHomePage> {
-  // Swipeable pages, left → right matching the top-bar order. Page 0 is Contribute (a peer to the
-  // feeds); the feeds follow. The body lands on Recent ("New artworks", like the website), so a
-  // swipe reaches Recommended → Contribute one way and Following the other.
+  // Swipeable pages, left → right matching the top-bar order. Page 0 is Contribute and the last
+  // page is Search (both peers to the feeds); the feeds sit between. The body lands on Recent
+  // ("New artworks", like the website), so a swipe reaches Recommended → Contribute one way and
+  // Following → Search the other.
   static const List<FeedKind> _feeds = [FeedKind.promoted, FeedKind.recent, FeedKind.following];
-  // PageView layout: Contribute(0) · Recommended(1) · Recent(2) · Following(3). Feed i is at page i+1.
+  // PageView layout: Contribute(0) · Recommended(1) · Recent(2) · Following(3) · Search(4).
+  // Feed i is at page i+1.
   static const int _initialPage = 2; // FeedKind.recent
-  int get _pageCount => _feeds.length + 1;
+  int get _searchPage => _feeds.length + 1;
+  int get _pageCount => _feeds.length + 2;
 
   late final PageController _pages = PageController(initialPage: _initialPage);
-  // The active page's feed, or null while the Contribute page (page 0) is showing.
-  FeedKind? _feed = _feedForPage(_initialPage);
-
-  // Page ⇄ feed mapping: page 0 is Contribute (no feed); page p≥1 is `_feeds[p-1]`.
-  static FeedKind? _feedForPage(int page) =>
-      page <= 0 ? null : _feeds[(page - 1).clamp(0, _feeds.length - 1)];
-  int get _currentPage => _feed == null ? 0 : _feeds.indexOf(_feed!) + 1;
+  // Owned here (not by SearchView) so the top-bar Search icon can focus the query field.
+  final FocusNode _searchFocus = FocusNode();
+  // The active page. `_feed` derives from it: null on the Contribute and Search pages.
+  int _page = _initialPage;
+  FeedKind? get _feed => _page >= 1 && _page <= _feeds.length ? _feeds[_page - 1] : null;
 
   @override
   void dispose() {
     _pages.dispose();
+    _searchFocus.dispose();
     super.dispose();
   }
 
-  // Keep the top-bar selection (`_feed`) in sync with the PageView's real page.
+  // Keep the top-bar selection (`_page`) in sync with the PageView's real page.
   // When the view mounts *after* the onboarding wizard, the deferred first layout makes PageView
   // fire a spurious `onPageChanged(0)` (highlighting Contribute) while the controller actually
-  // settles on `initialPage` (Recent). Re-assert `_feed` from the controller's settled page after
+  // settles on `initialPage` (Recent). Re-assert `_page` from the controller's settled page after
   // the frame; only act on a settled (near-integer) page so an in-progress swipe isn't disturbed.
   void _syncFeedToPager() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_pages.hasClients) return;
       final page = _pages.page;
       if (page == null || (page - page.roundToDouble()).abs() > 0.01) return;
-      final kind = _feedForPage(page.round().clamp(0, _pageCount - 1));
-      if (kind != _feed) setState(() => _feed = kind);
+      final p = page.round().clamp(0, _pageCount - 1);
+      if (p != _page) setState(() => _page = p);
     });
   }
 
   // Jump to a page by its top-bar button (animated; keeps the swipe pager in sync).
-  void _goToPage(int page) {
-    if (page == _currentPage) return;
-    _pages.animateToPage(page, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+  Future<void> _goToPage(int page) async {
+    if (page == _page) return;
+    await _pages.animateToPage(page,
+        duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+  }
+
+  // The Search icon lands on the Search page AND pops the keyboard (focus after the page settles,
+  // so the field is guaranteed to be built). Swipe arrivals deliberately don't focus.
+  Future<void> _openSearch() async {
+    await _goToPage(_searchPage);
+    if (mounted) _searchFocus.requestFocus();
   }
 
   void _selectFeed(FeedKind kind) => _goToPage(_feeds.indexOf(kind) + 1);
@@ -153,13 +163,18 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
         color: selected ? cs.primary : null);
   }
 
-  // The Contribute selector: like a feed icon, but its "feed" is the Contribute page (page 0),
-  // so it's highlighted whenever no feed is active.
+  // The Contribute selector: like a feed icon, but its "feed" is the Contribute page (page 0).
   Widget _contributeIcon(ColorScheme cs) {
-    final selected = _feed == null;
+    final selected = _page == 0;
     return _navIcon(selected ? Icons.add_circle : Icons.add_circle_outline, 'Contribute',
         () => _goToPage(0),
         color: selected ? cs.primary : null);
+  }
+
+  // The Search selector: highlighted while the Search page (the last page) is active.
+  Widget _searchIcon(ColorScheme cs) {
+    final selected = _page == _searchPage;
+    return _navIcon(Icons.search, 'Search', _openSearch, color: selected ? cs.primary : null);
   }
 
   PopupMenuItem<String> _menuItem(String value, IconData icon, String label) => PopupMenuItem<String>(
@@ -258,21 +273,22 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
           _feedIcon(Icons.diamond_outlined, Icons.diamond, 'Recommended', FeedKind.promoted, cs),
           _feedIcon(Icons.visibility_outlined, Icons.visibility, 'Recent', FeedKind.recent, cs),
           _feedIcon(Icons.people_outline, Icons.people, 'Following', FeedKind.following, cs),
-          _navIcon(Icons.search, 'Search', () => _push(const SearchPage())),
+          _searchIcon(cs),
           const SizedBox(width: 4),
         ],
       ),
-      // Swipe horizontally to move Contribute ↔ Recommended ↔ Recent ↔ Following; the top-bar
-      // buttons jump to a page and stay in sync via onPageChanged. The Contribute page has no
-      // player channel, so sending is disabled there.
+      // Swipe horizontally to move Contribute ↔ Recommended ↔ Recent ↔ Following ↔ Search; the
+      // top-bar buttons jump to a page and stay in sync via onPageChanged. The Contribute and
+      // Search pages have no player channel, so sending is disabled there.
       body: SendTargetBinder(
         target: _feed == null ? null : _channelFor(_feed!),
         child: PageView(
           controller: _pages,
-          onPageChanged: (i) => setState(() => _feed = _feedForPage(i)),
+          onPageChanged: (i) => setState(() => _page = i),
           children: [
             const ContributePage(),
             for (final kind in _feeds) _feedBody(kind),
+            SearchView(searchFocus: _searchFocus),
           ],
         ),
       ),

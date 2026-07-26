@@ -20,13 +20,24 @@ final _userSearchProvider =
 final _hashtagSearchProvider =
     FutureProvider.autoDispose.family<List<HashtagStat>, String>((ref, q) => ref.read(searchApiProvider).hashtagStats(q));
 
-class SearchPage extends ConsumerStatefulWidget {
-  const SearchPage({super.key});
+/// The Search page, embedded as the last swipeable page of the Club home's PageView (it has no
+/// Scaffold/AppBar of its own — the home top bar stays). The query field, active tab, and results
+/// survive swiping away and back (keep-alive). The Artworks/Users/Hashtags tabs switch by tap only:
+/// a swipeable TabBarView would capture horizontal drags and trap the user on this page.
+/// [searchFocus] is owned by the home page so the top-bar Search icon can focus the field (swipe
+/// arrivals deliberately don't pop the keyboard).
+class SearchView extends ConsumerStatefulWidget {
+  final FocusNode? searchFocus;
+  const SearchView({super.key, this.searchFocus});
   @override
-  ConsumerState<SearchPage> createState() => _SearchPageState();
+  ConsumerState<SearchView> createState() => _SearchViewState();
 }
 
-class _SearchPageState extends ConsumerState<SearchPage> with SingleTickerProviderStateMixin {
+class _SearchViewState extends ConsumerState<SearchView>
+    with AutomaticKeepAliveClientMixin, SingleTickerProviderStateMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   late final TabController _tab = TabController(length: 3, vsync: this);
   final _field = TextEditingController();
   String _q = '';
@@ -42,32 +53,43 @@ class _SearchPageState extends ConsumerState<SearchPage> with SingleTickerProvid
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: TextField(
-          controller: _field,
-          autofocus: true,
-          textInputAction: TextInputAction.search,
-          onSubmitted: (_) => _run(),
-          decoration: InputDecoration(
-            hintText: 'Search Makapix Club…',
-            border: InputBorder.none,
-            suffixIcon: IconButton(icon: const Icon(Icons.search), onPressed: _run),
+    super.build(context); // AutomaticKeepAliveClientMixin
+    return Column(children: [
+      CenteredContent(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 8, 0),
+          child: TextField(
+            controller: _field,
+            focusNode: widget.searchFocus,
+            textInputAction: TextInputAction.search,
+            onSubmitted: (_) => _run(),
+            decoration: InputDecoration(
+              hintText: 'Search Makapix Club…',
+              border: InputBorder.none,
+              suffixIcon: IconButton(icon: const Icon(Icons.search), onPressed: _run),
+            ),
           ),
         ),
-        bottom: TabBar(
-          controller: _tab,
-          tabs: const [Tab(text: 'Artworks'), Tab(text: 'Users'), Tab(text: 'Hashtags')],
-        ),
       ),
-      body: _q.isEmpty
-          ? const Center(child: Text('Type to search.', style: TextStyle(color: Colors.white38)))
-          : TabBarView(controller: _tab, children: [
-              _ArtworksTab(query: _q), // full-bleed adaptive grid
-              CenteredContent(child: _UsersTab(query: _q)),
-              CenteredContent(child: _HashtagsTab(query: _q)),
-            ]),
-    );
+      TabBar(
+        controller: _tab,
+        tabs: const [Tab(text: 'Artworks'), Tab(text: 'Users'), Tab(text: 'Hashtags')],
+      ),
+      Expanded(
+        child: _q.isEmpty
+            ? const Center(child: Text('Type to search.', style: TextStyle(color: Colors.white38)))
+            : TabBarView(
+                controller: _tab,
+                // Tap-only tabs: see the class doc — the page itself must stay swipeable.
+                physics: const NeverScrollableScrollPhysics(),
+                children: [
+                  _ArtworksTab(query: _q), // full-bleed adaptive grid
+                  CenteredContent(child: _UsersTab(query: _q)),
+                  CenteredContent(child: _HashtagsTab(query: _q)),
+                ],
+              ),
+      ),
+    ]);
   }
 }
 
