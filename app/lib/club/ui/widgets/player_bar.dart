@@ -16,6 +16,8 @@ const double kPlayerBarHeight = 64;
 /// at least one online player device. Lets the user push the current artwork/channel to a device,
 /// swap back/next, pause/resume, and (via the ⋮ menu) adjust brightness/rotation/mirror and switch
 /// the active device. Returns an empty box when there's nothing to control, so it costs no layout.
+/// On pages that declare no send target (the provider is null) the bar collapses away with a short
+/// animation instead of showing a "Nothing selected" placeholder.
 class PlayerBar extends ConsumerWidget {
   const PlayerBar({super.key});
 
@@ -47,7 +49,10 @@ class PlayerBar extends ConsumerWidget {
       }
     }
 
-    return Material(
+    // Collapse (rather than pop) when the visible page has nothing to send: feed swipes flip the
+    // target often, and an instant 64px layout jump underneath the content would be jarring. While
+    // collapsed the subtree stays mounted but is clipped to zero height, so nothing is tappable.
+    final bar = Material(
       color: cs.surface,
       elevation: 8,
       child: Container(
@@ -120,6 +125,16 @@ class PlayerBar extends ConsumerWidget {
             ),
           ),
         ),
+    );
+
+    return ClipRect(
+      child: AnimatedAlign(
+        alignment: Alignment.topCenter,
+        heightFactor: target == null ? 0.0 : 1.0,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
+        child: bar,
+      ),
     );
   }
 
