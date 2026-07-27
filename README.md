@@ -9,8 +9,8 @@ follow, and remix. It exists as two independent, coexisting clients of the same 
 **Get the app:**
 
 - **iOS** — [Makapix Club on the App Store](https://apps.apple.com/us/app/makapix-club/id6788845118).
-- **Android** — in Google Play closed testing; the public production release is pending. (Or build and
-  sideload from source — see below.)
+- **Android** — [Makapix Club on Google Play](https://play.google.com/store/apps/details?id=club.makapix.app).
+  (Or build and sideload from source — see below.)
 - **Windows** — build from source (see below).
 
 This repository is **the app**. It has two pillars sharing one binary:

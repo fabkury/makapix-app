@@ -39,8 +39,9 @@ never locally.**
 ./build_android.ps1           # Android APK: engine .so (arm64+arm32) → jniLibs → release APK
                               #   -Install: adb install -r · -Bundle: build an .aab instead
 ./release_android.ps1         # Play release: gates → versionCode from the Play API → signed prod AAB →
-                              #   upload+rollout → commit/tag/push. -Track (default internal; alpha is the
-                              #   live testing track) · -DryRun · -VersionName X.Y.Z. Setup: docs/play-release.md
+                              #   upload+rollout → commit/tag/push. -Track (default internal; production is
+                              #   the public track, alpha the testing track) · -DryRun · -VersionName X.Y.Z.
+                              #   Setup: docs/play-release.md
 ```
 
 Every build defaults to the **prod** backend (`makapix.club`); only an explicit `-Dev` flag
@@ -53,8 +54,9 @@ HTTPS App Link (`app-dev.makapix.club`), **prod** = the `club.makapix.app://` cu
 same-site handling makes prod App Links undeliverable — `app/lib/club/config/club_config.dart` documents
 why; don't "fix" it back).
 
-**Distribution:** Android — Google Play Closed Testing (alpha track) via `release_android.ps1`. iOS —
-**live on the App Store**, built by Codemagic → TestFlight → release.
+**Distribution:** Android — **live on Google Play** (production track; alpha remains the testing
+track) via `release_android.ps1`. iOS — **live on the App Store**, built by Codemagic → TestFlight →
+release.
 
 ### iOS (cloud CI only)
 

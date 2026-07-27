@@ -18,9 +18,9 @@ funnel) and the editor is a co-equal feature reachable **without login** — the
 control opens a swipeable Contribute page (editor or direct file upload); the signed-out welcome page keeps
 a Contribute button of its own.
 
-**Distribution:** **Android** — Google Play Closed Testing (alpha track; latest 1.0.18+23, 2026-07-25);
-the 14-day/12-tester gate is complete and **production access was applied for 2026-07-20** (Google's
-verdict pending). **iOS** — **live on the App Store since 2026-07-17**; **universal iPhone + iPad since
+**Distribution:** **Android** — **live on Google Play since 2026-07-27**
+([store page](https://play.google.com/store/apps/details?id=club.makapix.app); production 1.0.18+23,
+promoted from the alpha closed-testing track, 177 countries; alpha remains the testing track). **iOS** — **live on the App Store since 2026-07-17**; **universal iPhone + iPad since
 1.0.16** (approved 2026-07-26; 1.0.18 build 10 live the same day). iOS builds ship via Codemagic →
 TestFlight; the Rust engine ships as a dynamic `MakapixFFI.framework`, guarded by the codemagic.yaml R2
 export gate; Sign in with Apple live end-to-end. **Windows** — developer build from this workstation
