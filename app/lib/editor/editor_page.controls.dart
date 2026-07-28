@@ -315,12 +315,19 @@ extension _EditorControls on _EditorPageState {
     }
     if (_tool == 'Shape') {
       // Which shape to draw. Switching the kind keeps any pending draft (re-previews it live).
+      // The glyphs render filled or hollow to track the Fill/Outline mode below; the names
+      // stay reachable as long-press tooltips.
       const kinds = ['Ellipse', 'Triangle', 'Rectangle'];
-      children.add(_toggle(['Ellipse', 'Triangle', 'Rect'], kinds.indexOf(_shapeKind), (i) {
-        setState(() => _shapeKind = kinds[i]);
-        _send('SelectTool($_shapeKind)'); // the engine draws by ToolKind; the shell groups them
-        if (_hasShapeDraft) _redraw();
-      }));
+      children.add(_glyphToggle(
+        [for (final k in kinds) ShapeGlyph(kind: k, filled: _shapeFill)],
+        kinds,
+        kinds.indexOf(_shapeKind),
+        (i) {
+          setState(() => _shapeKind = kinds[i]);
+          _send('SelectTool($_shapeKind)'); // the engine draws by ToolKind; the shell groups them
+          if (_hasShapeDraft) _redraw();
+        },
+      ));
       children.add(_toggle(['Fill', 'Outline'], _shapeFill ? 0 : 1, (i) {
         setState(() => _shapeFill = i == 0);
         _send('SetShapeFill($_shapeFill)');

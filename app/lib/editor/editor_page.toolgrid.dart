@@ -392,6 +392,23 @@ extension _EditorToolgrid on _EditorPageState {
     );
   }
 
+  // _iconToggle for glyphs that aren't IconData — e.g. the Shape tool's custom-painted
+  // kind glyphs, which redraw filled vs hollow to track the Fill/Outline mode.
+  Widget _glyphToggle(List<Widget> glyphs, List<String> tooltips, int sel, ValueChanged<int> onTap) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: ToggleButtons(
+        isSelected: List.generate(glyphs.length, (i) => i == sel),
+        onPressed: onTap,
+        constraints: const BoxConstraints(minHeight: 30, minWidth: 36),
+        borderRadius: BorderRadius.circular(6),
+        children: [
+          for (var i = 0; i < glyphs.length; i++) Tooltip(message: tooltips[i], child: glyphs[i]),
+        ],
+      ),
+    );
+  }
+
   Widget _miniBtn(String s, VoidCallback onTap) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 3),

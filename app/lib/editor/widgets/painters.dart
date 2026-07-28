@@ -742,3 +742,58 @@ class _AlphaSwatchPainter extends CustomPainter {
   bool shouldRepaint(_AlphaSwatchPainter o) =>
       o.color != color || o.split != split || o.splitAxis != splitAxis || o.diagonal != diagonal;
 }
+
+/// Glyph for the Shape tool's kind toggle: a circle/triangle/square drawn filled or
+/// hollow to mirror the current Fill/Outline mode. Reads color and size from the
+/// ambient [IconTheme], so ToggleButtons' selected/unselected tinting applies to it
+/// the same way it would to an [Icon].
+class ShapeGlyph extends StatelessWidget {
+  final String kind; // 'Ellipse' | 'Triangle' | 'Rectangle'
+  final bool filled;
+  const ShapeGlyph({super.key, required this.kind, required this.filled});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = IconTheme.of(context);
+    return CustomPaint(
+      size: Size.square(theme.size ?? 16),
+      painter: _ShapeGlyphPainter(kind, filled, theme.color ?? const Color(0xFFFFFFFF)),
+    );
+  }
+}
+
+class _ShapeGlyphPainter extends CustomPainter {
+  final String kind;
+  final bool filled;
+  final Color color;
+  const _ShapeGlyphPainter(this.kind, this.filled, this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const stroke = 1.6;
+    final paint = Paint()
+      ..color = color
+      ..style = filled ? PaintingStyle.fill : PaintingStyle.stroke
+      ..strokeWidth = stroke;
+    // Inset so a stroked outline sits fully inside the box (strokes straddle the path).
+    final r = (Offset.zero & size).deflate(filled ? 1 : 1 + stroke / 2);
+    switch (kind) {
+      case 'Ellipse':
+        canvas.drawOval(r, paint);
+      case 'Triangle':
+        canvas.drawPath(
+          Path()
+            ..moveTo(r.center.dx, r.top)
+            ..lineTo(r.right, r.bottom)
+            ..lineTo(r.left, r.bottom)
+            ..close(),
+          paint,
+        );
+      case 'Rectangle':
+        canvas.drawRect(r, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ShapeGlyphPainter o) => o.kind != kind || o.filled != filled || o.color != color;
+}
