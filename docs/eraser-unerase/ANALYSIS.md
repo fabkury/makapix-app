@@ -5,6 +5,13 @@ records the proposal, the decisions taken during analysis, and the pros/cons/cos
 work can be picked up (or declined) later without redoing the investigation. Analyzed 2026-07-28
 against the code as of commit `446db12`; the `file:line` references below are from that revision.
 
+**See also [`TOOL-AUDIT.md`](TOOL-AUDIT.md)** — a follow-up pressure test that audits every
+pixel-reading tool and subsystem. It retires the cleanEdge risk (already safe), confirms the
+Bucket/Select-by-Color breakage and proposes the exact canonicalization rule, finds one
+additional leak path (raw layer PNG/WebP export), and surfaces a systemic finding this document
+missed: hidden RGB survives only *in-place* edits — every relocation op (move, paste, flip,
+rotate, merge, import) strips it. Read both before deciding.
+
 ## The proposal
 
 1. The Eraser never touches RGB values — it only sets alpha to 0, leaving RGB in place.
