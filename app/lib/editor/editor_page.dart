@@ -169,8 +169,11 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // is [x1,y1,x2,y2,t] in canvas-corner coords, mirroring _selectionEdges.
   List<List<int>> _selDraftEdges = const [];
   // Ruler tool: a non-destructive measurement line (two draggable endpoints in canvas-pixel
-  // coords). Never drawn to the canvas; cleared when switching tools.
+  // coords). Never drawn to the canvas; kept across tool switches (hidden unless pinned).
   Offset? _rulerA, _rulerB;
+  // Pin: keep a simplified, semitransparent, non-interactive echo of the ruler visible while
+  // other tools are active. Cleared together with the ruler (Clear button or canvas resize).
+  bool _rulerPinned = false;
   // Angle mode: a third point forming a second arm A→C (A is the vertex). C is kept while the
   // mode is toggled off (hidden, remembered for the session); the mode itself resets on restart.
   Offset? _rulerC;

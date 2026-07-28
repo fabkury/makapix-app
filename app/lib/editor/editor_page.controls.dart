@@ -190,12 +190,25 @@ extension _EditorControls on _EditorPageState {
           // Switching back to Length just hides C (kept for this session).
         });
       }));
+      // Pin: keep a simplified, semitransparent echo of the measurement visible while other
+      // tools are active (purely visual — no hit-testing). Disabled until a measurement exists,
+      // since pinning nothing would be a silent no-op.
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: FilterChip(
+          selected: _rulerPinned,
+          label: Text(_rulerPinned ? 'Pin ✔' : 'Pin'),
+          selectedColor: const Color(0xFF30A050),
+          onSelected: _hasRuler ? (v) => setState(() => _rulerPinned = v) : null,
+        ),
+      ));
       children.add(_miniBtn('Clear', () {
         setState(() {
           _rulerA = null;
           _rulerB = null;
           _rulerC = null;
           _rulerDrag = 0;
+          _rulerPinned = false; // a pin never outlives its ruler
         });
       }));
     }

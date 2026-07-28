@@ -556,6 +556,36 @@ class RulerPainter extends CustomPainter {
       old.a != a || old.b != b || old.c != c || old.scale != scale || old.off != off;
 }
 
+/// The pinned Ruler: a passive, simplified echo of the measurement shown while ANOTHER tool is
+/// active — only the main arm lines (A→B, plus A→C in Angle mode), always semitransparent. No
+/// reticles, labels, legs, or arc, and never any hit-testing: it's purely a visual aid. Reuses
+/// the faint halo/yellow style of RulerPainter's triangle legs so the two reads match.
+class PinnedRulerPainter extends CustomPainter {
+  final Offset a, b; // endpoints in canvas-pixel coords (cell top-left)
+  final Offset? c; // Angle-mode second-arm endpoint; null = Length mode
+  final double scale; // screen px per canvas px
+  final Offset off; // canvas top-left in screen px
+  const PinnedRulerPainter(this.a, this.b, this.scale, this.off, {this.c});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (scale <= 0) return;
+    Offset sc(Offset p) => Offset(off.dx + (p.dx + 0.5) * scale, off.dy + (p.dy + 0.5) * scale);
+    final halo = Paint()..color = const Color(0x59000000)..strokeWidth = 3..isAntiAlias = true;
+    final line = Paint()..color = const Color(0x59FFC400)..strokeWidth = 1.5..isAntiAlias = true;
+    final pa = sc(a);
+    for (final end in [b, ?c]) {
+      final pe = sc(end);
+      canvas.drawLine(pa, pe, halo);
+      canvas.drawLine(pa, pe, line);
+    }
+  }
+
+  @override
+  bool shouldRepaint(PinnedRulerPainter old) =>
+      old.a != a || old.b != b || old.c != c || old.scale != scale || old.off != off;
+}
+
 /// The pixel grid: thin hairlines on every canvas-pixel boundary, drawn in SCREEN space so each
 /// line stays 1 device pixel regardless of how large the canvas pixels are upscaled (unlike baking
 /// it into the canvas, which produced thick, upscaled gridlines). Hidden when cells get too small

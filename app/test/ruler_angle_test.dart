@@ -149,4 +149,62 @@ void main() {
       expect(noC.shouldRepaint(p), isTrue);
     });
   });
+
+  group('PinnedRulerPainter', () {
+    Future<ByteData> rasterizePinned(Offset a, Offset b, Offset? c, double scale, Offset off,
+        int outW, int outH) async {
+      final rec = ui.PictureRecorder();
+      PinnedRulerPainter(a, b, scale, off, c: c)
+          .paint(Canvas(rec), Size(outW.toDouble(), outH.toDouble()));
+      final img = await rec.endRecording().toImage(outW, outH);
+      final bytes = await img.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
+      img.dispose();
+      return bytes!;
+    }
+
+    // a=(0,0) b=(10,0) at scale 10, off (60,60): pa=(65,65), pb=(165,65) — the main line runs
+    // along y=65. The reticle ring would sit at pa±kRulerReticleRadius, well off the line.
+    const a = Offset.zero, b = Offset(10, 0), c = Offset(0, 10);
+    const scale = 10.0, off = Offset(60, 60);
+
+    test('draws the main line, semitransparent, with no reticles or labels', () async {
+      final px = await rasterizePinned(a, b, null, scale, off, 240, 240);
+      expect(anyInk(px, 240, 115, 65, 1), isTrue, reason: 'main line missing at its midpoint');
+      // Semitransparent: nowhere on the line does the alpha reach full opacity (the 0x59 line
+      // over the 0x59 halo composites well below 255).
+      var maxAlpha = 0;
+      for (var x = 66; x < 165; x++) {
+        for (var y = 62; y <= 68; y++) {
+          final v = alphaAt(px, 240, x, y);
+          if (v > maxAlpha) maxAlpha = v;
+        }
+      }
+      expect(maxAlpha, greaterThan(0));
+      expect(maxAlpha, lessThan(200), reason: 'pinned ruler must never approach full opacity');
+      // No reticle: the full ruler draws a ring around each endpoint; the pinned one must not.
+      // Probe straight above A, at ring distance, clear of the horizontal line.
+      final ringY = 65 - kRulerReticleRadius.round();
+      expect(anyInk(px, 240, 65, ringY, 2), isFalse, reason: 'reticle ring painted while pinned');
+      // No length label: the full ruler centers "10.0 px" just above/at the midpoint background
+      // chip; the pinned one draws nothing off the line itself.
+      expect(anyInk(px, 240, 115, 45, 4), isFalse, reason: 'label ink painted while pinned');
+    });
+
+    test('angle mode adds the A→C arm but still no arc', () async {
+      final px = await rasterizePinned(a, b, c, scale, off, 240, 240);
+      expect(anyInk(px, 240, 65, 115, 1), isTrue, reason: 'second arm missing at its midpoint');
+      // The full ruler's arc crosses the 45° diagonal at pa + 28/sqrt(2)·(1,1) ≈ (84,84).
+      expect(anyInk(px, 240, 84, 84, 3), isFalse, reason: 'arc painted while pinned');
+    });
+
+    test('shouldRepaint keys on the points and view transform', () {
+      const p = PinnedRulerPainter(Offset.zero, Offset(10, 0), 10, Offset.zero, c: Offset(0, 10));
+      const same = PinnedRulerPainter(Offset.zero, Offset(10, 0), 10, Offset.zero, c: Offset(0, 10));
+      const moved = PinnedRulerPainter(Offset.zero, Offset(9, 0), 10, Offset.zero, c: Offset(0, 10));
+      const noC = PinnedRulerPainter(Offset.zero, Offset(10, 0), 10, Offset.zero);
+      expect(p.shouldRepaint(same), isFalse);
+      expect(p.shouldRepaint(moved), isTrue);
+      expect(p.shouldRepaint(noC), isTrue);
+    });
+  });
 }

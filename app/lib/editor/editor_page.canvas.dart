@@ -225,6 +225,15 @@ extension _EditorCanvas on _EditorPageState {
             ValueListenableBuilder<int>(
               valueListenable: _overlayVN,
               builder: (_, _, _) => Stack(fit: StackFit.expand, children: [
+                if (!_isRuler && _rulerPinned && _hasRuler)
+                  // Pinned ruler: a simplified, semitransparent echo of the measurement lines
+                  // while another tool is active. Drawn FIRST so the active tool's overlays and
+                  // handles stay on top; purely visual — it never participates in hit-testing.
+                  CustomPaint(
+                    painter: PinnedRulerPainter(_rulerA!, _rulerB!, vScale, vOff,
+                        c: _rulerAngle ? _rulerC : null),
+                    size: Size.infinite,
+                  ),
                 CustomPaint(painter: OutlinePainter(_outlineEdges, vScale, vImgOff, _antCtrl), size: Size.infinite),
                 if (_isCursorTool)
                   // Amber marching outline around the EXACT pixels the actuate button would draw —

@@ -316,6 +316,7 @@ extension _EditorEngine on _EditorPageState {
         _rulerB = null;
         _rulerC = null; // _rulerAngle stays: it's a UI preference, not a coordinate
         _rulerDrag = 0;
+        _rulerPinned = false; // a pin never outlives its ruler (matches the Clear button)
       }
       _canvasW = w;
       _canvasH = h;
@@ -462,8 +463,9 @@ extension _EditorEngine on _EditorPageState {
     // resuming a stale draft — same as the commit-menu's Cancel.
     if (_tool == 'HsvShift' && t != 'HsvShift' && _hasHsvDraft) _resetHsvDraft();
     if (_tool == 'BrightnessContrast' && t != 'BrightnessContrast' && _hasBcDraft) _resetBcDraft();
-    // The Ruler keeps its measurement across tool switches (its overlay just hides while another
-    // tool is active and reappears on return); clear it with the Ruler's row-1 "Clear" button.
+    // The Ruler keeps its measurement across tool switches (its full overlay hides while another
+    // tool is active — unless pinned, when a simplified echo stays — and reappears on return);
+    // clear it with the Ruler's row-1 "Clear" button.
     _rulerDrag = 0;
     setState(() => _tool = t);
     if (_transformTools.contains(t) || t == 'PlayPause') {
