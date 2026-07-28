@@ -786,7 +786,9 @@ class ShapeGlyph extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = IconTheme.of(context);
     return CustomPaint(
-      size: Size.square(theme.size ?? 16),
+      // 0.9× the ambient icon size: full size read as slightly oversized next to the
+      // other row-1 controls (visual check 2026-07-28).
+      size: Size.square((theme.size ?? 16) * 0.9),
       painter: _ShapeGlyphPainter(kind, filled, theme.color ?? const Color(0xFFFFFFFF)),
     );
   }
