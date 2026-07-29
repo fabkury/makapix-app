@@ -32,6 +32,7 @@ import 'report_page.dart';
 import 'widgets/badges_sheet.dart';
 import 'widgets/common.dart';
 import 'widgets/external_links.dart';
+import 'widgets/feed_filter.dart';
 import 'widgets/markdown_bio.dart';
 import 'widgets/feed_grid.dart';
 import 'widgets/send_target_binder.dart';
@@ -883,24 +884,27 @@ class _GalleryTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(ownerFeedProvider(profile.userKey));
     final n = ref.read(ownerFeedProvider(profile.userKey).notifier);
-    return FeedGrid(
-      key: const PageStorageKey('profile-gallery'),
-      nested: true,
-      state: state,
-      onLoadMore: n.loadMore,
-      onRefresh: () async {}, // the page owns refresh
-      emptyMessage: 'No posts yet.',
-      // Your own empty gallery is the best moment to start creating.
-      empty: profile.isOwnProfile ? const _CreateFirstArtEmpty() : null,
-      onTap: (Post p) => Navigator.push(
-          context,
-          MaterialPageRoute(
-              builder: (_) => ArtworkDetailPage(
-                    sqid: p.sqid,
-                    feed: pagedArtworkSource(ownerFeedProvider(profile.userKey),
-                        ownerFeedProvider(profile.userKey).notifier,
-                        name: '@${profile.handle}'),
-                  ))),
+    return FilterFabOverlay(
+      filterKey: 'owner:${profile.userKey}',
+      child: FeedGrid(
+        key: const PageStorageKey('profile-gallery'),
+        nested: true,
+        state: state,
+        onLoadMore: n.loadMore,
+        onRefresh: () async {}, // the page owns refresh
+        emptyMessage: 'No posts yet.',
+        // Your own empty gallery is the best moment to start creating.
+        empty: profile.isOwnProfile ? const _CreateFirstArtEmpty() : null,
+        onTap: (Post p) => Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (_) => ArtworkDetailPage(
+                      sqid: p.sqid,
+                      feed: pagedArtworkSource(ownerFeedProvider(profile.userKey),
+                          ownerFeedProvider(profile.userKey).notifier,
+                          name: '@${profile.handle}'),
+                    ))),
+      ),
     );
   }
 }

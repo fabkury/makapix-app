@@ -23,6 +23,7 @@ import 'profile_page.dart';
 import 'rules_gate_page.dart';
 import 'search_page.dart';
 import 'settings_page.dart';
+import 'widgets/feed_filter.dart';
 import 'widgets/feed_grid.dart';
 import 'widgets/hashtag_bar.dart';
 import 'widgets/send_target_binder.dart';
@@ -130,7 +131,7 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
   Widget _feedBody(FeedKind kind) {
     final state = ref.watch(feedProvider(kind));
     final n = ref.read(feedProvider(kind).notifier);
-    return FeedGrid(
+    final grid = FeedGrid(
         state: state,
         onLoadMore: n.loadMore,
         onRefresh: () async {
@@ -140,6 +141,10 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
         },
         superPostId: ref.watch(superPostIdProvider(kind)),
         onTap: (p) => _openPost(kind, p));
+    // Only Recent is filterable (website parity: no FilterButton on the
+    // Recommended page; the following-feed endpoint takes no filters).
+    if (kind != FeedKind.recent) return grid;
+    return FilterFabOverlay(filterKey: 'recent', child: grid);
   }
 
   // A compact top-bar icon button (8 sit side-by-side, so they're tight).

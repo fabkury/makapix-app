@@ -12,6 +12,7 @@ import 'package:makapix_club/club/auth/club_session.dart';
 import 'package:makapix_club/club/auth/github_oauth.dart';
 import 'package:makapix_club/club/config/club_config.dart';
 import 'package:makapix_club/club/models/club_user.dart';
+import 'package:makapix_club/club/models/feed_filters.dart';
 import 'package:makapix_club/club/models/page.dart' as club;
 import 'package:makapix_club/club/models/post.dart';
 import 'package:makapix_club/club/state/api_providers.dart';
@@ -53,7 +54,7 @@ class _FakeFeedApi extends FeedApi {
   _FakeFeedApi(this.auth) : super(ClubApiClient(ClubSession(config: ClubConfig.defaultConfig)));
 
   @override
-  Future<club.Page<Post>> recent({String? cursor, int limit = 30}) async {
+  Future<club.Page<Post>> recent({String? cursor, int limit = 30, FeedFilters? filters}) async {
     fetches++;
     final viewer = auth.state.me?.user.sub ?? 'anon';
     return club.Page<Post>(items: [

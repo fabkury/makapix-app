@@ -1,12 +1,20 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../cache/artwork_cache.dart';
+import '../models/feed_filters.dart';
 import '../models/post.dart';
 import 'api_providers.dart';
 import 'auth_controller.dart' show currentUserSubProvider;
 import 'paged.dart';
 
 enum FeedKind { recent, promoted, following }
+
+/// Per-feed filter/sort state (A4), keyed by a feed identity string:
+/// `'recent'` · `'tag:<tag>'` · `'owner:<user_key>'`. Session-only — resets on
+/// restart, like the website's URL-borne filters. The feed providers watch
+/// their key, so applying filters rebuilds the notifier and refetches.
+final feedFiltersProvider =
+    StateProvider.family<FeedFilters, String>((ref, key) => const FeedFilters());
 
 /// The three home feeds, each an auto-loading paged list of posts. Deliberately NOT autoDispose:
 /// there are exactly three keys and we keep their loaded items + scroll position warm across
@@ -17,9 +25,12 @@ final feedProvider =
     StateNotifierProvider.family<PagedNotifier<Post>, PagedState<Post>, FeedKind>((ref, kind) {
   ref.watch(currentUserSubProvider);
   final api = ref.watch(feedApiProvider);
+  // Only Recent is filterable (website parity: Recommended has no FilterButton
+  // and the following feed endpoint takes no filter parameters).
+  final filters = kind == FeedKind.recent ? ref.watch(feedFiltersProvider('recent')) : null;
   final n = PagedNotifier<Post>(
       (cursor) => switch (kind) {
-            FeedKind.recent => api.recent(cursor: cursor),
+            FeedKind.recent => api.recent(cursor: cursor, filters: filters),
             FeedKind.promoted => api.promoted(cursor: cursor),
             FeedKind.following => api.following(cursor: cursor),
           },
@@ -41,7 +52,9 @@ final hashtagFeedProvider =
     StateNotifierProvider.autoDispose.family<PagedNotifier<Post>, PagedState<Post>, String>((ref, tag) {
   ref.watch(currentUserSubProvider);
   final api = ref.watch(feedApiProvider);
-  final n = PagedNotifier<Post>((cursor) => api.hashtag(tag, cursor: cursor), onPage: precacheArtworks);
+  final filters = ref.watch(feedFiltersProvider('tag:$tag'));
+  final n = PagedNotifier<Post>((cursor) => api.hashtag(tag, cursor: cursor, filters: filters),
+      onPage: precacheArtworks);
   n.loadInitial();
   return n;
 });
@@ -51,7 +64,9 @@ final ownerFeedProvider =
     StateNotifierProvider.autoDispose.family<PagedNotifier<Post>, PagedState<Post>, String>((ref, userKey) {
   ref.watch(currentUserSubProvider);
   final api = ref.watch(feedApiProvider);
-  final n = PagedNotifier<Post>((cursor) => api.byOwner(userKey, cursor: cursor), onPage: precacheArtworks);
+  final filters = ref.watch(feedFiltersProvider('owner:$userKey'));
+  final n = PagedNotifier<Post>((cursor) => api.byOwner(userKey, cursor: cursor, filters: filters),
+      onPage: precacheArtworks);
   n.loadInitial();
   return n;
 });

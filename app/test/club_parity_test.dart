@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart' show Color;
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:makapix_club/club/models/feed_filters.dart';
 import 'package:makapix_club/club/models/post.dart';
 import 'package:makapix_club/club/models/post_stats.dart';
 import 'package:makapix_club/club/ui/edit_post_details_page.dart';
@@ -88,6 +89,55 @@ void main() {
 
     test('a lone # is dropped', () {
       expect(EditPostDetailsPage.parseHashtags('#, #x'), ['x']);
+    });
+  });
+
+  group('FeedFilters (website FilterButton parity)', () {
+    test('defaults are default and produce the bare sort query', () {
+      const f = FeedFilters();
+      expect(f.isDefault, isTrue);
+      expect(f.toQuery(), {'sort': 'created_at', 'order': 'desc'});
+    });
+
+    test('both kinds selected equals none (still default)', () {
+      const f = FeedFilters(kinds: {'static', 'animated'});
+      expect(f.isDefault, isTrue);
+      expect(f.toQuery().containsKey('kind'), isFalse);
+      const one = FeedFilters(kinds: {'animated'});
+      expect(one.isDefault, isFalse);
+      expect(one.toQuery()['kind'], ['animated']);
+    });
+
+    test('base and size split their 128+ variants into *_gte', () {
+      const f = FeedFilters(base: 128, sizes: {16, 128, 64});
+      final q = f.toQuery();
+      expect(q['base_gte'], 128);
+      expect(q.containsKey('base'), isFalse);
+      expect(q['size'], [16, 64]);
+      expect(q['size_gte'], 128);
+    });
+
+    test('small base goes as a list value', () {
+      expect(const FeedFilters(base: 32).toQuery()['base'], [32]);
+    });
+
+    test('file-size bounds only appear when they actually bound', () {
+      const unbounded = FeedFilters(fileBytesMin: 0, fileBytesMax: kFilterFileBytesCap);
+      expect(unbounded.isDefault, isTrue);
+      expect(unbounded.toQuery().containsKey('file_bytes_min'), isFalse);
+      const bounded = FeedFilters(fileBytesMin: 1024, fileBytesMax: 2048);
+      final q = bounded.toQuery();
+      expect(q['file_bytes_min'], 1024);
+      expect(q['file_bytes_max'], 2048);
+      expect(bounded.isDefault, isFalse);
+    });
+
+    test('value equality ignores set ordering', () {
+      const a = FeedFilters(sizes: {8, 64}, kinds: {'static'});
+      const b = FeedFilters(sizes: {64, 8}, kinds: {'static'});
+      expect(a, b);
+      expect(a.hashCode, b.hashCode);
+      expect(a == const FeedFilters(sizes: {8}), isFalse);
     });
   });
 

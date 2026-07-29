@@ -5,6 +5,7 @@ import '../models/post.dart';
 import '../state/feed_providers.dart';
 import '../state/player_providers.dart';
 import 'artwork_detail_page.dart';
+import 'widgets/feed_filter.dart';
 import 'widgets/feed_grid.dart';
 import 'widgets/send_target_binder.dart';
 
@@ -21,20 +22,23 @@ class HashtagFeedPage extends ConsumerWidget {
       target: ChannelTarget(displayName: '#$tag', hashtag: tag),
       child: Scaffold(
         appBar: AppBar(title: Text('#$tag')),
-        body: FeedGrid(
-          state: state,
-          onLoadMore: n.loadMore,
-          onRefresh: n.refresh,
-          emptyMessage: 'No artworks tagged #$tag.',
-          onTap: (Post p) => Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (_) => ArtworkDetailPage(
-                        sqid: p.sqid,
-                        feed: pagedArtworkSource(
-                            hashtagFeedProvider(tag), hashtagFeedProvider(tag).notifier,
-                            name: tag, icon: Icons.tag),
-                      ))),
+        body: FilterFabOverlay(
+          filterKey: 'tag:$tag',
+          child: FeedGrid(
+            state: state,
+            onLoadMore: n.loadMore,
+            onRefresh: n.refresh,
+            emptyMessage: 'No artworks tagged #$tag.',
+            onTap: (Post p) => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => ArtworkDetailPage(
+                          sqid: p.sqid,
+                          feed: pagedArtworkSource(
+                              hashtagFeedProvider(tag), hashtagFeedProvider(tag).notifier,
+                              name: tag, icon: Icons.tag),
+                        ))),
+          ),
         ),
       ),
     );

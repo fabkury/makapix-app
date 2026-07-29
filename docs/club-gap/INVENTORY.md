@@ -23,7 +23,7 @@ serving the website.
 | A1 | **Own-post actions on the post detail page: Edit details · Hide/Unhide · Delete** | High | M (S each) | ✅ shipped 2026-07-29 |
 | A2 | **Per-post statistics** (the website's StatsPanel) | High (artists) | M | ✅ shipped 2026-07-29 |
 | A3 | **Followers list** (+ following) | Med-High | S | ✅ shipped 2026-07-29 (both tabs) |
-| A4 | **Feed filters & sort** (the website's FilterButton) | Med-High | M/L | ○ open |
+| A4 | **Feed filters & sort** (the website's FilterButton) | Med-High | M/L | ✅ shipped 2026-07-29 (full parity: sort/order, kind, base, size, file-size range; filter FAB on Recent/hashtag/gallery; session-only) |
 | A5 | **Real downloads: save artwork to device** (native / upscaled / other formats / `.mkpx`) | Med | M | ✅ shipped 2026-07-29 |
 
 ### Tier B — medium value, mostly small
@@ -42,7 +42,7 @@ serving the website.
 | # | Gap | Status |
 |---|-----|--------|
 | C1 | Signed-out browsing (Recommended feed, post detail, guest commenting, logged-out reporting) | Product decision — the app gates the whole pillar behind sign-in; the website serves logged-out users |
-| C2 | Upload scaling remedies for nonconforming files (NN/Lanczos3, by ratio/dimensions) | The app only *names* the nearest allowed size; the editor is the manual workaround |
+| C2 | Upload scaling remedies for nonconforming files (NN/Lanczos3, by ratio/dimensions) | ✅ shipped 2026-07-29 as a one-tap "Scale to W×H (nearest neighbor)" on the publish conformance banner (engine isolate; animated→lossless WebP, static→PNG; hidden for drafts carrying a `.mkpx`). The website's Lanczos3/free-form options are deliberately not ported |
 | C3 | "Allow others to edit" upload option | Verify the server field first; the app never sends it |
 | C4 | Live notifications (MQTT-over-WS) | SPEC-CLUB C5, planned; polling today |
 | C5 | Soft player / kiosk mode (the website's WebPlayer) | SPEC-CLUB C5, planned |

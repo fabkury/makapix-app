@@ -10,6 +10,7 @@ import '../publish/publish_draft.dart';
 import '../state/auth_controller.dart';
 import '../state/publish_providers.dart';
 import '../state/rules_gate.dart';
+import 'package:makapix_club/share/artwork_rescale.dart';
 import 'artwork_detail_page.dart';
 import 'club_account_page.dart';
 import 'rules_gate_page.dart';
@@ -32,6 +33,11 @@ class _PublishPageState extends ConsumerState<PublishPage> {
   // Sharing the layers file is opt-out: editor publishes default to attaching it. _submit
   // re-checks the capability/size gates so the hidden-tile cases can't send it anyway.
   bool _shareLayers = true;
+
+  /// The draft starts as [widget.draft] but the scale-to-nearest remedy can
+  /// replace it (new bytes/dimensions/format), so the page reads this copy.
+  late PublishDraft _draft = widget.draft;
+  bool _scaling = false;
 
   @override
   void initState() {
@@ -83,7 +89,7 @@ class _PublishPageState extends ConsumerState<PublishPage> {
   }
 
   Widget _form(ClubServerConfig cfg, PublishState pub) {
-    final d = widget.draft;
+    final d = _draft;
     final result = ClubConformance(cfg).check(
       width: d.width,
       height: d.height,
@@ -117,6 +123,23 @@ class _PublishPageState extends ConsumerState<PublishPage> {
         ),
         const SizedBox(height: 12),
         _conformanceBanner(result),
+        // Scale-to-nearest remedy (website /submit has full scaling options; we
+        // offer the one-tap fix). Hidden for editor drafts that carry a layers
+        // file — scaling the render would desync it from the document; the
+        // editor's Resize tool is the right fix there.
+        if (!result.ok && result.nearestSize != null && d.mkpxBytes == null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: OutlinedButton.icon(
+              onPressed: (_scaling || uploading) ? null : () => _scaleToNearest(result.nearestSize!),
+              icon: _scaling
+                  ? const SizedBox(
+                      height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.photo_size_select_small),
+              label: Text(
+                  'Scale to ${result.nearestSize![0]}×${result.nearestSize![1]} (nearest neighbor)'),
+            ),
+          ),
         const SizedBox(height: 12),
         TextField(
           controller: _title,
@@ -189,10 +212,50 @@ class _PublishPageState extends ConsumerState<PublishPage> {
   }
 
   void _replace() {
-    final d = widget.draft;
+    final d = _draft;
     ref
         .read(publishControllerProvider.notifier)
         .replace(postId: d.source!.postId, bytes: d.bytes, filename: d.filename);
+  }
+
+  /// One-tap conformance remedy: nearest-neighbor rescale of the draft to the
+  /// nearest allowed size (engine isolate; frames + durations survive). The
+  /// output re-encodes as lossless WebP (animated) or PNG (static) — GIF would
+  /// re-quantize and BMP has no encoder.
+  Future<void> _scaleToNearest(List<int> size) async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _scaling = true);
+    final d = _draft;
+    final format = d.isAnimated ? 'webp' : 'png';
+    final bytes =
+        await rescaleArtworkBytes(d.bytes, width: size[0], height: size[1], format: format);
+    if (!mounted) return;
+    if (bytes == null) {
+      setState(() => _scaling = false);
+      messenger.showSnackBar(const SnackBar(content: Text('Could not scale this image.')));
+      return;
+    }
+    setState(() {
+      _scaling = false;
+      _draft = PublishDraft(
+        bytes: bytes,
+        format: format,
+        filename: _scaledFilename(d.filename, format),
+        width: size[0],
+        height: size[1],
+        frameCount: d.frameCount,
+        source: d.source,
+        mkpxBytes: null, // remedy is hidden when a layers file exists
+        totalDurationMs: d.totalDurationMs,
+      );
+    });
+    messenger.showSnackBar(SnackBar(content: Text('Scaled to ${size[0]}×${size[1]}.')));
+  }
+
+  static String _scaledFilename(String name, String ext) {
+    final dot = name.lastIndexOf('.');
+    final base = dot > 0 ? name.substring(0, dot) : name;
+    return '$base-scaled.$ext';
   }
 
   /// "Share the layers (.mkpx) file" toggle. Present only when the server
@@ -200,7 +263,7 @@ class _PublishPageState extends ConsumerState<PublishPage> {
   /// the editor (direct file uploads carry no document). Oversize documents get
   /// a disabled toggle with the reason instead of a server 413.
   List<Widget> _shareLayersTile(ClubServerConfig cfg, bool uploading) {
-    final mkpx = widget.draft.mkpxBytes;
+    final mkpx = _draft.mkpxBytes;
     final rules = cfg.upload.mkpx;
     if (!rules.enabled || mkpx == null) return const [];
     final tooLarge = mkpx.length > rules.maxFileBytes;
@@ -243,8 +306,12 @@ class _PublishPageState extends ConsumerState<PublishPage> {
       }
     }
     if (r.nearestSize != null) {
-      msgs.add('Nearest allowed size: ${r.nearestSize![0]}×${r.nearestSize![1]} '
-          '(resize in the editor, then try again).');
+      // The one-tap scale button renders right below when there's no layers
+      // file; editor drafts with one keep the resize-in-the-editor guidance.
+      msgs.add(_draft.mkpxBytes == null
+          ? 'Nearest allowed size: ${r.nearestSize![0]}×${r.nearestSize![1]}.'
+          : 'Nearest allowed size: ${r.nearestSize![0]}×${r.nearestSize![1]} '
+              '(resize in the editor, then try again).');
     }
     return _banner(const Color(0x22FF5252), const Color(0xFFFF5252), Icons.error_outline, msgs.join('\n'));
   }
@@ -275,7 +342,7 @@ class _PublishPageState extends ConsumerState<PublishPage> {
   }
 
   void _submit() {
-    final d = widget.draft;
+    final d = _draft;
     // Mirror the tile's visibility/size gates: with the opt-out default, _shareLayers can be
     // true while the tile never showed (capability off) — never send the file in those cases.
     final rules = (ref.read(serverConfigProvider).valueOrNull ?? ClubServerConfig.fallback).upload.mkpx;
