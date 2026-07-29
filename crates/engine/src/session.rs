@@ -1118,7 +1118,11 @@ impl Session {
         r
     }
 
-    fn edit_doc<R>(&mut self, label: &str, f: impl FnOnce(&mut Session) -> R) -> R {
+    /// Run a document-structure mutation inside the shared budget protocol: snapshot the frames,
+    /// run `f`, and either record one undo step or — if the result crossed the hard memory budget —
+    /// roll the whole thing back and register a refusal. `pub(crate)` so sibling modules
+    /// (`import`) go through the same chokepoint instead of hand-rolling the record. [audit P-0]
+    pub(crate) fn edit_doc<R>(&mut self, label: &str, f: impl FnOnce(&mut Session) -> R) -> R {
         let before = self.doc.frames.clone();
         let before_active = self.doc.active_frame;
         let before_size = self.doc.size;

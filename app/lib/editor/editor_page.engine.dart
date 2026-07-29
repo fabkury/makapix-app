@@ -127,6 +127,9 @@ extension _EditorEngine on _EditorPageState {
     } else {
       _outlineEdges = _selectionEdges;
     }
+    // This path runs on per-move redraws that only bump _overlayVN (no setState/build), so sync the
+    // ants clock here too — otherwise a selection appearing mid-stroke wouldn't start it. [audit]
+    _syncAntsAnimation();
   }
 
   // The exact set of canvas pixels a stamp/spray at (ex,ey) would cover with the current Size and
@@ -404,8 +407,12 @@ extension _EditorEngine on _EditorPageState {
 
   Future<ui.Image> _decodeBytes(Uint8List bytes) async {
     final codec = await ui.instantiateImageCodec(bytes);
-    final frame = await codec.getNextFrame();
-    return frame.image;
+    try {
+      final frame = await codec.getNextFrame();
+      return frame.image;
+    } finally {
+      codec.dispose(); // release the codec's decode state (a whole animation for GIF/APNG) [audit]
+    }
   }
 
   void _act(String dsl) {

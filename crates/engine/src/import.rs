@@ -157,6 +157,12 @@ pub fn frame_to_buffer(df: &DecodedFrame, cw: u32, ch: u32, cfg: &ImportConfig) 
 
 impl Session {
     /// Import decoded frames into the document (SPEC §16.1). Structural & undoable.
+    ///
+    /// Runs through [`Session::edit_doc`] — the shared document-mutation chokepoint — so an import
+    /// that would push the unique tile payload past the hard memory budget is rolled back wholesale
+    /// and registers a refusal, exactly like `add_frame`/`duplicate_frame`/paste. Before this the
+    /// import hand-rolled `record_doc_structure` and so was the one structural op that could drive
+    /// the document over budget (and produce a file its own loader then refuses on reload). [audit P-0]
     pub fn import_decoded(&mut self, frames: &[DecodedFrame], cfg: ImportConfig) {
         if frames.is_empty() {
             return;
@@ -164,10 +170,6 @@ impl Session {
         let (cw, ch) = (self.doc.size.w as u32, self.doc.size.h as u32);
         let storage = self.doc.storage();
         let origin = self.doc.origin();
-        let before = self.doc.frames.clone();
-        let before_active = self.doc.active_frame;
-        let before_size = self.doc.size;
-        let sel_before = self.doc.selection.clone();
 
         // Place a canvas-sized decoded frame into a storage-sized layer buffer, at the canvas origin.
         let to_storage = |buf: &RgbaBuffer| {
@@ -176,36 +178,38 @@ impl Session {
             sbuf
         };
 
-        for (i, df) in frames.iter().enumerate() {
-            let target = cfg.start_frame + i;
-            let buf = to_storage(&frame_to_buffer(df, cw, ch, &cfg));
-            let dur = Document::clamp_duration(df.duration_us.max(1));
+        self.edit_doc("import", |s| {
+            for (i, df) in frames.iter().enumerate() {
+                let target = cfg.start_frame + i;
+                let buf = to_storage(&frame_to_buffer(df, cw, ch, &cfg));
+                let dur = Document::clamp_duration(df.duration_us.max(1));
 
-            if cfg.as_layer && target < self.doc.frames.len() {
-                if self.doc.frames[target].layers.len() < crate::document::MAX_LAYERS {
-                    let id = self.doc.layer_ids.alloc();
-                    let mut layer = crate::document::Layer::new(id, storage, format!("Import {}", i + 1));
-                    layer.pixels = buf;
-                    self.doc.frames[target].layers.push(layer);
-                }
-            } else {
-                // ensure frames exist up to `target`
-                while self.doc.frames.len() <= target && self.doc.frames.len() < crate::document::MAX_FRAMES {
-                    let fid = self.doc.frame_ids.alloc();
-                    let lid = self.doc.layer_ids.alloc();
-                    let layer = crate::document::Layer::new(lid, storage, "Layer 1");
-                    self.doc.frames.push(Frame { id: fid, duration_us: dur, layers: vec![layer], active_layer: 0 });
-                }
-                if target < self.doc.frames.len() {
-                    let f = &mut self.doc.frames[target];
-                    f.duration_us = dur;
-                    let al = f.active_layer;
-                    f.layers[al].pixels = buf;
+                if cfg.as_layer && target < s.doc.frames.len() {
+                    if s.doc.frames[target].layers.len() < crate::document::MAX_LAYERS {
+                        let id = s.doc.layer_ids.alloc();
+                        let mut layer =
+                            crate::document::Layer::new(id, storage, format!("Import {}", i + 1));
+                        layer.pixels = buf;
+                        s.doc.frames[target].layers.push(layer);
+                    }
+                } else {
+                    // ensure frames exist up to `target`
+                    while s.doc.frames.len() <= target && s.doc.frames.len() < crate::document::MAX_FRAMES {
+                        let fid = s.doc.frame_ids.alloc();
+                        let lid = s.doc.layer_ids.alloc();
+                        let layer = crate::document::Layer::new(lid, storage, "Layer 1");
+                        s.doc.frames.push(Frame { id: fid, duration_us: dur, layers: vec![layer], active_layer: 0 });
+                    }
+                    if target < s.doc.frames.len() {
+                        let f = &mut s.doc.frames[target];
+                        f.duration_us = dur;
+                        let al = f.active_layer;
+                        f.layers[al].pixels = buf;
+                    }
                 }
             }
-        }
-        self.doc.active_frame = cfg.start_frame.min(self.doc.frames.len() - 1);
-        self.doc.record_doc_structure("import", before, before_active, before_size, sel_before);
+            s.doc.active_frame = cfg.start_frame.min(s.doc.frames.len() - 1);
+        });
     }
 }
 
@@ -304,5 +308,45 @@ mod tests {
         s.import_decoded(&frames, ImportConfig { as_layer: true, start_frame: 0, ..Default::default() });
         assert_eq!(s.doc.frames[0].layers.len(), 2);
         assert_eq!(s.doc.frames[1].layers.len(), 2);
+    }
+
+    // An import that would push the document past the hard memory budget is refused and rolled
+    // back wholesale — the same invariant every other structural op holds. Before routing import
+    // through `edit_doc` this import committed silently, driving the session over budget and
+    // producing a file the loader then refused on reload. [audit P-0]
+    #[test]
+    fn import_over_budget_is_refused_and_rolled_back() {
+        let mut s = Session::new(256, 256);
+        // Tiny budget: a single fully-opaque 256×256 frame (64 tiles = 256 KiB) already exceeds it.
+        s.set_mem_budgets(64 * 1024, 64 * 1024);
+        let before_payload = s.doc.unique_payload_bytes();
+        let before_frames = s.doc.frames.len();
+        let before_refusals = s.mem_refusal_state().0;
+
+        let big = checker(256, 256); // opaque → materializes all 64 canvas tiles
+        s.import_decoded(
+            &[big.clone(), big],
+            ImportConfig { mode: ScaleMode::Stretch, as_layer: false, start_frame: 0, ..Default::default() },
+        );
+
+        assert_eq!(s.doc.frames.len(), before_frames, "refused import adds no frames");
+        assert_eq!(s.doc.unique_payload_bytes(), before_payload, "payload unchanged after rollback");
+        assert!(s.mem_refusal_state().0 > before_refusals, "the refusal is registered");
+        assert!(!s.doc.can_undo(), "a refused import records no undo step");
+    }
+
+    // A within-budget import still commits and stays undoable (the rollback path must not catch
+    // legitimate imports).
+    #[test]
+    fn import_within_budget_commits() {
+        let mut s = Session::new(64, 64);
+        s.set_mem_budgets(64 * 1024 * 1024, 64 * 1024 * 1024); // generous
+        s.import_decoded(
+            &[checker(64, 64)],
+            ImportConfig { mode: ScaleMode::Stretch, as_layer: false, start_frame: 0, ..Default::default() },
+        );
+        assert!(s.doc.unique_payload_bytes() > 0, "import materialized pixels");
+        assert!(s.doc.can_undo(), "a committed import is undoable");
+        assert_eq!(s.mem_refusal_state().0, 0, "no refusal for a within-budget import");
     }
 }

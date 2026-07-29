@@ -272,26 +272,43 @@ class Engine {
   }
 
   Uint8List save() {
-    final lenPtr = malloc<Uint64>();
-    final p = _save(_s, lenPtr);
-    final len = lenPtr.value;
-    final bytes = Uint8List.fromList(p.asTypedList(len));
-    _freeBytes(p, len);
-    malloc.free(lenPtr);
-    return bytes;
+    // calloc (not malloc) so a null/failed return can't leave `len` reading uninitialized memory;
+    // nullptr-guard like the export* paths; free the native buffer in a finally so an OutOfMemory
+    // from the Dart-heap copy — most likely exactly when the process is already at its ceiling —
+    // can't leak the whole serialized document. [audit] This is the 5-second autosave path.
+    final lenPtr = calloc<Uint64>();
+    try {
+      final p = _save(_s, lenPtr);
+      if (p == nullptr) return Uint8List(0);
+      final len = lenPtr.value;
+      try {
+        return Uint8List.fromList(p.asTypedList(len));
+      } finally {
+        _freeBytes(p, len);
+      }
+    } finally {
+      calloc.free(lenPtr);
+    }
   }
 
   /// Serialize to a **compact** (DEFLATE-wrapped) `.mkpx` — for the explicit "Save" / portable export
   /// only. Autosave and library persistence use [save] (plain, cheap); both forms load back via
   /// [load], which auto-detects the envelope.
   Uint8List saveCompact() {
-    final lenPtr = malloc<Uint64>();
-    final p = _saveCompact(_s, lenPtr);
-    final len = lenPtr.value;
-    final bytes = Uint8List.fromList(p.asTypedList(len));
-    _freeBytes(p, len);
-    malloc.free(lenPtr);
-    return bytes;
+    // Same hardening as [save]: zero-init length, nullptr guard, free-in-finally. [audit]
+    final lenPtr = calloc<Uint64>();
+    try {
+      final p = _saveCompact(_s, lenPtr);
+      if (p == nullptr) return Uint8List(0);
+      final len = lenPtr.value;
+      try {
+        return Uint8List.fromList(p.asTypedList(len));
+      } finally {
+        _freeBytes(p, len);
+      }
+    } finally {
+      calloc.free(lenPtr);
+    }
   }
 
   bool load(Uint8List data) {

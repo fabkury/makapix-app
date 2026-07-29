@@ -407,7 +407,11 @@ class _EditorPageState extends ConsumerState<EditorPage>
   @override
   void initState() {
     super.initState();
-    _antCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 700))..repeat();
+    // Starts stopped; _syncAntsAnimation() runs it only while marching ants are actually on screen
+    // (a selection/eraser outline, the cursor footprint, or a selection draft). Previously it
+    // repeated forever from initState, scheduling 60 Hz compositor work even on an idle canvas with
+    // nothing to animate. [audit]
+    _antCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 700));
     _loadToolOrder();
     try {
       engine = Engine(64, 64);
@@ -424,6 +428,38 @@ class _EditorPageState extends ConsumerState<EditorPage>
     _initPersistence();
   }
 
+  // Run the marching-ants clock only while something animated is on screen: the committed selection
+  // / eraser outline (`_outlineEdges`), the precision cursor footprint (`_isCursorTool`), or a
+  // selection draft. Guarded by `isAnimating` so a repeated call never resets the phase (which would
+  // freeze the ants). Idempotent — safe to call from build() and from per-move edge updates. [audit]
+  void _syncAntsAnimation() {
+    final antsOnScreen =
+        _outlineEdges.isNotEmpty || _isCursorTool || (_isSelDraftTool && _hasSelDraft);
+    if (antsOnScreen) {
+      if (!_antCtrl.isAnimating) _antCtrl.repeat();
+    } else if (_antCtrl.isAnimating) {
+      _antCtrl.stop();
+    }
+  }
+
+  // Dispose and drop every cached film-roll / layer thumbnail (and clear the in-flight guards).
+  // Called on teardown AND on every document switch: the caches are keyed by frame/layer index, so
+  // after loading a different drawing index 0's cached image is stale — it would be painted for one
+  // frame before the content-hash mismatch regenerates it, and the previous document's ui.Images
+  // would sit resident until evicted. Clearing on switch fixes both. [audit]
+  void _resetThumbCaches() {
+    for (final t in _frameThumbs.values) {
+      t.img.dispose();
+    }
+    _frameThumbs.clear();
+    _thumbInFlight.clear();
+    for (final t in _layerThumbs.values) {
+      t.img.dispose();
+    }
+    _layerThumbs.clear();
+    _layerThumbInFlight.clear();
+  }
+
   @override
   void dispose() {
     _playTimer?.cancel();
@@ -435,14 +471,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
     if (_engineReady) _autosave?.flushNow();
     _autosave?.stop();
     _antCtrl.dispose();
-    for (final t in _frameThumbs.values) {
-      t.img.dispose();
-    }
-    _frameThumbs.clear();
-    for (final t in _layerThumbs.values) {
-      t.img.dispose();
-    }
-    _layerThumbs.clear();
+    _resetThumbCaches();
     _imageVN.value?.dispose(); // release the composited canvas image before the notifier [F-10]
     _imageVN.dispose();
     _overlayVN.dispose();
@@ -467,6 +496,10 @@ class _EditorPageState extends ConsumerState<EditorPage>
     ref.listen<ClubEditRequest?>(pendingClubEditProvider, (prev, next) {
       if (next != null) _consumeClubEdit(next);
     });
+    // Start/stop the marching-ants clock to match what's on screen (catch-all for every
+    // setState-driven change: selection, tool switch, draft). Side-effect-free re controller
+    // listeners — it never markNeedsBuild, so no rebuild loop. [audit]
+    _syncAntsAnimation();
     if (!_engineReady) {
       return Scaffold(
         body: Center(

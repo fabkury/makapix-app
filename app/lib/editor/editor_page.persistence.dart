@@ -106,7 +106,11 @@ extension _EditorPersistence on _EditorPageState {
   // ---- drawing identity transitions -------------------------------------------
 
   // Adopt an already-loaded drawing as the current one (no engine change) and begin autosaving it.
+  // This is the universal document-switch funnel (open / new / gallery / Club edit / startup), so
+  // it drops thumbnails cached against the previous document — they are keyed by frame/layer index
+  // and would otherwise flash stale for one frame and leak the old ui.Images. [audit]
   void _adopt(String id, String title, DateTime createdAt) {
+    _resetThumbCaches();
     _drawingId = id;
     _drawingTitle = title;
     _drawingCreatedAt = createdAt;

@@ -40,6 +40,14 @@ const MAX_DIM: u32 = 4096;
 /// Hard cap on decoded animation frames — mirrors the engine's `MAX_FRAMES`. Untrusted GIF/APNG
 /// frame counts are bounded *before* materializing them so a tiny file can't expand to gigabytes.
 const MAX_DECODE_FRAMES: usize = makapix_engine::document::MAX_FRAMES;
+/// Aggregate cap on decoded RGBA across ALL frames of one animation. The per-frame dimension cap
+/// and the frame-count cap are independent, so their product is unbounded: a compositing decoder
+/// (GIF/APNG both composite each sub-frame onto the full logical screen) turns a few-KB file of N
+/// tiny sub-frames on a huge canvas into N × w × h × 4 bytes of accumulation. A 24 KB GIF measured
+/// 1.7→6.5 GB in 7 s on-device before this cap (see `docs/memory-audit/REPORT.md` addendum, P-3).
+/// 384 MiB clears the largest legitimate import (1024 × 256² = 256 MiB) with headroom while killing
+/// a bomb within a handful of frames.
+const MAX_DECODE_TOTAL_BYTES: usize = 384 * 1024 * 1024;
 
 /// Decode limits applied to every decoder so over-size input fails *during* decode, before a huge
 /// allocation happens (the dimension check used to run only after the full decode). [audit F-3]
@@ -105,9 +113,20 @@ fn decode_static(bytes: &[u8]) -> Result<Vec<DecodedFrame>, CodecError> {
 }
 
 fn decode_animated<'a>(decoder: impl AnimationDecoder<'a>) -> Result<Vec<DecodedFrame>, CodecError> {
+    decode_animated_capped(decoder, MAX_DECODE_TOTAL_BYTES)
+}
+
+/// [`decode_animated`] with an explicit aggregate-bytes cap — the cap is a parameter so the test
+/// suite can exercise the bomb path with a tiny cap and tiny frames instead of allocating the real
+/// 384 MiB. Production always uses [`MAX_DECODE_TOTAL_BYTES`].
+fn decode_animated_capped<'a>(
+    decoder: impl AnimationDecoder<'a>,
+    total_cap: usize,
+) -> Result<Vec<DecodedFrame>, CodecError> {
     // Decode frames lazily, one at a time, capping the count BEFORE materializing more — never
     // `collect_frames()`, which would eagerly decode every frame of a bomb into memory. [F-3]
     let mut out = Vec::new();
+    let mut total_bytes = 0usize; // running sum of decoded RGBA, capped to stop bombs [P-3]
     for (i, frame) in decoder.into_frames().enumerate() {
         if i >= MAX_DECODE_FRAMES {
             return Err(CodecError::Decode("too many frames".into()));
@@ -119,6 +138,13 @@ fn decode_animated<'a>(decoder: impl AnimationDecoder<'a>) -> Result<Vec<Decoded
         let (w, h) = (buf.width(), buf.height());
         if w > MAX_DIM || h > MAX_DIM {
             return Err(CodecError::Decode("frame too large".into()));
+        }
+        // Aggregate cap: bound the SUM across frames, not just each one. The per-frame check above
+        // (≤4096²·4 = 64 MiB/frame) and `image`'s own per-frame `max_alloc` both reset each frame,
+        // so only this running total stops an N-frame bomb. At most one frame of overshoot. [P-3]
+        total_bytes = total_bytes.saturating_add((w as usize) * (h as usize) * 4);
+        if total_bytes > total_cap {
+            return Err(CodecError::Decode("animation too large".into()));
         }
         out.push(DecodedFrame {
             rgba: buf.into_raw(),
@@ -413,6 +439,36 @@ mod tests {
             encode_animated_webp_with(w, h, &frames, 1, &mut |done, _| done < 2),
             Err(CodecError::Canceled)
         ));
+    }
+
+    #[test]
+    fn animated_decode_aggregate_cap() {
+        // Three 64×64 frames → each decodes to 64·64·4 = 16 KiB. A 24 KiB aggregate cap admits the
+        // first frame and trips on the second; the real (large) cap decodes all three. This guards
+        // the bomb path (audit P-3) without allocating the production 384 MiB. The full 4096²-screen
+        // bomb is exercised on-device via tools/memlab/make_gif.py (REPORT.md addendum).
+        let (w, h) = (64u32, 64u32);
+        let frame = vec![10u8, 20, 30, 255].repeat((w * h) as usize);
+        let gif =
+            encode_gif(w, h, &[(frame.clone(), 50_000), (frame.clone(), 50_000), (frame, 50_000)]).unwrap();
+
+        let dec = GifDecoder::new(Cursor::new(&gif)).unwrap();
+        let tripped = decode_animated_capped(dec, 24 * 1024);
+        assert!(
+            matches!(tripped, Err(CodecError::Decode(ref m)) if m == "animation too large"),
+            "aggregate cap must trip on the second frame (got {})",
+            match &tripped {
+                Ok(f) => format!("Ok with {} frames", f.len()),
+                Err(e) => format!("Err({})", e),
+            }
+        );
+
+        let dec2 = GifDecoder::new(Cursor::new(&gif)).unwrap();
+        assert_eq!(
+            decode_animated_capped(dec2, MAX_DECODE_TOTAL_BYTES).unwrap().len(),
+            3,
+            "the same animation decodes fully under the production cap"
+        );
     }
 
     #[test]

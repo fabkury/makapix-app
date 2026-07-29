@@ -85,8 +85,13 @@ extension _EditorFileIo on _EditorPageState {
     if (res == null || res.files.single.path == null) return;
     final bytes = await File(res.files.single.path!).readAsBytes();
 
+    // Decoded only for its dimensions (dialog title + CropPage bounds). Disposed on every exit
+    // path below — it is unbounded (a phone photo is tens of MB) and was previously leaked. [audit]
     final srcImg = await _decodeBytes(bytes);
-    if (!mounted) return;
+    if (!mounted) {
+      srcImg.dispose();
+      return;
+    }
     int mode = 0; // Fit
     bool asLayer = true;
     Rect? cropRect; // in source pixels
@@ -144,7 +149,10 @@ extension _EditorFileIo on _EditorPageState {
         ),
       ),
     );
-    if (ok != true) return;
+    if (ok != true) {
+      srcImg.dispose();
+      return;
+    }
 
     final done = engine.importImage(bytes,
         mode: mode,
@@ -161,6 +169,7 @@ extension _EditorFileIo on _EditorPageState {
     } else {
       _toast('Import failed (unsupported or too large)');
     }
+    srcImg.dispose(); // done with the preview image on the success path too [audit]
     setState(() {});
   }
 
