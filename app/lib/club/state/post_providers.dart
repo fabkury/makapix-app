@@ -144,6 +144,12 @@ final gridLikesProvider =
   return GridLikesController(ref);
 });
 
+/// Authenticated likers of one comment (like-users sheet). One-shot fetch —
+/// the endpoint is capped at 200, unpaginated.
+// autoDispose: released when the sheet closes. [audit F-19]
+final commentLikeUsersProvider = FutureProvider.autoDispose.family<List<CommentLikeUser>, String>(
+    (ref, commentId) => ref.read(postApiProvider).commentLikeUsers(commentId));
+
 // ---- Comments ----
 
 /// Live comment count for a thread: non-deleted comments across all depths (top-level + replies).

@@ -29,8 +29,10 @@ import 'club_account_page.dart';
 import 'edit_profile_page.dart';
 import 'follows_page.dart';
 import 'report_page.dart';
+import 'widgets/badges_sheet.dart';
 import 'widgets/common.dart';
 import 'widgets/external_links.dart';
+import 'widgets/markdown_bio.dart';
 import 'widgets/feed_grid.dart';
 import 'widgets/send_target_binder.dart';
 import 'widgets/synced_pixel_art_image.dart';
@@ -497,24 +499,32 @@ class _Body extends ConsumerWidget {
           if (p.bio != null && p.bio!.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 8),
-              child: Text(p.bio!, style: const TextStyle(fontSize: 13)),
+              // Bio mini-markdown (bold/italic/link/code/color), website parity.
+              child: MarkdownBio(bio: p.bio!),
             ),
           if (p.website != null && p.website!.isNotEmpty) _websiteLink(context, p.website!),
           if (p.tagBadges.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 6),
-              child: Wrap(spacing: 6, children: [
-                for (final b in p.tagBadges)
-                  Chip(
-                    avatar: b.iconUrl16 == null
-                        ? null
-                        : CircleAvatar(
-                            backgroundColor: Colors.transparent,
-                            backgroundImage: CachedNetworkImageProvider(resolveClubUrl(b.iconUrl16!))),
-                    label: Text(b.label, style: const TextStyle(fontSize: 11)),
-                    visualDensity: VisualDensity.compact,
-                  ),
-              ]),
+              // Tapping the badge area opens the full badges sheet (labels,
+              // descriptions, grant dates — website BadgesOverlay parity).
+              child: InkWell(
+                onTap: () => showBadgesSheet(context, profile: p),
+                borderRadius: BorderRadius.circular(8),
+                child: Wrap(spacing: 6, children: [
+                  for (final b in p.tagBadges)
+                    Chip(
+                      avatar: b.iconUrl16 == null
+                          ? null
+                          : CircleAvatar(
+                              backgroundColor: Colors.transparent,
+                              backgroundImage:
+                                  CachedNetworkImageProvider(resolveClubUrl(b.iconUrl16!))),
+                      label: Text(b.label, style: const TextStyle(fontSize: 11)),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                ]),
+              ),
             ),
           const SizedBox(height: 12),
           _statsRow(context, p),

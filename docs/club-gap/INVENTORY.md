@@ -30,12 +30,12 @@ serving the website.
 
 | # | Gap | Impact | Effort | Status |
 |---|-----|--------|--------|--------|
-| B1 | Search: pagination + sort options | Med | M | ○ open |
-| B2 | Comment "who liked this" list | Med-Low | S | ○ open |
+| B1 | Search: pagination + sort options | Med | M | ✅ shipped 2026-07-29 (all 3 tabs infinite-scroll; Users sort A–Z/Newest/Reputation; Hashtags sort Popular/A–Z/Recent; Users+Hashtags browse-all on empty query) |
+| B2 | Comment "who liked this" list | Med-Low | S | ✅ shipped 2026-07-29 (long-press the comment like button) |
 | B3 | Notifications: load-more + per-item mark-read | Med-Low | S | ◑ load-more shipped 2026-07-29; per-item mark-read skipped (the page auto-marks-all-read on open, same as the website) |
-| B4 | Badges explorer (definitions vs granted) | Low-Med | S | ○ open |
-| B5 | Server-side logout (refresh-token revoke) | Low-Med (hygiene) | S | ○ open |
-| B6 | Markdown rendering of profile bios | Low | S | ○ open |
+| B4 | Badges explorer (definitions vs granted) | Low-Med | S | ✅ shipped 2026-07-29 (tap the profile badge chips) |
+| B5 | Server-side logout (refresh-token revoke) | Low-Med (hygiene) | S | ⛔ **blocked on the server**: app refresh tokens are body-delivered (`/auth/token` returns them in the body), and `POST /auth/logout` only revokes the *cookie* token — there is no body-token revoke endpoint (`club_session.dart` notes it as "pending brief §3.6"). Revisit when the server ships one |
+| B6 | Markdown rendering of profile bios | Low | S | ✅ shipped 2026-07-29 (the website's mini-language: bold/italic/link/code/color — not full markdown) |
 
 ### Tier C — product decisions, deferred phases, or big bets
 

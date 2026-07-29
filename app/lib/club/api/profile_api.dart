@@ -33,6 +33,16 @@ class ProfileApi {
         return Page<Post>.fromJson((resp.data as Map).cast<String, dynamic>(), Post.fromJson);
       });
 
+  /// The full badge catalog (`GET /badge` → `{items: [BadgeDefinition]}`) —
+  /// enriches a profile's granted badges with label/description/icon.
+  Future<List<BadgeDefinition>> badgeCatalog() => client.guard(() async {
+        final resp = await client.dio.get('/badge');
+        final items = ((resp.data as Map)['items'] as List?) ?? const [];
+        return items
+            .map((e) => BadgeDefinition.fromJson((e as Map).cast<String, dynamic>()))
+            .toList();
+      });
+
   /// Cursor-paged people lists: `{items: UserPublic[], next_cursor, total}` —
   /// the `Page` envelope (verified-users only, newest follow first).
   Future<Page<PostOwner>> followers(String sqid, {String? cursor}) =>

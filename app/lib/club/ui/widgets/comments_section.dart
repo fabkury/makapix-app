@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/comment.dart';
@@ -159,6 +161,7 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
                       : c.body,
                   style: TextStyle(fontSize: 13, color: c.deleted ? Colors.white38 : Colors.white)),
               Row(children: [
+                // Tap toggles the like; long-press (with a count) shows who liked.
                 _miniBtn(c.likedByMe ? Icons.favorite : Icons.favorite_border,
                     c.likeCount > 0 ? '${c.likeCount}' : 'Like',
                     onTap: () async {
@@ -166,7 +169,9 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
                       if (err != null && mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
                       }
-                    }, active: c.likedByMe),
+                    },
+                    onLongPress: c.likeCount > 0 ? () => _showLikeUsers(c) : null,
+                    active: c.likedByMe),
                 if (depth == 0)
                   _miniBtn(Icons.reply, 'Reply', onTap: () => setState(() {
                         _replyTo = c.id;
@@ -186,9 +191,11 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
     );
   }
 
-  Widget _miniBtn(IconData icon, String label, {required VoidCallback onTap, bool active = false}) =>
+  Widget _miniBtn(IconData icon, String label,
+          {required VoidCallback onTap, VoidCallback? onLongPress, bool active = false}) =>
       TextButton.icon(
         onPressed: onTap,
+        onLongPress: onLongPress,
         style: TextButton.styleFrom(
           padding: const EdgeInsets.symmetric(horizontal: 6),
           minimumSize: const Size(0, 30),
@@ -197,4 +204,56 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
         icon: Icon(icon, size: 14, color: active ? Colors.redAccent : Colors.white54),
         label: Text(label, style: TextStyle(fontSize: 11, color: active ? Colors.redAccent : Colors.white54)),
       );
+
+  /// Who liked this comment (`GET /post/comments/{id}/like-users`) — the
+  /// website's CommentLikeUsersOverlay as a bottom sheet.
+  void _showLikeUsers(Comment c) {
+    showAppSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Consumer(builder: (ctx, ref, _) {
+          final async = ref.watch(commentLikeUsersProvider(c.id));
+          return async.when(
+            loading: () => const SizedBox(
+                height: 140, child: Center(child: CircularProgressIndicator())),
+            error: (_, _) => const SizedBox(
+                height: 140,
+                child: Center(
+                    child: Text('Could not load who liked this.',
+                        style: TextStyle(color: Colors.white54)))),
+            data: (users) => users.isEmpty
+                ? const SizedBox(
+                    height: 140,
+                    child: Center(
+                        child:
+                            Text('No likes yet.', style: TextStyle(color: Colors.white54))))
+                : ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: users.length,
+                    itemBuilder: (ctx, i) {
+                      final u = users[i];
+                      final canOpen = u.sqid != null && u.sqid!.isNotEmpty;
+                      return ListTile(
+                        leading: HandleAvatar(url: u.avatarUrl, handle: u.handle, radius: 16),
+                        title: Text('@${u.handle}', style: const TextStyle(fontSize: 14)),
+                        trailing: Text(timeAgo(u.likedAt),
+                            style: const TextStyle(fontSize: 11, color: Colors.white38)),
+                        onTap: canOpen
+                            ? () {
+                                Navigator.pop(ctx);
+                                Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (_) => ProfilePage(sqid: u.sqid!)));
+                              }
+                            : null,
+                      );
+                    },
+                  ),
+          );
+        }),
+      ),
+    );
+  }
 }

@@ -1,5 +1,45 @@
 import 'post.dart';
 
+/// A badge granted to a user (the profile payload's `badges` list).
+class BadgeGrant {
+  final String badge;
+  final DateTime? grantedAt;
+  const BadgeGrant({required this.badge, this.grantedAt});
+
+  factory BadgeGrant.fromJson(Map<String, dynamic> j) => BadgeGrant(
+        badge: (j['badge'] ?? '').toString(),
+        grantedAt: DateTime.tryParse((j['granted_at'] ?? '').toString()),
+      );
+}
+
+/// One entry of the `GET /badge` catalog — full badge metadata used to enrich
+/// a profile's [BadgeGrant]s for display.
+class BadgeDefinition {
+  final String badge;
+  final String label;
+  final String? description;
+  final String iconUrl64;
+  final String? iconUrl16;
+  final bool isTagBadge;
+  const BadgeDefinition({
+    required this.badge,
+    required this.label,
+    this.description,
+    required this.iconUrl64,
+    this.iconUrl16,
+    this.isTagBadge = false,
+  });
+
+  factory BadgeDefinition.fromJson(Map<String, dynamic> j) => BadgeDefinition(
+        badge: (j['badge'] ?? '').toString(),
+        label: (j['label'] ?? '').toString(),
+        description: j['description'] as String?,
+        iconUrl64: (j['icon_url_64'] ?? '').toString(),
+        iconUrl16: j['icon_url_16'] as String?,
+        isTagBadge: j['is_tag_badge'] == true,
+      );
+}
+
 /// A small badge shown under a user's handle (`tag_badges`).
 class TagBadge {
   final String badge;
@@ -52,6 +92,7 @@ class UserProfile {
   final String? avatarUrl;
   final int reputation;
   final List<TagBadge> tagBadges;
+  final List<BadgeGrant> badges; // all granted badges (tag badges included)
   final ProfileStats stats;
   final bool isFollowing;
   final bool isOwnProfile;
@@ -72,6 +113,7 @@ class UserProfile {
     required this.avatarUrl,
     required this.reputation,
     required this.tagBadges,
+    this.badges = const [],
     required this.stats,
     required this.isFollowing,
     required this.isOwnProfile,
@@ -90,6 +132,10 @@ class UserProfile {
         reputation: (j['reputation'] as num?)?.toInt() ?? 0,
         tagBadges: (j['tag_badges'] as List?)
                 ?.map((e) => TagBadge.fromJson((e as Map).cast<String, dynamic>()))
+                .toList() ??
+            const [],
+        badges: (j['badges'] as List?)
+                ?.map((e) => BadgeGrant.fromJson((e as Map).cast<String, dynamic>()))
                 .toList() ??
             const [],
         stats: ProfileStats.fromJson((j['stats'] as Map?)?.cast<String, dynamic>() ?? const {}),
@@ -113,6 +159,7 @@ class UserProfile {
         avatarUrl: avatarUrl,
         reputation: reputation,
         tagBadges: tagBadges,
+        badges: badges,
         stats: stats ?? this.stats,
         isFollowing: isFollowing ?? this.isFollowing,
         isOwnProfile: isOwnProfile,

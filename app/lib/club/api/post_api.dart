@@ -119,6 +119,17 @@ class PostApi {
   Future<void> deleteComment(String commentId) =>
       client.guard(() => client.dio.delete('/post/comments/${Uri.encodeComponent(commentId)}'));
 
+  /// Authenticated users who liked a comment (newest first, capped at 200).
+  /// Shape is `{items: [...], total}` like the post reaction-users endpoint.
+  Future<List<CommentLikeUser>> commentLikeUsers(String commentId) => client.guard(() async {
+        final resp =
+            await client.dio.get('/post/comments/${Uri.encodeComponent(commentId)}/like-users');
+        final items = ((resp.data as Map)['items'] as List?) ?? const [];
+        return items
+            .map((e) => CommentLikeUser.fromJson((e as Map).cast<String, dynamic>()))
+            .toList();
+      });
+
   Future<void> likeComment(String commentId) =>
       client.guard(() => client.dio.put('/post/comments/${Uri.encodeComponent(commentId)}/like'));
 

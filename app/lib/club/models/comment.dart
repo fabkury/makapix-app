@@ -23,6 +23,23 @@ class CommentAuthor {
   }
 }
 
+/// One row of `GET /post/comments/{id}/like-users` (authenticated likers,
+/// newest first, server-capped at 200, unpaginated).
+class CommentLikeUser {
+  final String handle;
+  final String? sqid; // user_public_sqid (nullable for legacy users)
+  final String? avatarUrl;
+  final DateTime? likedAt;
+  const CommentLikeUser({required this.handle, this.sqid, this.avatarUrl, this.likedAt});
+
+  factory CommentLikeUser.fromJson(Map<String, dynamic> j) => CommentLikeUser(
+        handle: (j['user_handle'] ?? 'unknown').toString(),
+        sqid: j['user_public_sqid'] as String?,
+        avatarUrl: j['user_avatar_url'] as String?,
+        likedAt: DateTime.tryParse((j['created_at'] ?? '').toString()),
+      );
+}
+
 /// A comment on a post. Threads are at most 2 deep (top-level + replies).
 class Comment {
   final String id;

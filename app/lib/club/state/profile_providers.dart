@@ -67,6 +67,11 @@ final profileProvider =
     StateNotifierProvider.autoDispose.family<ProfileController, AsyncValue<UserProfile>, String>(
         (ref, sqid) => ProfileController(ref, sqid)); // [audit F-19]
 
+/// The badge catalog (`GET /badge`), fetched when the badges sheet opens.
+// autoDispose: released when the sheet closes; a reopen refetches (cheap, cached server-side).
+final badgeCatalogProvider = FutureProvider.autoDispose<List<BadgeDefinition>>(
+    (ref) => ref.read(profileApiProvider).badgeCatalog());
+
 /// Who follows this user (`GET /user/u/{sqid}/followers`), keyed by the
 /// profile's public sqid. Backs the Follows page's Followers tab.
 final followersProvider = StateNotifierProvider.autoDispose

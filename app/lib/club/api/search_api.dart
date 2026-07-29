@@ -17,26 +17,42 @@ class SearchApi {
   final ClubApiClient client;
   SearchApi(this.client);
 
-  Future<List<PostOwner>> browseUsers(String q, {String sort = 'alphabetical'}) => client.guard(() async {
+  /// User directory (`GET /user/browse`), cursor-paged.
+  /// [sort]: `alphabetical` · `recent` · `reputation` (server-validated set).
+  Future<Page<PostOwner>> browseUsers(String q,
+          {String sort = 'alphabetical', String? cursor}) =>
+      client.guard(() async {
         final resp = await client.dio.get('/user/browse', queryParameters: {
           if (q.isNotEmpty) 'q': q,
           'sort': sort,
           'limit': 40,
+          'cursor': ?cursor,
         });
-        return Page<PostOwner>.fromJson((resp.data as Map).cast<String, dynamic>(), PostOwner.fromJson)
-            .items;
+        return Page<PostOwner>.fromJson(
+            (resp.data as Map).cast<String, dynamic>(), PostOwner.fromJson);
       });
 
-  Future<List<HashtagStat>> hashtagStats(String q) => client.guard(() async {
+  /// Hashtag directory with stats (`GET /hashtags/stats`), cursor-paged.
+  /// [sort]: `popularity` · `alphabetical` · `recent` (server-validated set).
+  Future<Page<HashtagStat>> hashtagStats(String q,
+          {String sort = 'popularity', String? cursor}) =>
+      client.guard(() async {
         final resp = await client.dio.get('/hashtags/stats', queryParameters: {
           if (q.isNotEmpty) 'q': q,
-          'limit': 20,
+          'sort': sort,
+          'limit': 30,
+          'cursor': ?cursor,
         });
         final data = resp.data;
-        final list = data is Map ? (data['items'] as List?) : (data is List ? data : null);
-        return (list ?? const [])
+        if (data is Map) {
+          return Page<HashtagStat>.fromJson(
+              data.cast<String, dynamic>(), HashtagStat.fromJson);
+        }
+        // Defensive: a bare list is a single page.
+        final list = (data is List ? data : const [])
             .map((e) => HashtagStat.fromJson((e as Map).cast<String, dynamic>()))
             .toList();
+        return Page(items: list);
       });
 
   /// Top trending hashtags for the header bar. Server-driven "rotation": the
@@ -48,15 +64,16 @@ class SearchApi {
         return parseTopHashtags(resp.data);
       });
 
-  /// Artwork text search via `/search`. Pulls post-shaped entries out of the
-  /// (possibly tagged-union) item list defensively.
-  Future<List<Post>> searchPosts(String q) {
-    if (q.isEmpty) return Future.value(const []);
+  /// Artwork text search via `/search`, cursor-paged. Pulls post-shaped
+  /// entries out of the (possibly tagged-union) item list defensively.
+  Future<Page<Post>> searchPosts(String q, {String? cursor}) {
+    if (q.isEmpty) return Future.value(const Page(items: []));
     return client.guard(() async {
       final resp = await client.dio.get('/search', queryParameters: {
         'q': q,
         'types': ['posts'],
         'limit': 40,
+        'cursor': ?cursor,
       });
       final data = (resp.data as Map).cast<String, dynamic>();
       final items = (data['items'] as List?) ?? (data['posts'] as List?) ?? const [];
@@ -69,7 +86,7 @@ class SearchApi {
           posts.add(Post.fromJson(candidate));
         }
       }
-      return posts;
+      return Page(items: posts, nextCursor: data['next_cursor'] as String?);
     });
   }
 }

@@ -1,12 +1,78 @@
 // Website-parity batch (docs/club-gap/INVENTORY.md A1/A2/A3): pure logic for
 // single-post management, per-post stats, and the follow lists.
+import 'package:flutter/material.dart' show Color;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:makapix_club/club/models/post.dart';
 import 'package:makapix_club/club/models/post_stats.dart';
 import 'package:makapix_club/club/ui/edit_post_details_page.dart';
+import 'package:makapix_club/club/ui/widgets/markdown_bio.dart';
 
 void main() {
+  group('parseBioMarkdown (website MarkdownBio parity)', () {
+    test('plain text passes through as one segment', () {
+      final s = parseBioMarkdown('hello world');
+      expect(s.length, 1);
+      expect(s.single.type, 'text');
+      expect(s.single.text, 'hello world');
+    });
+
+    test('bold, italic, code, link, color', () {
+      final s = parseBioMarkdown(
+          'a *i* **b** `c` [l](https://x.example) [r]{color:red} z');
+      expect(s.map((e) => e.type).toList(),
+          ['text', 'italic', 'text', 'bold', 'text', 'code', 'text', 'link', 'text', 'color', 'text']);
+      expect(s[7].url, 'https://x.example');
+      expect(s[9].color, const Color(0xFFFF0000));
+    });
+
+    test('QUIRK (website parity): italic right after bold is lost', () {
+      // The italic regex's own non-overlapping scan eats "* *" between the
+      // bold closer and the italic opener, so `**b** *i*` renders the italic
+      // as literal text — exactly like MarkdownBio.tsx. Locked in on purpose:
+      // change this only together with the website.
+      final s = parseBioMarkdown('**b** *i*');
+      expect(s.map((e) => e.type).toList(), ['bold', 'text']);
+      expect(s[1].text, ' *i*');
+    });
+
+    test('bold wins over italic at the same site', () {
+      final s = parseBioMarkdown('**strong**');
+      expect(s.single.type, 'bold');
+      expect(s.single.text, 'strong');
+    });
+
+    test('color pattern wins over link at the same start', () {
+      final s = parseBioMarkdown('[x]{color:#ff0000}');
+      expect(s.single.type, 'color');
+      expect(s.single.color, const Color(0xFFFF0000));
+    });
+
+    test('invalid color renders as plain text', () {
+      final s = parseBioMarkdown('[x]{color:url(evil)}');
+      expect(s.single.type, 'text');
+      expect(s.single.text, '[x]{color:url(evil)}');
+    });
+
+    test('non-http link renders as plain text (stricter than the website)', () {
+      final s = parseBioMarkdown('[x](javascript:alert(1)');
+      expect(s.every((e) => e.type != 'link'), isTrue);
+      final s2 = parseBioMarkdown('[x](ftp://host/file)');
+      expect(s2.single.type, 'text');
+    });
+
+    test('#rgb shorthand expands', () {
+      expect(parseBioColor('#f00'), const Color(0xFFFF0000));
+      expect(parseBioColor('#0f0'), const Color(0xFF00FF00));
+      expect(parseBioColor('not-a-color'), isNull);
+    });
+
+    test('newlines survive inside plain segments', () {
+      final s = parseBioMarkdown('line1\nline2');
+      expect(s.single.text, 'line1\nline2');
+    });
+  });
+
   group('EditPostDetailsPage.parseHashtags', () {
     test('trims, lowercases, strips #, drops empties and duplicates', () {
       expect(
