@@ -46,8 +46,12 @@ class DrawingLibraryGrid extends StatefulWidget {
 
 class _DrawingLibraryGridState extends State<DrawingLibraryGrid> {
   List<DrawingMeta>? _items;
+  // Decoded thumbnails, keyed by drawing id — decoded lazily per visible tile (not all upfront),
+  // bounded FIFO so a large library can't retain O(drawings) ui.Images. [audit #14 gallery]
   final Map<String, ui.Image> _thumbs = {};
+  final Set<String> _inFlight = {}; // ids whose thumbnail decode is in progress (de-dup guard)
   bool _loading = true;
+  static const int _thumbCap = 60; // comfortably exceeds any simultaneously-visible tile count
 
   @override
   void initState() {
@@ -60,42 +64,69 @@ class _DrawingLibraryGridState extends State<DrawingLibraryGrid> {
     for (final img in _thumbs.values) {
       img.dispose();
     }
+    _thumbs.clear();
     super.dispose();
   }
 
+  // Page open is now metadata-only (store.list reads per-drawing meta.json, never the full .mkpx),
+  // so it's instant; thumbnails stream in lazily per visible tile via [_ensureThumb]. Also re-run
+  // after Rename/Delete to refresh the list (cached thumbs persist; a deleted one is dropped there).
   Future<void> _load() async {
     setState(() => _loading = true);
     final items = await widget.store.list();
-    // One shared temp engine renders every thumbnail (cheap RLE loads); disposed when done.
-    Engine? eng;
-    for (final m in items) {
-      try {
-        final bytes = await widget.store.readDoc(m.id);
-        if (bytes == null) continue;
-        eng ??= Engine(8, 8);
-        if (!eng.load(bytes)) continue;
-        final w = eng.width, h = eng.height;
-        const maxDim = 220;
-        final scale = w >= h ? maxDim / w : maxDim / h;
-        final tw = (w * scale).round().clamp(1, maxDim);
-        final th = (h * scale).round().clamp(1, maxDim);
-        final rgba = eng.frameThumb(0, tw, th);
-        if (rgba.isEmpty) continue;
-        final img = await _decodeRgba(rgba, tw, th);
-        if (!mounted) {
-          img.dispose();
-          break;
-        }
-        _thumbs[m.id]?.dispose();
-        _thumbs[m.id] = img;
-      } catch (_) {/* skip an unreadable drawing */}
-    }
-    eng?.dispose();
     if (!mounted) return;
     setState(() {
       _items = items;
       _loading = false;
     });
+  }
+
+  // Decode one drawing's thumbnail on demand. The engine is a **per-decode local** created, used,
+  // and disposed **before** the decode await — so no full document is ever retained while the
+  // gallery sits idle, and there's no shared-engine dispose-during-decode race. `frameThumb`
+  // returns an independent copy (not the #5 reused buffer), so it survives the engine's disposal
+  // and the await. [review A/B/C/D]
+  Future<void> _ensureThumb(DrawingMeta m) async {
+    if (_thumbs.containsKey(m.id) || _inFlight.contains(m.id)) return;
+    _inFlight.add(m.id);
+    ui.Image? img;
+    try {
+      final bytes = await widget.store.readDoc(m.id);
+      if (!mounted || bytes == null) return;
+      // Whole engine lifecycle is synchronous (no await inside) and disposed in the finally, so at
+      // most one document is materialized at any instant even under concurrent decodes.
+      final rendered = () {
+        final eng = Engine(8, 8);
+        try {
+          if (!eng.load(bytes)) return null;
+          final w = eng.width, h = eng.height;
+          const maxDim = 220;
+          final scale = w >= h ? maxDim / w : maxDim / h;
+          final tw = (w * scale).round().clamp(1, maxDim);
+          final th = (h * scale).round().clamp(1, maxDim);
+          final rgba = eng.frameThumb(0, tw, th);
+          return rgba.isEmpty ? null : (rgba: rgba, tw: tw, th: th);
+        } finally {
+          eng.dispose();
+        }
+      }();
+      if (rendered == null) return;
+      img = await _decodeRgba(rendered.rgba, rendered.tw, rendered.th);
+      if (!mounted) return; // finally disposes `img`
+      _thumbs[m.id] = img;
+      img = null; // handed to the cache — don't dispose it below
+      // FIFO cap: evict + dispose the oldest entry other than the one just added.
+      if (_thumbs.length > _thumbCap) {
+        final victim = _thumbs.keys.firstWhere((k) => k != m.id, orElse: () => '');
+        if (victim.isNotEmpty) _thumbs.remove(victim)?.dispose();
+      }
+      setState(() {});
+    } catch (_) {
+      // unreadable/corrupt drawing → leave the placeholder icon
+    } finally {
+      _inFlight.remove(m.id);
+      img?.dispose(); // decoded but not cached (unmounted / late exception) — never leak it
+    }
   }
 
   Future<ui.Image> _decodeRgba(Uint8List bytes, int w, int h) {
@@ -189,6 +220,9 @@ class _DrawingLibraryGridState extends State<DrawingLibraryGrid> {
   Widget _tile(DrawingMeta m) {
     final isCurrent = m.id == widget.currentId;
     final img = _thumbs[m.id];
+    // Lazily decode this drawing's thumbnail the first time its (visible) tile builds; the guard in
+    // _ensureThumb makes repeat calls cheap no-ops. Fire-and-forget: it setStates when ready.
+    if (img == null) unawaited(_ensureThumb(m));
     return InkWell(
       onTap: () => widget.onOpen(m.id),
       borderRadius: BorderRadius.circular(8),
