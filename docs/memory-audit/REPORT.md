@@ -348,20 +348,21 @@ census to a narrower, on-demand probe at the same time.
 
 ## Refactor proposals, ranked by relief-to-risk
 
-> **Status 2026-07-29:** proposals **#1, #2, and the cap half of #3 are implemented** on branch
-> `fix/memory-audit-quick-wins` and confirmed on the Pixel — P-0 import now refuses at the budget
-> (payload held at 256 MiB, roundtrip PASS, brick gone) and the 24 KB GIF bomb now errors instead
-> of growing to 6.5 GB. The remaining items below are still open. The moving `mkpx_import` decode
-> off the UI isolate part of #3 was **not** done.
+> **Status 2026-07-29:** proposals **#1, #2, the cap half of #3** (merged to `main`) and **#5, #6**
+> (branch `perf/tier1-churn`) are implemented and confirmed on the Pixel — P-0 import refuses at
+> the budget (roundtrip PASS, brick gone), the 24 KB GIF bomb errors instead of growing to 6.5 GB,
+> and a device draw renders cleanly through the reused-buffer display path. **#4 is deferred** — an
+> adversarial plan review found a real, untested coordinate bug it would introduce (see the recipe
+> under the table). The `mkpx_import` off-isolate half of #3 remains open. Other items below are open.
 
 | # | Change | Gain | Cost | Risk |
 |---|---|---|---|---|
 | 1 ✅ | **Route `import_decoded` through `edit_doc("import", …)`** (`import.rs:160`) | Closes P-0 — restores the "never over budget" invariant, the refusal telemetry and the census recalibration at the one edge that lacks them | Tiny — the before-clone it needs already exists; delete the hand-rolled protocol | **Low**: same rollback semantics as every sibling op; add an FFI-level over-budget import test (none exists today) |
 | 2 ✅ | **Dart hygiene batch**: dispose `srcImg`+codec in `_importImage`; nullptr-check + `calloc`/`try-finally` in `save()`/`saveCompact()` (pattern-match the `export*` guards); clear thumb caches on document switch; stop `_antCtrl` when there is nothing animated to draw | Kills the only true leak; makes the OOM-adjacent paths safe; removes idle 60 Hz work | ~half a day | **Minimal** — each fix is local; existing widget tests cover the paths |
 | 3 ◑ | **Sum-cap animated decode** in `decode_animated` (running-bytes total, error past e.g. 384 MiB) ✅ + move `mkpx_import`'s decode off the UI isolate (open) | Closes the GIF-bomb abort (P-3); unfreezes import UI | Tiny (cap) + small (isolate) | **None** for the cap; isolate move follows the existing `encodeInBackground` pattern |
-| 4 | **Render the display at `canvas_rect` when `!overscan_view`** (`session.rs:569`), offsetting tool previews by the gutter origin | Removes 8/9 of per-move composite work and fatal-class tile churn, onion included; shrinks every downstream copy | Small; the previews draw in storage coords and need one offset | **Moderate-low**: misplaced previews if the offset is wrong — but `cargo test` goldens + the preview tests (`drag_shows_live_preview_without_committing`) catch exactly that. Keep the storage path for overscan |
-| 5 | **Reuse the display transfer buffer end-to-end**: persistent native buffer in `Engine.display()`, hand `asTypedList` view to premultiply+decode, free after decode; optionally have `display_bytes` write into the caller's slice like `outline_mask_bytes` | Removes 2 of 3 full copies per pointer move and the 15–30 MB/s old-space churn; also applies to `compositeFrame` (playback, 30 Hz) | ~a day incl. lifetime care (buffer must outlive the async decode) | **Low-moderate**: use-after-free if resize/dispose races the decode — gate on generation counter; `canvas_checker_test` pins premultiply correctness |
-| 6 | **Stop deep-copying masks on the stamp path**: clone the `Arc` (or restructure the borrow) at the six per-event `selection_clone()` sites; add an in-place `RgbaBuffer::clear_in_place` for the Move drag | Removes 72 KiB × N per move with a selection; removes a 4608 B fatal-class alloc per move per moved layer | Small-moderate (borrow-checker work) | **Low**: behavior-identical if it compiles; goldens confirm |
+| 4 ⏸ | **Render the display at `canvas_rect` when `!overscan_view`** (`session.rs:569`), offsetting tool previews by the gutter origin | Removes fatal-class table allocs per move (payload is unchanged for sparse content — the "8/9" framing overstated it; the real win is 2 tables/move, and only on 64-bit) | Small edit, wide surface (~9 preview draw sites + `canvas.rs` washes) | **DEFERRED** — review found a real, silently-shipping bug (`blit_wrapped`, see recipe below) and only a modest sparse-case payoff. #5 already captures the bigger per-move copy |
+| 5 ✅ | **Reuse the display transfer buffer**: persistent native scratch buffer in `Engine.display()`/`compositeFrame()`, return a view (no `fromList` copy, no per-move malloc/free), free in `dispose()` | Removes 1 of 3 full copies per pointer move + the per-move malloc/free; also `compositeFrame` (playback) | ~a day incl. lifetime care | **Low-moderate** — the view is valid only until the next call; safe because `decodeImageFromPixels` copies synchronously (engine source verified). Coupled to that behavior; re-verify on Flutter bumps |
+| 6 ✅ | **Stop deep-copying masks on the stamp path**: `selection_arc()` (Arc bump) at the 8 per-event paint sites; `RgbaBuffer::clear_in_place` (reuse table when uniquely owned) for the Move-drag clear | Removes 72 KiB × N per move with a selection; removes a fatal-class table alloc per move-drag event (after the first) | Small | **Low**: behavior-identical; goldens + a COW test confirm. (Review: `move_draft_paint` gets no benefit — a sharer always pins its table — so `clear_in_place` is applied only at the layer-drag site) |
 | 7 | **Count `tile_table_bytes` against the document budget** (the census already computes it — add it to the enforced quantity, or as a parallel cap) | Closes the P-2 blind spot; keeps worst-case export peak (P-1) under the wall | Tiny | **Low**: slightly earlier refusals for pathological many-empty-layer documents (arguably correct); re-run the memlab ladder rungs to confirm no regression |
 | 8 | **Small codec batch**: `img.into_rgba8()` in `decode_static` (one word, halves static-decode peak); `encode_png` via `PngEncoder::write_image` straight from the slice (matches the WebP still path); inflate compact `.mkpx` into an exactly-`ulen`-sized buffer; write the animated-WebP container into one buffer; make the export flatten guard scale-aware | Each removes a full-raster or full-payload transient on its path; the guard closes the 32×-still hole | ~a day total | **Low** — all output-byte-identical, pinned by existing codec round-trip tests |
 | 9 | **Slim `state_json`**: emit `frame_detail` for the active frame only + a flat durations array (or add a `state_lite` used by `_refreshState`) | O(frames×layers)→O(layers) per action: removes the ~15 MB retained tree and per-action string churn at high frame counts | Moderate — Rust probe + 3 Dart decode sites + tests | **Moderate**: the CLI `state` probe output is asserted in tests and may be a compatibility surface; version the probe rather than mutate it |
@@ -374,6 +375,32 @@ census to a narrower, on-demand probe at the same time.
 Not recommended: reverting any of the shipped budget machinery, un-quarantining the `image`
 crate, or touching the gutter design itself — the 3×3 storage is load-bearing for Move/overscan
 and its cost is now quantified rather than alarming.
+
+### Deferred #4 — implementation recipe (for whoever picks it up)
+
+An adversarial review (2026-07-29) established the correct approach and the trap, so #4 is a known
+quantity, just not worth its risk today. If revisited:
+
+1. **The correctness argument is affine equivalence, not "storage coords."** For every single-pixel
+   `set`/`blend_over` and for `blit_over`, subtracting `off = origin` from the exact value passed to
+   the draw call and letting the bounds-check drop out-of-range writes is **byte-identical** to
+   today's "draw at storage coord, then `to_rgba_bytes_rect(canvas_rect)`" — because the crop maps
+   `s → s − origin` with the same clip window. This holds regardless of the value's coordinate space,
+   so the implementer must offset *the value handed to each draw call*, at all ~9 sites
+   (`render_shape_preview`, `render_gradient_preview`, `render_paste_preview`, the move-draft wash,
+   the Select-Layer overlay, the legacy stroke previews, and `rotate_draft_wash_into` /
+   `scale_draft_wash_into` in `canvas.rs`). Pass `off` = `(0,0)` on the overscan path so it is
+   provably unchanged.
+2. **The one trap: `blit_wrapped` at `session.rs:783`** (legacy wrapped-Move preview). Its internal
+   wrap math references `canvas.x = origin.x`, so offsetting only the dest breaks it. The fix is to
+   pass BOTH a dest offset by `−off` AND `canvas = IRect::new(0, 0, w, h)`. **No test covers the
+   wrapped-Move preview** — add a golden for it before landing, or it ships silently wrong.
+3. `render_display`'s own internals (checker/grid/onion/reticle) are already `src`-relative — no
+   change needed there.
+4. Honest payoff: ~2 fatal-class table allocs/move for sparse content (the common case), larger for
+   dense/gutter-heavy or large-canvas docs; and the "4 KiB class" framing is 64-bit-only (arm32
+   ships 4-byte pointers → a different, smaller class). #5 already removed the bigger per-move copy,
+   which is why deferring #4 costs little.
 
 ## Other considerations
 

@@ -389,9 +389,19 @@ impl Session {
     }
 
     /// Current selection as an owned mask for read-only use (clip regions, bounds), cloning out of
-    /// the COW `Arc`. `None` when there is no selection.
+    /// the COW `Arc`. `None` when there is no selection. Prefer [`selection_arc`](Self::selection_arc)
+    /// on the per-pointer-event paint path — this makes a full 72 KiB (storage-sized) deep copy.
     fn selection_clone(&self) -> Option<Mask> {
         self.doc.selection.as_deref().cloned()
+    }
+
+    /// A cheap COW handle on the current selection for read-only tool use: an `Arc` refcount bump,
+    /// not the 72 KiB deep copy [`selection_clone`](Self::selection_clone) makes. The paint tools
+    /// take `Option<&Mask>`, so the hot per-stamp sites pass `selection_arc().as_deref()`. Sound
+    /// because the returned owned `Arc` ends the `&self.doc` borrow before the layer buffer is
+    /// borrowed `&mut` — the two are disjoint fields. [audit C-2]
+    fn selection_arc(&self) -> Option<Arc<Mask>> {
+        self.doc.selection.clone()
     }
 
     /// Compose `shape` into the current selection per `mode` and record it as one undo step (the
@@ -1207,10 +1217,10 @@ impl Session {
                     // seed of the pixel-perfect sequence (see `pencil_perfect_step`).
                     let color = self.settings.primary;
                     let clip = self.paint_clip();
-                    let sel = self.selection_clone();
+                    let sel = self.selection_arc(); // [C-2]
                     let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
                     let orig = buf.get(p.x, p.y);
-                    tool::plot(buf, sel.as_ref(), clip, p.x, p.y, color, PaintMode::Replace);
+                    tool::plot(buf, sel.as_deref(), clip, p.x, p.y, color, PaintMode::Replace);
                     pp.push((p, orig));
                 }
                 ToolKind::Pencil => self.stamp_active(p, PaintMode::Replace, self.settings.primary),
@@ -1321,7 +1331,7 @@ impl Session {
                 if li < self.doc.frames[fi].layers.len() {
                     let snap = &self.move_layers[idx].1;
                     let buf = &mut self.doc.frames[fi].layers[li].pixels;
-                    buf.clear();
+                    buf.clear_in_place(); // per pointer move of a layer drag — reuse the table [C-3]
                     // Wrap: pixels leaving one edge re-enter the opposite one. Regular: clip them.
                     if wrap {
                         buf.blit_wrapped(snap, dx, dy, cr);
@@ -1595,16 +1605,16 @@ impl Session {
     fn stamp_active(&mut self, p: Point, mode: PaintMode, color: Rgba8) {
         let (size, shape) = (self.settings.brush_size, self.settings.brush_shape);
         let clip = self.paint_clip();
-        let sel = self.selection_clone();
+        let sel = self.selection_arc(); // Arc bump, not a 72 KiB deep copy — per stamp [C-2]
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-        tool::stamp(buf, sel.as_ref(), clip, p, size, shape, color, mode);
+        tool::stamp(buf, sel.as_deref(), clip, p, size, shape, color, mode);
     }
     fn stroke_active(&mut self, a: Point, b: Point, mode: PaintMode, color: Rgba8) {
         let (size, shape) = (self.settings.brush_size, self.settings.brush_shape);
         let clip = self.paint_clip();
-        let sel = self.selection_clone();
+        let sel = self.selection_arc(); // [C-2]
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-        tool::stroke_segment(buf, sel.as_ref(), clip, a, b, size, shape, color, mode);
+        tool::stroke_segment(buf, sel.as_deref(), clip, a, b, size, shape, color, mode);
     }
 
     /// True when the Pencil should draw in pixel-perfect mode: the toggle is on and the brush is a
@@ -1636,7 +1646,7 @@ impl Session {
     fn pencil_perfect_segment(&mut self, a: Point, b: Point, pp: &mut Vec<(Point, Rgba8)>) {
         let color = self.settings.primary;
         let clip = self.paint_clip();
-        let sel = self.selection_clone();
+        let sel = self.selection_arc(); // [C-2]
         let mut pts = Vec::new();
         crate::raster::line(a, b, |x, y| pts.push(Point::new(x, y)));
         {
@@ -1648,7 +1658,7 @@ impl Session {
                     continue;
                 }
                 let orig = buf.get(c.x, c.y); // pre-stroke color (stroke hasn't touched `c` yet)
-                tool::plot(buf, sel.as_ref(), clip, c.x, c.y, color, PaintMode::Replace);
+                tool::plot(buf, sel.as_deref(), clip, c.x, c.y, color, PaintMode::Replace);
                 pp.push((c, orig));
                 let n = pp.len();
                 if n >= 3 && pp_corner(pp[n - 3].0, pp[n - 2].0, pp[n - 1].0) {
@@ -1669,9 +1679,9 @@ impl Session {
     fn airbrush_active(&mut self, p: Point) {
         let (size, intensity, color) = (self.settings.brush_size, self.settings.intensity, self.settings.primary);
         let clip = self.paint_clip();
-        let sel = self.selection_clone();
+        let sel = self.selection_arc(); // [C-2]
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-        tool::airbrush_dab(buf, sel.as_ref(), clip, p, size, intensity, color, &mut self.rng);
+        tool::airbrush_dab(buf, sel.as_deref(), clip, p, size, intensity, color, &mut self.rng);
     }
 
     /// Distance (canvas px) between successive Brush/Airbrush/Dodge/Burn stamps: spacing% of the
@@ -1689,10 +1699,10 @@ impl Session {
         }
         let (size, shape) = (self.settings.brush_size, self.settings.brush_shape);
         let clip = self.paint_clip();
-        let sel = self.selection_clone();
+        let sel = self.selection_arc(); // [C-2]
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
         for p in pts {
-            tool::stamp(buf, sel.as_ref(), clip, p, size, shape, color, mode);
+            tool::stamp(buf, sel.as_deref(), clip, p, size, shape, color, mode);
         }
     }
 
@@ -1724,9 +1734,9 @@ impl Session {
     fn dodge_burn_active(&mut self, p: Point, dv: f32) {
         let (size, shape) = (self.settings.brush_size, self.settings.brush_shape);
         let clip = self.paint_clip();
-        let sel = self.selection_clone();
+        let sel = self.selection_arc(); // [C-2]
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-        tool::dodge_burn_stamp(buf, sel.as_ref(), clip, p, size, shape, dv);
+        tool::dodge_burn_stamp(buf, sel.as_deref(), clip, p, size, shape, dv);
     }
 
     // ---- precision mode (draw-by-button, reticle off the finger) ----
@@ -1832,9 +1842,9 @@ impl Session {
         if self.tool == ToolKind::Pencil && self.pixel_perfect_active() {
             let color = self.settings.primary;
             let clip = self.paint_clip();
-            let sel = self.selection_clone();
+            let sel = self.selection_arc(); // [C-2]
             let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-            tool::plot(buf, sel.as_ref(), clip, p.x, p.y, color, PaintMode::Replace);
+            tool::plot(buf, sel.as_deref(), clip, p.x, p.y, color, PaintMode::Replace);
         } else {
             match self.cursor_paint() {
                 Some((mode, color)) => self.stamp_active(p, mode, color),

@@ -111,6 +111,20 @@ class Engine {
   final DynamicLibrary _lib;
   late final Pointer<Void> _s;
 
+  // Reused native scratch buffer for the per-pointer-move display/composite reads (see [display]).
+  // Grown on demand, freed in [dispose]; never shrunk.
+  Pointer<Uint8> _scratch = nullptr;
+  int _scratchCap = 0;
+
+  Pointer<Uint8> _ensureScratch(int cap) {
+    if (cap > _scratchCap) {
+      if (_scratch != nullptr) malloc.free(_scratch);
+      _scratch = malloc<Uint8>(cap);
+      _scratchCap = cap;
+    }
+    return _scratch;
+  }
+
   late final _NewD _new = _lib.lookupFunction<_NewC, _NewD>('mkpx_new');
   late final _FreeD _freeS = _lib.lookupFunction<_FreeC, _FreeD>('mkpx_free');
   late final _RunD _run = _lib.lookupFunction<_RunC, _RunD>('mkpx_run');
@@ -185,22 +199,30 @@ class Engine {
   }
 
   /// Active-frame display RGBA bytes (with overlays).
+  ///
+  /// Returns a **view into a reused native scratch buffer** — no per-call malloc/free and no
+  /// Dart-heap copy (the two per-pointer-move costs the fromList version paid). [audit C-1/#5]
+  ///
+  /// CONTRACT: the returned list is valid only until the next [display]/[compositeFrame] call, which
+  /// overwrites the same buffer. Both callers (`_redraw`, `_advancePlayFrame`) consume it
+  /// synchronously — `premultiplyRgbaInPlace` then `ui.decodeImageFromPixels`, which copies its input
+  /// synchronously (via `ImmutableBuffer.fromUint8List` → native `_init`) before returning, so the
+  /// buffer is free to reuse the moment `_decode` is invoked, even under overlapping redraws. Do NOT
+  /// store the result, hand it to an isolate, or await before decoding. This safety is coupled to
+  /// the engine's synchronous-copy behavior — RE-VERIFY on any Flutter/engine upgrade.
   Uint8List display({bool onion = false, bool grid = false, bool checker = true}) {
     final cap = displayWidth * displayHeight * 4; // storage-sized under the overscan view
-    final out = malloc<Uint8>(cap);
+    final out = _ensureScratch(cap);
     final n = _display(_s, onion ? 1 : 0, grid ? 1 : 0, checker ? 1 : 0, out, cap);
-    final bytes = Uint8List.fromList(out.asTypedList(n < 0 ? 0 : n));
-    malloc.free(out);
-    return bytes;
+    return out.asTypedList(n < 0 ? 0 : n);
   }
 
+  /// One frame's composited RGBA. Same reused-scratch-buffer contract as [display] — see its doc.
   Uint8List compositeFrame(int frame) {
     final cap = width * height * 4;
-    final out = malloc<Uint8>(cap);
+    final out = _ensureScratch(cap);
     final n = _composite(_s, frame, out, cap);
-    final bytes = Uint8List.fromList(out.asTypedList(n < 0 ? 0 : n));
-    malloc.free(out);
-    return bytes;
+    return out.asTypedList(n < 0 ? 0 : n);
   }
 
   String stateJson() {
@@ -407,7 +429,14 @@ class Engine {
   /// Ask the export in flight to stop at its next frame boundary; its result comes back empty.
   void cancelExport() => _exportCancel();
 
-  void dispose() => _freeS(_s);
+  void dispose() {
+    if (_scratch != nullptr) {
+      malloc.free(_scratch);
+      _scratch = nullptr;
+      _scratchCap = 0;
+    }
+    _freeS(_s);
+  }
 
   // ---- process-wide export progress, readable without owning an Engine ----
   // The GIF/WebP export counters live in the DLL's process memory (not per-session), so the shared

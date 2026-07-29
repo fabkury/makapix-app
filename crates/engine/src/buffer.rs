@@ -234,6 +234,23 @@ impl RgbaBuffer {
         self.tiles = Arc::new(vec![None; self.tiles.len()]);
     }
 
+    /// Clear to fully transparent, reusing the tile table in place when this buffer *uniquely* owns
+    /// it (drops each tile `Arc`, keeps the slot `Vec`) instead of allocating a fresh table. Falls
+    /// back to [`clear`](Self::clear) when the table is COW-shared — a history snapshot or a Move
+    /// snapshot still points at it — so a sharer is never mutated. Observably identical to `clear`;
+    /// the point is to avoid a fresh ~4 KiB-class table allocation on the per-pointer-move paths
+    /// (a Move-tool layer drag re-clears its layers every event). [audit C-3]
+    pub fn clear_in_place(&mut self) {
+        match Arc::get_mut(&mut self.tiles) {
+            Some(table) => {
+                for slot in table.iter_mut() {
+                    *slot = None;
+                }
+            }
+            None => self.tiles = Arc::new(vec![None; self.tiles.len()]),
+        }
+    }
+
     /// Drop tiles that became fully transparent (sparsity maintenance after erases). Read-only
     /// scan first so an already-compact shared table is never cloned.
     pub fn compact(&mut self) {
@@ -577,6 +594,28 @@ mod tests {
         assert_eq!(b.get(70, 70), Rgba8::TRANSPARENT);
         b.apply_after(&patch);
         assert_eq!(b.get(70, 70), Rgba8::BLACK);
+    }
+
+    #[test]
+    fn clear_in_place_reuses_unique_table_and_preserves_snapshots() {
+        let mut b = RgbaBuffer::new(96, 96); // 3×3 tiles
+        b.set(10, 10, Rgba8::WHITE);
+        b.set(70, 70, Rgba8::BLACK);
+        // Uniquely owned → clears in place, keeping the same table allocation.
+        let ptr_before = b.table_ptr();
+        b.clear_in_place();
+        assert!(b.is_empty(), "clear_in_place empties the buffer");
+        assert_eq!(b.table_ptr(), ptr_before, "unique table is reused, not reallocated");
+
+        // Shared with a snapshot → must NOT mutate the snapshot; falls back to a fresh table.
+        b.set(10, 10, Rgba8::WHITE);
+        let snap = b.snapshot(); // shares the same Arc<TileTable>
+        assert_eq!(Arc::as_ptr(&snap) as *const (), b.table_ptr(), "snapshot shares the table");
+        b.clear_in_place();
+        assert!(b.is_empty(), "buffer is cleared");
+        assert_ne!(b.table_ptr(), Arc::as_ptr(&snap) as *const (), "shared table was not zeroed in place");
+        // The snapshot still holds the pre-clear content.
+        assert!(snap.iter().any(|t| t.is_some()), "snapshot content survives the clear");
     }
 
     #[test]
