@@ -7,6 +7,15 @@
 //!   mkpx new <w> <h> -- <inline; actions; ...> [PROBE ...]
 //!   mkpx gen <w> <h> <frames> <layers> <seed> <out.mkpx> [PROBE ...]
 //!   mkpx load <file.mkpx> [PROBE ...]
+//!   mkpx import <w> <h> <image> [--pre <script>] [--as-layer] [--mode fit|stretch|crop]
+//!               [--start N] [--times N] [PROBE ...]
+//!
+//! `import` (memory-audit lab tool, 2026-07-29) drives the exact decode+import path the app's
+//! `mkpx_import` FFI uses: create a <w>×<h> session, optionally run a `--pre` DSL script first
+//! (e.g. to build a near-budget document), then decode <image> once and run
+//! `Session::import_decoded` `--times` times (start frame advancing by 1 each round with
+//! `--as-layer`, mimicking a user importing repeatedly). Timings and decoded sizes go to stdout
+//! as a `# import` line; combine with `mem`/`mem.os` probes to measure the import transient.
 //!
 //! `gen` builds a document whose every layer is full seeded noise (`tool::noise_fill`) by direct
 //! construction — NO undo history, unlike scripted AddFrame/FillNoise — then saves it: the
@@ -110,6 +119,108 @@ fn main() {
             drop(bytes); // free the file buffer before probes so `mem.os` resident is doc-only
             println!("# load bytes={} ms={:.1}", n, t0.elapsed().as_secs_f64() * 1000.0);
             probe_start = 3;
+        }
+        "import" => {
+            // Memory-audit lab tool: the same codec::decode → import_decoded path as mkpx_import.
+            if args.len() < 5 {
+                eprintln!("mkpx import needs <w> <h> <image> [--pre <script>] [--as-layer] [--mode fit|stretch|crop] [--start N] [--times N]");
+                exit(2);
+            }
+            let w: u16 = args[2].parse().unwrap_or(64);
+            let h: u16 = args[3].parse().unwrap_or(64);
+            session = Session::new(w, h);
+            let image_path = &args[4];
+            let mut i = 5;
+            let mut pre: Option<String> = None;
+            let mut as_layer = false;
+            let mut mode = makapix_engine::import::ScaleMode::Fit;
+            let mut start: usize = 0;
+            let mut times: usize = 1;
+            while i < args.len() && args[i].starts_with("--") {
+                match args[i].as_str() {
+                    "--pre" => {
+                        i += 1;
+                        pre = args.get(i).map(|p| match std::fs::read_to_string(p) {
+                            Ok(s) => s,
+                            Err(e) => {
+                                eprintln!("cannot read {}: {}", p, e);
+                                exit(2);
+                            }
+                        });
+                    }
+                    "--as-layer" => as_layer = true,
+                    "--mode" => {
+                        i += 1;
+                        mode = match args.get(i).map(String::as_str) {
+                            Some("stretch") => makapix_engine::import::ScaleMode::Stretch,
+                            Some("crop") => makapix_engine::import::ScaleMode::Crop,
+                            _ => makapix_engine::import::ScaleMode::Fit,
+                        };
+                    }
+                    "--start" => {
+                        i += 1;
+                        start = args.get(i).and_then(|s| s.parse().ok()).unwrap_or(0);
+                    }
+                    "--times" => {
+                        i += 1;
+                        times = args.get(i).and_then(|s| s.parse().ok()).unwrap_or(1).max(1);
+                    }
+                    other => {
+                        eprintln!("unknown import flag '{}'", other);
+                        exit(2);
+                    }
+                }
+                i += 1;
+            }
+            if let Some(src) = pre {
+                if let Err(e) = session.run_script(&src) {
+                    eprintln!("pre-script error: {}", e);
+                    exit(2);
+                }
+            }
+            let bytes = match std::fs::read(image_path) {
+                Ok(b) => b,
+                Err(e) => {
+                    eprintln!("cannot read {}: {}", image_path, e);
+                    exit(2);
+                }
+            };
+            let file_bytes = bytes.len();
+            let t0 = std::time::Instant::now();
+            let frames = match makapix_codec::decode(&bytes) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("decode error: {}", e);
+                    exit(2);
+                }
+            };
+            drop(bytes); // the decoded frames are the interesting transient, not the file
+            let decode_ms = t0.elapsed().as_secs_f64() * 1000.0;
+            let decoded_bytes: usize = frames.iter().map(|f| f.rgba.len()).sum();
+            let decoded_frames = frames.len();
+            let t1 = std::time::Instant::now();
+            for k in 0..times {
+                let cfg = makapix_engine::import::ImportConfig {
+                    mode,
+                    anchor: makapix_engine::import::Anchor::Center,
+                    start_frame: start + if as_layer { k } else { 0 },
+                    as_layer,
+                    crop_rect: None,
+                };
+                session.import_decoded(&frames, cfg);
+            }
+            let import_ms = t1.elapsed().as_secs_f64() * 1000.0;
+            drop(frames); // free the decoded set (as the app does) so post-import probes see doc-only resident; the peak retains the transient
+            println!(
+                "# import file_bytes={} decoded_frames={} decoded_bytes={} times={} decode_ms={:.1} import_ms={:.1}",
+                file_bytes,
+                decoded_frames,
+                decoded_bytes,
+                times,
+                decode_ms,
+                import_ms
+            );
+            probe_start = i;
         }
         other => {
             eprintln!("unknown command '{}'", other);

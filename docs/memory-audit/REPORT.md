@@ -3,8 +3,11 @@
 *2026-07-29 · scope: the Rust engine (`crates/`) + the Dart editor shell (`app/lib/editor/`,
 `app/lib/engine_ffi.dart`) and the Club paths that drive the engine (publish export, edit/remix
 intake). Method: full code inspection of the memory-relevant paths, three parallel deep-read
-sweeps, and targeted headless `mkpx` measurements on Windows. Report only — no code was changed.
-Baseline numbers and the enforcement already in force: `docs/memlab/REPORT.md`.*
+sweeps, targeted headless `mkpx` measurements on Windows, and — see the **device addendum at the
+end** — on-device confirmation (Pixel 10 Pro XL) of the import/export/crash findings, added the
+same day. No product code was changed; the addendum's `mkpx import` subcommand and
+`tools/memlab/make_gif.py` are non-shipping lab tooling. Baseline numbers and the enforcement
+already in force: `docs/memlab/REPORT.md`.*
 
 ## Verdict, in one paragraph per question
 
@@ -14,7 +17,9 @@ genuinely good shape: COW tiles, patch-based undo, Arc-shared tables and masks, 
 2026-07-16 budget enforcement (96 MiB history, 256/320 MiB document, loader refusal) all hold up
 under inspection, and nothing in the engine grows unboundedly over a session. But the audit
 found **one genuine hole in that enforcement — image import bypasses the document-budget
-chokepoint entirely (P-0)** — plus meaningful waste in three places: (1) **transient churn on
+chokepoint entirely (P-0), now confirmed on-device: an import drove the engine to 512 MiB, 60%
+past the 320 MiB hard cap, with zero refusals, and the resulting file is refused by its own
+loader on reload** — plus meaningful waste in three places: (1) **transient churn on
 the interactive path** — every pointer move composites 9× the pixels it needs and copies the
 result three times, and several tools deep-copy a 9×-oversized selection mask per stamp;
 (2) **a small set of Dart-side defects** — an unbounded `ui.Image` leak in image import, an
@@ -131,8 +136,11 @@ the live document (≤320 MiB of tiles in the fatal class) + up to three copies 
 bytes + the isolate's document (≤320 MiB more in the same class) + the flatten for the animated
 encoder (≤256 MiB, large-class) + the encoded output. The isolation design is correct (opaque
 session pointers must not cross isolates — audit F-12) and realistic documents are far smaller,
-but the *legal worst case* puts ~640 MiB into the wall's allocator class plus ~300–500 MB of
-large-class transients, with no joint guard. Two aggravators found on review of the encode side:
+but these overlap into a large total-RSS peak with no joint guard. **Measured on the Pixel
+(addendum): publishing a legal, under-budget 256 MiB document peaked at 2.45 GiB resident —
+~9.6× the document** (the source-only pass estimated ~640 MiB in the fatal class; the true peak
+is much larger and dominated by total RSS). The 16 GB device absorbed it; a mid-range phone
+would not. Two aggravators found on review of the encode side:
 the flatten guard (`ffi/src/lib.rs:510`) **ignores `scale`**, and the share UI offers up to 32×
 (`app/lib/share/image_share.dart:32`, warn-only at 64 MP, never refuse) — a single 256×256 still
 at 32× is an 8192×8192 = 256 MiB raster that the PNG path then holds **twice** (`still_out`
@@ -404,3 +412,132 @@ mkpx run noise64.txt mem mem.os assert.roundtrip mem.os
 
 Scripts regenerable from the recipes above; the memlab harnesses (`tools/memlab/`) remain the
 canonical device-side reproduction path.
+
+---
+
+## Addendum — device + import/export measurements (2026-07-29, same day)
+
+The original report flagged that the import/export findings were *source-derived, not
+measured*. A Pixel 10 Pro XL (16 GB, Android 16 — the memlab reference device) was connected, so
+the crash-capable claims (P-0, P-3) and the peak claims (P-1) were confirmed empirically. New
+lab tooling for this (committed, non-shipping): a `mkpx import` CLI subcommand driving the exact
+`codec::decode → import_decoded` path the app's `mkpx_import` uses, and `tools/memlab/make_gif.py`
+(synthetic full / content-unique-noise / logical-screen-bomb GIFs). Numbers below are measured,
+not inferred; where they correct a source-derived figure the prose above has been updated to
+match.
+
+### P-0 confirmed — import drives the document 60% past the hard budget, silently
+
+`mkpx import 256 256 <1024-frame noise GIF> --pre <near-256-MiB base doc> --as-layer`:
+
+| | Windows CLI | Pixel 10 Pro XL CLI |
+|---|---|---|
+| Unique payload after import | **512 MiB** (536,870,912 B) | **512 MiB** (identical) |
+| Hard budget | 320 MiB | 320 MiB |
+| **`mem_refusals`** | **0** | **0** |
+| `mem_soft_exceeded` | true | true |
+| Import-time RSS / peak | 639 MB / 911 MB | 927 MB / **1.20 GB** |
+
+The engine sat at **512 MiB unique tile payload — 192 MiB (60%) over the 320 MiB hard cap —
+with its refusal counter still at zero**. Every other structural op would have rolled this back;
+import is the one edge that doesn't. This is the report's top finding (P-0), now reproduced on
+hardware.
+
+**Corollary — the over-budget document cannot be reloaded (a soft brick).** `assert.roundtrip`
+on the over-budget session **FAILS on both platforms**: `save_bytes` happily writes a >320 MiB
+`.mkpx`, but `load_from_bytes_budgeted` *refuses* any file whose payload exceeds the hard budget
+(`io.rs:763`), so the round trip's `content_hash` never matches. A document created by import can
+therefore be saved by autosave and then **rejected by its own loader on the next launch** — the
+crash-recovery path silently loses the drawing. The save/reload transient itself was also
+measured: **1.24 GB peak (Windows) / 1.68 GB peak (Pixel)** for the 512 MiB document. Fixing P-0
+(route import through `edit_doc`) closes both the invariant breach and this brick.
+
+### P-3 confirmed — a 24 KB GIF drives unbounded RSS growth
+
+`mkpx import 4096 4096 bomb.gif` (a 24,334-byte file: 4096×4096 logical screen, 1024 one-pixel
+sub-frames) on the Pixel, RSS sampled each second under a 6 GiB watchdog:
+
+```
+t=1s 1.75 GB → t=2s 3.69 GB → t=3s 4.90 GB → t=4s 5.17 GB
+→ t=6s 5.68 GB → t=7s 6.53 GB  ← WATCHDOG KILL (would have continued)
+```
+
+Growth was linear and unbounded, exactly as P-3 predicted — the decoder composites each
+sub-frame to the full 4096×4096 logical screen (64 MiB/frame), and nothing caps the accumulating
+`Vec<DecodedFrame>`. On the 16 GB Pixel this manifests as runaway RSS (I killed it at 6.5 GB to
+protect the device); on a typical 4–8 GB phone the system LMK/OOM killer ends it much sooner. Note
+this bomb lives in the **256 KiB allocation class, not the fatal ~4 KiB class** — so it is a
+whole-process RSS OOM, distinct from the scudo-class SIGABRT wall, confirming the report's
+class-attribution reasoning. A running-bytes cap in `decode_animated` (proposal #3) closes it.
+
+### P-1 confirmed — publishing a legal 256 MiB document peaks at 2.45 GiB
+
+In-app export rung (real publish path: `engine.save()` → `Engine.encodeInBackground(webp)`,
+release APK, `VmHWM` from `/proc/self/status`):
+
+| Rung (256 MiB document, **under** the 320 MiB budget) | Export ms | Output | **Peak RSS (VmHWM)** |
+|---|---|---|---|
+| `edit:1024:1+clear+export` | 5,931 | 260 MB WebP | **2.45 GiB** (2,626,129,920 B) |
+| `edit:256:4+clear+export` | 5,244 | 64 MB WebP | **2.45 GiB** |
+
+A publish of a document a user can *legally* create (256 MiB, inside budget) peaked at **~2.45 GiB
+resident — ~9.6× the document.** This is materially worse than the source-derived "~640 MiB in
+the fatal class" estimate: the second engine document in the isolate + three `.mkpx` copies + the
+all-frames flatten + the accumulating WebP output overlap into a multi-gigabyte total-RSS peak.
+The Pixel's 16 GB absorbed it; a mid-range device would not. P-1's severity is upgraded
+accordingly, and proposals #10 (stream the export) + #14 (bound `PublishDraft`) move from
+"headroom" to "prevents OOM on smaller devices."
+
+### Legitimate import peak — matches the ~2× source estimate
+
+`mkpx import 256 256 <legal 1024-frame 256² GIF> --mode stretch` (final document 256 MiB):
+
+| | Windows | Pixel |
+|---|---|---|
+| Import peak RSS | 592 MB | **607 MB** |
+| ÷ final document | 2.2× | 2.3× |
+
+The all-frames-up-front decode holds the 256 MiB decoded set alongside the 256 MiB of tiles — the
+predicted ~2×. Confirmed, not a crash risk on its own (it's under the wall), but the reason
+streaming import (proposal #10's sibling) is worth doing.
+
+### P-2 confirmed identical across platforms
+
+`mkpx run empty_grid_256.txt mem` (128 frames × 16 blank layers): `tile_table_bytes` =
+**9,437,184 B on both Windows and the Pixel** (2048 × 4608, byte-identical), with zero budgeted
+payload — the tile-slot tables are real, deterministic, and invisible to the budget as described.
+
+### Net effect on the findings
+
+- **P-0** (import bypasses the budget) and its reload-brick corollary: **confirmed on hardware,
+  worse than described** (the brick was not called out in the source-only pass). Still proposal
+  #1, still the top priority.
+- **P-3** (GIF bomb): **confirmed** — a 24 KB file, unbounded growth, killed at 6.5 GB.
+- **P-1** (export peak): **confirmed and upgraded** from ~640 MiB estimate to a measured 2.45 GiB
+  total peak on a legal document.
+- **P-2** (tables) and the legitimate import 2× multiplier: **confirmed, numbers as estimated.**
+- The `mem`-probe census, refusal telemetry, and budget arithmetic all read identically on the
+  Pixel and the workstation — the engine's memory behavior is genuinely platform-deterministic,
+  which is what makes the Windows CLI a valid proxy for everything except the absolute RSS
+  ceiling.
+
+### Reproducing the addendum
+
+```powershell
+# Windows
+cargo build -p makapix-cli --release
+python tools/memlab/make_gif.py noise 256 256 1024 noise1024.gif
+# base1024.txt = FillNoise(1) + 1023×(AddFrame();FillNoise(n))
+./target/release/mkpx import 256 256 noise1024.gif --pre base1024.txt --as-layer --mode stretch state mem.os assert.roundtrip mem.os
+
+# Device (headless)
+cargo ndk -t arm64-v8a build -p makapix-cli --release
+adb push target/aarch64-linux-android/release/mkpx *.gif base1024.txt /data/local/tmp/mkpx-audit/
+adb shell /data/local/tmp/mkpx-audit/mkpx import 256 256 noise1024.gif --pre base1024.txt --as-layer --mode stretch state mem.os
+python tools/memlab/make_gif.py bomb 4096 4096 1024 bomb.gif   # then import under an RSS watchdog
+
+# Device (in-app publish peak) — the +export rung added to lib/dev/memlab.dart
+./build_android.ps1 -Install
+adb shell am start -n club.makapix.app/.MainActivity -e memlab "edit:1024:1+clear+export"
+adb shell run-as club.makapix.app cat files/memlab.json    # vmhwm = peak
+```

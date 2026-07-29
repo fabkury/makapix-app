@@ -8,10 +8,13 @@
 //   adb shell am start -n club.makapix.app/.MainActivity -e memlab auto
 //   adb shell am start -n club.makapix.app/.MainActivity -e memlab "edit:256:4+clear+thumbs,edit:512:1"
 //
-// Rung grammar:  edit:FRAMES:LAYERS[:CANVAS][+clear][+thumbs][+save]   |   churn:N
+// Rung grammar:  edit:FRAMES:LAYERS[:CANVAS][+clear][+thumbs][+save][+export]   |   churn:N
 //   +clear   ClearHistory() after every frame — isolates document growth from undo retention
 //   +thumbs  build + hold a per-frame timeline thumbnail (ui.Image), like an open editor
 //   +save    serialize to .mkpx bytes at the end of the rung (the big transient)
+//   +export  run the real publish path at the end of the rung — engine.save() →
+//            Engine.encodeInBackground(format: 'webp'), which rebuilds a SECOND full engine
+//            document in the encode isolate (memory-audit P-1: the double-document peak)
 //
 // Each rung runs in a fresh engine session. Progress is checkpointed to the app's external files
 // dir (adb-pullable: /sdcard/Android/data/club.makapix.app/files/memlab.json) BEFORE each rung and
@@ -204,6 +207,16 @@ class _MemLabPageState extends State<MemLabPage> {
           final bytes = engine.save();
           row['save_bytes'] = bytes.length;
           row['save_ms'] = t.elapsedMilliseconds;
+        }
+        if (opts.contains('export')) {
+          // The publish flow verbatim (editor_page.fileio.dart _postToClub): serialize, then
+          // encode on a background isolate that loads the snapshot into its own engine.
+          final t = Stopwatch()..start();
+          final doc = engine.save();
+          row['export_doc_bytes'] = doc.length;
+          final out = await Engine.encodeInBackground(doc, format: 'webp');
+          row['export_out_bytes'] = out.length;
+          row['export_ms'] = t.elapsedMilliseconds;
         }
       }
       row['engine'] = jsonDecode(engine.memJson());
