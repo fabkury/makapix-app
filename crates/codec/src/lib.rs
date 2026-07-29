@@ -224,27 +224,47 @@ pub fn encode_animated_webp_with(
     scale: u32,
     progress: EncodeProgress,
 ) -> Result<Vec<u8>, CodecError> {
-    if frames.is_empty() {
+    // Thin adapter over the streaming core (clones each slice frame, as before).
+    let mut it = frames.iter();
+    encode_animated_webp_streaming(w, h, frames.len(), || it.next().map(|(r, d)| (r.clone(), *d)), scale, progress)
+}
+
+/// Streaming lossless-WebP encoder (the [`encode_gif_streaming`] twin): pulls one frame at a time
+/// via `next` so the caller composites on demand and never holds all frames' RGBA at once (audit
+/// #10). Only the small **compressed** VP8L chunks accumulate — never the raw frames — so the peak
+/// is one raw frame plus the growing (compressed) container. Byte-identical to the slice path.
+pub fn encode_animated_webp_streaming(
+    w: u32,
+    h: u32,
+    count: usize,
+    mut next: impl FnMut() -> Option<(Vec<u8>, u32)>,
+    scale: u32,
+    progress: EncodeProgress,
+) -> Result<Vec<u8>, CodecError> {
+    if count == 0 {
         return Err(CodecError::Unsupported);
     }
     let scale = scale.clamp(1, 32);
     let (sw, sh) = (w, h); // source dims — what the per-frame upscaler reads
     let up = move |rgba: &[u8]| upscale_nearest(sw, sh, rgba, scale);
     let (w, h) = (w * scale, h * scale); // output dims — the bitstreams + container below
-    if frames.len() == 1 {
-        let out = encode_webp(w, h, &up(&frames[0].0))?;
+    if count == 1 {
+        let (rgba, _dur) = next().ok_or(CodecError::Unsupported)?;
+        let out = encode_webp(w, h, &up(&rgba))?;
         if !progress(1, 1) {
             return Err(CodecError::Canceled);
         }
         return Ok(out);
     }
-    // 1. Lossless-encode each frame and pull out its VP8L bitstream chunk.
-    let mut vp8l: Vec<(Vec<u8>, u32)> = Vec::with_capacity(frames.len());
-    for (i, (rgba, dur_us)) in frames.iter().enumerate() {
-        let webp = encode_webp(w, h, &up(rgba))?;
+    // 1. Lossless-encode each frame and pull out its VP8L bitstream chunk (raw frame dropped after).
+    let mut vp8l: Vec<(Vec<u8>, u32)> = Vec::with_capacity(count);
+    let mut i = 0usize;
+    while let Some((rgba, dur_us)) = next() {
+        let webp = encode_webp(w, h, &up(&rgba))?;
         let chunk = extract_vp8l(&webp).ok_or_else(|| CodecError::Encode("missing VP8L chunk".into()))?;
-        vp8l.push((chunk, (*dur_us / 1000).max(1)));
-        if !progress(i + 1, frames.len()) {
+        vp8l.push((chunk, (dur_us / 1000).max(1)));
+        i += 1;
+        if !progress(i, count) {
             return Err(CodecError::Canceled);
         }
     }
@@ -329,19 +349,40 @@ pub fn encode_gif_with(
     scale: u32,
     progress: EncodeProgress,
 ) -> Result<Vec<u8>, CodecError> {
+    // Thin adapter over the streaming core: pull frames from the slice (cloning each, as the old
+    // slice path always did at scale 1). Keeps every existing caller/test working unchanged.
+    let mut it = frames.iter();
+    encode_gif_streaming(w, h, frames.len(), || it.next().map(|(r, d)| (r.clone(), *d)), scale, progress)
+}
+
+/// Streaming GIF encoder: pulls one `(rgba, duration_us)` frame at a time via `next` (so the caller
+/// can composite on demand and never hold all frames at once — the export peak fix, audit #10),
+/// `count` = total frames (for progress). Byte-identical to the slice path: same frames, order,
+/// scale, encoder calls. Each frame is quantized and LZW-written straight into `out`; nothing
+/// accumulates but the output.
+pub fn encode_gif_streaming(
+    w: u32,
+    h: u32,
+    count: usize,
+    mut next: impl FnMut() -> Option<(Vec<u8>, u32)>,
+    scale: u32,
+    progress: EncodeProgress,
+) -> Result<Vec<u8>, CodecError> {
     let scale = scale.clamp(1, 32);
     let mut out = Vec::new();
     {
         let mut enc = GifEncoder::new(&mut out);
         enc.set_repeat(image::codecs::gif::Repeat::Infinite)
             .map_err(|e| CodecError::Encode(e.to_string()))?;
-        for (i, (rgba, dur_us)) in frames.iter().enumerate() {
-            let data = if scale == 1 { rgba.clone() } else { upscale_nearest(w, h, rgba, scale) };
+        let mut i = 0usize;
+        while let Some((rgba, dur_us)) = next() {
+            let data = if scale == 1 { rgba } else { upscale_nearest(w, h, &rgba, scale) };
             let img = RgbaImage::from_raw(w * scale, h * scale, data).ok_or(CodecError::Unsupported)?;
-            let delay = Delay::from_numer_denom_ms((*dur_us / 1000).max(1), 1);
+            let delay = Delay::from_numer_denom_ms((dur_us / 1000).max(1), 1);
             enc.encode_frame(ImgFrame::from_parts(img, 0, 0, delay))
                 .map_err(|e| CodecError::Encode(e.to_string()))?;
-            if !progress(i + 1, frames.len()) {
+            i += 1;
+            if !progress(i, count) {
                 return Err(CodecError::Canceled);
             }
         }

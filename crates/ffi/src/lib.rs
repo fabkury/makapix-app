@@ -477,42 +477,34 @@ pub extern "C" fn mkpx_export_layer_webp(ptr: *mut Session, frame: u32, layer: u
     export_layer_still(ptr, frame, layer, scale, true, out_len)
 }
 
-/// Composite every frame with per-frame progress (steps 0..n of 2n) and honoring cancel.
-/// Returns `None` when canceled mid-way.
-fn composite_frames_tracked(s: &mut Session) -> Option<Vec<(Vec<u8>, u32)>> {
-    let n = s.doc.frames.len();
-    EXPORT_CANCEL.store(false, Ordering::Relaxed);
-    export_progress_set(0, 2 * n as u32);
-    let mut frames: Vec<(Vec<u8>, u32)> = Vec::with_capacity(n);
-    for i in 0..n {
-        if EXPORT_CANCEL.load(Ordering::Relaxed) {
-            return None;
-        }
-        frames.push((s.composite_frame_bytes(i), s.doc.frames[i].duration_us));
-        export_progress_set(i as u32 + 1, 2 * n as u32);
-    }
-    Some(frames)
+/// Advance the export's "done" counter by one step (one frame composited, or one frame encoded).
+/// Total steps = 2n (composite + encode per frame). `done` never approaches the 32-bit width, so a
+/// plain increment of the packed atomic's low word is safe. [audit #10 streaming export]
+fn export_progress_inc() {
+    EXPORT_PROGRESS.fetch_add(1, Ordering::Relaxed);
 }
 
-/// The encoders' per-frame hook: steps n..2n of 2n, and `false` (= abort) once cancel is set.
-fn encode_progress_hook(done: usize, total: usize) -> bool {
-    export_progress_set((total + done) as u32, 2 * total as u32);
+/// The streaming encoders' per-frame hook: one encode step done, and `false` (= abort) once cancel
+/// is set. (Composite steps are counted by the frame-source closure in each export fn.)
+fn encode_progress_hook_streaming(_done: usize, _total: usize) -> bool {
+    export_progress_inc();
     !EXPORT_CANCEL.load(Ordering::Relaxed)
 }
 
-/// Export all frames as an animated GIF, upscaled ×`scale` (nearest-neighbor, clamped 1..=32,
-/// applied one frame at a time). Returns a malloc'd buffer; len via `out_len`. Progress is
-/// reported via `mkpx_export_progress`; null on failure OR `mkpx_export_cancel`.
-/// Whole-animation exports flatten every frame to RGBA first (`frames × w × h × 4`). Refuse
-/// upfront when that transient would be unreasonable (SPEC §8.2b M4c). With the document budget
-/// in force the worst legal flatten is 256 MiB (1024 frames × 256²) — this guard is pure
-/// defense-in-depth, but a cheap check beats an abort.
+/// Cheap upfront guard on the whole-animation output size. Since the export now streams one frame at
+/// a time (no all-frames flatten — audit #10), this no longer bounds a resident RGBA buffer; it
+/// stays as a defense-in-depth sanity bound (also indirectly bounds the compressed WebP
+/// accumulation). With the document budget in force the worst legal case is well under the cap.
 fn export_flatten_ok(s: &Session) -> bool {
     const EXPORT_FLATTEN_CAP: usize = 768 * 1024 * 1024;
     let (w, h) = s.size();
     s.doc.frames.len().saturating_mul(w as usize * h as usize * 4) <= EXPORT_FLATTEN_CAP
 }
 
+/// Export all frames as an animated GIF, upscaled ×`scale` (nearest-neighbor, clamped 1..=32,
+/// applied one frame at a time). Frames are composited **on demand** and fed to the encoder one at
+/// a time, so no all-frames RGBA flatten is ever resident (audit #10). Returns a malloc'd buffer;
+/// len via `out_len`. Progress via `mkpx_export_progress`; null on failure OR `mkpx_export_cancel`.
 #[no_mangle]
 pub extern "C" fn mkpx_export_gif(ptr: *mut Session, scale: u32, out_len: *mut u64) -> *mut u8 {
     let s = match session(ptr) {
@@ -523,11 +515,21 @@ pub extern "C" fn mkpx_export_gif(ptr: *mut Session, scale: u32, out_len: *mut u
         return std::ptr::null_mut();
     }
     let (w, h) = s.size();
-    let frames = match composite_frames_tracked(s) {
-        Some(f) => f,
-        None => return std::ptr::null_mut(),
+    let n = s.doc.frames.len();
+    EXPORT_CANCEL.store(false, Ordering::Relaxed);
+    export_progress_set(0, 2 * n as u32);
+    let s_ref: &Session = s;
+    let mut i = 0usize;
+    let next = || {
+        if i >= n {
+            return None;
+        }
+        let frame = (s_ref.composite_frame_bytes(i), s_ref.doc.frames[i].duration_us);
+        i += 1;
+        export_progress_inc(); // one composite step done
+        Some(frame)
     };
-    match makapix_codec::encode_gif_with(w as u32, h as u32, &frames, scale, &mut encode_progress_hook) {
+    match makapix_codec::encode_gif_streaming(w as u32, h as u32, n, next, scale, &mut encode_progress_hook_streaming) {
         Ok(v) => bytes_out(v, out_len),
         Err(_) => std::ptr::null_mut(),
     }
@@ -535,8 +537,8 @@ pub extern "C" fn mkpx_export_gif(ptr: *mut Session, scale: u32, out_len: *mut u
 
 /// Export the artwork as a LOSSLESS WebP (static for one frame, animated WebP for many) — the
 /// recommended format for Makapix Club submissions — upscaled ×`scale` (nearest-neighbor,
-/// clamped 1..=32, applied one frame at a time). Returns a malloc'd buffer; len via `out_len`.
-/// Progress is reported via `mkpx_export_progress`; null on failure OR `mkpx_export_cancel`.
+/// clamped 1..=32). Composited on demand, one frame at a time (audit #10). Returns a malloc'd
+/// buffer; len via `out_len`. Progress via `mkpx_export_progress`; null on failure OR cancel.
 #[no_mangle]
 pub extern "C" fn mkpx_export_webp(ptr: *mut Session, scale: u32, out_len: *mut u64) -> *mut u8 {
     let s = match session(ptr) {
@@ -547,11 +549,21 @@ pub extern "C" fn mkpx_export_webp(ptr: *mut Session, scale: u32, out_len: *mut 
         return std::ptr::null_mut();
     }
     let (w, h) = s.size();
-    let frames = match composite_frames_tracked(s) {
-        Some(f) => f,
-        None => return std::ptr::null_mut(),
+    let n = s.doc.frames.len();
+    EXPORT_CANCEL.store(false, Ordering::Relaxed);
+    export_progress_set(0, 2 * n as u32);
+    let s_ref: &Session = s;
+    let mut i = 0usize;
+    let next = || {
+        if i >= n {
+            return None;
+        }
+        let frame = (s_ref.composite_frame_bytes(i), s_ref.doc.frames[i].duration_us);
+        i += 1;
+        export_progress_inc();
+        Some(frame)
     };
-    match makapix_codec::encode_animated_webp_with(w as u32, h as u32, &frames, scale, &mut encode_progress_hook) {
+    match makapix_codec::encode_animated_webp_streaming(w as u32, h as u32, n, next, scale, &mut encode_progress_hook_streaming) {
         Ok(v) => bytes_out(v, out_len),
         Err(_) => std::ptr::null_mut(),
     }

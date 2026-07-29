@@ -960,16 +960,23 @@ impl Session {
             self.settings.overscan_view,
         );
         s.insert_str(s.len() - 1, &extra); // before the final '}'
-        // Memory budget (SPEC §8.2b): fresh unique-payload census + budgets + refusal telemetry,
-        // so the shell can show the soft-budget banner and refusal snackbars without extra FFI.
+        // Memory budget (SPEC §8.2b): fresh census + budgets + refusal telemetry, so the shell can
+        // show the soft-budget banner and refusal snackbars without extra FFI. `mem_unique_bytes` is
+        // the tile payload (unchanged meaning); the budgets are enforced on payload + tables
+        // (`budgeted`), which `mem_soft_exceeded` reflects, with `mem_table_bytes` exposed for
+        // transparency. [audit #7]
         let unique = self.doc.unique_payload_bytes();
+        let tables = self.doc.live_table_bytes();
+        let budgeted = unique + tables;
         let (soft, hard) = self.mem_budgets();
         let mem = format!(
-            ",\"mem_unique_bytes\":{},\"mem_soft_budget\":{},\"mem_hard_budget\":{},\"mem_soft_exceeded\":{},\"mem_refusals\":{},\"mem_last_refusal\":{}",
+            ",\"mem_unique_bytes\":{},\"mem_table_bytes\":{},\"mem_budgeted_bytes\":{},\"mem_soft_budget\":{},\"mem_hard_budget\":{},\"mem_soft_exceeded\":{},\"mem_refusals\":{},\"mem_last_refusal\":{}",
             unique,
+            tables,
+            budgeted,
             soft,
             hard,
-            unique > soft,
+            budgeted > soft,
             self.mem_refusals,
             match &self.mem_last_refusal {
                 Some(m) => format!("\"{}\"", m.replace('"', "'")),
@@ -1026,9 +1033,14 @@ impl Session {
         (self.mem_refusals, self.mem_last_refusal.as_deref())
     }
 
-    /// Exact unique-payload census; resets the slack accumulator.
+    /// Exact budgeted-bytes census (unique tile payload + live tile tables); resets the slack
+    /// accumulator. Tables are counted so a many-layer document can't sit over the wall on table
+    /// memory the payload cap never saw (audit P-2/#7). The hot pixel path tracks only tile growth
+    /// via `mem_slack`; a rare table de-share (first write to a COW-shared duplicated frame) adds
+    /// ~one table it doesn't track, but the next `mem_recalibrate` (run before any hard-cap decision)
+    /// re-reads the exact total, so the hard invariant still holds exactly.
     fn mem_recalibrate(&mut self) -> usize {
-        self.mem_exact = self.doc.unique_payload_bytes();
+        self.mem_exact = self.doc.budgeted_bytes();
         self.mem_slack = 0;
         self.mem_exact
     }

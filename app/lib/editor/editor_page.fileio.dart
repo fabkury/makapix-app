@@ -180,9 +180,12 @@ extension _EditorFileIo on _EditorPageState {
     if (!_engineReady) return;
     final w = engine.width, h = engine.height, fc = engine.frameCount;
     // Encode off the UI thread so a multi-frame WebP doesn't jank/ANR. [audit F-12]
-    final docBytes = engine.save();
+    var docBytes = engine.save();
     _toast('Rendering WebP…');
     final bytes = await Engine.encodeInBackground(docBytes, format: 'webp');
+    // Release the ~document-sized snapshot now — it is not needed past the encode, so it should
+    // not stay resident across the metadata decode + Navigator.push below. [audit #14]
+    docBytes = Uint8List(0);
     if (!mounted) return;
     if (bytes.isEmpty) {
       _toast('Export failed');

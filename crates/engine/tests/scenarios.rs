@@ -479,6 +479,26 @@ fn mem_budget_rolls_back_structural_edits_past_hard() {
 }
 
 #[test]
+fn mem_budget_counts_tile_tables() {
+    // Empty layers carry zero tile payload but a full ~4608 B tile-slot table each (the fatal
+    // ~4 KiB allocator class). The budget counts those, so a many-empty-layers document is refused
+    // on tables alone — invisible to a payload-only cap. [audit P-2/#7]
+    let mut s = run("NewDocument(256,256)");
+    let per_table = s.doc.live_table_bytes(); // one layer's table
+    assert!(per_table > 0 && s.doc.unique_payload_bytes() == 0, "empty doc: tables>0, payload 0");
+    // A budget only tables can breach: room for ~4 tables, refuse beyond.
+    s.run_script(&format!("SetMemBudget({},{})", per_table * 3, per_table * 4)).unwrap();
+    let before = s.mem_refusal_state().0;
+    for _ in 0..20 {
+        s.run_script("AddLayer()").unwrap();
+    }
+    assert!(s.mem_refusal_state().0 > before, "empty layers refused on the table budget alone");
+    assert!(s.doc.frames[0].layers.len() <= 4, "capped near the table budget, layers={}", s.doc.frames[0].layers.len());
+    assert_eq!(s.doc.unique_payload_bytes(), 0, "no tile payload was ever added");
+    assert!(s.state_json().contains("\"mem_table_bytes\":"), "table bytes surfaced to the shell");
+}
+
+#[test]
 fn mem_budget_refuses_over_budget_files_at_load() {
     // A 64-tile noise doc saves fine, then a session with a tiny budget refuses to load it
     // before materializing anything; the default budget loads it.

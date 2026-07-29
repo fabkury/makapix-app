@@ -312,6 +312,31 @@ impl Document {
         seen.len() * 4096
     }
 
+    /// Tile-slot-table bytes of the live layers, deduped by table pointer (COW-shared duplicate
+    /// frames count once) — the same census the `mem` probe reports. Each layer owns one table
+    /// (~4608 B at 256²) in the fatal ~4 KiB allocator class, invisible to
+    /// [`unique_payload_bytes`](Self::unique_payload_bytes). Counted alongside the payload against
+    /// the memory budgets so a document with very many layers can't sit far over the wall on tables
+    /// the payload cap never saw. [audit P-2/#7]
+    pub fn live_table_bytes(&self) -> usize {
+        let mut seen: std::collections::HashSet<*const ()> = std::collections::HashSet::new();
+        let mut total = 0usize;
+        for f in &self.frames {
+            for l in &f.layers {
+                if seen.insert(l.pixels.table_ptr()) {
+                    total += l.pixels.tile_table_bytes();
+                }
+            }
+        }
+        total
+    }
+
+    /// The quantity the memory budgets enforce: unique tile payload + live tile-slot tables — the
+    /// document's real footprint in the fatal ~4 KiB allocator class. [audit #7]
+    pub fn budgeted_bytes(&self) -> usize {
+        self.unique_payload_bytes() + self.live_table_bytes()
+    }
+
     pub fn new_layer(&mut self, name: impl Into<String>) -> Layer {
         Layer::new(self.layer_ids.alloc(), self.storage(), name)
     }
