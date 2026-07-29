@@ -67,6 +67,25 @@ final profileProvider =
     StateNotifierProvider.autoDispose.family<ProfileController, AsyncValue<UserProfile>, String>(
         (ref, sqid) => ProfileController(ref, sqid)); // [audit F-19]
 
+/// Who follows this user (`GET /user/u/{sqid}/followers`), keyed by the
+/// profile's public sqid. Backs the Follows page's Followers tab.
+final followersProvider = StateNotifierProvider.autoDispose
+    .family<PagedNotifier<PostOwner>, PagedState<PostOwner>, String>((ref, sqid) {
+  final api = ref.watch(profileApiProvider);
+  final n = PagedNotifier<PostOwner>((cursor) => api.followers(sqid, cursor: cursor));
+  n.loadInitial();
+  return n;
+});
+
+/// Who this user follows (`GET /user/u/{sqid}/following`).
+final followingProvider = StateNotifierProvider.autoDispose
+    .family<PagedNotifier<PostOwner>, PagedState<PostOwner>, String>((ref, sqid) {
+  final api = ref.watch(profileApiProvider);
+  final n = PagedNotifier<PostOwner>((cursor) => api.following(sqid, cursor: cursor));
+  n.loadInitial();
+  return n;
+});
+
 /// Posts a user reacted to (the profile's ⚡ Reacted tab), keyed by the
 /// profile's public sqid. Only instantiated for signed-in viewers (UI gate).
 final reactedFeedProvider =

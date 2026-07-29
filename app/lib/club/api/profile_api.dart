@@ -33,14 +33,16 @@ class ProfileApi {
         return Page<Post>.fromJson((resp.data as Map).cast<String, dynamic>(), Post.fromJson);
       });
 
-  Future<List<PostOwner>> followers(String sqid, {String? cursor}) =>
+  /// Cursor-paged people lists: `{items: UserPublic[], next_cursor, total}` —
+  /// the `Page` envelope (verified-users only, newest follow first).
+  Future<Page<PostOwner>> followers(String sqid, {String? cursor}) =>
       _people('/user/u/${Uri.encodeComponent(sqid)}/followers', cursor);
-  Future<List<PostOwner>> following(String sqid, {String? cursor}) =>
+  Future<Page<PostOwner>> following(String sqid, {String? cursor}) =>
       _people('/user/u/${Uri.encodeComponent(sqid)}/following', cursor);
 
-  Future<List<PostOwner>> _people(String path, String? cursor) => client.guard(() async {
+  Future<Page<PostOwner>> _people(String path, String? cursor) => client.guard(() async {
         final resp = await client.dio.get(path, queryParameters: {'cursor': ?cursor});
-        return Page<PostOwner>.fromJson((resp.data as Map).cast<String, dynamic>(), PostOwner.fromJson)
-            .items;
+        return Page<PostOwner>.fromJson(
+            (resp.data as Map).cast<String, dynamic>(), PostOwner.fromJson);
       });
 }

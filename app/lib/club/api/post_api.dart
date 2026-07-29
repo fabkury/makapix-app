@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 
 import '../models/comment.dart';
@@ -10,6 +12,29 @@ import 'club_api_client.dart';
 class PostApi {
   final ClubApiClient client;
   PostApi(this.client);
+
+  /// Artwork blobs can be MBs; the default 30 s I/O timeouts are sized for JSON.
+  static const Duration _blobTimeout = Duration(minutes: 5);
+
+  // ---- File downloads (`/d/{sqid}*`, same router as the .mkpx download) ----
+
+  /// The stored native-format file, byte-exact.
+  Future<Uint8List> downloadNative(String sqid) =>
+      _downloadBytes('/d/${Uri.encodeComponent(sqid)}');
+
+  /// The server-generated nearest-neighbor upscaled WebP (404 until generated).
+  Future<Uint8List> downloadUpscaled(String sqid) =>
+      _downloadBytes('/d/${Uri.encodeComponent(sqid)}/upscaled');
+
+  /// A pre-generated alternative-format variant (one of `post.files`).
+  Future<Uint8List> downloadFormat(String sqid, String format) =>
+      _downloadBytes('/d/${Uri.encodeComponent(sqid)}.${Uri.encodeComponent(format)}');
+
+  Future<Uint8List> _downloadBytes(String path) => client.guard(() async {
+        final resp = await client.dio.get<List<int>>(path,
+            options: Options(responseType: ResponseType.bytes, receiveTimeout: _blobTimeout));
+        return Uint8List.fromList(resp.data ?? const []);
+      });
 
   Future<Post> getBySqid(String sqid) => client.guard(() async {
         final resp = await client.dio.get('/p/${Uri.encodeComponent(sqid)}');
@@ -28,6 +53,32 @@ class PostApi {
       // ignore (overlay views, rate limits, network)
     }
   }
+
+  /// Owner metadata edit (`PATCH /post/{id}`). [hashtags] is the artist-controlled
+  /// list only — the server normalizes it and re-merges mod-owned tags (D10).
+  /// Returns the updated post.
+  Future<Post> update(int postId,
+          {required String title,
+          required String description,
+          required List<String> hashtags}) =>
+      client.guard(() async {
+        final resp = await client.dio.patch('/post/$postId', data: {
+          'title': title,
+          'description': description,
+          'hashtags': hashtags,
+        });
+        return Post.fromJson((resp.data as Map).cast<String, dynamic>());
+      });
+
+  /// Owner visibility toggle (`POST`/`DELETE /post/{id}/hide`).
+  Future<void> setHidden(int postId, bool hidden) => client.guard(() => hidden
+      ? client.dio.post('/post/$postId/hide')
+      : client.dio.delete('/post/$postId/hide'));
+
+  /// Owner soft delete (`DELETE /post/{id}`) — the server keeps a 7-day grace
+  /// window before permanent removal (same semantics as the bulk PMD delete).
+  Future<void> deletePost(int postId) =>
+      client.guard(() => client.dio.delete('/post/$postId'));
 
   Future<ReactionTotals> reactions(int postId) => client.guard(() async {
         final resp = await client.dio.get('/post/$postId/reactions');

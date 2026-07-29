@@ -17,9 +17,17 @@ class NotificationsPage extends ConsumerStatefulWidget {
 }
 
 class _NotificationsPageState extends ConsumerState<NotificationsPage> {
+  final _sc = ScrollController();
+
   @override
   void initState() {
     super.initState();
+    // Load-more idiom shared with the other paged lists (FeedGrid et al.).
+    _sc.addListener(() {
+      if (_sc.position.pixels > _sc.position.maxScrollExtent - 400) {
+        ref.read(notificationsFeedProvider.notifier).loadMore();
+      }
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
         await ref.read(notificationsApiProvider).markAllRead();
@@ -28,6 +36,12 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
       ref.read(unreadCountProvider.notifier).refresh();
       ref.read(notificationsFeedProvider.notifier).refresh();
     });
+  }
+
+  @override
+  void dispose() {
+    _sc.dispose();
+    super.dispose();
   }
 
   @override
@@ -45,9 +59,21 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
       body = RefreshIndicator(
         onRefresh: n.refresh,
         child: ListView.separated(
-          itemCount: s.items.length,
+          controller: _sc,
+          itemCount: s.items.length + (s.atEnd ? 0 : 1),
           separatorBuilder: (_, _) => const Divider(height: 1),
-          itemBuilder: (ctx, i) => _tile(s.items[i]),
+          itemBuilder: (ctx, i) {
+            if (i >= s.items.length) {
+              return const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Center(
+                      child: SizedBox(
+                          height: 22,
+                          width: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2))));
+            }
+            return _tile(s.items[i]);
+          },
         ),
       );
     }

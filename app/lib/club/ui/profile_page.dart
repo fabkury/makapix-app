@@ -27,6 +27,7 @@ import 'artist_dashboard_page.dart';
 import 'artwork_detail_page.dart';
 import 'club_account_page.dart';
 import 'edit_profile_page.dart';
+import 'follows_page.dart';
 import 'report_page.dart';
 import 'widgets/common.dart';
 import 'widgets/external_links.dart';
@@ -586,12 +587,17 @@ class _Body extends ConsumerWidget {
     );
   }
 
-  /// Posts · Followers · Reactions · Views. On your own profile the row is
-  /// tappable and opens the Artist Dashboard (the full stats surface).
+  /// Posts · Followers · Reactions · Views. The Followers stat opens the
+  /// followers/following lists on any profile; on your own profile the rest
+  /// of the row still opens the Artist Dashboard (the inner tap target wins).
   Widget _statsRow(BuildContext context, UserProfile p) {
     final row = Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
       _stat(context, 'Posts', p.stats.totalPosts),
-      _stat(context, 'Followers', p.stats.followerCount),
+      _stat(context, 'Followers', p.stats.followerCount,
+          onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => FollowsPage(sqid: p.sqid, handle: p.handle)))),
       _stat(context, 'Reactions', p.stats.totalReactionsReceived),
       _stat(context, 'Views', p.stats.totalViews),
     ]);
@@ -607,11 +613,20 @@ class _Body extends ConsumerWidget {
     );
   }
 
-  Widget _stat(BuildContext context, String label, int n) => Column(children: [
-        Text(compactCount(n), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        Text(label,
-            style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-      ]);
+  Widget _stat(BuildContext context, String label, int n, {VoidCallback? onTap}) {
+    final col = Column(children: [
+      Text(compactCount(n), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+      Text(label,
+          style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+    ]);
+    if (onTap == null) return col;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2), child: col),
+    );
+  }
 }
 
 /// The header's art backdrop: the artist's own work blown up with chunky

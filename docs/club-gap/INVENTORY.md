@@ -18,24 +18,24 @@ serving the website.
 
 ### Tier A — high value
 
-| # | Gap | Impact | Effort |
-|---|-----|--------|--------|
-| A1 | **Own-post actions on the post detail page: Edit details · Hide/Unhide · Delete** | High | M (S each) |
-| A2 | **Per-post statistics** (the website's StatsPanel) | High (artists) | M |
-| A3 | **Followers list** (+ following) | Med-High | S |
-| A4 | **Feed filters & sort** (the website's FilterButton) | Med-High | M/L |
-| A5 | **Real downloads: save artwork to device** (native / upscaled / other formats / `.mkpx`) | Med | M |
+| # | Gap | Impact | Effort | Status |
+|---|-----|--------|--------|--------|
+| A1 | **Own-post actions on the post detail page: Edit details · Hide/Unhide · Delete** | High | M (S each) | ✅ shipped 2026-07-29 |
+| A2 | **Per-post statistics** (the website's StatsPanel) | High (artists) | M | ✅ shipped 2026-07-29 |
+| A3 | **Followers list** (+ following) | Med-High | S | ✅ shipped 2026-07-29 (both tabs) |
+| A4 | **Feed filters & sort** (the website's FilterButton) | Med-High | M/L | ○ open |
+| A5 | **Real downloads: save artwork to device** (native / upscaled / other formats / `.mkpx`) | Med | M | ✅ shipped 2026-07-29 |
 
 ### Tier B — medium value, mostly small
 
-| # | Gap | Impact | Effort |
-|---|-----|--------|--------|
-| B1 | Search: pagination + sort options | Med | M |
-| B2 | Comment "who liked this" list | Med-Low | S |
-| B3 | Notifications: load-more + per-item mark-read | Med-Low | S |
-| B4 | Badges explorer (definitions vs granted) | Low-Med | S |
-| B5 | Server-side logout (refresh-token revoke) | Low-Med (hygiene) | S |
-| B6 | Markdown rendering of profile bios | Low | S |
+| # | Gap | Impact | Effort | Status |
+|---|-----|--------|--------|--------|
+| B1 | Search: pagination + sort options | Med | M | ○ open |
+| B2 | Comment "who liked this" list | Med-Low | S | ○ open |
+| B3 | Notifications: load-more + per-item mark-read | Med-Low | S | ◑ load-more shipped 2026-07-29; per-item mark-read skipped (the page auto-marks-all-read on open, same as the website) |
+| B4 | Badges explorer (definitions vs granted) | Low-Med | S | ○ open |
+| B5 | Server-side logout (refresh-token revoke) | Low-Med (hygiene) | S | ○ open |
+| B6 | Markdown rendering of profile bios | Low | S | ○ open |
 
 ### Tier C — product decisions, deferred phases, or big bets
 

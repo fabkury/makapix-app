@@ -28,6 +28,7 @@ class Post {
   final bool hasMkpx; // attached layers (.mkpx) file — drives the golden Edit button
   final int? mkpxFileBytes;
   final DateTime? mkpxAttachedAt; // changes on attach AND replace (cache stamp)
+  final bool hiddenByUser; // owner chose to hide it (only they can see it)
 
   Post({
     required this.id,
@@ -58,6 +59,7 @@ class Post {
     this.hasMkpx = false,
     this.mkpxFileBytes,
     this.mkpxAttachedAt,
+    this.hiddenByUser = false,
   });
 
   bool get isAnimated => frameCount > 1;
@@ -107,6 +109,7 @@ class Post {
         hasMkpx: j['has_mkpx'] == true,
         mkpxFileBytes: (j['mkpx_file_bytes'] as num?)?.toInt(),
         mkpxAttachedAt: DateTime.tryParse((j['mkpx_attached_at'] ?? '').toString()),
+        hiddenByUser: j['hidden_by_user'] == true,
       );
 }
 

@@ -28,8 +28,7 @@ class _BlockedUsersPageState extends ConsumerState<BlockedUsersPage> {
   @override
   void initState() {
     super.initState();
-    // Load-more idiom: FeedGrid's scroll listener (not the notifications page,
-    // which only shows page 1).
+    // Load-more idiom: FeedGrid's scroll listener.
     _sc.addListener(() {
       if (_sc.position.pixels > _sc.position.maxScrollExtent - 400) {
         ref.read(blockedUsersProvider.notifier).loadMore();

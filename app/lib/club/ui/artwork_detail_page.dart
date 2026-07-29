@@ -15,16 +15,21 @@ import '../state/animation_settings.dart';
 import '../state/api_providers.dart';
 import '../state/auth_controller.dart';
 import '../state/edit_bridge.dart';
+import '../state/feed_providers.dart';
 import '../state/paged.dart';
 import '../state/player_providers.dart';
+import '../state/pmd_providers.dart';
 import '../state/post_providers.dart';
 import '../state/publish_providers.dart';
+import 'edit_post_details_page.dart';
 import 'hashtag_feed_page.dart';
+import 'post_stats_page.dart';
 import 'profile_page.dart';
 import 'reactions_page.dart';
 import 'report_page.dart';
 import 'widgets/comments_section.dart';
 import 'widgets/common.dart';
+import 'widgets/download_sheet.dart';
 import 'widgets/mod_hashtags_sheet.dart';
 import 'widgets/reactions_bar.dart';
 import 'widgets/send_target_binder.dart';
@@ -216,6 +221,16 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
             ]),
             const SizedBox(height: 4),
             _meta(post),
+            if (_isOwner(post) && post.hiddenByUser)
+              const Padding(
+                padding: EdgeInsets.only(top: 6),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.visibility_off_outlined, size: 14, color: Colors.amber),
+                  SizedBox(width: 6),
+                  Text('Hidden — only you can see this post',
+                      style: TextStyle(fontSize: 12, color: Colors.amber)),
+                ]),
+              ),
             const Divider(height: 24),
             ReactionsBar(postId: post.id),
             if (post.description != null && post.description!.isNotEmpty) ...[
@@ -484,10 +499,14 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
     );
   }
 
-  /// Single combined overflow menu: the author's layers-file entries plus the
-  /// moderator's mod-hashtags entry — merged so a moderator viewing their own
-  /// post gets one kebab, not two. No applicable entries → no button.
+  /// Single combined overflow menu: the owner's post-management entries, the
+  /// author's layers-file entries, plus the moderator's mod-hashtags entry —
+  /// merged so a moderator viewing their own post gets one kebab, not two.
+  /// No applicable entries → no button.
   List<Widget> _overflowMenu(BuildContext context, Post post) {
+    // Owner post management (edit details / hide / delete) — the single-post
+    // counterpart of the bulk PMD actions, same endpoints family.
+    final showOwner = _isOwner(post) && !post.isPlaylist;
     final showMkpx = _mkpxRules.enabled && !post.isPlaylist && _isOwner(post);
     // ref.watch (not read): the entry must appear when the config future
     // resolves. Null while loading / on fallback keeps it hidden — correct
@@ -504,13 +523,31 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
     final showUseAvatar = ref.watch(authControllerProvider).me != null &&
         !post.isPlaylist &&
         post.artUrl.isNotEmpty;
-    if (!showMkpx && !showMod && !showReport && !showUseAvatar) return const [];
+    // Save-to-device downloads: public `/d/{sqid}*` endpoints, so everyone
+    // (signed-out included) gets the entry on artwork posts.
+    final showDownload = !post.isPlaylist;
+    if (!showOwner &&
+        !showMkpx &&
+        !showMod &&
+        !showReport &&
+        !showUseAvatar &&
+        !showDownload) {
+      return const [];
+    }
     return [
       PopupMenuButton<String>(
         tooltip: 'More actions',
         onSelected: (v) {
+          if (v == 'edit_details') _editDetails(context, post);
+          if (v == 'stats') {
+            Navigator.push(
+                context, MaterialPageRoute(builder: (_) => PostStatsPage(post: post)));
+          }
+          if (v == 'toggle_hidden') _toggleHidden(context, post);
+          if (v == 'delete_post') _deletePost(context, post);
           if (v == 'attach') _attachMkpx(context, post);
           if (v == 'detach') _detachMkpx(context, post);
+          if (v == 'download') showDownloadSheet(context, ref, post: post);
           if (v == 'mod_hashtags') _editModHashtags(context, post);
           if (v == 'use_avatar') _useAsProfilePhoto(context, post);
           if (v == 'report') {
@@ -519,6 +556,46 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
           }
         },
         itemBuilder: (_) => [
+          if (showOwner) ...[
+            const PopupMenuItem(
+              value: 'edit_details',
+              child: Row(children: [
+                Icon(Icons.edit_note, size: 16),
+                SizedBox(width: 8),
+                Text('Edit details…'),
+              ]),
+            ),
+            const PopupMenuItem(
+              value: 'stats',
+              child: Row(children: [
+                Icon(Icons.insights, size: 16),
+                SizedBox(width: 8),
+                Text('Statistics…'),
+              ]),
+            ),
+            PopupMenuItem(
+              value: 'toggle_hidden',
+              child: Row(children: [
+                Icon(
+                    post.hiddenByUser
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                    size: 16),
+                const SizedBox(width: 8),
+                Text(post.hiddenByUser ? 'Unhide post' : 'Hide post'),
+              ]),
+            ),
+            const PopupMenuItem(
+              value: 'delete_post',
+              child: Row(children: [
+                Icon(Icons.delete_outline, size: 16),
+                SizedBox(width: 8),
+                Text('Delete post…'),
+              ]),
+            ),
+          ],
+          if (showOwner && (showMkpx || showDownload || showMod || showUseAvatar || showReport))
+            const PopupMenuDivider(),
           if (showMkpx)
             PopupMenuItem(
               value: 'attach',
@@ -526,7 +603,18 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
             ),
           if (showMkpx && post.hasMkpx)
             const PopupMenuItem(value: 'detach', child: Text('Remove layers file')),
-          if (showMkpx && showMod) const PopupMenuDivider(),
+          // (The owner group's divider above already separates when mkpx is off.)
+          if (showDownload && showMkpx) const PopupMenuDivider(),
+          if (showDownload)
+            const PopupMenuItem(
+              value: 'download',
+              child: Row(children: [
+                Icon(Icons.download_outlined, size: 16),
+                SizedBox(width: 8),
+                Text('Download…'),
+              ]),
+            ),
+          if (showMod && (showDownload || showMkpx || showOwner)) const PopupMenuDivider(),
           if (showMod)
             const PopupMenuItem(
               value: 'mod_hashtags',
@@ -536,7 +624,8 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
                 Text('Edit mod hashtags…'),
               ]),
             ),
-          if (showUseAvatar && (showMkpx || showMod)) const PopupMenuDivider(),
+          if (showUseAvatar && (showOwner || showMkpx || showDownload || showMod))
+            const PopupMenuDivider(),
           if (showUseAvatar)
             const PopupMenuItem(
               value: 'use_avatar',
@@ -546,7 +635,8 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
                 Text('Use as profile photo…'),
               ]),
             ),
-          if (showReport && (showMkpx || showMod || showUseAvatar)) const PopupMenuDivider(),
+          if (showReport && (showOwner || showMkpx || showDownload || showMod || showUseAvatar))
+            const PopupMenuDivider(),
           if (showReport)
             const PopupMenuItem(
               value: 'report',
@@ -559,6 +649,73 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
         ],
       ),
     ];
+  }
+
+  /// Open the owner metadata editor; on save it invalidates the detail/feeds
+  /// itself, so this just surfaces the confirmation.
+  Future<void> _editDetails(BuildContext context, Post post) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final saved = await Navigator.push<bool>(
+        context, MaterialPageRoute(builder: (_) => EditPostDetailsPage(post: post)));
+    if (saved == true) {
+      messenger.showSnackBar(const SnackBar(content: Text('Details saved.')));
+    }
+  }
+
+  /// Toggle the owner's hide flag (`POST`/`DELETE /post/{id}/hide`), then
+  /// refetch the surfaces that filter on it.
+  Future<void> _toggleHidden(BuildContext context, Post post) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final hide = !post.hiddenByUser;
+    try {
+      await ref.read(postApiProvider).setHidden(post.id, hide);
+      ref.invalidate(postDetailProvider(widget.sqid));
+      ref.invalidate(feedProvider);
+      ref.invalidate(ownerFeedProvider);
+      ref.invalidate(hashtagFeedProvider);
+      ref.invalidate(pmdListProvider);
+      messenger.showSnackBar(SnackBar(
+          content:
+              Text(hide ? 'Post hidden — only you can see it.' : 'Post is visible again.')));
+    } on ClubError catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      messenger.showSnackBar(SnackBar(
+          content: Text(hide ? 'Could not hide the post.' : 'Could not unhide the post.')));
+    }
+  }
+
+  /// Confirm, then soft-delete the post (7-day grace, like the bulk PMD
+  /// delete) and leave the detail page — the post is gone from every feed.
+  Future<void> _deletePost(BuildContext context, Post post) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final nav = Navigator.of(context);
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete this post?'),
+        content: const Text('It is removed from your profile and permanently deleted '
+            'after a 7-day grace period.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (yes != true) return;
+    try {
+      await ref.read(postApiProvider).deletePost(post.id);
+      ref.invalidate(feedProvider);
+      ref.invalidate(ownerFeedProvider);
+      ref.invalidate(hashtagFeedProvider);
+      ref.invalidate(pmdListProvider);
+      messenger.showSnackBar(const SnackBar(content: Text('Post deleted.')));
+      nav.pop(); // close the detail view; the grids refetch without it
+    } on ClubError catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(content: Text('Could not delete the post.')));
+    }
   }
 
   void _editModHashtags(BuildContext context, Post post) {

@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/artist_stats.dart';
+import '../models/post_stats.dart';
 import 'api_providers.dart';
 
 /// Drives the artist dashboard for one user. The aggregate stats + a page of the
@@ -38,3 +39,28 @@ class ArtistDashboardController extends StateNotifier<AsyncValue<ArtistDashboard
 final artistDashboardProvider = StateNotifierProvider.autoDispose
     .family<ArtistDashboardController, AsyncValue<ArtistDashboard>, String>(
         (ref, userKey) => ArtistDashboardController(ref, userKey));
+
+/// Per-post statistics (`GET /post/{id}/stats`, owner/moderator only).
+/// `load(refresh: true)` asks the server to recompute its cached numbers.
+class PostStatsController extends StateNotifier<AsyncValue<PostStats>> {
+  final Ref ref;
+  final int postId;
+
+  PostStatsController(this.ref, this.postId) : super(const AsyncValue.loading()) {
+    load();
+  }
+
+  Future<void> load({bool refresh = false}) async {
+    state = const AsyncValue.loading();
+    try {
+      state = AsyncValue.data(
+          await ref.read(statsApiProvider).postStats(postId, refresh: refresh));
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+    }
+  }
+}
+
+final postStatsProvider = StateNotifierProvider.autoDispose
+    .family<PostStatsController, AsyncValue<PostStats>, int>(
+        (ref, postId) => PostStatsController(ref, postId)); // [audit F-19]
