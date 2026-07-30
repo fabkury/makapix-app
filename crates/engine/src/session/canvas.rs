@@ -556,7 +556,7 @@ impl Session {
         // wash once — not once per layer, which would read as a darker tint.
         let mut footprint = Mask::new(cw as u32, ch as u32);
         for entry in &d.layers {
-            let (out, _mask) = rotate_resample(d, &entry.src, cw, ch);
+            let (out, _mask) = d.resample().rotate(&entry.src, d.angle, cw, ch);
             for y in 0..ch {
                 for x in 0..cw {
                     if out.get(x, y).a != 0 {
@@ -584,7 +584,7 @@ impl Session {
         let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
         // A selection draft lifts exactly one layer.
         let entry = d.layers.first()?;
-        let (_out, mask) = rotate_resample(d, &entry.src, cw, ch);
+        let (_out, mask) = d.resample().rotate(&entry.src, d.angle, cw, ch);
         Some(mask)
     }
 
@@ -843,7 +843,7 @@ impl Session {
         // wash once — not once per layer, which would read as a darker tint.
         let mut footprint = Mask::new(cw as u32, ch as u32);
         for entry in &d.layers {
-            let (out, _mask) = scale_resample(d, &entry.src, cw, ch);
+            let (out, _mask) = d.resample().scale(&entry.src, d.scale_x, d.scale_y, cw, ch);
             for y in 0..ch {
                 for x in 0..cw {
                     if out.get(x, y).a != 0 {
@@ -869,7 +869,7 @@ impl Session {
         let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
         // A selection draft lifts exactly one layer.
         let entry = d.layers.first()?;
-        let (_out, mask) = scale_resample(d, &entry.src, cw, ch);
+        let (_out, mask) = d.resample().scale(&entry.src, d.scale_x, d.scale_y, cw, ch);
         Some(mask)
     }
 
@@ -893,105 +893,6 @@ impl Session {
         self.scale_draft.as_ref().map(|d| (d.off.x, d.off.y))
     }
 }
-
-/// Rotation of one lifted source `src` (a `sw`×`sh` region whose pixel (0,0) sits at
-/// `src_origin` in canvas coords; optionally masked by `src_mask`) by `angle` radians clockwise
-/// about `pivot`, into a `cw`×`ch` canvas-sized buffer, clipped to the canvas. Samples
-/// nearest-neighbor, or the cleanEdge reconstruction when the draft's toggle is on (same
-/// inverse mapping — cleanEdge only changes which neighborhood color a sample point takes).
-/// Returns the placed pixels and a matching 1-bit mask of where they landed. Integer-exact and
-/// deterministic: at multiples of 90° on a square region it reproduces the lossless
-/// quarter-turn (the snap below makes that exact for both sampling modes).
-fn rotate_resample(d: &RotateDraft, src: &RgbaBuffer, cw: i32, ch: i32) -> (RgbaBuffer, Mask) {
-    let (sw, sh, src_origin, src_mask, pivot, angle) =
-        (d.sw, d.sh, d.src_origin, d.src_mask.as_ref(), d.pivot, d.angle);
-    // Whole-pixel drag-to-move offset, applied AFTER the rotation (integer, so it never
-    // disturbs the identity/quarter-turn exactness — it only shifts which cell receives what).
-    let (offx, offy) = (d.off.x as f32, d.off.y as f32);
-    let mut out = RgbaBuffer::new(cw as u32, ch as u32);
-    let mut out_mask = Mask::new(cw as u32, ch as u32);
-    // Quarter-turn snap: quarter turns arrive as rounded milliradians (1570/1571, 3141/3142, …),
-    // never exact multiples of π/2, so cos/sin carry ~1e-4 of drift that walks sample points off
-    // pixel centers on large canvases. Snapping inside a ±2 mrad window makes 90° multiples
-    // literally exact — for NN (which only relied on floor absorbing the drift) and for
-    // cleanEdge (whose identity margin at minimum line width is thinner than that drift).
-    let quarter = (angle / std::f32::consts::FRAC_PI_2).round();
-    let (cos, sin) = if (angle - quarter * std::f32::consts::FRAC_PI_2).abs() < 2e-3 {
-        match (quarter as i32).rem_euclid(4) {
-            0 => (1.0, 0.0),
-            1 => (0.0, 1.0),
-            2 => (-1.0, 0.0),
-            _ => (0.0, -1.0),
-        }
-    } else {
-        (angle.cos(), angle.sin())
-    };
-
-    // Destination scan window = the canvas-clipped bounding box of the rotated source corners, so we
-    // touch only pixels that can possibly receive content.
-    let fwd = |px: f32, py: f32| {
-        let (dx, dy) = (px - pivot.x, py - pivot.y);
-        (pivot.x + cos * dx - sin * dy + offx, pivot.y + sin * dx + cos * dy + offy)
-    };
-    let (mut minx, mut miny, mut maxx, mut maxy) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
-    for (px, py) in [
-        (src_origin.x as f32, src_origin.y as f32),
-        ((src_origin.x + sw) as f32, src_origin.y as f32),
-        (src_origin.x as f32, (src_origin.y + sh) as f32),
-        ((src_origin.x + sw) as f32, (src_origin.y + sh) as f32),
-    ] {
-        let (fx, fy) = fwd(px, py);
-        minx = minx.min(fx);
-        miny = miny.min(fy);
-        maxx = maxx.max(fx);
-        maxy = maxy.max(fy);
-    }
-    let x0 = (minx.floor() as i32).max(0);
-    let y0 = (miny.floor() as i32).max(0);
-    let x1 = (maxx.ceil() as i32).min(cw);
-    let y1 = (maxy.ceil() as i32).min(ch);
-
-    for dy in y0..y1 {
-        for dx in x0..x1 {
-            // Inverse-rotate the destination pixel center back into source space (undo the move
-            // offset first, then R(-angle)).
-            let (ddx, ddy) = (dx as f32 + 0.5 - offx - pivot.x, dy as f32 + 0.5 - offy - pivot.y);
-            let sxf = pivot.x + cos * ddx + sin * ddy;
-            let syf = pivot.y - sin * ddx + cos * ddy;
-            let lx = (sxf - src_origin.x as f32).floor() as i32;
-            let ly = (syf - src_origin.y as f32).floor() as i32;
-            if lx < 0 || ly < 0 || lx >= sw || ly >= sh {
-                continue;
-            }
-            // The mask follows the rotated *region* (every masked source cell), independent of pixel
-            // opacity — so a selection's marquee rotates as a whole, not just its opaque pixels.
-            if let Some(m) = src_mask {
-                if !m.get(lx, ly) {
-                    continue;
-                }
-            }
-            out_mask.set(dx, dy, true);
-            // The pixel buffer only carries opaque content (transparent source leaves a hole).
-            let c = if d.clean_edge {
-                // cleanEdge: sample the edge-aware reconstruction at the continuous source
-                // point (it reduces to the same cell as NN wherever no edge slice fires).
-                crate::cleanedge::sample(
-                    src,
-                    sxf - src_origin.x as f32,
-                    syf - src_origin.y as f32,
-                    d.clean_edge_width,
-                )
-            } else {
-                src.get(lx, ly)
-            };
-            if c.a != 0 {
-                out.set(dx, dy, c);
-            }
-        }
-    }
-    (out, out_mask)
-}
-
 /// Apply a rotate draft to `frame`: for each lifted layer, clear the origin pixels (the selected
 /// pixels, or the whole layer) and blit the resampled, rotated content alpha-over. Shared by the
 /// display preview (on a throwaway clone) and `rotate_draft_commit` (on the real frame) so both
@@ -1003,7 +904,7 @@ fn apply_rotation_to_frame(d: &RotateDraft, frame: &mut Frame, cw: i32, ch: i32)
             Some(i) => i,
             None => continue,
         };
-        let (out, out_mask) = rotate_resample(d, &entry.src, cw, ch);
+        let (out, out_mask) = d.resample().rotate(&entry.src, d.angle, cw, ch);
         let buf = &mut frame.layers[li].pixels;
         // Clear the origin: the masked pixels for a selection rotation, the whole layer otherwise.
         if d.is_selection {
@@ -1034,77 +935,6 @@ fn apply_rotation_to_frame(d: &RotateDraft, frame: &mut Frame, cw: i32, ch: i32)
     }
     rotated_mask
 }
-
-/// Scaling of one lifted source `src` (a `sw`×`sh` region whose pixel (0,0) sits at
-/// `src_origin` in canvas coords; optionally masked by `src_mask`) by the draft's X/Y factors
-/// about `pivot`, into a `cw`×`ch` canvas-sized buffer, clipped to the canvas. Samples
-/// nearest-neighbor, or the cleanEdge reconstruction when the draft's toggle is on AND both
-/// factors upscale (≥ 1, not both exactly 1) — cleanEdge is a reconstruction sampler, not a
-/// minifier, so any shrinking axis forces plain NN. Factors are milli-exact (1000 → 1.0,
-/// 2000 → 2.0 with zero float drift), so identity and integer scales are integer-exact: 1× is
-/// the identity and 2× NN is exact 2×2 block replication. Returns the placed pixels and a
-/// matching 1-bit region mask (`rotate_resample`'s twin).
-fn scale_resample(d: &ScaleDraft, src: &RgbaBuffer, cw: i32, ch: i32) -> (RgbaBuffer, Mask) {
-    let (sw, sh, src_origin, src_mask, pivot) =
-        (d.sw, d.sh, d.src_origin, d.src_mask.as_ref(), d.pivot);
-    let (sx, sy) = (d.scale_x, d.scale_y);
-    // Whole-pixel drag-to-move offset, applied AFTER the scale (integer — identity and integer
-    // factors stay exact under a moved draft).
-    let (offx, offy) = (d.off.x as f32, d.off.y as f32);
-    let mut out = RgbaBuffer::new(cw as u32, ch as u32);
-    let mut out_mask = Mask::new(cw as u32, ch as u32);
-    let use_clean = d.clean_edge && sx >= 1.0 && sy >= 1.0 && !(sx == 1.0 && sy == 1.0);
-
-    // Destination scan window = the canvas-clipped bbox of the scaled source rect. The map is
-    // axis-aligned with positive factors, so the two extreme corners suffice.
-    let fwd =
-        |px: f32, py: f32| (pivot.x + (px - pivot.x) * sx + offx, pivot.y + (py - pivot.y) * sy + offy);
-    let (minx, miny) = fwd(src_origin.x as f32, src_origin.y as f32);
-    let (maxx, maxy) = fwd((src_origin.x + sw) as f32, (src_origin.y + sh) as f32);
-    let x0 = (minx.floor() as i32).max(0);
-    let y0 = (miny.floor() as i32).max(0);
-    let x1 = (maxx.ceil() as i32).min(cw);
-    let y1 = (maxy.ceil() as i32).min(ch);
-
-    for dy in y0..y1 {
-        for dx in x0..x1 {
-            // Inverse-scale the destination pixel center back into source space (undo the move
-            // offset first).
-            let sxf = pivot.x + (dx as f32 + 0.5 - offx - pivot.x) / sx;
-            let syf = pivot.y + (dy as f32 + 0.5 - offy - pivot.y) / sy;
-            let lx = (sxf - src_origin.x as f32).floor() as i32;
-            let ly = (syf - src_origin.y as f32).floor() as i32;
-            if lx < 0 || ly < 0 || lx >= sw || ly >= sh {
-                continue;
-            }
-            // The mask follows the scaled *region* (every masked source cell), independent of
-            // pixel opacity — so a selection's marquee scales as a whole. Inverse mapping keeps
-            // the region solid at any factor (membership only, no holes).
-            if let Some(m) = src_mask {
-                if !m.get(lx, ly) {
-                    continue;
-                }
-            }
-            out_mask.set(dx, dy, true);
-            // The pixel buffer only carries opaque content (transparent source leaves a hole).
-            let c = if use_clean {
-                crate::cleanedge::sample(
-                    src,
-                    sxf - src_origin.x as f32,
-                    syf - src_origin.y as f32,
-                    d.clean_edge_width,
-                )
-            } else {
-                src.get(lx, ly)
-            };
-            if c.a != 0 {
-                out.set(dx, dy, c);
-            }
-        }
-    }
-    (out, out_mask)
-}
-
 /// Apply a scale draft to `frame`: for each lifted layer, clear the origin pixels (the selected
 /// pixels, or the whole layer) and blit the resampled, scaled content alpha-over. Shared by the
 /// display preview (on a throwaway clone) and `scale_draft_commit` (on the real frame) so both
@@ -1117,7 +947,7 @@ fn apply_scale_to_frame(d: &ScaleDraft, frame: &mut Frame, cw: i32, ch: i32) -> 
             Some(i) => i,
             None => continue,
         };
-        let (out, out_mask) = scale_resample(d, &entry.src, cw, ch);
+        let (out, out_mask) = d.resample().scale(&entry.src, d.scale_x, d.scale_y, cw, ch);
         let buf = &mut frame.layers[li].pixels;
         // Clear the origin: the masked pixels for a selection scale, the whole layer otherwise.
         if d.is_selection {

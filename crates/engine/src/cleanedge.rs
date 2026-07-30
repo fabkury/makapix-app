@@ -7,7 +7,7 @@
 //! edges via color-similarity rules (`slice_dist`, evaluated three times with mirrored
 //! neighborhoods for the corner/back/up quadrant slices), and redraws those edges as straight
 //! lines. Rotating pixel art = point-sampling this reconstruction at inverse-rotated
-//! destination pixel centers (`session/canvas.rs::rotate_resample`).
+//! destination pixel centers (`transform::Resample::rotate`).
 //!
 //! Configuration baked into this port (the rotation use-case):
 //! - `similarThreshold = 0` — similarity is exact RGBA equality (integer-exact, the right

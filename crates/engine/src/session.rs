@@ -109,6 +109,23 @@ struct RotateDraftLayer {
     src: RgbaBuffer,
 }
 
+impl RotateDraft {
+    /// The draft's resampling parameters as an [`transform::Resample`] — the draft is the
+    /// editor-side owner of exactly the fields the extracted transform primitive consumes.
+    fn resample(&self) -> crate::transform::Resample<'_> {
+        crate::transform::Resample {
+            sw: self.sw,
+            sh: self.sh,
+            src_origin: self.src_origin,
+            src_mask: self.src_mask.as_ref(),
+            pivot: self.pivot,
+            off: self.off,
+            clean_edge: self.clean_edge,
+            clean_edge_width: self.clean_edge_width,
+        }
+    }
+}
+
 /// The pending free-scale draft (the Resize tool; engine verb "Scale" to avoid colliding with
 /// `ResizeCanvas`) — [`RotateDraft`]'s twin with X/Y scale factors instead of an angle.
 struct ScaleDraft {
@@ -141,6 +158,22 @@ struct ScaleDraft {
 struct ScaleDraftLayer {
     lid: u32,
     src: RgbaBuffer,
+}
+
+impl ScaleDraft {
+    /// The draft's resampling parameters as an [`transform::Resample`] ([`RotateDraft::resample`]'s twin).
+    fn resample(&self) -> crate::transform::Resample<'_> {
+        crate::transform::Resample {
+            sw: self.sw,
+            sh: self.sh,
+            src_origin: self.src_origin,
+            src_mask: self.src_mask.as_ref(),
+            pivot: self.pivot,
+            off: self.off,
+            clean_edge: self.clean_edge,
+            clean_edge_width: self.clean_edge_width,
+        }
+    }
 }
 
 /// Stamp positions along `a`→`b`, one every `step` px of arc length. `acc` is the distance already

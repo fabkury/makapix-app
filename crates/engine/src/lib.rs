@@ -1,8 +1,8 @@
 //! Makapix engine — pure, deterministic, headless core (SPEC §4).
 //!
-//! Layers (low→high): util · geom · color · buffer/raster/selection/cleanedge · document ·
-//! history · tool · render · probe · io/import · session. The `Session` is the single stateful
-//! entry point for the CLI harness and the Flutter shell.
+//! Layers (low→high): util · geom · color · buffer/raster/selection/cleanedge/transform ·
+//! document · history · tool · render · probe · io/import · session. The `Session` is the single
+//! stateful entry point for the CLI harness and the Flutter shell.
 #![forbid(unsafe_code)]
 
 pub mod buffer;
@@ -19,6 +19,7 @@ pub mod render;
 pub mod selection;
 pub mod session;
 pub mod tool;
+pub mod transform;
 pub mod util;
 
 pub use color::Rgba8;
