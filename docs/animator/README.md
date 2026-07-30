@@ -4,8 +4,8 @@
 animation tool for pixel art. Brainstormed and then grilled to decisions on 2026-07-30.
 This folder reads as post-decision truth; the two hardest-to-reverse calls also have ADRs
 ([0001](../adr/0001-frame-grid-timing.md), [0002](../adr/0002-self-contained-scenes.md)),
-and the canonical vocabulary lives in [CONTEXT.md](../../CONTEXT.md). No implementation or
-feasibility content here — that is a separate, later document.*
+and the canonical vocabulary lives in [CONTEXT.md](../../CONTEXT.md). Documents 01–04 are
+UX/product only; the technical side lives in [05-feasibility.md](05-feasibility.md).*
 
 ## The idea in one paragraph
 
@@ -45,6 +45,7 @@ walk, bounce, blink, and emote — without redrawing anything, and without leavi
 | [02-prioritization.md](02-prioritization.md) | Feature tiers ranked by UI cost vs. usefulness on a phone; what v1 includes, defers, and refuses. |
 | [03-smartphone-approaches.md](03-smartphone-approaches.md) | The design stances that make a phone animator first-class rather than a shrunken desktop tool. |
 | [04-recommendations.md](04-recommendations.md) | The Editor⇄Animator seam, scope guardrails, risks, Club ties, and next steps. |
+| [05-feasibility.md](05-feasibility.md) | Technical feasibility on this codebase: reuse maps (Rust + Flutter), the `crates/scene` design sketch, `.mkps` container, FFI seam, memory under the Android wall, phases and risks. |
 
 ## The one-line thesis
 
