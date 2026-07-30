@@ -61,19 +61,40 @@ fn limits() -> image::Limits {
 
 /// Decode an image file (by content) into one or more `DecodedFrame`s.
 pub fn decode(bytes: &[u8]) -> Result<Vec<DecodedFrame>, CodecError> {
+    decode_inner(bytes, MAX_DECODE_FRAMES, MAX_DECODE_TOTAL_BYTES)
+}
+
+/// [`decode`] with tighter caps for callers whose documents accept less than the editor's
+/// maximum (the Animator's Prop import: 256 frames, 64 MiB decoded) — the frame-count and
+/// aggregate-bytes gates still fire DURING decode, before a bomb materializes. Dimension
+/// bounds stay at the codec-wide `MAX_DIM` (4096) during decode; per-side caps below that are
+/// the caller's post-check (a cheap dimension compare on the result).
+pub fn decode_with_limits(
+    bytes: &[u8],
+    max_frames: usize,
+    max_total_bytes: usize,
+) -> Result<Vec<DecodedFrame>, CodecError> {
+    decode_inner(bytes, max_frames.min(MAX_DECODE_FRAMES), max_total_bytes.min(MAX_DECODE_TOTAL_BYTES))
+}
+
+fn decode_inner(
+    bytes: &[u8],
+    max_frames: usize,
+    total_cap: usize,
+) -> Result<Vec<DecodedFrame>, CodecError> {
     let format = image::guess_format(bytes).map_err(|e| CodecError::Decode(e.to_string()))?;
     match format {
         ImageFormat::Gif => {
             let mut dec = GifDecoder::new(Cursor::new(bytes)).map_err(de)?;
             dec.set_limits(limits()).map_err(de)?;
-            decode_animated(dec)
+            decode_animated_frames(dec, max_frames, total_cap)
         }
         ImageFormat::WebP => {
             // Try animated; fall back to static.
             match image::codecs::webp::WebPDecoder::new(Cursor::new(bytes)) {
                 Ok(mut dec) if dec.has_animation() => {
                     dec.set_limits(limits()).map_err(de)?;
-                    decode_animated(dec)
+                    decode_animated_frames(dec, max_frames, total_cap)
                 }
                 _ => decode_static(bytes),
             }
@@ -83,7 +104,7 @@ pub fn decode(bytes: &[u8]) -> Result<Vec<DecodedFrame>, CodecError> {
             let mut dec = image::codecs::png::PngDecoder::new(Cursor::new(bytes)).map_err(de)?;
             dec.set_limits(limits()).map_err(de)?;
             if dec.is_apng().map_err(de)? {
-                decode_animated(dec.apng().map_err(de)?)
+                decode_animated_frames(dec.apng().map_err(de)?, max_frames, total_cap)
             } else {
                 decode_static(bytes)
             }
@@ -112,15 +133,13 @@ fn decode_static(bytes: &[u8]) -> Result<Vec<DecodedFrame>, CodecError> {
     Ok(vec![DecodedFrame { rgba: rgba.into_raw(), w, h, duration_us: 100_000 }])
 }
 
-fn decode_animated<'a>(decoder: impl AnimationDecoder<'a>) -> Result<Vec<DecodedFrame>, CodecError> {
-    decode_animated_capped(decoder, MAX_DECODE_TOTAL_BYTES)
-}
-
-/// [`decode_animated`] with an explicit aggregate-bytes cap — the cap is a parameter so the test
-/// suite can exercise the bomb path with a tiny cap and tiny frames instead of allocating the real
-/// 384 MiB. Production always uses [`MAX_DECODE_TOTAL_BYTES`].
-fn decode_animated_capped<'a>(
+/// Animated decode with explicit frame-count and aggregate-bytes caps — parameters so the
+/// test suite can exercise the bomb path with tiny caps, and so tighter-budget callers
+/// (`decode_with_limits`) refuse during decode. Production `decode` uses
+/// [`MAX_DECODE_FRAMES`] / [`MAX_DECODE_TOTAL_BYTES`].
+fn decode_animated_frames<'a>(
     decoder: impl AnimationDecoder<'a>,
+    max_frames: usize,
     total_cap: usize,
 ) -> Result<Vec<DecodedFrame>, CodecError> {
     // Decode frames lazily, one at a time, capping the count BEFORE materializing more — never
@@ -128,7 +147,7 @@ fn decode_animated_capped<'a>(
     let mut out = Vec::new();
     let mut total_bytes = 0usize; // running sum of decoded RGBA, capped to stop bombs [P-3]
     for (i, frame) in decoder.into_frames().enumerate() {
-        if i >= MAX_DECODE_FRAMES {
+        if i >= max_frames {
             return Err(CodecError::Decode("too many frames".into()));
         }
         let fr = frame.map_err(de)?;
@@ -494,7 +513,7 @@ mod tests {
             encode_gif(w, h, &[(frame.clone(), 50_000), (frame.clone(), 50_000), (frame, 50_000)]).unwrap();
 
         let dec = GifDecoder::new(Cursor::new(&gif)).unwrap();
-        let tripped = decode_animated_capped(dec, 24 * 1024);
+        let tripped = decode_animated_frames(dec, MAX_DECODE_FRAMES, 24 * 1024);
         assert!(
             matches!(tripped, Err(CodecError::Decode(ref m)) if m == "animation too large"),
             "aggregate cap must trip on the second frame (got {})",
@@ -506,7 +525,7 @@ mod tests {
 
         let dec2 = GifDecoder::new(Cursor::new(&gif)).unwrap();
         assert_eq!(
-            decode_animated_capped(dec2, MAX_DECODE_TOTAL_BYTES).unwrap().len(),
+            decode_animated_frames(dec2, MAX_DECODE_FRAMES, MAX_DECODE_TOTAL_BYTES).unwrap().len(),
             3,
             "the same animation decodes fully under the production cap"
         );

@@ -6,6 +6,7 @@
 //! session.
 #![forbid(unsafe_code)]
 
+pub mod compose;
 pub mod eval;
 pub mod history;
 pub mod model;

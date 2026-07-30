@@ -2,11 +2,16 @@
 //! `SceneSession`. Same exit-code contract: 0 = all probes passed · 1 = a probe failed ·
 //! 2 = script/IO/usage error. Probes are colon-separated trailing args, evaluated in order.
 //!
-//! P1 probes: `state` · `mem` · `mem.os` · `eval:A:F` · `assert.eval:A:F:prop=VAL`
-//! (P2 adds the pixel probes, P3 `assert.roundtrip`, P4 the export probes.)
+//! Probes: `state` · `mem` · `mem.os` · `eval:A:F` · `assert.eval:A:F:prop=VAL` ·
+//! `ascii:F` · `hash:F` · `stats:F` · `thumb:F:W:H` · `render:F:OUT.png[:S]` ·
+//! `assert.det:F` (warm-vs-cold compositor determinism)
+//! (P3 adds `assert.roundtrip`, P4 the export probes.)
 
 use crate::mem;
 use crate::probe_util::{idx, verdict};
+use makapix_engine::geom::IRect;
+use makapix_engine::probe;
+use makapix_scene::compose::{scene_frame, TransformCache, TRANSFORM_CACHE_BUDGET};
 use makapix_scene::eval::ActorPose;
 use makapix_scene::model::TrackProp;
 use makapix_scene::SceneSession;
@@ -14,7 +19,9 @@ use makapix_scene::SceneSession;
 /// Entry point; `args` is everything after the `scene` token.
 pub fn scene_main(args: &[String]) -> i32 {
     if args.is_empty() {
-        eprintln!("usage: mkpx scene run <script|-> [probes...]   |   mkpx scene new <w> <h> <millifps> [probes...]");
+        eprintln!(
+            "usage: mkpx scene run <script|-> [probes...]   |   mkpx scene new <w> <h> <millifps> [probes...]   |   mkpx scene import <w> <h> <millifps> <image> [--split] [--name NAME] [probes...]"
+        );
         return 2;
     }
     let mut session = SceneSession::empty();
@@ -60,6 +67,52 @@ pub fn scene_main(args: &[String]) -> i32 {
             session = SceneSession::new(w, h, fps);
             probe_start = 4;
         }
+        "import" => {
+            if args.len() < 5 {
+                eprintln!("mkpx scene import needs <w> <h> <millifps> <image>");
+                return 2;
+            }
+            let w: u16 = args[1].parse().unwrap_or(0);
+            let h: u16 = args[2].parse().unwrap_or(0);
+            let mfps: u32 = args[3].parse().unwrap_or(0);
+            let Some(fps) = makapix_scene::SceneFps::from_millifps(mfps) else {
+                eprintln!("millifps must be one of 10000|12500|20000|25000|50000");
+                return 2;
+            };
+            session = SceneSession::new(w, h, fps);
+            let bytes = match std::fs::read(&args[4]) {
+                Ok(b) => b,
+                Err(e) => {
+                    eprintln!("cannot read image '{}': {}", args[4], e);
+                    return 2;
+                }
+            };
+            let mut split = false;
+            let mut name = String::new();
+            let mut i = 5usize;
+            while i < args.len() && args[i].starts_with("--") {
+                match args[i].as_str() {
+                    "--split" => split = true,
+                    "--name" => {
+                        i += 1;
+                        name = args.get(i).cloned().unwrap_or_default();
+                    }
+                    other => {
+                        eprintln!("unknown import flag '{}'", other);
+                        return 2;
+                    }
+                }
+                i += 1;
+            }
+            match session.import_prop_bytes(&bytes, &name, split, true) {
+                Ok(o) => eprintln!("# imported props={:?} actors={:?}", o.props, o.actors),
+                Err(e) => {
+                    eprintln!("import error: {}", e);
+                    return 2;
+                }
+            }
+            probe_start = i;
+        }
         other => {
             eprintln!("unknown scene command '{}'", other);
             return 2;
@@ -98,6 +151,65 @@ fn run_probes(session: &mut SceneSession, specs: &[String]) -> i32 {
                         failed = true;
                     }
                 }
+            }
+            "ascii" => {
+                let f = idx(&parts, 1) as u32;
+                let buf = session.composite(f);
+                let (w, h) = session.size();
+                println!("# ascii frame={}", f);
+                println!("{}", probe::ascii(&buf, IRect::new(0, 0, w as u32, h as u32)));
+            }
+            "hash" => {
+                let f = idx(&parts, 1) as u32;
+                println!("# hash frame={} {:016x}", f, session.frame_hash(f));
+            }
+            "stats" => {
+                let f = idx(&parts, 1) as u32;
+                let buf = session.composite(f);
+                let (w, h) = session.size();
+                println!(
+                    "# stats frame={} {}",
+                    f,
+                    probe::stats_text(&buf, IRect::new(0, 0, w as u32, h as u32))
+                );
+            }
+            "thumb" => {
+                let f = idx(&parts, 1) as u32;
+                let tw = idx(&parts, 2).max(1) as u32;
+                let th = idx(&parts, 3).max(1) as u32;
+                let buf = session.composite(f);
+                println!("# thumb frame={}", f);
+                println!("{}", probe::thumb(&buf, tw, th));
+            }
+            "render" | "composite" => {
+                let f = idx(&parts, 1) as u32;
+                let out = parts.get(2).copied().unwrap_or("out.png");
+                let scale: u32 = parts.get(3).and_then(|s| s.parse().ok()).unwrap_or(1);
+                let (w, h) = session.size();
+                let bytes = session.composite_bytes(f);
+                let png = crate::png::encode_rgba(w as u32, h as u32, &bytes, scale);
+                if let Err(e) = std::fs::write(out, &png) {
+                    eprintln!("render write failed '{}': {}", out, e);
+                    failed = true;
+                } else {
+                    println!("# render frame={} -> {} scale={}", f, out, scale);
+                }
+            }
+            "assert.det" => {
+                // The transform cache can never change output: composite twice through the
+                // session (second call warm), then cold through a FRESH cache; all equal.
+                let f = idx(&parts, 1) as u32;
+                let h1 = session.frame_hash(f);
+                let h2 = session.frame_hash(f); // warm
+                let cold = scene_frame(
+                    &session.scene,
+                    &mut TransformCache::new(TRANSFORM_CACHE_BUDGET),
+                    f,
+                );
+                let h3 = cold.content_hash() as u64;
+                let ok = h1 == h2 && h2 == h3;
+                println!("# assert.det frame={} VERDICT: {}", f, verdict(ok));
+                failed |= !ok;
             }
             "assert.eval" => {
                 // assert.eval:A:F:prop=VAL — flips accept true/false or 0/1.

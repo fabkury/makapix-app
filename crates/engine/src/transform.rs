@@ -27,6 +27,304 @@ pub fn rot_cos_sin(rot_md: i32) -> (f32, f32) {
     (rad.cos(), rad.sin())
 }
 
+/// A net actor similarity, fully fixed-point (the Animator compositor's transform):
+/// `dst = T(t)·R(rot)·S(scale)·F(flips)·T(-pivot/1000)` with `t = (tx_q8/256, ty_q8/256)`.
+/// Uniform scale in millionths; rotation in millidegrees clockwise (callers normalize to
+/// `0..360_000`); pivot in prop-local milli-pixels.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct ActorXf {
+    pub tx_q8: i32,
+    pub ty_q8: i32,
+    pub rot_md: i32,
+    pub scale_micro: i64,
+    pub flip_h: bool,
+    pub flip_v: bool,
+    pub pivot_x_milli: i32,
+    pub pivot_y_milli: i32,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum SampleStyle {
+    Nearest,
+    CleanEdge { line_width: f32 },
+}
+
+/// Single-pass inverse-mapped resample of a `sw`×`sh` source through `xf`.
+///
+/// - `clip = None`: the output covers the transformed bounding box; returns `(buffer, origin)`
+///   with `origin` the integer top-left of that box in destination space.
+/// - `clip = Some(rect)`: the output is restricted to bbox ∩ rect (the compositor's uncached
+///   path for oversized entries) — memory stays bounded by the clip rect.
+///
+/// cleanEdge is gated off when `scale_micro < 1_000_000` (the Resize tool's upscale-only
+/// rule; rotation alone keeps cleanEdge, as the editor's rotate does). Per destination pixel
+/// center: invert `xf` (undo t, R(−rot), S(1/scale), unflip, +pivot), then nearest-floor or
+/// `cleanedge::sample` at the continuous source point; transparent source leaves a hole.
+pub fn actor_resample(
+    src: &RgbaBuffer,
+    sw: u32,
+    sh: u32,
+    xf: &ActorXf,
+    style: SampleStyle,
+    clip: Option<crate::geom::IRect>,
+) -> (RgbaBuffer, Point) {
+    let (cos, sin) = rot_cos_sin(xf.rot_md);
+    let s = (xf.scale_micro.max(1)) as f32 / 1_000_000.0;
+    let (px, py) = (xf.pivot_x_milli as f32 / 1000.0, xf.pivot_y_milli as f32 / 1000.0);
+    let (tx, ty) = (xf.tx_q8 as f32 / 256.0, xf.ty_q8 as f32 / 256.0);
+    let fx = if xf.flip_h { -1.0f32 } else { 1.0 };
+    let fy = if xf.flip_v { -1.0f32 } else { 1.0 };
+
+    // Forward corners → destination bbox.
+    let fwd = |cx: f32, cy: f32| {
+        let lx = (cx - px) * fx * s;
+        let ly = (cy - py) * fy * s;
+        (tx + cos * lx - sin * ly, ty + sin * lx + cos * ly)
+    };
+    let (mut minx, mut miny, mut maxx, mut maxy) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+    for (cx, cy) in [(0.0, 0.0), (sw as f32, 0.0), (0.0, sh as f32), (sw as f32, sh as f32)] {
+        let (gx, gy) = fwd(cx, cy);
+        minx = minx.min(gx);
+        miny = miny.min(gy);
+        maxx = maxx.max(gx);
+        maxy = maxy.max(gy);
+    }
+    let (mut x0, mut y0) = (minx.floor() as i32, miny.floor() as i32);
+    let (mut x1, mut y1) = (maxx.ceil() as i32, maxy.ceil() as i32);
+    if let Some(r) = clip {
+        x0 = x0.max(r.x);
+        y0 = y0.max(r.y);
+        x1 = x1.min(r.right());
+        y1 = y1.min(r.bottom());
+    }
+    if x1 <= x0 || y1 <= y0 {
+        return (RgbaBuffer::new(1, 1), Point::new(x0, y0));
+    }
+    let (ow, oh) = ((x1 - x0) as u32, (y1 - y0) as u32);
+    let mut out = RgbaBuffer::new(ow, oh);
+    let origin = Point::new(x0, y0);
+
+    // Identity detection: unit scale, zero rotation, no flips, whole-pixel translation → the
+    // inverse map lands exactly on pixel centers, so NN reproduces the source and cleanEdge
+    // would too (identity-at-centers) — sampling NN here keeps both styles trivially equal.
+    let identity = xf.scale_micro == 1_000_000
+        && xf.rot_md.rem_euclid(360_000) == 0
+        && !xf.flip_h
+        && !xf.flip_v
+        && xf.tx_q8.rem_euclid(256) == 0
+        && xf.ty_q8.rem_euclid(256) == 0;
+
+    let use_clean = match style {
+        SampleStyle::CleanEdge { .. } if !identity && xf.scale_micro >= 1_000_000 => true,
+        _ => false,
+    };
+    let lw = match style {
+        SampleStyle::CleanEdge { line_width } => line_width,
+        SampleStyle::Nearest => 0.0,
+    };
+
+    for dy in 0..oh as i32 {
+        for dx in 0..ow as i32 {
+            let gx = (x0 + dx) as f32 + 0.5 - tx;
+            let gy = (y0 + dy) as f32 + 0.5 - ty;
+            // R(-rot), then S(1/s), then unflip, then +pivot.
+            let rx = (cos * gx + sin * gy) / s * fx + px;
+            let ry = (-sin * gx + cos * gy) / s * fy + py;
+            let lx = rx.floor() as i32;
+            let ly = ry.floor() as i32;
+            if lx < 0 || ly < 0 || lx >= sw as i32 || ly >= sh as i32 {
+                continue;
+            }
+            let c = if use_clean {
+                crate::cleanedge::sample(src, rx, ry, lw)
+            } else {
+                src.get(lx, ly)
+            };
+            if c.a != 0 {
+                out.set(dx, dy, c);
+            }
+        }
+    }
+    (out, origin)
+}
+
+#[cfg(test)]
+mod actor_tests {
+    use super::*;
+    use crate::color::Rgba8;
+    use crate::geom::IRect;
+
+    fn pattern(w: u32, h: u32) -> RgbaBuffer {
+        let mut b = RgbaBuffer::new(w, h);
+        for y in 0..h as i32 {
+            for x in 0..w as i32 {
+                if (x + y) % 3 != 0 {
+                    b.set(x, y, Rgba8::new((x * 40) as u8, (y * 40) as u8, 128, 255));
+                }
+            }
+        }
+        b
+    }
+
+    #[test]
+    fn rot_cos_sin_exact_quarters() {
+        assert_eq!(rot_cos_sin(0), (1.0, 0.0));
+        assert_eq!(rot_cos_sin(90_000), (0.0, 1.0));
+        assert_eq!(rot_cos_sin(180_000), (-1.0, 0.0));
+        assert_eq!(rot_cos_sin(270_000), (0.0, -1.0));
+        assert_eq!(rot_cos_sin(360_000), (1.0, 0.0));
+        assert_eq!(rot_cos_sin(-90_000), (0.0, -1.0)); // rem_euclid normalization
+    }
+
+    /// The oracle equivalences are asserted at integer-exact configurations (identity, quarter
+    /// turns, integer scale) where both code paths are bit-deterministic by construction —
+    /// arbitrary angles would compare two independently-rounded radian conversions (1-ulp
+    /// hazards) without adding coverage; assert.det guards arbitrary angles end-to-end.
+    #[test]
+    fn actor_resample_identity_reproduces_source() {
+        let src = pattern(7, 5);
+        let xf = ActorXf {
+            tx_q8: 3 * 256,
+            ty_q8: 2 * 256,
+            rot_md: 0,
+            scale_micro: 1_000_000,
+            flip_h: false,
+            flip_v: false,
+            pivot_x_milli: 0,
+            pivot_y_milli: 0,
+        };
+        let (out, origin) = actor_resample(&src, 7, 5, &xf, SampleStyle::Nearest, None);
+        assert_eq!(origin, Point::new(3, 2));
+        for y in 0..5 {
+            for x in 0..7 {
+                assert_eq!(out.get(x, y), src.get(x, y));
+            }
+        }
+    }
+
+    #[test]
+    fn actor_resample_quarter_turn_matches_resample_rotate() {
+        let src = pattern(6, 4);
+        // Pivot at the source center; quarter turn; no offset. Resample::rotate places into a
+        // cw×ch canvas about the same pivot; actor_resample's t must equal that pivot.
+        let pivot = PointF { x: 3.0, y: 2.0 };
+        let params = Resample {
+            sw: 6,
+            sh: 4,
+            src_origin: Point::new(0, 0),
+            src_mask: None,
+            pivot,
+            off: Point::new(0, 0),
+            clean_edge: false,
+            clean_edge_width: 1.0,
+        };
+        let (a, _) = params.rotate(&src, std::f32::consts::FRAC_PI_2, 12, 12);
+        let xf = ActorXf {
+            tx_q8: (pivot.x * 256.0) as i32,
+            ty_q8: (pivot.y * 256.0) as i32,
+            rot_md: 90_000,
+            scale_micro: 1_000_000,
+            flip_h: false,
+            flip_v: false,
+            pivot_x_milli: 3000,
+            pivot_y_milli: 2000,
+        };
+        let (b, origin) = actor_resample(&src, 6, 4, &xf, SampleStyle::Nearest, None);
+        for y in 0..12 {
+            for x in 0..12 {
+                let lx = x - origin.x;
+                let ly = y - origin.y;
+                let bp = if lx >= 0 && ly >= 0 { b.get(lx, ly) } else { Rgba8::TRANSPARENT };
+                assert_eq!(a.get(x, y), bp, "mismatch at ({x},{y})");
+            }
+        }
+    }
+
+    #[test]
+    fn actor_resample_integer_scale_matches_resample_scale() {
+        let src = pattern(5, 3);
+        let pivot = PointF { x: 0.0, y: 0.0 };
+        let params = Resample {
+            sw: 5,
+            sh: 3,
+            src_origin: Point::new(0, 0),
+            src_mask: None,
+            pivot,
+            off: Point::new(0, 0),
+            clean_edge: false,
+            clean_edge_width: 1.0,
+        };
+        let (a, _) = params.scale(&src, 2.0, 2.0, 10, 6);
+        let xf = ActorXf {
+            tx_q8: 0,
+            ty_q8: 0,
+            rot_md: 0,
+            scale_micro: 2_000_000,
+            flip_h: false,
+            flip_v: false,
+            pivot_x_milli: 0,
+            pivot_y_milli: 0,
+        };
+        let (b, origin) = actor_resample(&src, 5, 3, &xf, SampleStyle::Nearest, None);
+        assert_eq!(origin, Point::new(0, 0));
+        for y in 0..6 {
+            for x in 0..10 {
+                assert_eq!(a.get(x, y), b.get(x, y), "mismatch at ({x},{y})");
+            }
+        }
+    }
+
+    #[test]
+    fn clip_restricts_output() {
+        let src = pattern(8, 8);
+        let xf = ActorXf {
+            tx_q8: 0,
+            ty_q8: 0,
+            rot_md: 0,
+            scale_micro: 4_000_000,
+            flip_h: false,
+            flip_v: false,
+            pivot_x_milli: 0,
+            pivot_y_milli: 0,
+        };
+        let clip = IRect::new(4, 4, 8, 8);
+        let (full, fo) = actor_resample(&src, 8, 8, &xf, SampleStyle::Nearest, None);
+        let (part, po) = actor_resample(&src, 8, 8, &xf, SampleStyle::Nearest, Some(clip));
+        assert_eq!(po, Point::new(4, 4));
+        for y in 0..8 {
+            for x in 0..8 {
+                assert_eq!(
+                    part.get(x, y),
+                    full.get(x + po.x - fo.x, y + po.y - fo.y),
+                    "clipped window must equal the full render's window"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn flips_mirror() {
+        let src = pattern(4, 3);
+        let xf = ActorXf {
+            tx_q8: 0,
+            ty_q8: 0,
+            rot_md: 0,
+            scale_micro: 1_000_000,
+            flip_h: true,
+            flip_v: false,
+            pivot_x_milli: 2000, // center x
+            pivot_y_milli: 0,
+        };
+        let (out, origin) = actor_resample(&src, 4, 3, &xf, SampleStyle::Nearest, None);
+        assert_eq!(origin.x, -2); // flip about center x=2 → dest spans [-2, 2)
+        for y in 0..3 {
+            for o in 0..4i32 {
+                assert_eq!(out.get(o, y), src.get(3 - o, y), "h-flip mirrors columns at ({o},{y})");
+            }
+        }
+    }
+}
+
 /// One lifted `sw`×`sh` source region: pixel (0,0) of the source buffer sits at `src_origin`
 /// in destination coords, optionally restricted by a source-sized 1-bit `src_mask`. The op
 /// runs about `pivot` (continuous destination coords), then shifts by the whole-pixel `off`

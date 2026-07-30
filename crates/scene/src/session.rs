@@ -15,7 +15,9 @@ use crate::model::{
 };
 use makapix_engine::buffer::RgbaBuffer;
 use makapix_engine::color::Rgba8;
+use makapix_engine::transform::rot_cos_sin;
 use makapix_engine::util::SeededRng;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -37,6 +39,9 @@ pub struct SceneSession {
     cache_epoch: u64,
     /// Open gesture bracket: first-touch snapshots of tracks, keyed by (actor, prop index).
     gesture: Option<HashMap<(ActorId, usize), Track>>,
+    /// The transform cache (P2). RefCell keeps `composite` callable on `&self`; eviction and
+    /// hits can never change output (assert.det guards it).
+    cache: RefCell<crate::compose::TransformCache>,
 }
 
 impl SceneSession {
@@ -56,6 +61,9 @@ impl SceneSession {
             mem_last_refusal: None,
             cache_epoch: 0,
             gesture: None,
+            cache: RefCell::new(crate::compose::TransformCache::new(
+                crate::compose::TRANSFORM_CACHE_BUDGET,
+            )),
         }
     }
 
@@ -108,6 +116,96 @@ impl SceneSession {
         let p = self.scene.prop(a.prop)?;
         let pose = eval::eval_tracks(&a.tracks, frame);
         Some(eval::resolve_src_frame(p, a.mode, &pose, frame))
+    }
+
+    // ---- compositing (P2) -------------------------------------------------------------------
+
+    /// The canonical image of frame `n` (canvas-sized, straight alpha).
+    pub fn composite(&self, n: u32) -> RgbaBuffer {
+        crate::compose::scene_frame(&self.scene, &mut self.cache.borrow_mut(), n)
+    }
+    pub fn composite_bytes(&self, n: u32) -> Vec<u8> {
+        self.composite(n).to_rgba_bytes()
+    }
+    pub fn frame_hash(&self, n: u32) -> u64 {
+        self.composite(n).content_hash() as u64
+    }
+
+    /// Nearest-fit thumbnail of a Prop's frame 0 into exactly `tw`×`th` RGBA (art centered,
+    /// transparent padding) — the Cast sheet / gallery tile source.
+    pub fn prop_thumb_bytes(&self, prop: PropId, tw: u32, th: u32) -> Vec<u8> {
+        let Some(p) = self.scene.prop(prop) else { return Vec::new() };
+        self.thumb_of(&p.frames[0], p.w, p.h, tw, th)
+    }
+
+    /// Thumbnail of an Actor's resolved source frame at the playhead.
+    pub fn actor_thumb_bytes(&self, actor: ActorId, tw: u32, th: u32) -> Vec<u8> {
+        let Some(a) = self.scene.actor(actor) else { return Vec::new() };
+        let Some(p) = self.scene.prop(a.prop) else { return Vec::new() };
+        let src = self.resolved_src_frame(actor, self.playhead).unwrap_or(0);
+        let src = src.min(p.frames.len().saturating_sub(1) as u32) as usize;
+        self.thumb_of(&p.frames[src], p.w, p.h, tw, th)
+    }
+
+    fn thumb_of(&self, src: &RgbaBuffer, sw: u32, sh: u32, tw: u32, th: u32) -> Vec<u8> {
+        let (tw, th) = (tw.clamp(1, 512), th.clamp(1, 512));
+        let mut out = RgbaBuffer::new(tw, th);
+        // Fit (never upscale beyond integer nearest): scale = min(tw/sw, th/sh) in float,
+        // centered; nearest sampling keeps it crisp.
+        let scale = (tw as f32 / sw as f32).min(th as f32 / sh as f32);
+        let fw = ((sw as f32 * scale).round() as i32).max(1);
+        let fh = ((sh as f32 * scale).round() as i32).max(1);
+        let ox = (tw as i32 - fw) / 2;
+        let oy = (th as i32 - fh) / 2;
+        for y in 0..fh {
+            for x in 0..fw {
+                let sx = ((x as f32 + 0.5) / scale).floor() as i32;
+                let sy = ((y as f32 + 0.5) / scale).floor() as i32;
+                let c = src.get(sx.clamp(0, sw as i32 - 1), sy.clamp(0, sh as i32 - 1));
+                if c.a != 0 {
+                    out.set(ox + x, oy + y, c);
+                }
+            }
+        }
+        out.to_rgba_bytes()
+    }
+
+    /// Topmost visible Actor whose transformed OPAQUE pixel covers scene point (x, y) at
+    /// `frame`, else None. Nearest-sampled (style-agnostic — a hit test, not a render).
+    pub fn hit_test(&self, frame: u32, x: i32, y: i32) -> Option<ActorId> {
+        for actor in self.scene.actors.iter().rev() {
+            if !actor.visible {
+                continue;
+            }
+            let pose = eval::eval_tracks(&actor.tracks, frame);
+            if pose.opacity <= 0 {
+                continue;
+            }
+            let Some(prop) = self.scene.prop(actor.prop) else { continue };
+            if prop.frames.is_empty() {
+                continue;
+            }
+            let xf = self.net_xf(actor, frame);
+            let (cos, sin) = rot_cos_sin(xf.rot_md.rem_euclid(360_000));
+            let s = (xf.scale_micro.max(1)) as f32 / 1_000_000.0;
+            let fxs = if xf.flip_h { -1.0f32 } else { 1.0 };
+            let fys = if xf.flip_v { -1.0f32 } else { 1.0 };
+            let gx = x as f32 + 0.5 - xf.tx_q8 as f32 / 256.0;
+            let gy = y as f32 + 0.5 - xf.ty_q8 as f32 / 256.0;
+            let rx = (cos * gx + sin * gy) / s * fxs + xf.pivot_x_milli as f32 / 1000.0;
+            let ry = (-sin * gx + cos * gy) / s * fys + xf.pivot_y_milli as f32 / 1000.0;
+            let lx = rx.floor() as i32;
+            let ly = ry.floor() as i32;
+            if lx < 0 || ly < 0 || lx >= prop.w as i32 || ly >= prop.h as i32 {
+                continue;
+            }
+            let src_idx = eval::resolve_src_frame(prop, actor.mode, &pose, frame);
+            let src = &prop.frames[src_idx.min(prop.frames.len() as u32 - 1) as usize];
+            if src.get(lx, ly).a != 0 {
+                return Some(actor.id);
+            }
+        }
+        None
     }
 
     // ---- memory budget protocol (engine pattern) --------------------------------------------
@@ -474,6 +572,7 @@ impl SceneSession {
                 let fps = SceneFps::from_millifps(millifps).unwrap_or(SceneFps::F12_5);
                 self.scene = Scene::new(w, h, fps);
                 self.history.clear();
+                self.cache.borrow_mut().clear();
                 self.playhead = 0;
                 self.selected_actor = None;
                 self.playing = false;
@@ -765,6 +864,215 @@ impl SceneSession {
         }
     }
 
+    // ---- Prop import (P2) — the ONE art-ingestion chokepoint --------------------------------
+
+    /// Import art as Prop(s): `.mkpx` (plain or compact, by signature — whole drawing, or one
+    /// Prop per layer with `split_layers`) or any codec raster (PNG/GIF/WEBP/APNG/BMP/JPEG).
+    /// Cycles quantize to the Scene grid here (ADR-0001). With `place_actors`, each new Prop
+    /// gets an Actor (split parts self-assemble at their original alignment and z-order — the
+    /// "layers become limbs" moment). The whole import is ONE undo step. Budget-refused
+    /// imports leave the Scene untouched and return Err (the P-0 lesson: imports go through
+    /// the chokepoint).
+    pub fn import_prop_bytes(
+        &mut self,
+        data: &[u8],
+        name: &str,
+        split_layers: bool,
+        place_actors: bool,
+    ) -> Result<ImportOutcome, String> {
+        let built = self.build_import_props(data, name, split_layers)?;
+        // Budget gate BEFORE any scene mutation, on the exact bytes of everything built.
+        if self.scene.cast.len() + built.len() > MAX_PROPS {
+            self.mem_refuse("the cast is full");
+            return Err("the cast is full".into());
+        }
+        let incoming: usize =
+            built.iter().flat_map(|p| p.frames.iter()).map(|f| f.memory_bytes()).sum();
+        let (_, hard) = self.mem_budgets();
+        if self.mem_exact + incoming > hard {
+            self.mem_refuse("import exceeds the scene memory budget");
+            return Err("import exceeds the scene memory budget".into());
+        }
+
+        let mut parts: Vec<SceneEdit> = Vec::new();
+        let mut outcome = ImportOutcome { props: Vec::new(), actors: Vec::new() };
+        for mut prop in built {
+            let id = self.scene.prop_ids.alloc();
+            prop.id = id;
+            let index = self.scene.cast.len();
+            self.scene.cast.push(prop);
+            parts.push(SceneEdit::CastInsert {
+                index,
+                prop: Arc::new(self.scene.cast[index].clone()),
+            });
+            outcome.props.push(id);
+            if place_actors && self.scene.actors.len() < MAX_ACTORS {
+                let p = &self.scene.cast[index];
+                let (pw, ph, pname) = (p.w, p.h, p.name.clone());
+                // Split parts align at the source origin (pivot = center → position = center);
+                // whole/raster imports center on the Scene.
+                let (ax, ay) = if split_layers {
+                    ((pw / 2) as i32, (ph / 2) as i32)
+                } else {
+                    (self.scene.w as i32 / 2, self.scene.h as i32 / 2)
+                };
+                let aid = self.scene.actor_ids.alloc();
+                let mut tracks = Tracks::default_for(pw, ph);
+                tracks.get_mut(TrackProp::X).base = TrackProp::X.clamp(ax as i64);
+                tracks.get_mut(TrackProp::Y).base = TrackProp::Y.clamp(ay as i64);
+                let actor = Actor {
+                    id: aid,
+                    name: pname,
+                    prop: id,
+                    mode: ActorMode::Playing,
+                    pin_to: None,
+                    visible: true,
+                    tracks,
+                };
+                let aindex = self.scene.actors.len();
+                self.scene.actors.push(actor);
+                parts.push(SceneEdit::ActorInsert {
+                    index: aindex,
+                    actor: Arc::new(self.scene.actors[aindex].clone()),
+                });
+                outcome.actors.push(aid);
+            }
+        }
+        if outcome.props.is_empty() {
+            return Err("nothing to import".into());
+        }
+        let e = if parts.len() == 1 { parts.pop().expect("one part") } else { SceneEdit::Compound(parts) };
+        self.history.push(e);
+        self.bump();
+        self.mem_recalibrate();
+        if let Some(&last) = outcome.actors.last() {
+            self.selected_actor = Some(last);
+        }
+        Ok(outcome)
+    }
+
+    /// Decode `data` into fully-built Props (no scene mutation, no ids assigned).
+    fn build_import_props(
+        &self,
+        data: &[u8],
+        name: &str,
+        split_layers: bool,
+    ) -> Result<Vec<Prop>, String> {
+        use makapix_engine::io::SIGNATURE;
+        let fps_us = self.scene.fps.frame_us();
+        let quant = |dur_us: u32| crate::eval::quantize_duration(dur_us, fps_us);
+
+        // `.mkpx`, plain or inside the MKPZ compact envelope.
+        let plain: Option<Vec<u8>> = if makapix_codec::mkpx_compact::is_compact(data) {
+            Some(makapix_codec::mkpx_compact::open(data).map_err(|e| e.to_string())?)
+        } else if data.len() >= 8 && data[..8] == SIGNATURE {
+            Some(data.to_vec())
+        } else {
+            None
+        };
+
+        if let Some(plain) = plain {
+            let doc = makapix_engine::io::load_from_bytes_budgeted(
+                &plain,
+                crate::model::PROP_IMPORT_MAX_BYTES,
+            )
+            .map_err(|e| e.to_string())?;
+            let rect = doc.canvas_rect();
+            let (w, h) = (rect.w, rect.h);
+            if w > MAX_PROP_DIM || h > MAX_PROP_DIM {
+                return Err("Props can be at most 1024 px per side".into());
+            }
+            if split_layers && doc.frames[0].layers.len() > 1 {
+                // One Prop PER LAYER (frame-0 layer list defines the parts); each part's
+                // frames are that layer's canvas-rect pixels per document frame.
+                let n_layers = doc.frames[0].layers.len();
+                let mut props = Vec::with_capacity(n_layers);
+                for li in 0..n_layers {
+                    let mut frames = Vec::with_capacity(doc.frames.len());
+                    let mut cycle = Vec::with_capacity(doc.frames.len());
+                    let mut semi = false;
+                    for f in &doc.frames {
+                        let buf = match f.layers.get(li) {
+                            Some(l) => l.pixels.subimage(rect),
+                            None => RgbaBuffer::new(w, h),
+                        };
+                        semi |= has_semi_alpha(&buf);
+                        frames.push(buf);
+                        cycle.push(quant(f.duration_us));
+                    }
+                    props.push(Prop {
+                        id: 0,
+                        name: doc.frames[0].layers[li].name.clone(),
+                        w,
+                        h,
+                        frames,
+                        cycle_map: cycle,
+                        style: PixelStyle::Nearest,
+                        has_semi_alpha: semi,
+                        art_epoch: 0,
+                    });
+                }
+                return Ok(props);
+            }
+            // Whole drawing: per-frame composites.
+            let mut frames = Vec::with_capacity(doc.frames.len());
+            let mut cycle = Vec::with_capacity(doc.frames.len());
+            let mut semi = false;
+            for f in &doc.frames {
+                let buf = makapix_engine::render::composite_frame(f, rect);
+                semi |= has_semi_alpha(&buf);
+                frames.push(buf);
+                cycle.push(quant(f.duration_us));
+            }
+            return Ok(vec![Prop {
+                id: 0,
+                name: if name.is_empty() { "drawing".into() } else { name.into() },
+                w,
+                h,
+                frames,
+                cycle_map: cycle,
+                style: PixelStyle::Nearest,
+                has_semi_alpha: semi,
+                art_epoch: 0,
+            }]);
+        }
+
+        // Raster formats through the codec (tight caps fire DURING decode).
+        let decoded = makapix_codec::decode_with_limits(
+            data,
+            MAX_PROP_FRAMES,
+            crate::model::PROP_IMPORT_MAX_BYTES,
+        )
+        .map_err(|e| e.to_string())?;
+        let (w, h) = (decoded[0].w, decoded[0].h);
+        if w > MAX_PROP_DIM || h > MAX_PROP_DIM {
+            return Err("Props can be at most 1024 px per side".into());
+        }
+        let mut frames = Vec::with_capacity(decoded.len());
+        let mut cycle = Vec::with_capacity(decoded.len());
+        let mut semi = false;
+        for df in &decoded {
+            if df.w != w || df.h != h {
+                return Err("animation frames must share one size".into());
+            }
+            let buf = RgbaBuffer::from_rgba_bytes(w, h, &df.rgba);
+            semi |= has_semi_alpha(&buf);
+            frames.push(buf);
+            cycle.push(quant(df.duration_us));
+        }
+        Ok(vec![Prop {
+            id: 0,
+            name: if name.is_empty() { "image".into() } else { name.into() },
+            w,
+            h,
+            frames,
+            cycle_map: cycle,
+            style: PixelStyle::Nearest,
+            has_semi_alpha: semi,
+            art_epoch: 0,
+        }])
+    }
+
     // ---- state_json / mem_json --------------------------------------------------------------
 
     fn uses_alpha(&self) -> bool {
@@ -926,6 +1234,27 @@ impl SceneSession {
             self.mem_refusals
         )
     }
+}
+
+/// What an import produced (ids in creation order).
+#[derive(Clone, Debug, Default)]
+pub struct ImportOutcome {
+    pub props: Vec<PropId>,
+    pub actors: Vec<ActorId>,
+}
+
+fn has_semi_alpha(buf: &RgbaBuffer) -> bool {
+    if let Some(bb) = buf.opaque_bounds() {
+        for y in bb.y..bb.bottom() {
+            for x in bb.x..bb.right() {
+                let a = buf.get(x, y).a;
+                if a != 0 && a != 255 {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
 
 fn esc(s: &str) -> String {
