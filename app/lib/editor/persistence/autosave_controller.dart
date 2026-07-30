@@ -2,31 +2,37 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-import 'drawing_meta.dart';
-import 'drawing_store.dart';
-
-/// Drives autosave for ONE library drawing. Owns the periodic timer, change-detection, a coalescing
-/// single-flight writer, and the immediate "flush now" used on app-background / leaving the editor.
+/// Drives autosave for ONE library document (an editor drawing or an Animator scene). Owns the
+/// periodic timer, change-detection, a coalescing single-flight writer, and the immediate
+/// "flush now" used on app-background / leaving the pillar.
 ///
-/// Engine-agnostic: it pulls bytes through the injected [serialize] callback and metadata through
-/// [buildMeta]. **Both are invoked synchronously** at request time (before any `await`), so they are
-/// safe to call right up to `engine.dispose()` and the async write never touches a freed engine.
-/// This also keeps the controller unit-testable with fakes.
+/// Engine- and store-agnostic (generic over the metadata type `M`, with the store injected as
+/// the [writeDoc]/[writeMeta] callbacks — genericized 2026-07-30 so the Animator's SceneStore
+/// reuses the subtle single-flight/hash logic unchanged): it pulls bytes through the injected
+/// [serialize] callback and metadata through [buildMeta]. **Both are invoked synchronously** at
+/// request time (before any `await`), so they are safe to call right up to `engine.dispose()`
+/// and the async write never touches a freed engine. This also keeps the controller
+/// unit-testable with fakes.
 ///
 /// Cadence: every [interval] (default 5 s, comfortably under the 10 s loss budget), if there has
 /// been activity, it serializes and writes the doc **only if the bytes actually changed** (FNV-1a
 /// hash). Thumbnails are not handled here (the gallery generates/caches them) to keep all engine
 /// access on the synchronous path.
-class AutosaveController {
+class AutosaveController<M> {
   final String id;
-  final DrawingStore store;
 
-  /// Current document as `.mkpx` bytes (engine.save). Returns empty when not serializable; the
+  /// Writes the document bytes for [id] (typically `store.writeDoc`).
+  final Future<void> Function(String id, Uint8List bytes) writeDoc;
+
+  /// Writes the metadata record (typically `store.writeMeta`).
+  final Future<void> Function(M meta) writeMeta;
+
+  /// Current document bytes (engine save). Returns empty when not serializable; the
   /// controller then writes nothing (never clobbers a good file).
   final Uint8List Function() serialize;
 
-  /// Current metadata for this drawing (the caller stamps `updatedAt`). Invoked synchronously.
-  final DrawingMeta Function() buildMeta;
+  /// Current metadata for this document (the caller stamps `updatedAt`). Invoked synchronously.
+  final M Function() buildMeta;
 
   /// Called (non-fatally) when a write fails — e.g. to show a throttled "couldn't autosave" toast.
   final void Function(Object error)? onError;
@@ -35,7 +41,8 @@ class AutosaveController {
 
   AutosaveController({
     required this.id,
-    required this.store,
+    required this.writeDoc,
+    required this.writeMeta,
     required this.serialize,
     required this.buildMeta,
     this.onError,
@@ -46,7 +53,7 @@ class AutosaveController {
   bool _activity = false; // coarse "something happened" gate for the cheap serialize
   int _lastHash = 0;
   bool _hasSaved = false;
-  ({Uint8List bytes, DrawingMeta meta})? _pending; // latest write waiting (latest-wins)
+  ({Uint8List bytes, M meta})? _pending; // latest write waiting (latest-wins)
   bool _draining = false;
   bool _stopped = false;
 
@@ -83,7 +90,7 @@ class AutosaveController {
     return _enqueue(bytes, meta);
   }
 
-  Future<void> _enqueue(Uint8List bytes, DrawingMeta meta) {
+  Future<void> _enqueue(Uint8List bytes, M meta) {
     _pending = (bytes: bytes, meta: meta);
     return _drain();
   }
@@ -98,8 +105,8 @@ class AutosaveController {
         final job = _pending!;
         _pending = null;
         try {
-          await store.writeDoc(id, job.bytes);
-          await store.writeMeta(job.meta);
+          await writeDoc(id, job.bytes);
+          await writeMeta(job.meta);
         } catch (e) {
           onError?.call(e);
         }

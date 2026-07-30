@@ -128,7 +128,7 @@ extension _EditorControls on _EditorPageState {
       // layer/move-group. Edge mode: Protect (clamp on-canvas) / Wrap (re-enter the opposite edge) /
       // both off = Regular — applies to layer, pixel AND selection-mask moves (Protect/Wrap exclusive).
       final hasSel = _outlineEdges.isNotEmpty;
-      children.add(_toggle(['Move layer/pixels', 'Move selection'], _moveSelectionMode ? 1 : 0, (i) {
+      children.add(chromeToggle(['Move layer/pixels', 'Move selection'], _moveSelectionMode ? 1 : 0, (i) {
         // Switching the move mode mid-draft discards the pending draft first.
         if (_hasMoveDraft) _cancelMoveDraft();
         setState(() => _moveSelectionMode = i == 1);
@@ -181,7 +181,7 @@ extension _EditorControls on _EditorPageState {
       label('Ruler');
       // Length = one measured line; Angle = a second arm A→C and the angle at the shared vertex A.
       // Purely local overlay state — the engine never hears about the Ruler.
-      children.add(_toggle(['Length', 'Angle'], _rulerAngle ? 1 : 0, (i) {
+      children.add(chromeToggle(['Length', 'Angle'], _rulerAngle ? 1 : 0, (i) {
         setState(() {
           _rulerAngle = i == 1;
           if (_rulerAngle && _hasRuler && _rulerC == null) {
@@ -202,7 +202,7 @@ extension _EditorControls on _EditorPageState {
           onSelected: _hasRuler ? (v) => setState(() => _rulerPinned = v) : null,
         ),
       ));
-      children.add(_miniBtn('Clear', () {
+      children.add(miniBtn('Clear', () {
         setState(() {
           _rulerA = null;
           _rulerB = null;
@@ -227,7 +227,7 @@ extension _EditorControls on _EditorPageState {
     }
     if (shapeTools.contains(_tool)) {
       label('Shape');
-      children.add(_iconToggle(const [Icons.circle, Icons.square], const ['Round', 'Square'], _round ? 0 : 1, (i) {
+      children.add(chromeIconToggle(const [Icons.circle, Icons.square], const ['Round', 'Square'], _round ? 0 : 1, (i) {
         setState(() => _round = i == 0);
         _send('SetBrushShape(${_round ? 'Round' : 'Square'})');
       }));
@@ -237,7 +237,7 @@ extension _EditorControls on _EditorPageState {
       // stored pixels (its opacity/visibility ignored). Applies to taps, drags, and the
       // precision-mode Pick button alike.
       label('Source');
-      children.add(_toggle(['Frame', 'Layer'], _eyedropLayer ? 1 : 0, (i) {
+      children.add(chromeToggle(['Frame', 'Layer'], _eyedropLayer ? 1 : 0, (i) {
         setState(() => _eyedropLayer = i == 1);
         _send('SetEyedropSource(${_eyedropLayer ? 'Layer' : 'Frame'})');
       }));
@@ -283,7 +283,7 @@ extension _EditorControls on _EditorPageState {
         setState(() => _threshold = v.round());
         _send('SetThreshold($_threshold)');
       });
-      children.add(_toggle(['Contiguous', 'Global'], _contiguous ? 0 : 1, (i) {
+      children.add(chromeToggle(['Contiguous', 'Global'], _contiguous ? 0 : 1, (i) {
         setState(() => _contiguous = i == 0);
         _send('SetContiguous($_contiguous)');
       }));
@@ -292,7 +292,7 @@ extension _EditorControls on _EditorPageState {
         // Layer = the active layer's raw stored pixels (its opacity/visibility ignored).
         // Applies to taps and the precision-mode Select button alike.
         label('Source');
-        children.add(_toggle(['Frame', 'Layer'], _selColorLayer ? 1 : 0, (i) {
+        children.add(chromeToggle(['Frame', 'Layer'], _selColorLayer ? 1 : 0, (i) {
           setState(() => _selColorLayer = i == 1);
           _send('SetSelectColorSource(${_selColorLayer ? 'Layer' : 'Frame'})');
         }));
@@ -331,7 +331,7 @@ extension _EditorControls on _EditorPageState {
       // The glyphs render filled or hollow to track the Fill/Outline mode below; the names
       // stay reachable as long-press tooltips.
       const kinds = ['Ellipse', 'Triangle', 'Rectangle'];
-      children.add(_glyphToggle(
+      children.add(chromeGlyphToggle(
         [for (final k in kinds) ShapeGlyph(kind: k, filled: _shapeFill)],
         kinds,
         kinds.indexOf(_shapeKind),
@@ -341,7 +341,7 @@ extension _EditorControls on _EditorPageState {
           if (_hasShapeDraft) _redraw();
         },
       ));
-      children.add(_toggle(['Fill', 'Outline'], _shapeFill ? 0 : 1, (i) {
+      children.add(chromeToggle(['Fill', 'Outline'], _shapeFill ? 0 : 1, (i) {
         setState(() => _shapeFill = i == 0);
         _send('SetShapeFill($_shapeFill)');
         if (_hasShapeDraft) _redraw(); // the pending preview reflects fill/outline live
@@ -371,7 +371,7 @@ extension _EditorControls on _EditorPageState {
     }
     if (_tool == 'Gradient') {
       // Changing the gradient (type, color count or any color) updates a pending draft instantly.
-      children.add(_toggle(['Linear', 'Radial'], _radial ? 1 : 0, (i) {
+      children.add(chromeToggle(['Linear', 'Radial'], _radial ? 1 : 0, (i) {
         setState(() => _radial = i == 1);
         _send('SetGradientType(${_radial ? 'Radial' : 'Linear'})');
         if (_hasShapeDraft) _redraw();
@@ -391,16 +391,16 @@ extension _EditorControls on _EditorPageState {
         ),
       ));
       // Number of evenly-spaced colors in the gradient (2..6); the swatch count follows.
-      children.add(_toggle(['2', '3', '4', '5', '6'], _gradCount - 2, (i) {
+      children.add(chromeToggle(['2', '3', '4', '5', '6'], _gradCount - 2, (i) {
         setState(() => _gradCount = i + 2);
         _sendGradientStops();
       }));
       // First color = the primary (same as the row-2 primary swatch); tapping it changes the
       // primary color. The rest are independent gradient colors.
-      children.add(_swatchButton(_primary, () => _pickColor(initial: _primary, onPick: _setPrimary)));
+      children.add(swatchButton(_primary, () => _pickColor(initial: _primary, onPick: _setPrimary)));
       for (var i = 0; i < _gradCount - 1; i++) {
         final idx = i;
-        children.add(_swatchButton(_gradExtra[idx], () => _pickColor(initial: _gradExtra[idx], onPick: (c) {
+        children.add(swatchButton(_gradExtra[idx], () => _pickColor(initial: _gradExtra[idx], onPick: (c) {
               setState(() => _gradExtra[idx] = c);
               _sendGradientStops();
             })));
@@ -417,10 +417,10 @@ extension _EditorControls on _EditorPageState {
       // Replace/Add/Subtract/Intersect are one-off triggers (each applies the alpha→selection op
       // against the current selection right now) — NOT a remembered/toggled mode.
       for (final m in const ['Replace', 'Add', 'Subtract', 'Intersect']) {
-        children.add(_miniBtn(m, () => _act('SelectByAlpha($m)')));
+        children.add(miniBtn(m, () => _act('SelectByAlpha($m)')));
       }
       children.add(const SizedBox(width: 6));
-      children.add(_miniBtn('All', () => _act('SelectAll()')));
+      children.add(miniBtn('All', () => _act('SelectAll()')));
       // Select None (and Invert) live on the floating selection-menu over the canvas.
     }
     if (_tool == 'SelectShape') {
@@ -429,7 +429,7 @@ extension _EditorControls on _EditorPageState {
       // discards a pending draft (it can't survive into the immediate freeform path) — same
       // shell-side-only cancel as switching tools.
       const kinds = ['Rectangle', 'Ellipse', 'Lasso'];
-      children.add(_toggle(['Rect', 'Oval', 'Lasso'], kinds.indexOf(_selShapeKind), (i) {
+      children.add(chromeToggle(['Rect', 'Oval', 'Lasso'], kinds.indexOf(_selShapeKind), (i) {
         setState(() => _selShapeKind = kinds[i]);
         if (_selShapeKind == 'Lasso' && _hasSelDraft) _cancelSelDraft();
         _send('SelectTool(${selectShapeEngineTool(_selShapeKind)})');
@@ -440,12 +440,12 @@ extension _EditorControls on _EditorPageState {
       }));
     }
     if (_tool.startsWith('Select') && _tool != 'SelectLayer') {
-      children.add(_toggle(['Replace', 'Add', 'Subtract', 'Intersect'],
+      children.add(chromeToggle(['Replace', 'Add', 'Subtract', 'Intersect'],
           ['Replace', 'Add', 'Subtract', 'Intersect'].indexOf(_selMode), (i) {
         setState(() => _selMode = ['Replace', 'Add', 'Subtract', 'Intersect'][i]);
         _send('SetSelectionMode($_selMode)');
       }));
-      children.add(_miniBtn('All', () => _act('SelectAll()')));
+      children.add(miniBtn('All', () => _act('SelectAll()')));
       // Select None / Invert live on the floating selection-menu over the canvas (they act on an
       // existing selection, which is exactly when that menu shows). Clipboard ops (Copy/Cut/Paste)
       // and Clear live in the dedicated Copy & Paste tool.
@@ -475,10 +475,10 @@ extension _EditorControls on _EditorPageState {
       }
     }
     if (_tool == 'CopyPaste') {
-      children.add(_miniBtn('Copy', () => _act('Copy()')));
-      children.add(_miniBtn('Cut', () => _act('Cut()')));
-      children.add(_miniBtn('Paste', () => _act('PasteDraft()')));
-      children.add(_miniBtn('Clear', () => _act('ClearSelection()')));
+      children.add(miniBtn('Copy', () => _act('Copy()')));
+      children.add(miniBtn('Cut', () => _act('Cut()')));
+      children.add(miniBtn('Paste', () => _act('PasteDraft()')));
+      children.add(miniBtn('Clear', () => _act('ClearSelection()')));
     }
     if (_tool == 'HsvShift') {
       // Every slider change syncs the pending shift into the engine, whose display then
@@ -493,7 +493,7 @@ extension _EditorControls on _EditorPageState {
       }
 
       // The scope lives in the engine too (SetHsvScope) so the live preview honors it.
-      children.add(_toggle(const ['Layer', 'Frame'], _hsvFrame ? 1 : 0, (i) {
+      children.add(chromeToggle(const ['Layer', 'Frame'], _hsvFrame ? 1 : 0, (i) {
         setState(() => _hsvFrame = i == 1);
         _send('SetHsvScope(${_hsvFrame ? 'Frame' : 'Layer'})');
         _redraw();
@@ -513,7 +513,7 @@ extension _EditorControls on _EditorPageState {
         _redraw();
       }
 
-      children.add(_toggle(const ['Layer', 'Frame'], _bcFrame ? 1 : 0, (i) {
+      children.add(chromeToggle(const ['Layer', 'Frame'], _bcFrame ? 1 : 0, (i) {
         setState(() => _bcFrame = i == 1);
         _send('SetBcScope(${_bcFrame ? 'Frame' : 'Layer'})');
         _redraw();
@@ -523,9 +523,9 @@ extension _EditorControls on _EditorPageState {
     }
     if (_tool == 'Flip') {
       label(_flipFrame ? 'Flip frame' : (_outlineEdges.isNotEmpty ? 'Flip selection' : 'Flip layer'));
-      children.add(_toggle(const ['Layer', 'Frame'], _flipFrame ? 1 : 0, (i) => setState(() => _flipFrame = i == 1)));
-      children.add(_miniBtn('Flip H', () => _act(_flipFrame ? 'FlipFrameH()' : 'FlipH()')));
-      children.add(_miniBtn('Flip V', () => _act(_flipFrame ? 'FlipFrameV()' : 'FlipV()')));
+      children.add(chromeToggle(const ['Layer', 'Frame'], _flipFrame ? 1 : 0, (i) => setState(() => _flipFrame = i == 1)));
+      children.add(miniBtn('Flip H', () => _act(_flipFrame ? 'FlipFrameH()' : 'FlipH()')));
+      children.add(miniBtn('Flip V', () => _act(_flipFrame ? 'FlipFrameV()' : 'FlipV()')));
     }
     if (_tool == 'Rotate') {
       // cleanEdge resampling toggle + its line width. Shown in BOTH row-1 states (idle and
@@ -563,13 +563,13 @@ extension _EditorControls on _EditorPageState {
         // 90°/180° and the free-angle draft act on the active layer (or the selected pixels), or
         // on every layer of the active frame in Frame scope.
         label(_rotateFrame ? 'Rotate frame' : (_outlineEdges.isNotEmpty ? 'Rotate selection' : 'Rotate layer'));
-        children.add(_toggle(const ['Layer', 'Frame'], _rotateFrame ? 1 : 0, (i) => setState(() => _rotateFrame = i == 1)));
+        children.add(chromeToggle(const ['Layer', 'Frame'], _rotateFrame ? 1 : 0, (i) => setState(() => _rotateFrame = i == 1)));
         final verb = _rotateFrame ? 'RotateFrame' : 'RotateLayer';
         children.add(IconButton(iconSize: 18, tooltip: 'Rotate 90° CW', onPressed: () => _act('$verb(1)'), icon: const Icon(Icons.rotate_right)));
         children.add(IconButton(iconSize: 18, tooltip: 'Rotate 90° CCW', onPressed: () => _act('$verb(3)'), icon: const Icon(Icons.rotate_left)));
-        children.add(_miniBtn('180°', () => _act('$verb(2)')));
+        children.add(miniBtn('180°', () => _act('$verb(2)')));
         children.add(const SizedBox(width: 6));
-        children.add(_miniBtn('Angle', _beginRotateDraft));
+        children.add(miniBtn('Angle', _beginRotateDraft));
         cleanEdgeControls();
       }
     }
@@ -636,19 +636,19 @@ extension _EditorControls on _EditorPageState {
         // ½×/2× and the free-scale draft act on the active layer (or the selected pixels), or
         // on every layer of the active frame in Frame scope.
         label(_resizeFrame ? 'Resize frame' : (_outlineEdges.isNotEmpty ? 'Resize selection' : 'Resize layer'));
-        children.add(_toggle(const ['Layer', 'Frame'], _resizeFrame ? 1 : 0, (i) => setState(() => _resizeFrame = i == 1)));
+        children.add(chromeToggle(const ['Layer', 'Frame'], _resizeFrame ? 1 : 0, (i) => setState(() => _resizeFrame = i == 1)));
         final verb = _resizeFrame ? 'ScaleFrame' : 'ScaleLayer';
-        children.add(_miniBtn('½×', () => _act('$verb(500,500)')));
-        children.add(_miniBtn('2×', () => _act('$verb(2000,2000)')));
+        children.add(miniBtn('½×', () => _act('$verb(500,500)')));
+        children.add(miniBtn('2×', () => _act('$verb(2000,2000)')));
         children.add(const SizedBox(width: 6));
-        children.add(_miniBtn('Scale', _beginResizeDraft));
+        children.add(miniBtn('Scale', _beginResizeDraft));
         cleanEdgeControls();
       }
     }
     if (_tool == 'Invert') {
       label(_invertFrame ? 'Invert frame' : (_outlineEdges.isNotEmpty ? 'Invert selection' : 'Invert layer'));
-      children.add(_toggle(const ['Layer', 'Frame'], _invertFrame ? 1 : 0, (i) => setState(() => _invertFrame = i == 1)));
-      children.add(_miniBtn('Invert colors', () => _act(_invertFrame ? 'InvertFrame()' : 'Invert()')));
+      children.add(chromeToggle(const ['Layer', 'Frame'], _invertFrame ? 1 : 0, (i) => setState(() => _invertFrame = i == 1)));
+      children.add(miniBtn('Invert colors', () => _act(_invertFrame ? 'InvertFrame()' : 'Invert()')));
     }
     if (_tool == 'PlayPause') {
       final n = engine.frameCount;
@@ -675,7 +675,7 @@ extension _EditorControls on _EditorPageState {
       children.add(IconButton(iconSize: 22, tooltip: 'Next frame', onPressed: () => _stepFrame(1), icon: const Icon(Icons.skip_next)));
       children.add(const SizedBox(width: 6));
       // Go to… — type a frame number and jump to it (also auto-pauses playback first).
-      children.add(_miniBtn('Go to…', _gotoFrameDialog));
+      children.add(miniBtn('Go to…', _gotoFrameDialog));
     }
 
     return Container(

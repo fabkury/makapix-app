@@ -8,128 +8,6 @@ part of 'editor_page.dart';
 // idiom, and the destructive action isolated at the bottom. Both sheets share the small
 // building blocks below so they stay visually in lockstep.
 extension _EditorSheets on _EditorPageState {
-  // ── shared building blocks ────────────────────────────────────────────────
-
-  // Identity thumbnail on the transparent checkerboard, matching the strip tiles.
-  Widget _sheetThumb(ThumbCache? cached) => Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          color: const Color(0xFF101214),
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: Colors.black26),
-        ),
-        padding: const EdgeInsets.all(2),
-        child: CustomPaint(
-          painter: const CheckerPainter(),
-          child: cached != null
-              ? RawImage(image: cached.img, fit: BoxFit.contain, filterQuality: FilterQuality.none)
-              : const SizedBox.shrink(),
-        ),
-      );
-
-  // Header: thumbnail + bold title (+ optional rename affordance) + muted subtitle.
-  Widget _sheetHeader({
-    required ThumbCache? thumb,
-    required String title,
-    required String subtitle,
-    VoidCallback? onRename,
-  }) =>
-      Row(children: [
-        _sheetThumb(thumb),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            InkWell(
-              onTap: onRename,
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Flexible(
-                  child: Text(title,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                      overflow: TextOverflow.ellipsis),
-                ),
-                if (onRename != null) ...[
-                  const SizedBox(width: 6),
-                  const Icon(Icons.edit, size: 14, color: Colors.white54),
-                ],
-              ]),
-            ),
-            const SizedBox(height: 2),
-            Text(subtitle, style: const TextStyle(fontSize: 12, color: Colors.white54)),
-          ]),
-        ),
-      ]);
-
-  Widget _sheetSection(String label) => Padding(
-        padding: const EdgeInsets.only(top: 12, bottom: 6),
-        child: Text(label.toUpperCase(),
-            style: const TextStyle(
-                fontSize: 11, letterSpacing: 1.2, color: Colors.white38, fontWeight: FontWeight.w600)),
-      );
-
-  // One action button; every non-destructive action in the sheets uses this idiom.
-  Widget _sheetBtn(IconData icon, String label, VoidCallback? onTap) => FilledButton.tonalIcon(
-        style: FilledButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-          visualDensity: VisualDensity.compact,
-        ),
-        onPressed: onTap,
-        icon: Icon(icon, size: 16),
-        label: Text(label,
-            style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis, maxLines: 1),
-      );
-
-  // A row of equal-width action buttons.
-  Widget _sheetBtnRow(List<Widget> buttons) => Row(children: [
-        for (var k = 0; k < buttons.length; k++) ...[
-          if (k > 0) const SizedBox(width: 8),
-          Expanded(child: buttons[k]),
-        ],
-      ]);
-
-  // The lone destructive action at the bottom of a sheet.
-  Widget _sheetDelete(String label, VoidCallback? onTap) => SizedBox(
-        width: double.infinity,
-        child: TextButton.icon(
-          style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
-          onPressed: onTap,
-          icon: const Icon(Icons.delete_outline, size: 18),
-          label: Text(label),
-        ),
-      );
-
-  // An icon toggle chip for the state zone (visible / locked / move-group).
-  Widget _stateChip({
-    required IconData icon,
-    required String label,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-    Color? accent,
-    String? tooltip,
-  }) {
-    final chip = FilterChip(
-      showCheckmark: false,
-      avatar: Icon(icon, size: 16),
-      label: Text(label, style: const TextStyle(fontSize: 12)),
-      selected: value,
-      selectedColor: accent,
-      visualDensity: VisualDensity.compact,
-      onSelected: onChanged,
-    );
-    return tooltip != null ? Tooltip(message: tooltip, child: chip) : chip;
-  }
-
-  Widget _sheetScaffold(BuildContext ctx, List<Widget> children) => SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: children),
-          ),
-        ),
-      );
 
   // Reorder a layer while keeping the move-group membership pointing at the same layers
   // (the group is a set of indices, so a reorder must swap the two slots' membership).
@@ -177,9 +55,9 @@ extension _EditorSheets on _EditorPageState {
           });
         }
 
-        return _sheetScaffold(ctx, [
-          _sheetHeader(
-            thumb: cached, // stale-while-revalidate: old thumb beats a checkerboard flash
+        return sheetScaffold([
+          sheetHeader(
+            thumb: cached?.img, // stale-while-revalidate: old thumb beats a checkerboard flash
             title: '${l['name']}',
             subtitle: 'Layer ${cur + 1} of $count',
             onRename: () {
@@ -189,7 +67,7 @@ extension _EditorSheets on _EditorPageState {
           ),
           const SizedBox(height: 10),
           Wrap(spacing: 8, runSpacing: 4, children: [
-            _stateChip(
+            stateChip(
               icon: visible ? Icons.visibility : Icons.visibility_off,
               label: 'Visible',
               value: visible,
@@ -198,7 +76,7 @@ extension _EditorSheets on _EditorPageState {
                 setS(() {});
               },
             ),
-            _stateChip(
+            stateChip(
               icon: locked ? Icons.lock : Icons.lock_open,
               label: 'Locked',
               value: locked,
@@ -207,7 +85,7 @@ extension _EditorSheets on _EditorPageState {
                 setS(() {});
               },
             ),
-            _stateChip(
+            stateChip(
               icon: Icons.open_with,
               label: 'Move group',
               value: inGroup,
@@ -264,21 +142,21 @@ extension _EditorSheets on _EditorPageState {
               ),
             ),
           ]),
-          _sheetSection('Arrange'),
-          _sheetBtnRow([
-            _sheetBtn(Icons.arrow_upward, 'Up', cur + 1 < count
+          sheetSection('Arrange'),
+          sheetBtnRow([
+            sheetBtn(Icons.arrow_upward, 'Up', cur + 1 < count
                 ? () {
                     _reorderLayerTracked(cur, cur + 1);
                     setS(() => cur++);
                   }
                 : null),
-            _sheetBtn(Icons.arrow_downward, 'Down', cur > 0
+            sheetBtn(Icons.arrow_downward, 'Down', cur > 0
                 ? () {
                     _reorderLayerTracked(cur, cur - 1);
                     setS(() => cur--);
                   }
                 : null),
-            _sheetBtn(Icons.call_merge, 'Merge down', (cur > 0 && !belowLocked)
+            sheetBtn(Icons.call_merge, 'Merge down', (cur > 0 && !belowLocked)
                 ? () {
                     Navigator.pop(ctx);
                     _clearLayerGroup(); // the engine collapses its group to the merged layer
@@ -286,21 +164,21 @@ extension _EditorSheets on _EditorPageState {
                   }
                 : null),
           ]),
-          _sheetSection('Create'),
-          _sheetBtnRow([
-            _sheetBtn(Icons.control_point_duplicate, 'Duplicate', () {
+          sheetSection('Create'),
+          sheetBtnRow([
+            sheetBtn(Icons.control_point_duplicate, 'Duplicate', () {
               Navigator.pop(ctx);
               _clearLayerGroup(); // focus moves to the copy; the engine resets its group too
               _act('DuplicateLayer($cur)');
             }),
-            _sheetBtn(Icons.add_box_outlined, 'New layer above', () {
+            sheetBtn(Icons.add_box_outlined, 'New layer above', () {
               Navigator.pop(ctx);
               _clearLayerGroup();
               _act('AddLayerAt(${cur + 1})');
             }),
           ]),
           const SizedBox(height: 8),
-          _sheetBtn(Icons.dynamic_feed, 'Copy to all frames', () {
+          sheetBtn(Icons.dynamic_feed, 'Copy to all frames', () {
             Navigator.pop(ctx);
             final all = List.generate(engine.frameCount, (k) => k)
                 .where((k) => k != engine.activeFrame)
@@ -313,7 +191,7 @@ extension _EditorSheets on _EditorPageState {
           const SizedBox(height: 8),
           const Divider(height: 1),
           const SizedBox(height: 4),
-          _sheetDelete('Delete layer', count > 1
+          sheetDelete('Delete layer', count > 1
               ? () {
                   Navigator.pop(ctx);
                   _remapLayerGroupRemoved(cur); // matches the engine's own remap
@@ -351,42 +229,42 @@ extension _EditorSheets on _EditorPageState {
           });
         }
 
-        return _sheetScaffold(ctx, [
-          _sheetHeader(
-            thumb: cached, // stale-while-revalidate: old thumb beats a checkerboard flash
+        return sheetScaffold([
+          sheetHeader(
+            thumb: cached?.img, // stale-while-revalidate: old thumb beats a checkerboard flash
             title: 'Frame ${cur + 1} of $count',
             subtitle: '${ms.toStringAsFixed(1)} ms · ${(1000 / ms).toStringAsFixed(1)} fps',
           ),
           const SizedBox(height: 12),
-          _sheetBtn(Icons.timer_outlined, 'Edit duration…', () {
+          sheetBtn(Icons.timer_outlined, 'Edit duration…', () {
             Navigator.pop(ctx);
             if (cur != engine.activeFrame) _clearLayerGroup(); // frame switch invalidates the group
             _act('SetActiveFrame($cur)');
             _editDuration();
           }),
-          _sheetSection('Arrange'),
-          _sheetBtnRow([
-            _sheetBtn(Icons.chevron_left, 'Move left', cur > 0
+          sheetSection('Arrange'),
+          sheetBtnRow([
+            sheetBtn(Icons.chevron_left, 'Move left', cur > 0
                 ? () {
                     _act('ReorderFrame($cur, ${cur - 1})');
                     setS(() => cur--);
                   }
                 : null),
-            _sheetBtn(Icons.chevron_right, 'Move right', cur + 1 < count
+            sheetBtn(Icons.chevron_right, 'Move right', cur + 1 < count
                 ? () {
                     _act('ReorderFrame($cur, ${cur + 1})');
                     setS(() => cur++);
                   }
                 : null),
           ]),
-          _sheetSection('Create'),
-          _sheetBtnRow([
-            _sheetBtn(Icons.control_point_duplicate, 'Duplicate', () {
+          sheetSection('Create'),
+          sheetBtnRow([
+            sheetBtn(Icons.control_point_duplicate, 'Duplicate', () {
               Navigator.pop(ctx);
               _clearLayerGroup(); // a different frame becomes active
               _act('DuplicateFrame($cur)');
             }),
-            _sheetBtn(Icons.add_box_outlined, 'New frame after', () {
+            sheetBtn(Icons.add_box_outlined, 'New frame after', () {
               Navigator.pop(ctx);
               _clearLayerGroup();
               _act('AddFrameAt(${cur + 1})');
@@ -395,7 +273,7 @@ extension _EditorSheets on _EditorPageState {
           const SizedBox(height: 8),
           const Divider(height: 1),
           const SizedBox(height: 4),
-          _sheetDelete('Delete frame', count > 1
+          sheetDelete('Delete frame', count > 1
               ? () {
                   Navigator.pop(ctx);
                   _clearLayerGroup(); // a different frame (with its own layer stack) may become active

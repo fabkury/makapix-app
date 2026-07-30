@@ -107,6 +107,11 @@ DynamicLibrary _open() {
   throw Exception('Could not locate makapix_ffi.dll. Build it with: cargo build -p makapix-ffi --release');
 }
 
+/// The Makapix native library, resolved per platform. Public so sibling FFI bindings
+/// (`SceneEngine` in scene_ffi.dart) open the SAME cdylib — one library, one allocator,
+/// shared process-wide export-progress atomics.
+DynamicLibrary openMakapixLibrary() => _open();
+
 class Engine {
   final DynamicLibrary _lib;
   late final Pointer<Void> _s;

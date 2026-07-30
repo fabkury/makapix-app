@@ -24,6 +24,10 @@ bool editorUsesLandscape(Size size) => size.width > size.height;
 
 bool isTabletish(BuildContext context) => isTabletSize(MediaQuery.sizeOf(context));
 
+/// Chrome scale for the creative pillars' band UIs (editor + Animator): tablets get ~20%
+/// larger strips/tiles/swatches. Applied multiplicatively in each region builder.
+double chromeScale(BuildContext context) => isTabletish(context) ? 1.2 : 1.0;
+
 /// Centers [child] and caps its width — the standard treatment for list/form surfaces that would
 /// otherwise stretch edge-to-edge on tablets. Full-bleed surfaces (feed grids) don't use this.
 class CenteredContent extends StatelessWidget {

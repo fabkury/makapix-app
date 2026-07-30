@@ -75,9 +75,10 @@ extension _EditorPersistence on _EditorPageState {
   void _startAutosave() {
     final id = _drawingId, store = _store;
     if (id == null || store == null) return;
-    _autosave = AutosaveController(
+    _autosave = AutosaveController<DrawingMeta>(
       id: id,
-      store: store,
+      writeDoc: store.writeDoc,
+      writeMeta: store.writeMeta,
       serialize: () => _engineReady ? engine.save() : Uint8List(0),
       buildMeta: _buildMeta,
       onError: _onAutosaveError,

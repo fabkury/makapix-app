@@ -23,6 +23,8 @@ import 'package:makapix_club/club/state/edit_bridge.dart';
 import 'package:makapix_club/club/ui/publish_page.dart';
 import 'package:makapix_club/engine_ffi.dart';
 import 'package:makapix_club/share/image_share.dart';
+import 'package:makapix_club/ui/chrome_controls.dart';
+import 'package:makapix_club/ui/chrome_sheets.dart';
 import 'package:makapix_club/ui/layout.dart';
 
 import 'gallery/gallery_page.dart';
@@ -80,7 +82,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // ---- Local persistence: the current library drawing + its autosave (see editor_page.persistence)
   DrawingStore? _store;
   SharedPreferences? _prefs;
-  AutosaveController? _autosave;
+  AutosaveController<DrawingMeta>? _autosave;
   String? _drawingId;
   String _drawingTitle = 'Untitled';
   DateTime _drawingCreatedAt = DateTime.now();
@@ -271,7 +273,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   set _threeRowToolbar(bool v) => _threeRowPref = v;
   // Chrome scale: tablets get ~20% larger strips/tiles/swatches — bigger touch targets, and the
   // bands don't look skeletal at tablet sizes. Applied multiplicatively in the region builders.
-  double get _chromeScale => isTabletish(context) ? 1.2 : 1.0;
+  double get _chromeScale => chromeScale(context);
   // 3-row mode: the tool pinned in the 3rd slot (below Undo/Redo). Defaults to Pencil; long-press the
   // slot to change. The pinned tool stays in _toolOrder (only hidden from the grid) so pinning never
   // churns the saved order — see _visibleOrder / _pinnedThirdTile / _pinnedThirdConfigSheet.

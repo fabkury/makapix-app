@@ -35,7 +35,7 @@ void main() {
   late Directory base;
   late CountingStore store;
   late Uint8List current;
-  late AutosaveController c;
+  late AutosaveController<DrawingMeta> c;
   Object? lastError;
 
   setUp(() async {
@@ -43,9 +43,12 @@ void main() {
     store = CountingStore(base);
     current = bytesOf('v1');
     lastError = null;
-    c = AutosaveController(
+    // The controller is store-agnostic (generic over the meta type, store injected as the
+    // two write callbacks) so the Animator's SceneStore reuses it — same wiring shape here.
+    c = AutosaveController<DrawingMeta>(
       id: 'd1',
-      store: store,
+      writeDoc: store.writeDoc,
+      writeMeta: store.writeMeta,
       serialize: () => current,
       buildMeta: () => metaFor('d1'),
       onError: (e) => lastError = e,
