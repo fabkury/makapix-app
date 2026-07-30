@@ -6,7 +6,7 @@
 // flutter_secure_storage and no Dio/network. The editor pillar is replaced with a stub so
 // the shell can be tested without the editor's native FFI engine (the real EditorPage is
 // driven by cargo tests + the `mkpx` harness, and exercised by `./build.ps1 -Run`). We
-// assert on the shell's navigation — the IndexedStack index — and on the real Club welcome.
+// assert on the shell's navigation — which pillar is mounted — and on the real Club welcome.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

@@ -140,7 +140,8 @@ Invariants to preserve (SPEC §25): 8-bit RGBA sRGB, premultiplied internally, *
 never fork per platform; canvas 1×1–256×256; frames ≤1024; layers ≤64; 32×32 tiling + COW + lazy alloc
 mandatory; per-frame 128-state undo with auto-compaction.
 
-Crates: `engine` (core) · `codec` (import GIF/PNG/APNG/JPEG/BMP/WebP; export PNG/sprite-sheet/GIF) ·
+Crates: `engine` (core) · `codec` (import GIF/PNG/APNG/JPEG/BMP/WebP; export PNG/sprite-sheet/GIF/
+animated lossless WebP — the animation container is hand-muxed in pure Rust) ·
 `ffi` (the cdylib) · `cli` (the `mkpx` harness).
 
 ### The Flutter shell
@@ -194,8 +195,9 @@ One Riverpod `StateProvider`, `pendingClubEditProvider` (`app/lib/club/state/edi
   Installer → "C++ ATL for latest build tools"). Every plugin version needs it.
 - **App shell mounts ONE pillar at a time — don't reintroduce `IndexedStack`.** Both pillar `Scaffold`s
   mounted at once crashes Windows on resize (accessibility bridge: `Failed to update ui::AXTree`, exit
-  `0xC000041D`). The editor survives switches via `EditorSession` (`.mkpx` snapshot in
-  `dispose`/`initState`); Club state lives in long-lived providers. Don't "optimize" this back.
+  `0xC000041D`). The editor survives switches via its on-disk autosave (a synchronous
+  `flushNow()` in `dispose`, reload from the drawing store in `initState`); Club state lives in
+  long-lived providers. Don't "optimize" this back.
 - **Android Gradle pinning:** the Flutter template's AGP 9 / Gradle 9 / Kotlin 2.3 breaks `file_picker`;
   the repo pins AGP 8.11.1 / Gradle 8.14 / Kotlin 2.2.20 (`app/android/settings.gradle.kts` + wrapper)
   and disables lint in `app/android/build.gradle.kts`. Don't unpin without a reason.
