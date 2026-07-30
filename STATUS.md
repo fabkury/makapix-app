@@ -28,15 +28,36 @@ export gate; Sign in with Apple live end-to-end. **Windows** — developer build
 Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending) · **○ stubbed / not yet**.
 
 ## Build artifacts
-- `crates/engine` — pure deterministic core (dependency-free). **228 lib + 23 scenario + 4 fuzz + 1 perf tests.**
-- `crates/codec` — image import/export (`image` crate). **12 tests.**
-- `crates/ffi` — C-ABI engine library: Windows `makapix_ffi.dll` · Android `libmakapix_ffi.so` (jniLibs) ·
-  iOS dynamic `MakapixFFI.framework` (built by `build_ios.sh`; export-gated in CI). **7 tests.**
-- `crates/cli` — `mkpx` headless harness (renders PNG, prints oracles/JSON; exit-code CI gate).
+- `crates/engine` — pure deterministic core (dependency-free); public `transform` (pixel-exact
+  rotate/scale resamplers + the Animator's `ActorXf` resampler) and `io::container` (shared
+  chunk/CRC/tile-dictionary machinery) modules extracted 2026-07-30, byte-identical.
+- `crates/scene` — **the Animator core (new 2026-07-30)**: Scene/Prop/Actor model, Q16 keyframe
+  eval, transform-cached compositor, `.mkps` v1 container (self-contained, deterministic,
+  budget-refusing loader), scene undo, DSL + budgets.
+- `crates/codec` — image import/export (`image` crate), incl. hand-muxed animated lossless WebP.
+- `crates/ffi` — C-ABI library, now BOTH families: `mkpx_*` (editor) + `mkps_*` (Animator),
+  shared export-progress atomics: Windows `makapix_ffi.dll` · Android `libmakapix_ffi.so`
+  (jniLibs) · iOS dynamic `MakapixFFI.framework` (built by `build_ios.sh`; export-gated in CI).
+- `crates/cli` — `mkpx` headless harness + the `mkpx scene` family (eval/pixel/roundtrip/export
+  probes; exit-code CI gate).
 - `app/` — Flutter: Windows exe (`build.ps1`) · Android APK/AAB (`build_android.ps1`,
   `release_android.ps1` → Play) · iOS ipa (Codemagic → TestFlight/App Store, `codemagic.yaml`).
-- **Total: 275 Rust tests + 366 Dart tests green** (verified 2026-07-26). Engine loop verified by rendering
-  `examples/demo.txt` & `showcase.txt`.
+- **Total: 359 Rust tests + 426 Dart tests green** (verified 2026-07-30). Engine loop verified by rendering
+  `examples/demo.txt` & `showcase.txt`; Animator loop by `examples/scene/bounce.txt` + the
+  `mkpx scene` probes.
+
+## Makapix Animator (third pillar, v0.1 — built 2026-07-30, on-device validation pending)
+The scene/keyframe animation pillar (design: `docs/animator/`, ADRs 0001/0002, vocabulary in
+`CONTEXT.md`): import Props (PNG/GIF/WEBP/`.mkpx` — multi-layer drawings offer the Whole/Parts
+card and self-assemble as separate Actors), pose them on the Stage with auto-keyed
+drag/pinch/twist (15° stops, scale detent, snap guides, haptics), review with the
+one-timeline surface (Strip / Tracks / Focus zoom levels: scrub, loop region, drag-to-retime,
+per-key easing chip), play via the composited-frame cache, and export GIF (alpha thresholded,
+disclosed) or animated lossless WEBP with exact frame timing. Scenes persist as self-contained
+`.mkps` files with autosave + a My Scenes gallery; reachable from Contribute and via
+"Animate this" on any drawing (editor gallery + profile Private tab). **Deferred past v0.1:**
+Posing mode, "pin to" UI (format-level only), motion presets/paths, publish-to-Club.
+**Phase 6 (Windows visual pass + Android device/memory validation) is still pending.**
 - `tools/memlab/` — **memory-limit stress study (2026-07-16, ✅ measured on Windows + Pixel 10 Pro XL)**:
   full-noise adversarial documents, headless CLI matrix + intent-gated in-app ladder. Findings + budgets:
   [`docs/memlab/REPORT.md`](docs/memlab/REPORT.md); headline: Android aborts (scudo ~1 GiB size-class wall,

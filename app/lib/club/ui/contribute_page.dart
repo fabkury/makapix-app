@@ -29,6 +29,8 @@ class _ContributePageState extends ConsumerState<ContributePage> {
 
   void _openEditor() => ref.read(openEditorProvider.notifier).state++;
 
+  void _openAnimator() => ref.read(openAnimatorProvider.notifier).state++;
+
   // Pick an image file, read its dimensions/frame count locally (no engine), and hand it to the
   // same publish flow the editor uses. Conformance (size, format, byte cap) is judged there.
   Future<void> _uploadFile() async {
@@ -131,6 +133,14 @@ class _ContributePageState extends ConsumerState<ContributePage> {
                   title: 'Makapix Editor',
                   description: 'Create animated pixel art with the built-in Makapix Editor.',
                   onTap: _openEditor,
+                ),
+                const SizedBox(height: 16),
+                _OptionCard(
+                  icon: Icons.movie_filter_outlined,
+                  accent: cs.primary,
+                  title: 'Makapix Animator',
+                  description: 'Give finished pixel art motion — keyframe your drawings into animated scenes.',
+                  onTap: _openAnimator,
                 ),
                 const SizedBox(height: 16),
                 _OptionCard(

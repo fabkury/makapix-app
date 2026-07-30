@@ -56,14 +56,16 @@ Widget _harness() {
     child: const MaterialApp(
       home: AppShell(
         editorPillar: Scaffold(body: Center(child: Text('editor-stub'))),
+        animatorPillar: Scaffold(body: Center(child: Text('animator-stub'))),
       ),
     ),
   );
 }
 
-// The shell mounts only the active pillar (mounting both Scaffolds at once crashes the
-// Windows accessibility bridge), so the editor stub is in the tree iff the editor is active.
+// The shell mounts only the active pillar (mounting two Scaffolds at once crashes the
+// Windows accessibility bridge), so a stub is in the tree iff its pillar is active.
 final _editorShowing = find.text('editor-stub');
+final _animatorShowing = find.text('animator-stub');
 
 void main() {
   testWidgets('opens on the Club pillar with the signed-out welcome funnel', (tester) async {
@@ -91,5 +93,32 @@ void main() {
     container.read(openClubProvider.notifier).state++;
     await tester.pump();
     expect(_editorShowing, findsNothing, reason: 'openClubProvider returns to the Club pillar');
+  });
+
+  testWidgets('the Animator pillar mounts on its provider signals and returns to Club',
+      (tester) async {
+    await tester.pumpWidget(_harness());
+    await tester.pump();
+    expect(_animatorShowing, findsNothing, reason: 'the app launches on the Club pillar');
+
+    final container = ProviderScope.containerOf(tester.element(find.byType(AppShell)));
+
+    // The Contribute hub's Animator card bumps openAnimatorProvider.
+    container.read(openAnimatorProvider.notifier).state++;
+    await tester.pump();
+    expect(_animatorShowing, findsOneWidget,
+        reason: 'openAnimatorProvider mounts the Animator pillar');
+    expect(_editorShowing, findsNothing, reason: 'only the active pillar is mounted');
+
+    // ☰ → Club returns to the hub.
+    container.read(openClubProvider.notifier).state++;
+    await tester.pump();
+    expect(_animatorShowing, findsNothing);
+
+    // "Animate this" requests travel the pending bridge and also mount the pillar.
+    container.read(pendingAnimatorProvider.notifier).state = const AnimateDrawing('dwg_x');
+    await tester.pump();
+    expect(_animatorShowing, findsOneWidget,
+        reason: 'pendingAnimatorProvider mounts the Animator pillar');
   });
 }

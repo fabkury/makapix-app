@@ -35,3 +35,35 @@ class NewLocalDrawing extends LocalLibraryRequest {
 }
 
 final pendingLocalLibraryProvider = StateProvider<LocalLibraryRequest?>((ref) => null);
+
+/// Bumped by a Club surface (the Contribute hub's Animator card) to ask the shell to open the
+/// Animator pillar with its current scene. The shell listens and switches pillars on any change.
+final openAnimatorProvider = StateProvider<int>((ref) => 0);
+
+/// A pending Animator action requested from another pillar ("Animate this" on a drawing, a
+/// gallery open, a fresh scene). The shell listens and switches to the Animator pillar; the
+/// Animator consumes it on mount (animator_page.persistence.dart) — the editor bridge's exact
+/// two-listener pattern.
+sealed class AnimatorRequest {
+  const AnimatorRequest();
+}
+
+/// Start a brand-new scene (the New-scene dialog opens).
+class NewScene extends AnimatorRequest {
+  const NewScene();
+}
+
+/// Open the existing library scene [id] in the Animator.
+class OpenScene extends AnimatorRequest {
+  final String id;
+  const OpenScene(this.id);
+}
+
+/// Create a scene around the editor-library drawing [id] ("Animate this" — the drawing
+/// arrives through the import flow, Whole/Parts card included).
+class AnimateDrawing extends AnimatorRequest {
+  final String id;
+  const AnimateDrawing(this.id);
+}
+
+final pendingAnimatorProvider = StateProvider<AnimatorRequest?>((ref) => null);

@@ -6,15 +6,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The **Makapix Club app**: a native (Rust + Flutter) client for the `makapix.club` pixel-art social
 network. The Next.js + FastAPI website (a separate repo) is an independent, coexisting client of the same
-server; this app does not depend on it. Two pillars share one Flutter binary:
+server; this app does not depend on it. Three co-equal pillars share one Flutter binary:
 
 1. **Makapix Editor** — the built-in animated pixel-art editor: a deterministic, headless **Rust engine**
    (`crates/`) under a thin **Flutter** shell.
 2. **The Club social layer** — feeds, reactions, comments, follows, profiles, search, notifications,
    publish, edit/remix. Entirely Dart (`app/lib/club/`).
+3. **Makapix Animator** — the scene/keyframe animation tool (v0.1 built 2026-07-30): a Rust
+   `SceneSession` (`crates/scene`) behind the same FFI seam, under `app/lib/animator/`. Its timeline
+   holds *instructions* (Actors, Keys, Tweens), not drawings; design + ADRs in `docs/animator/` and
+   `docs/adr/`, vocabulary in `CONTEXT.md` (Scene · Stage · Cast · Prop · Actor · Track · Key · Tween ·
+   Cycle · Pose — "layer" is banned in Animator context).
 
-Terminology, kept strict: *Makapix Club* = the product (website **and** this app); *Makapix Editor* = the
-editor feature **inside** this app, not a separate product. Don't conflate them.
+Terminology, kept strict: *Makapix Club* = the product (website **and** this app); *Makapix Editor* and
+*Makapix Animator* = features **inside** this app, not separate products. Don't conflate them.
 
 **Doc map:** `README.md` (product hub) · `STATUS.md` (feature coverage; with the git log, the live
 frontier) · `docs/plans/` (per-phase C0…C4 + per-feature plans) · `docs/memlab/REPORT.md` (measured memory
@@ -140,16 +145,26 @@ Invariants to preserve (SPEC §25): 8-bit RGBA sRGB, premultiplied internally, *
 never fork per platform; canvas 1×1–256×256; frames ≤1024; layers ≤64; 32×32 tiling + COW + lazy alloc
 mandatory; per-frame 128-state undo with auto-compaction.
 
-Crates: `engine` (core) · `codec` (import GIF/PNG/APNG/JPEG/BMP/WebP; export PNG/sprite-sheet/GIF/
-animated lossless WebP — the animation container is hand-muxed in pure Rust) ·
-`ffi` (the cdylib) · `cli` (the `mkpx` harness).
+Crates: `engine` (core; public `transform` + `io::container` modules serve the scene crate) ·
+`scene` (the Animator core: Scene/Prop/Actor model, Q16 keyframe eval, transform-cached
+compositor, scene undo, the `.mkps` v1 container — same invariants: `forbid(unsafe_code)`,
+integer-deterministic, budget-refusing loader; scene budgets 160/192 MiB) · `codec` (import
+GIF/PNG/APNG/JPEG/BMP/WebP; export PNG/sprite-sheet/GIF/animated lossless WebP — the animation
+container is hand-muxed in pure Rust) · `ffi` (ONE cdylib carrying BOTH C-ABI families:
+`mkpx_*` for the editor session and `mkps_*` for the Animator's `SceneSession`, sharing the
+process-wide export-progress atomics; Dart bindings `app/lib/engine_ffi.dart` +
+`app/lib/scene_ffi.dart` open the same library) · `cli` (the `mkpx` harness, incl. the
+`mkpx scene` subcommand family with its own probes: `eval`, `ascii/hash/stats/render`,
+`assert.det`, `assert.roundtrip`, `export.gif/webp`).
 
 ### The Flutter shell
 
-Two co-equal pillars under a neutral shell. `lib/main.dart` → `lib/app.dart` (root `MaterialApp`) →
+Three co-equal pillars under a neutral shell. `lib/main.dart` → `lib/app.dart` (root `MaterialApp`) →
 **`lib/shell/app_shell.dart`**, which mounts **only the active pillar** (see gotchas) and switches on the
-`openEditorProvider` / `openClubProvider` signals. The app opens on Club; the editor stays reachable
-without login (via Contribute). There is no persistent pillar-switching chrome.
+`openEditorProvider` / `openAnimatorProvider` / `openClubProvider` signals (plus the pending-request
+bridges in `club/state/edit_bridge.dart`, incl. `pendingAnimatorProvider` for "Animate this"). The app
+opens on Club; the creative pillars stay reachable without login (via Contribute). There is no
+persistent pillar-switching chrome.
 
 - **Editor UI** (`app/lib/editor/`): `editor_page.dart` + its part files
   (`editor_page.{canvas,controls,engine,fileio,persistence,sheets,timeline,toolgrid}.dart`) — the
@@ -157,6 +172,13 @@ without login (via Contribute). There is no persistent pillar-switching chrome.
   `palette_page.dart` + `palette_io.dart` · `gallery/` (local drawings) · `persistence/` (autosave +
   drawing store) · `dialogs/` · `widgets/painters.dart` · generated icon painters (`makapix_icons.g.dart`;
   pipeline in `tools/icons/`).
+- **Animator UI** (`app/lib/animator/`): `animator_page.dart` + part files
+  (`animator_page.{engine,stage,timeline,playback,sheets,fileio,persistence}.dart`) — Stage-first
+  auto-key gestures over the one-timeline surface (Strip/Tracks/Focus) · pure logic in `model/`
+  (state parse, timeline geometry, snapping — engine-free, unit-tested) · `gallery/` (My Scenes) ·
+  `persistence/` (SceneStore + the generic AutosaveController) · `playback/` (composited-frame
+  cache) · `widgets/` + `dialogs/` + `import/`. Shared chrome lives in `lib/ui/chrome_controls.dart`
+  + `chrome_sheets.dart` (lifted from the editor 2026-07-30 — both pillars consume them).
 - **Club** (`app/lib/club/`): `api/` (typed REST per domain) · `auth/` (session, OAuth, PKCE, token
   store) · `models/` · `state/` (Riverpod providers/controllers) · `publish/` · `edit/` · `ui/` · `anim/`
   (feed animation decode/playback) · `cache/` (artwork disk cache) · `config/`.

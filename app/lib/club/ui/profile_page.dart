@@ -867,6 +867,8 @@ class _PrivateTab extends ConsumerWidget {
                 ref.read(pendingLocalLibraryProvider.notifier).state = OpenLocalDrawing(id),
             onNew: () =>
                 ref.read(pendingLocalLibraryProvider.notifier).state = const NewLocalDrawing(),
+            onAnimate: (id) =>
+                ref.read(pendingAnimatorProvider.notifier).state = AnimateDrawing(id),
           ),
         ),
       ),

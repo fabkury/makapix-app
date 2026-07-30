@@ -32,12 +32,16 @@ class DrawingLibraryGrid extends StatefulWidget {
   /// Start a new drawing (host decides).
   final VoidCallback onNew;
 
+  /// "Animate this" — hand the drawing to the Animator pillar (a menu item appears when set).
+  final void Function(String id)? onAnimate;
+
   const DrawingLibraryGrid({
     super.key,
     required this.store,
     required this.onOpen,
     required this.onNew,
     this.currentId,
+    this.onAnimate,
   });
 
   @override
@@ -261,9 +265,12 @@ class _DrawingLibraryGridState extends State<DrawingLibraryGrid> {
                       onSelected: (v) {
                         if (v == 'rename') _rename(m);
                         if (v == 'delete') _delete(m);
+                        if (v == 'animate') widget.onAnimate?.call(m.id);
                       },
                       itemBuilder: (_) => [
                         const PopupMenuItem(value: 'rename', child: Text('Rename')),
+                        if (widget.onAnimate != null)
+                          const PopupMenuItem(value: 'animate', child: Text('Animate this')),
                         // The open drawing can't be deleted from here (autosave would recreate it).
                         if (!isCurrent) const PopupMenuItem(value: 'delete', child: Text('Delete')),
                       ],

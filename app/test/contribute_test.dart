@@ -16,14 +16,29 @@ Widget _harness() => const ProviderScope(
     );
 
 void main() {
-  testWidgets('shows both contribute options', (tester) async {
+  testWidgets('shows the three contribute options', (tester) async {
     await tester.pumpWidget(_harness());
     await tester.pump();
 
     expect(find.text('Makapix Editor'), findsOneWidget);
+    expect(find.text('Makapix Animator'), findsOneWidget);
     expect(find.text('Upload a file'), findsOneWidget);
     // The editor card carries its catchy one-liner.
     expect(find.textContaining('Create animated pixel art'), findsOneWidget);
+  });
+
+  testWidgets('tapping the Animator card asks the shell to open the Animator', (tester) async {
+    await tester.pumpWidget(_harness());
+    await tester.pump();
+
+    final container = ProviderScope.containerOf(tester.element(find.byType(ContributePage)));
+    final before = container.read(openAnimatorProvider);
+
+    await tester.tap(find.text('Makapix Animator'));
+    await tester.pump();
+
+    expect(container.read(openAnimatorProvider), before + 1,
+        reason: 'the Animator card bumps openAnimatorProvider so AppShell switches pillars');
   });
 
   testWidgets('tapping the editor card asks the shell to open the editor', (tester) async {

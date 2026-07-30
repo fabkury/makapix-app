@@ -270,6 +270,12 @@ extension _EditorPersistence on _EditorPageState {
           setState(() {});
         }
         break;
+      case GalleryAction.animate:
+        // Hand the drawing to the Animator pillar (the shell listener switches; the
+        // Animator consumes the request on mount — the standard bridge).
+        await _autosave?.flushNow(); // the Animator reads doc.mkpx from disk
+        ref.read(pendingAnimatorProvider.notifier).state = AnimateDrawing(result.id!);
+        break;
     }
   }
 }

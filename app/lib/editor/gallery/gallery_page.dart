@@ -3,16 +3,19 @@ import 'package:flutter/material.dart';
 import '../persistence/drawing_store.dart';
 import 'drawing_library_grid.dart';
 
-enum GalleryAction { open, newDrawing }
+enum GalleryAction { open, newDrawing, animate }
 
 /// What the editor should do after the gallery closes.
 class GalleryResult {
   final GalleryAction action;
-  final String? id; // set for [GalleryAction.open]
+  final String? id; // set for [GalleryAction.open] and [GalleryAction.animate]
   const GalleryResult.open(this.id) : action = GalleryAction.open;
   const GalleryResult.newDrawing()
       : id = null,
         action = GalleryAction.newDrawing;
+
+  /// "Animate this" — hand the drawing to the Animator pillar.
+  const GalleryResult.animate(this.id) : action = GalleryAction.animate;
 }
 
 /// "My Drawings" — the local working library, reached from the editor's ☰ menu. A thin `Scaffold`
@@ -42,6 +45,7 @@ class GalleryPage extends StatelessWidget {
         currentId: currentId,
         onOpen: (id) => Navigator.of(context).pop(GalleryResult.open(id)),
         onNew: () => Navigator.of(context).pop(const GalleryResult.newDrawing()),
+        onAnimate: (id) => Navigator.of(context).pop(GalleryResult.animate(id)),
       ),
     );
   }

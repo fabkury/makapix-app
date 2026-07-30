@@ -1,22 +1,23 @@
-// The neutral top-level shell hosting the app's two co-equal pillars: the **Club**
-// social layer (the launch experience) and the **Editor** (the animated pixel-art
-// editor). Neither pillar is "the app" — this shell hosts both as peers.
+// The neutral top-level shell hosting the app's co-equal pillars: the **Club** social layer
+// (the launch experience), the **Editor** (the animated pixel-art editor), and the
+// **Animator** (the scene/keyframe animation tool). No pillar is "the app" — this shell
+// hosts them as peers.
 //
-// The app opens on the Club pillar (signed-out users land on Club's own welcome /
-// sign-in funnel). There is no persistent pillar-switching chrome (no bottom bar / rail):
-// navigation is in-content — the Club's top-bar "Contribute" button opens the editor (also
-// available, without signing in, on the welcome page), and the editor's ☰ menu → "Club"
-// returns to the hub.
+// The app opens on the Club pillar (signed-out users land on Club's own welcome / sign-in
+// funnel). There is no persistent pillar-switching chrome (no bottom bar / rail): navigation
+// is in-content — the Club's Contribute surfaces open the editor or the Animator, and each
+// creative pillar's ☰ menu → "Club" returns to the hub.
 //
-// Only the ACTIVE pillar is mounted at a time. Keeping both pillar `Scaffold`s mounted
+// Only the ACTIVE pillar is mounted at a time. Keeping two pillar `Scaffold`s mounted
 // simultaneously (e.g. via IndexedStack) corrupts the Windows accessibility tree and
 // crashes the app on resize ("Failed to update ui::AXTree: Nodes left pending"). Club's
-// state survives remounts via its Riverpod providers; the editor preserves its in-progress
-// document across switches (and crashes) by autosaving it to the on-disk drawing library
-// (see editor_page.persistence.dart) and reloading it on re-entry.
+// state survives remounts via its Riverpod providers; the creative pillars preserve their
+// in-progress documents across switches (and crashes) by autosaving to their on-disk
+// libraries and reloading on re-entry.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../animator/animator_page.dart';
 import '../club/edit/club_edit_request.dart';
 import '../club/state/edit_bridge.dart';
 import '../club/ui/club_pillar.dart';
@@ -27,21 +28,25 @@ class AppShell extends ConsumerStatefulWidget {
     super.key,
     this.clubPillar = const ClubPillar(),
     this.editorPillar = const EditorPage(),
+    this.animatorPillar = const AnimatorPage(),
   });
 
   /// The social pillar (the launch experience). Overridable so tests can mount the
-  /// shell without the editor's FFI engine.
+  /// shell without the creative pillars' FFI engines.
   final Widget clubPillar;
 
-  /// The editor pillar (reachable without login via the center ⊕ Create button).
+  /// The editor pillar (reachable without login via the Contribute surfaces).
   final Widget editorPillar;
+
+  /// The Animator pillar (reachable without login via the Contribute hub).
+  final Widget animatorPillar;
 
   @override
   ConsumerState<AppShell> createState() => _AppShellState();
 }
 
 class _AppShellState extends ConsumerState<AppShell> {
-  static const int _club = 0, _editor = 1;
+  static const int _club = 0, _editor = 1, _animator = 2;
 
   int _index = _club; // launch on the social pillar
 
@@ -62,24 +67,34 @@ class _AppShellState extends ConsumerState<AppShell> {
     ref.listen<LocalLibraryRequest?>(pendingLocalLibraryProvider, (_, next) {
       if (next != null) _select(_editor);
     });
-    // The Club's Contribute button surfaces the editor; the editor's ☰ → Club returns here.
+    // → Animator: "Animate this" / gallery / new-scene requests (consumed on mount, same
+    // two-listener pattern as the editor bridges).
+    ref.listen<AnimatorRequest?>(pendingAnimatorProvider, (_, next) {
+      if (next != null) _select(_animator);
+    });
+    // Contribute buttons surface the creative pillars; their ☰ → Club returns here.
     ref.listen<int>(openEditorProvider, (_, _) => _select(_editor));
+    ref.listen<int>(openAnimatorProvider, (_, _) => _select(_animator));
     ref.listen<int>(openClubProvider, (_, _) => _select(_club));
 
     // No pillar-switching chrome — only the active pillar is mounted (each pillar owns its
-    // own Scaffold). Keeping both Scaffolds mounted at once crashes the Windows AX bridge.
+    // own Scaffold). Keeping two Scaffolds mounted at once crashes the Windows AX bridge.
     //
-    // The Club is the app's base screen. When the editor pillar is active, intercept the
+    // The Club is the app's base screen. When a creative pillar is active, intercept the
     // Android system back so it returns to the Club instead of exiting the app. (Sub-routes
-    // pushed on top of the shell — dialogs, pickers, profile pages — pop normally first; this
-    // only fires once the editor is at its root with nothing else to pop.)
-    final inEditor = _index == _editor;
+    // pushed on top of the shell — dialogs, pickers, profile pages — pop normally first;
+    // this only fires once the pillar is at its root with nothing else to pop.)
+    final atClub = _index == _club;
     return PopScope(
-      canPop: !inEditor,
+      canPop: atClub,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && inEditor) _select(_club);
+        if (!didPop && !atClub) _select(_club);
       },
-      child: inEditor ? widget.editorPillar : widget.clubPillar,
+      child: switch (_index) {
+        _editor => widget.editorPillar,
+        _animator => widget.animatorPillar,
+        _ => widget.clubPillar,
+      },
     );
   }
 }
