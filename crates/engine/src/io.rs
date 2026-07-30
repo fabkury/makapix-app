@@ -4,186 +4,26 @@
 //! `load(save(doc))` is a round-trip invariant (by `content_hash`). This is the **`plain`** profile;
 //! the optional DEFLATE **`compact`** envelope lives at the periphery (see `docs/mkpx-format/`).
 
-use crate::buffer::{RgbaBuffer, Tile};
+pub mod container;
+
+use crate::buffer::RgbaBuffer;
 use crate::document::{AnimSettings, BlendMode, Document, Frame, Layer, LoopMode, Palette};
 use crate::geom::Size;
 use crate::selection::Mask;
 use crate::util::IdGen;
-use std::collections::HashMap;
+use container::{
+    finish_intg, read_ref_grid, read_tile_dict, verify_intg, write_chunk, Reader, TileDict, Writer,
+};
+pub use container::IoError;
 use std::sync::Arc;
 
 /// The `plain`-profile file signature (8 bytes, PNG-style hardened): high bit, `MKPX`, CR, LF, EOF.
 pub const SIGNATURE: [u8; 8] = [0x89, b'M', b'K', b'P', b'X', 0x0D, 0x0A, 0x1A];
 pub const FORMAT_VERSION: u16 = 10;
 
-const TILE_BYTES: usize = 32 * 32 * 4; // 4096
-const CELL_PX: usize = 1024;
 const MAX_DICT_TILES: usize = 1 << 24;
-const MAX_STR: usize = 4096;
 /// Largest legal packed selection: a 768×768 storage plane = 589824 bits = 73728 bytes.
 const MAX_SEL_BYTES: usize = (768 * 768) / 8;
-/// The fixed `INTG` trailer size: fourcc(4) + flags(1) + length(4) + crc32c payload(4).
-const INTG_LEN: usize = 13;
-
-#[derive(Debug)]
-pub enum IoError {
-    BadMagic,
-    UnsupportedVersion(u16),
-    Incomplete,
-    Corrupt(&'static str),
-    TooLarge(&'static str),
-    UnsupportedChunk([u8; 4]),
-}
-
-impl std::fmt::Display for IoError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            IoError::BadMagic => write!(f, "not a .mkpx file (bad magic)"),
-            IoError::UnsupportedVersion(v) => write!(f, "unsupported .mkpx version {}", v),
-            IoError::Incomplete => write!(f, "file truncated/incomplete"),
-            IoError::Corrupt(s) => write!(f, "corrupt .mkpx: {}", s),
-            IoError::TooLarge(s) => write!(f, "corrupt .mkpx: {} too large", s),
-            IoError::UnsupportedChunk(c) => {
-                write!(f, "unsupported critical chunk {:?}", String::from_utf8_lossy(c))
-            }
-        }
-    }
-}
-
-// ---- CRC-32C (Castagnoli, reflected poly 0x82F63B78), pure-Rust const table ----
-
-const fn crc32c_table() -> [u32; 256] {
-    let mut table = [0u32; 256];
-    let mut i = 0usize;
-    while i < 256 {
-        let mut crc = i as u32;
-        let mut j = 0;
-        while j < 8 {
-            crc = if crc & 1 != 0 { (crc >> 1) ^  0x82F6_3B78 } else { crc >> 1 };
-            j += 1;
-        }
-        table[i] = crc;
-        i += 1;
-    }
-    table
-}
-static CRC32C_TABLE: [u32; 256] = crc32c_table();
-
-fn crc32c(bytes: &[u8]) -> u32 {
-    let mut crc = 0xFFFF_FFFFu32;
-    for &b in bytes {
-        crc = (crc >> 8) ^ CRC32C_TABLE[((crc ^ b as u32) & 0xFF) as usize];
-    }
-    crc ^ 0xFFFF_FFFF
-}
-
-// ---- little-endian + varint writer/reader ----
-
-struct Writer {
-    buf: Vec<u8>,
-}
-impl Writer {
-    fn new() -> Self {
-        Writer { buf: Vec::new() }
-    }
-    fn u8(&mut self, v: u8) {
-        self.buf.push(v);
-    }
-    fn u16(&mut self, v: u16) {
-        self.buf.extend_from_slice(&v.to_le_bytes());
-    }
-    fn u32(&mut self, v: u32) {
-        self.buf.extend_from_slice(&v.to_le_bytes());
-    }
-    fn u128(&mut self, v: u128) {
-        self.buf.extend_from_slice(&v.to_le_bytes());
-    }
-    fn bytes(&mut self, b: &[u8]) {
-        self.buf.extend_from_slice(b);
-    }
-    /// Canonical unsigned LEB128 (minimal length).
-    fn varint(&mut self, v: u32) {
-        let mut v = v;
-        loop {
-            let b = (v & 0x7f) as u8;
-            v >>= 7;
-            if v != 0 {
-                self.buf.push(b | 0x80);
-            } else {
-                self.buf.push(b);
-                break;
-            }
-        }
-    }
-    fn str(&mut self, s: &str) {
-        let b = s.as_bytes();
-        let n = b.len().min(MAX_STR);
-        self.varint(n as u32);
-        self.bytes(&b[..n]);
-    }
-}
-
-struct Reader<'a> {
-    buf: &'a [u8],
-    pos: usize,
-}
-impl<'a> Reader<'a> {
-    fn new(buf: &'a [u8]) -> Self {
-        Reader { buf, pos: 0 }
-    }
-    fn remaining(&self) -> usize {
-        self.buf.len().saturating_sub(self.pos)
-    }
-    fn take(&mut self, n: usize) -> Result<&'a [u8], IoError> {
-        let end = self.pos.checked_add(n).ok_or(IoError::Incomplete)?;
-        let s = self.buf.get(self.pos..end).ok_or(IoError::Incomplete)?;
-        self.pos = end;
-        Ok(s)
-    }
-    fn u8(&mut self) -> Result<u8, IoError> {
-        Ok(self.take(1)?[0])
-    }
-    fn u16(&mut self) -> Result<u16, IoError> {
-        let s = self.take(2)?;
-        Ok(u16::from_le_bytes([s[0], s[1]]))
-    }
-    fn u32(&mut self) -> Result<u32, IoError> {
-        let s = self.take(4)?;
-        Ok(u32::from_le_bytes([s[0], s[1], s[2], s[3]]))
-    }
-    fn u128(&mut self) -> Result<u128, IoError> {
-        let s = self.take(16)?;
-        let mut a = [0u8; 16];
-        a.copy_from_slice(s);
-        Ok(u128::from_le_bytes(a))
-    }
-    /// Canonical unsigned LEB128 into a `u32`: ≤5 bytes, minimal, non-overflowing.
-    fn varint(&mut self) -> Result<u32, IoError> {
-        let mut result: u32 = 0;
-        for i in 0..5 {
-            let b = self.u8()?;
-            let val = (b & 0x7f) as u32;
-            if i == 4 && val > 0x0f {
-                return Err(IoError::Corrupt("varint overflow"));
-            }
-            result |= val << (7 * i);
-            if b & 0x80 == 0 {
-                if i > 0 && b == 0 {
-                    return Err(IoError::Corrupt("varint non-minimal"));
-                }
-                return Ok(result);
-            }
-        }
-        Err(IoError::Corrupt("varint too long"))
-    }
-    fn str(&mut self) -> Result<String, IoError> {
-        let n = self.varint()? as usize;
-        if n > MAX_STR {
-            return Err(IoError::TooLarge("string"));
-        }
-        Ok(String::from_utf8_lossy(self.take(n)?).into_owned())
-    }
-}
 
 fn loop_mode_to_u8(m: LoopMode) -> u8 {
     match m {
@@ -197,178 +37,6 @@ fn loop_mode_from_u8(v: u8) -> LoopMode {
         1 => LoopMode::Once,
         2 => LoopMode::PingPong,
         _ => LoopMode::Loop,
-    }
-}
-
-/// Bits needed to index `n` distinct colors: `0` for a solid tile, else `ceil(log2(n))` (≤8).
-fn bits_needed(n: usize) -> u32 {
-    if n <= 1 {
-        return 0;
-    }
-    let mut b = 0u32;
-    while (1usize << b) < n {
-        b += 1;
-    }
-    b
-}
-
-// ---- per-tile codecs (operate on the tile's 4096 row-major straight-RGBA bytes) ----
-
-fn rle_encode(b: &[u8]) -> Vec<u8> {
-    let mut out = Vec::new();
-    let px = |i: usize| &b[i * 4..i * 4 + 4];
-    let mut i = 0usize;
-    while i < CELL_PX {
-        let start = i;
-        while i + 1 < CELL_PX && px(i + 1) == px(start) {
-            i += 1;
-        }
-        let run = (i - start + 1) as u32;
-        // inline canonical varint of `run`
-        let mut v = run;
-        loop {
-            let byte = (v & 0x7f) as u8;
-            v >>= 7;
-            if v != 0 {
-                out.push(byte | 0x80);
-            } else {
-                out.push(byte);
-                break;
-            }
-        }
-        out.extend_from_slice(px(start));
-        i += 1;
-    }
-    out
-}
-
-/// `INDEXED` payload if the tile uses ≤256 colors, else `None`.
-fn indexed_encode(b: &[u8]) -> Option<Vec<u8>> {
-    let mut order: Vec<[u8; 4]> = Vec::new();
-    let mut map: HashMap<[u8; 4], u8> = HashMap::new();
-    let mut indices = [0u8; CELL_PX];
-    for (p, slot) in indices.iter_mut().enumerate() {
-        let c = [b[p * 4], b[p * 4 + 1], b[p * 4 + 2], b[p * 4 + 3]];
-        let id = match map.get(&c) {
-            Some(&id) => id,
-            None => {
-                if order.len() >= 256 {
-                    return None;
-                }
-                let id = order.len() as u8;
-                map.insert(c, id);
-                order.push(c);
-                id
-            }
-        };
-        *slot = id;
-    }
-    let n = order.len();
-    let k = bits_needed(n);
-    let mut out = Vec::with_capacity(1 + 4 * n + (CELL_PX * k as usize).div_ceil(8));
-    out.push((n - 1) as u8);
-    for c in &order {
-        out.extend_from_slice(c);
-    }
-    if k > 0 {
-        let mut acc: u32 = 0;
-        let mut nb: u32 = 0;
-        for &ix in indices.iter() {
-            acc = (acc << k) | ix as u32;
-            nb += k;
-            while nb >= 8 {
-                nb -= 8;
-                out.push((acc >> nb) as u8);
-            }
-        }
-        if nb > 0 {
-            out.push((acc << (8 - nb)) as u8);
-        }
-    }
-    Some(out)
-}
-
-/// Pick the smallest codec for a tile; ties break to the lowest id (RAW < RLE < INDEXED).
-fn encode_tile(b: &[u8]) -> (u8, Vec<u8>) {
-    let mut best_codec = 0u8; // RAW
-    let mut best_len = TILE_BYTES; // RAW payload length
-    let mut best: Option<Vec<u8>> = None;
-    let rle = rle_encode(b);
-    if rle.len() < best_len {
-        best_len = rle.len();
-        best_codec = 1;
-        best = Some(rle);
-    }
-    if let Some(ix) = indexed_encode(b) {
-        if ix.len() < best_len {
-            best_codec = 2;
-            best = Some(ix);
-        }
-    }
-    match best_codec {
-        0 => (0, b.to_vec()),
-        c => (c, best.expect("non-RAW codec has payload")),
-    }
-}
-
-fn decode_tile(r: &mut Reader, codec: u8) -> Result<Vec<u8>, IoError> {
-    match codec {
-        0 => Ok(r.take(TILE_BYTES)?.to_vec()),
-        1 => {
-            let mut out = Vec::with_capacity(TILE_BYTES);
-            let mut done = 0usize;
-            while done < CELL_PX {
-                let run = r.varint()? as usize;
-                let px = r.take(4)?;
-                if run == 0 || done + run > CELL_PX {
-                    return Err(IoError::Corrupt("bad rle run"));
-                }
-                for _ in 0..run {
-                    out.extend_from_slice(px);
-                }
-                done += run;
-            }
-            Ok(out)
-        }
-        2 => {
-            let n = r.u8()? as usize + 1; // 1..=256
-            let mut table = Vec::with_capacity(n);
-            for _ in 0..n {
-                let c = r.take(4)?;
-                table.push([c[0], c[1], c[2], c[3]]);
-            }
-            let k = bits_needed(n);
-            let mut out = Vec::with_capacity(TILE_BYTES);
-            if k == 0 {
-                let c = table[0];
-                for _ in 0..CELL_PX {
-                    out.extend_from_slice(&c);
-                }
-            } else {
-                let nbytes = (CELL_PX * k as usize).div_ceil(8);
-                let data = r.take(nbytes)?;
-                let mut acc: u32 = 0;
-                let mut nb: u32 = 0;
-                let mut bp = 0usize;
-                let mask = (1u32 << k) - 1;
-                for _ in 0..CELL_PX {
-                    while nb < k {
-                        let byte = *data.get(bp).ok_or(IoError::Corrupt("indexed underrun"))?;
-                        acc = (acc << 8) | byte as u32;
-                        bp += 1;
-                        nb += 8;
-                    }
-                    nb -= k;
-                    let ix = ((acc >> nb) & mask) as usize;
-                    if ix >= n {
-                        return Err(IoError::Corrupt("bad index"));
-                    }
-                    out.extend_from_slice(&table[ix]);
-                }
-            }
-            Ok(out)
-        }
-        _ => Err(IoError::Corrupt("bad tile codec")),
     }
 }
 
@@ -408,7 +76,7 @@ fn encode_selection(mask: &Mask) -> Vec<u8> {
             }
         }
     }
-    w.buf
+    w.into_bytes()
 }
 
 /// Decode `SELC`; a bbox outside the storage area (stale/crafted) drops the selection (not fatal).
@@ -454,67 +122,19 @@ fn decode_selection(pl: &[u8], storage: Size) -> Result<Option<Arc<Mask>>, IoErr
     }
 }
 
-// ---- chunk assembly ----
-
-fn write_chunk(w: &mut Writer, fourcc: &[u8; 4], critical: bool, payload: &[u8]) {
-    w.bytes(fourcc);
-    w.u8(critical as u8); // bit0 = critical
-    w.u32(payload.len() as u32);
-    w.bytes(payload);
-}
-
 pub fn save_to_bytes(doc: &Document) -> Vec<u8> {
     let canvas = doc.size;
     let margin = Document::gutter_for(canvas);
 
-    // Dictionary: distinct present tiles, first-appearance order (frames→layers→cells).
-    // Entries are the live `Arc<Tile>`s — no byte clones. Lookup is two-level: an `Arc`-pointer
-    // cache catches COW-shared repeats without touching pixels, then a content-hash map (u128,
-    // byte-equality verified on hit so a hash collision can only cost a compare, never corrupt
-    // the file). This removed the double clone that made saving peak at 6-7× the document size
-    // (memlab M4a); output bytes are unchanged (same first-appearance ids).
-    let mut dict_order: Vec<Arc<Tile>> = Vec::new();
-    let mut by_ptr: HashMap<*const Tile, u32> = HashMap::new();
-    let mut by_hash: HashMap<u128, Vec<u32>> = HashMap::new(); // 1-based candidate ids
-    // Per-layer reference grids, computed in the same pass so FRMS below reuses them instead of
-    // re-cloning every tile for a map lookup (the second former full-clone pass).
+    // Dictionary: distinct present tiles, first-appearance order (frames→layers→cells), via the
+    // shared `container::TileDict` (two-level Arc-pointer + verified-hash lookup — see there).
+    // Per-layer reference grids are computed in the same pass so FRMS below reuses them instead
+    // of re-cloning every tile for a map lookup (the second former full-clone pass).
+    let mut dict = TileDict::new();
     let mut grids: Vec<Vec<u32>> = Vec::new();
     for f in &doc.frames {
         for l in &f.layers {
-            let nt = l.pixels.num_tiles();
-            let mut grid = Vec::with_capacity(nt);
-            for i in 0..nt {
-                let id = match l.pixels.tile_arc(i) {
-                    None => 0u32,
-                    Some(t) => {
-                        let ptr = Arc::as_ptr(t);
-                        match by_ptr.get(&ptr) {
-                            Some(&id) => id,
-                            None => {
-                                let h = t.content_hash();
-                                let cands = by_hash.entry(h).or_default();
-                                let id = match cands
-                                    .iter()
-                                    .copied()
-                                    .find(|&id| *dict_order[(id - 1) as usize] == **t)
-                                {
-                                    Some(id) => id,
-                                    None => {
-                                        dict_order.push(t.clone());
-                                        let id = dict_order.len() as u32;
-                                        cands.push(id);
-                                        id
-                                    }
-                                };
-                                by_ptr.insert(ptr, id);
-                                id
-                            }
-                        }
-                    }
-                };
-                grid.push(id);
-            }
-            grids.push(grid);
+            grids.push(dict.grid_for(&l.pixels));
         }
     }
 
@@ -535,17 +155,10 @@ pub fn save_to_bytes(doc: &Document) -> Vec<u8> {
     head.u128(doc.content_hash());
 
     // TILE — one 4096-byte temp per entry, encoded and dropped; never the whole set at once.
-    // Pre-sized (worst case ≈ RAW cells) so the Vec never overshoots by doubling (memlab M5) —
-    // under the document budget this reservation is ≤ ~340 MiB and effectively infallible.
+    // Pre-sized inside `TileDict::write` (memlab M5) — under the document budget the
+    // reservation is ≤ ~340 MiB and effectively infallible.
     let mut tile = Writer::new();
-    tile.buf.reserve_exact(dict_order.len() * (TILE_BYTES + 8) + 16);
-    tile.varint(dict_order.len() as u32);
-    for t in &dict_order {
-        let b = t.to_bytes();
-        let (codec, payload) = encode_tile(&b);
-        tile.u8(codec);
-        tile.bytes(&payload);
-    }
+    dict.write(&mut tile);
 
     // FRMS — ref-grids precomputed during the dictionary pass, same frames→layers order.
     let mut frms = Writer::new();
@@ -563,29 +176,18 @@ pub fn save_to_bytes(doc: &Document) -> Vec<u8> {
             frms.u8(l.opacity);
             frms.u8(0); // blend = Normal
             let grid = grid_iter.next().expect("one grid per layer");
-            let nt = grid.len();
-            let mut i = 0usize;
-            while i < nt {
-                let idx = grid[i];
-                let mut run = 1usize;
-                while i + run < nt && grid[i + run] == idx {
-                    run += 1;
-                }
-                frms.varint(run as u32);
-                frms.varint(idx);
-                i += run;
-            }
+            container::write_ref_grid(&mut frms, grid);
         }
     }
 
     // Assemble: signature, critical chunks, optional chunks, then INTG (whole-file CRC).
     // Pre-sized to the known chunk payloads so the final buffer never doubles past the file size.
     let mut w = Writer::new();
-    w.buf.reserve_exact(head.buf.len() + tile.buf.len() + frms.buf.len() + 64 * 1024);
+    w.reserve_exact(head.len() + tile.len() + frms.len() + 64 * 1024);
     w.bytes(&SIGNATURE);
-    write_chunk(&mut w, b"HEAD", true, &head.buf);
-    write_chunk(&mut w, b"TILE", true, &tile.buf);
-    write_chunk(&mut w, b"FRMS", true, &frms.buf);
+    write_chunk(&mut w, b"HEAD", true, head.as_bytes());
+    write_chunk(&mut w, b"TILE", true, tile.as_bytes());
+    write_chunk(&mut w, b"FRMS", true, frms.as_bytes());
 
     if !doc.palettes.is_empty() {
         let mut upal = Writer::new();
@@ -597,7 +199,7 @@ pub fn save_to_bytes(doc: &Document) -> Vec<u8> {
                 upal.bytes(&[c.r, c.g, c.b, c.a]);
             }
         }
-        write_chunk(&mut w, b"UPAL", false, &upal.buf);
+        write_chunk(&mut w, b"UPAL", false, upal.as_bytes());
         // UPCN: optional per-entry color names, mirroring UPAL's shape (palette count, then per
         // palette a u16 entry count + one string per entry, "" = unnamed). A separate
         // non-critical chunk — not folded into UPAL — so older builds keep opening new files
@@ -611,18 +213,15 @@ pub fn save_to_bytes(doc: &Document) -> Vec<u8> {
                     upcn.str(n.as_deref().unwrap_or(""));
                 }
             }
-            write_chunk(&mut w, b"UPCN", false, &upcn.buf);
+            write_chunk(&mut w, b"UPCN", false, upcn.as_bytes());
         }
     }
     if let Some(mask) = &doc.selection {
         write_chunk(&mut w, b"SELC", false, &encode_selection(mask));
     }
 
-    let crc = crc32c(&w.buf);
-    let mut intg = Writer::new();
-    intg.u32(crc);
-    write_chunk(&mut w, b"INTG", true, &intg.buf);
-    w.buf
+    finish_intg(&mut w);
+    w.into_bytes()
 }
 
 struct Chunks<'a> {
@@ -634,59 +233,33 @@ struct Chunks<'a> {
     selc: Option<&'a [u8]>,
 }
 
-/// Single forward walk of `[8 .. body_end]`; enforces `HEAD` first + one-of each critical.
-fn walk_chunks<'a>(data: &'a [u8], body_end: usize) -> Result<Chunks<'a>, IoError> {
+/// Single forward walk of `[8 .. body_end]` (via `container::walk_chunks`, which owns the
+/// framing); this visitor enforces `HEAD` first + one-of each critical, skips the known
+/// ancillary chunks, and rejects unknown critical ones.
+fn mkpx_chunks<'a>(data: &'a [u8], body_end: usize) -> Result<Chunks<'a>, IoError> {
     let mut c = Chunks { head: None, tile: None, frms: None, upal: None, upcn: None, selc: None };
-    let mut pos = 8usize;
-    let mut first = true;
-    while pos < body_end {
-        if pos + 9 > body_end {
-            return Err(IoError::Corrupt("chunk header"));
-        }
-        let fourcc: [u8; 4] = match data[pos..pos + 4].try_into() {
-            Ok(a) => a,
-            Err(_) => return Err(IoError::Corrupt("fourcc")),
-        };
-        let critical = data[pos + 4] & 1 != 0;
-        let len = u32::from_le_bytes([data[pos + 5], data[pos + 6], data[pos + 7], data[pos + 8]]) as usize;
-        let start = pos + 9;
-        let end = start.checked_add(len).ok_or(IoError::Corrupt("chunk length"))?;
-        if end > body_end {
-            return Err(IoError::Corrupt("chunk length"));
-        }
-        let payload = &data[start..end];
-        if first && &fourcc != b"HEAD" {
-            return Err(IoError::Corrupt("HEAD not first"));
-        }
-        first = false;
-        let slot = match &fourcc {
+    container::walk_chunks(data, body_end, b"HEAD", "HEAD not first", |fourcc, critical, payload| {
+        let slot = match fourcc {
             b"HEAD" => &mut c.head,
             b"TILE" => &mut c.tile,
             b"FRMS" => &mut c.frms,
             b"UPAL" => &mut c.upal,
             b"UPCN" => &mut c.upcn,
             b"SELC" => &mut c.selc,
-            b"THMB" | b"META" => {
-                pos = end;
-                continue; // ancillary, not used by the engine core
-            }
+            b"THMB" | b"META" => return Ok(()), // ancillary, not used by the engine core
             _ => {
                 if critical {
-                    return Err(IoError::UnsupportedChunk(fourcc));
+                    return Err(IoError::UnsupportedChunk(*fourcc));
                 }
-                pos = end;
-                continue; // unknown ancillary → skip
+                return Ok(()); // unknown ancillary → skip
             }
         };
         if slot.is_some() {
             return Err(IoError::Corrupt("duplicate chunk"));
         }
         *slot = Some(payload);
-        pos = end;
-    }
-    if pos != body_end {
-        return Err(IoError::Corrupt("trailing bytes"));
-    }
+        Ok(())
+    })?;
     Ok(c)
 }
 
@@ -701,27 +274,9 @@ pub fn load_from_bytes(data: &[u8]) -> Result<Document, IoError> {
 /// build can produce such a file, so this only rejects crafted/corrupt input.
 pub fn load_from_bytes_budgeted(data: &[u8], hard_budget: usize) -> Result<Document, IoError> {
     // Signature + fixed INTG trailer, then verify the whole-file CRC before trusting any body.
-    if data.len() < 8 + INTG_LEN {
-        return Err(IoError::Incomplete);
-    }
-    if data[..8] != SIGNATURE {
-        return Err(IoError::BadMagic);
-    }
-    let n = data.len();
-    let body_end = n - INTG_LEN;
-    let intg = &data[body_end..];
-    if &intg[..4] != b"INTG" || intg[4] & 1 == 0 {
-        return Err(IoError::Corrupt("missing INTG"));
-    }
-    if u32::from_le_bytes([intg[5], intg[6], intg[7], intg[8]]) != 4 {
-        return Err(IoError::Corrupt("bad INTG"));
-    }
-    let stored = u32::from_le_bytes([intg[9], intg[10], intg[11], intg[12]]);
-    if crc32c(&data[..body_end]) != stored {
-        return Err(IoError::Corrupt("crc mismatch"));
-    }
+    let body_end = verify_intg(data, &SIGNATURE)?;
 
-    let chunks = walk_chunks(data, body_end)?;
+    let chunks = mkpx_chunks(data, body_end)?;
     let head_pl = chunks.head.ok_or(IoError::Corrupt("no HEAD"))?;
     let tile_pl = chunks.tile.ok_or(IoError::Corrupt("no TILE"))?;
     let frms_pl = chunks.frms.ok_or(IoError::Corrupt("no FRMS"))?;
@@ -752,23 +307,11 @@ pub fn load_from_bytes_budgeted(data: &[u8], hard_budget: usize) -> Result<Docum
     let _head_flags = hr.u8()?;
     let stored_hash = hr.u128()?;
 
-    // --- TILE dictionary → Vec<Arc<Tile>> (one Arc per distinct tile; shared on install) ---
+    // --- TILE dictionary → Vec<Arc<Tile>> (one Arc per distinct tile; shared on install).
+    // Memory budget (SPEC §8.2b): the dictionary IS the document's unique tile payload —
+    // `read_tile_dict` refuses over-budget files up front, before materializing a single tile.
     let mut tr = Reader::new(tile_pl);
-    let tile_count = tr.varint()? as usize;
-    if tile_count > MAX_DICT_TILES {
-        return Err(IoError::TooLarge("tile dictionary"));
-    }
-    // Memory budget (SPEC §8.2b): the dictionary IS the document's unique tile payload — refuse
-    // over-budget files up front, before materializing a single tile.
-    if tile_count.saturating_mul(4096) > hard_budget {
-        return Err(IoError::TooLarge("memory budget"));
-    }
-    let mut dict: Vec<Arc<Tile>> = Vec::with_capacity(tile_count.min(tr.remaining() / 2 + 1));
-    for _ in 0..tile_count {
-        let codec = tr.u8()?;
-        let bytes = decode_tile(&mut tr, codec)?;
-        dict.push(Arc::new(Tile::from_bytes(&bytes).ok_or(IoError::Corrupt("tile"))?));
-    }
+    let dict = read_tile_dict(&mut tr, MAX_DICT_TILES, hard_budget)?;
 
     // --- FRMS ---
     let mut fr = Reader::new(frms_pl);
@@ -796,25 +339,7 @@ pub fn load_from_bytes_budgeted(data: &[u8], hard_budget: usize) -> Result<Docum
             let opacity = fr.u8()?;
             let _blend = fr.u8()?;
             let mut pixels = RgbaBuffer::from_size(storage);
-            let cells = pixels.num_tiles();
-            let mut filled = 0usize;
-            while filled < cells {
-                let run = fr.varint()? as usize;
-                let idx = fr.varint()? as usize;
-                if run == 0 || filled + run > cells {
-                    return Err(IoError::Corrupt("ref-grid run"));
-                }
-                if idx > dict.len() {
-                    return Err(IoError::Corrupt("tile index"));
-                }
-                if idx >= 1 {
-                    let arc = &dict[idx - 1];
-                    for c in filled..filled + run {
-                        pixels.set_tile(c, Some(arc.clone()));
-                    }
-                }
-                filled += run;
-            }
+            read_ref_grid(&mut fr, &dict, &mut pixels)?;
             layers.push(Layer {
                 id: lid,
                 name,
