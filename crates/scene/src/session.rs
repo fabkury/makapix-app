@@ -864,6 +864,45 @@ impl SceneSession {
         }
     }
 
+    // ---- .mkps persistence (P3) -------------------------------------------------------------
+
+    /// Serialize the Scene (+ the playhead as persisted session state) to plain `.mkps` bytes.
+    pub fn save_bytes(&self) -> Vec<u8> {
+        crate::io::save_to_bytes(&self.scene, self.playhead)
+    }
+
+    /// [`SceneSession::save_bytes`] inside the MKPZ DEFLATE envelope (explicit Save/export;
+    /// autosave uses plain, the editor's convention).
+    pub fn save_bytes_compact(&self) -> Vec<u8> {
+        makapix_codec::mkpx_compact::compress(&self.save_bytes())
+    }
+
+    /// Replace the session's document from `.mkps` bytes (plain or compact, sniffed compact
+    /// FIRST — same as the editor's loader). The loader budget-refuses oversized dictionaries
+    /// before materializing; history, gesture, selection, and caches reset.
+    pub fn load_bytes(&mut self, data: &[u8]) -> Result<(), crate::io::SceneIoError> {
+        let plain;
+        let bytes: &[u8] = if makapix_codec::mkpx_compact::is_compact(data) {
+            plain = makapix_codec::mkpx_compact::open(data)
+                .map_err(|_| crate::io::SceneIoError::Corrupt("compact envelope"))?;
+            &plain
+        } else {
+            data
+        };
+        let (_, hard) = self.mem_budgets();
+        let (scene, playhead) = crate::io::load_from_bytes(bytes, hard)?;
+        self.scene = scene;
+        self.playhead = playhead.min(self.scene.frame_count - 1);
+        self.selected_actor = None;
+        self.playing = false;
+        self.gesture = None;
+        self.history.clear();
+        self.cache.borrow_mut().clear();
+        self.mem_recalibrate();
+        self.bump();
+        Ok(())
+    }
+
     // ---- Prop import (P2) — the ONE art-ingestion chokepoint --------------------------------
 
     /// Import art as Prop(s): `.mkpx` (plain or compact, by signature — whole drawing, or one

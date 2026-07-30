@@ -67,6 +67,24 @@ pub fn scene_main(args: &[String]) -> i32 {
             session = SceneSession::new(w, h, fps);
             probe_start = 4;
         }
+        "load" => {
+            if args.len() < 2 {
+                eprintln!("mkpx scene load needs a .mkps path");
+                return 2;
+            }
+            let bytes = match std::fs::read(&args[1]) {
+                Ok(b) => b,
+                Err(e) => {
+                    eprintln!("cannot read '{}': {}", args[1], e);
+                    return 2;
+                }
+            };
+            if let Err(e) = session.load_bytes(&bytes) {
+                eprintln!("load error: {}", e);
+                return 2;
+            }
+            probe_start = 2;
+        }
         "import" => {
             if args.len() < 5 {
                 eprintln!("mkpx scene import needs <w> <h> <millifps> <image>");
@@ -194,6 +212,24 @@ fn run_probes(session: &mut SceneSession, specs: &[String]) -> i32 {
                 } else {
                     println!("# render frame={} -> {} scale={}", f, out, scale);
                 }
+            }
+            "save" => {
+                // save:OUT.mkps — write the session's plain .mkps (fixture generation, goldens).
+                let out = parts.get(1).copied().unwrap_or("out.mkps");
+                if let Err(e) = std::fs::write(out, session.save_bytes()) {
+                    eprintln!("save write failed '{}': {}", out, e);
+                    failed = true;
+                } else {
+                    println!("# save -> {}", out);
+                }
+            }
+            "assert.roundtrip" => {
+                let bytes = session.save_bytes();
+                let mut fresh = SceneSession::empty();
+                let ok = fresh.load_bytes(&bytes).is_ok()
+                    && fresh.scene.content_hash() == session.scene.content_hash();
+                println!("# assert.roundtrip VERDICT: {}", verdict(ok));
+                failed |= !ok;
             }
             "assert.det" => {
                 // The transform cache can never change output: composite twice through the

@@ -9,6 +9,7 @@
 pub mod compose;
 pub mod eval;
 pub mod history;
+pub mod io;
 pub mod model;
 pub mod session;
 
