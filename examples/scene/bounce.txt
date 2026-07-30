@@ -1,0 +1,12 @@
+# A bouncing solid square: the smallest complete Animator scene script.
+# Run: mkpx scene run examples/scene/bounce.txt state eval:1:12
+NewScene(64,64,12500)
+SetFrameCount(25)
+GenPropSolid(12,12,#E04030FF)
+PlaceActorAt(1, 32, 10)
+SetKey(1, y, 0, 10)
+SetKeyTween(1, y, 12, 50, easein)
+SetKey(1, y, 24, 10)
+SetTween(1, y, 0, easein)
+SetTween(1, y, 12, easeout)
+SetLoop(0, 24)

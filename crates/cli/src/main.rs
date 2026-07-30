@@ -40,12 +40,20 @@ use std::process::exit;
 
 mod mem;
 mod png;
+mod probe_util;
+mod scene_cmd;
+
+use probe_util::{iarg, idx, verdict};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
-        eprintln!("usage: mkpx run <script|-> [probes...]   |   mkpx new <w> <h> [probes...]");
+        eprintln!("usage: mkpx run <script|-> [probes...]   |   mkpx new <w> <h> [probes...]   |   mkpx scene ...");
         exit(2);
+    }
+    // The Animator harness family lives in scene_cmd (the mkpx loop's twin over a SceneSession).
+    if args[1] == "scene" {
+        exit(scene_cmd::scene_main(&args[2..]));
     }
     let mut session = Session::empty();
     let probe_start;
@@ -333,21 +341,6 @@ fn main() {
     }
 
     exit(if failed { 1 } else { 0 });
-}
-
-fn verdict(ok: bool) -> &'static str {
-    if ok {
-        "PASS"
-    } else {
-        "FAIL"
-    }
-}
-
-fn idx(parts: &[&str], k: usize) -> usize {
-    parts.get(k).and_then(|s| s.parse().ok()).unwrap_or(0)
-}
-fn iarg(parts: &[&str], k: usize) -> i32 {
-    parts.get(k).and_then(|s| s.parse().ok()).unwrap_or(0)
 }
 
 /// Build a `frames`×`layers` document whose every layer is full canvas noise, by DIRECT document

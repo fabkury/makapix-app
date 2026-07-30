@@ -1,0 +1,13 @@
+[package]
+name = "makapix-scene"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Makapix Animator — deterministic scene compositor core (Scenes, Actors, Keys, .mkps)."
+
+[dependencies]
+makapix-engine = { path = "../engine" }
+# Prop import decodes GIF/PNG/WebP/... through the codec crate (the same quarantine boundary
+# the FFI uses); the scene core itself stays pure.
+makapix-codec = { path = "../codec" }

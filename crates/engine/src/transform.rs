@@ -8,6 +8,25 @@ use crate::buffer::RgbaBuffer;
 use crate::geom::{Point, PointF};
 use crate::selection::Mask;
 
+/// cos/sin for integer millidegrees, CLOCKWISE. EXACT at multiples of 90 000 (an integer
+/// equality check — no epsilon needed, unlike the editor draft's ±2 mrad snap, because the
+/// Animator's rotations arrive as integer millidegrees); f32 trig otherwise. The single trig
+/// gateway for all Animator transforms — if cross-platform goldens ever fork, the kill-switch
+/// is swapping this one body for a fixed-point sine table.
+pub fn rot_cos_sin(rot_md: i32) -> (f32, f32) {
+    let m = rot_md.rem_euclid(360_000);
+    if m % 90_000 == 0 {
+        return match m / 90_000 {
+            0 => (1.0, 0.0),
+            1 => (0.0, 1.0),
+            2 => (-1.0, 0.0),
+            _ => (0.0, -1.0),
+        };
+    }
+    let rad = m as f32 * (std::f32::consts::PI / 180_000.0);
+    (rad.cos(), rad.sin())
+}
+
 /// One lifted `sw`×`sh` source region: pixel (0,0) of the source buffer sits at `src_origin`
 /// in destination coords, optionally restricted by a source-sized 1-bit `src_mask`. The op
 /// runs about `pivot` (continuous destination coords), then shifts by the whole-pixel `off`

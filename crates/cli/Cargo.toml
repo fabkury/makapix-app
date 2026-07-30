@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 makapix-engine = { path = "../engine" }
+makapix-scene = { path = "../scene" }
 # Lab-only: the `import` subcommand drives the same decode path the app's mkpx_import uses
 # (memory-audit tooling, 2026-07-29). The shipping FFI already links codec on every platform,
 # so this adds nothing to any product artifact.
