@@ -9,6 +9,8 @@
 
 use makapix_engine::geom::{MAX_DIM, MIN_DIM};
 use makapix_engine::Session;
+
+mod scene;
 use std::ffi::{c_char, CStr, CString};
 use std::os::raw::c_int;
 use std::slice;
@@ -21,10 +23,10 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 // atomics bridges them. done/total are packed into ONE atomic (high 32 = total, low 32 = done)
 // so a poll always reads a consistent pair. Each export resets both atomics when it starts, so
 // nothing leaks between exports (the shell's modal dialog ensures at most one runs at a time).
-static EXPORT_PROGRESS: AtomicU64 = AtomicU64::new(0);
-static EXPORT_CANCEL: AtomicBool = AtomicBool::new(false);
+pub(crate) static EXPORT_PROGRESS: AtomicU64 = AtomicU64::new(0);
+pub(crate) static EXPORT_CANCEL: AtomicBool = AtomicBool::new(false);
 
-fn export_progress_set(done: u32, total: u32) {
+pub(crate) fn export_progress_set(done: u32, total: u32) {
     EXPORT_PROGRESS.store(((total as u64) << 32) | done as u64, Ordering::Relaxed);
 }
 
@@ -480,13 +482,13 @@ pub extern "C" fn mkpx_export_layer_webp(ptr: *mut Session, frame: u32, layer: u
 /// Advance the export's "done" counter by one step (one frame composited, or one frame encoded).
 /// Total steps = 2n (composite + encode per frame). `done` never approaches the 32-bit width, so a
 /// plain increment of the packed atomic's low word is safe. [audit #10 streaming export]
-fn export_progress_inc() {
+pub(crate) fn export_progress_inc() {
     EXPORT_PROGRESS.fetch_add(1, Ordering::Relaxed);
 }
 
 /// The streaming encoders' per-frame hook: one encode step done, and `false` (= abort) once cancel
 /// is set. (Composite steps are counted by the frame-source closure in each export fn.)
-fn encode_progress_hook_streaming(_done: usize, _total: usize) -> bool {
+pub(crate) fn encode_progress_hook_streaming(_done: usize, _total: usize) -> bool {
     export_progress_inc();
     !EXPORT_CANCEL.load(Ordering::Relaxed)
 }
@@ -569,7 +571,7 @@ pub extern "C" fn mkpx_export_webp(ptr: *mut Session, scale: u32, out_len: *mut 
     }
 }
 
-fn bytes_out(v: Vec<u8>, out_len: *mut u64) -> *mut u8 {
+pub(crate) fn bytes_out(v: Vec<u8>, out_len: *mut u64) -> *mut u8 {
     let boxed = v.into_boxed_slice();
     let len = boxed.len();
     if !out_len.is_null() {
@@ -604,9 +606,15 @@ fn borrow_str<'a>(p: *const c_char) -> Option<&'a str> {
     unsafe { CStr::from_ptr(p) }.to_str().ok()
 }
 
-fn cstring(s: &str) -> *mut c_char {
+pub(crate) fn cstring(s: &str) -> *mut c_char {
     CString::new(s).unwrap_or_default().into_raw()
 }
+
+/// Tests that run an export mutate the process-wide EXPORT_PROGRESS/EXPORT_CANCEL atomics;
+/// every export-running test (editor AND scene family) must hold this lock. Crate-level so
+/// `scene::tests` shares it.
+#[cfg(test)]
+pub(crate) static EXPORT_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[cfg(test)]
 mod tests {
@@ -673,7 +681,6 @@ mod tests {
 
     // Tests that run an export mutate the process-wide EXPORT_PROGRESS atomics; serialize them so
     // the progress assertions can't race another test's export (cargo runs tests on threads).
-    static EXPORT_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
     fn ffi_export_reports_progress() {

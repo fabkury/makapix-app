@@ -903,6 +903,80 @@ impl SceneSession {
         Ok(())
     }
 
+    // ---- export (P4) ------------------------------------------------------------------------
+
+    /// Export the whole Scene as an animated GIF, streaming one composited frame at a time
+    /// (nothing accumulates but the output). Per-frame duration = `fps.frame_us()` — exact
+    /// centiseconds by construction (ADR-0001). GIF carries 1-bit transparency, so
+    /// semi-transparent pixels are thresholded (a ≥ 128 → opaque, else fully transparent);
+    /// the returned bool reports whether any pixel was actually thresholded (the decided
+    /// "GIF flattened your fades" notice signal).
+    pub fn export_gif(
+        &self,
+        scale: u32,
+        progress: makapix_codec::EncodeProgress,
+    ) -> Result<(Vec<u8>, bool), makapix_codec::CodecError> {
+        let (w, h) = self.size();
+        let n = self.scene.frame_count as usize;
+        let dur = self.scene.fps.frame_us();
+        let mut lossy = false;
+        let mut i = 0u32;
+        let bytes = makapix_codec::encode_gif_streaming(
+            w as u32,
+            h as u32,
+            n,
+            || {
+                if i >= self.scene.frame_count {
+                    return None;
+                }
+                let mut rgba = self.composite_bytes(i);
+                for px in rgba.chunks_exact_mut(4) {
+                    let a = px[3];
+                    if a != 0 && a != 255 {
+                        lossy = true;
+                        if a >= 128 {
+                            px[3] = 255;
+                        } else {
+                            px.fill(0);
+                        }
+                    }
+                }
+                i += 1;
+                Some((rgba, dur))
+            },
+            scale,
+            progress,
+        )?;
+        Ok((bytes, lossy))
+    }
+
+    /// Export as animated lossless WEBP (true alpha — no threshold), streaming.
+    pub fn export_webp(
+        &self,
+        scale: u32,
+        progress: makapix_codec::EncodeProgress,
+    ) -> Result<Vec<u8>, makapix_codec::CodecError> {
+        let (w, h) = self.size();
+        let n = self.scene.frame_count as usize;
+        let dur = self.scene.fps.frame_us();
+        let mut i = 0u32;
+        makapix_codec::encode_animated_webp_streaming(
+            w as u32,
+            h as u32,
+            n,
+            || {
+                if i >= self.scene.frame_count {
+                    return None;
+                }
+                let rgba = self.composite_bytes(i);
+                i += 1;
+                Some((rgba, dur))
+            },
+            scale,
+            progress,
+        )
+    }
+
     // ---- Prop import (P2) — the ONE art-ingestion chokepoint --------------------------------
 
     /// Import art as Prop(s): `.mkpx` (plain or compact, by signature — whole drawing, or one

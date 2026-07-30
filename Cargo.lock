@@ -139,6 +139,7 @@ version = "0.1.0"
 dependencies = [
  "makapix-codec",
  "makapix-engine",
+ "makapix-scene",
 ]
 
 [[package]]

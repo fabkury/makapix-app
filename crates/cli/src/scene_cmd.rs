@@ -213,6 +213,45 @@ fn run_probes(session: &mut SceneSession, specs: &[String]) -> i32 {
                     println!("# render frame={} -> {} scale={}", f, out, scale);
                 }
             }
+            "export.gif" => {
+                // export.gif:OUT.gif[:S]
+                let out = parts.get(1).copied().unwrap_or("out.gif");
+                let scale: u32 = parts.get(2).and_then(|s| s.parse().ok()).unwrap_or(1);
+                let mut progress = |_d: usize, _t: usize| true;
+                match session.export_gif(scale, &mut progress) {
+                    Ok((bytes, lossy)) => {
+                        if let Err(e) = std::fs::write(out, &bytes) {
+                            eprintln!("export.gif write failed '{}': {}", out, e);
+                            failed = true;
+                        } else {
+                            println!("# export.gif -> {} bytes={} alpha_lossy={}", out, bytes.len(), lossy);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("export.gif failed: {}", e);
+                        failed = true;
+                    }
+                }
+            }
+            "export.webp" => {
+                let out = parts.get(1).copied().unwrap_or("out.webp");
+                let scale: u32 = parts.get(2).and_then(|s| s.parse().ok()).unwrap_or(1);
+                let mut progress = |_d: usize, _t: usize| true;
+                match session.export_webp(scale, &mut progress) {
+                    Ok(bytes) => {
+                        if let Err(e) = std::fs::write(out, &bytes) {
+                            eprintln!("export.webp write failed '{}': {}", out, e);
+                            failed = true;
+                        } else {
+                            println!("# export.webp -> {} bytes={}", out, bytes.len());
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("export.webp failed: {}", e);
+                        failed = true;
+                    }
+                }
+            }
             "save" => {
                 // save:OUT.mkps — write the session's plain .mkps (fixture generation, goldens).
                 let out = parts.get(1).copied().unwrap_or("out.mkps");

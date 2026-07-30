@@ -19,3 +19,4 @@ crate-type = ["cdylib", "staticlib", "lib"]
 [dependencies]
 makapix-engine = { path = "../engine" }
 makapix-codec = { path = "../codec" }
+makapix-scene = { path = "../scene" }
