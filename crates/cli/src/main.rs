@@ -333,6 +333,17 @@ fn main() {
                 println!("# assert.roundtrip VERDICT: {}", verdict(ok));
                 failed |= !ok;
             }
+            "save" => {
+                // save:OUT.mkpx — write the session's document (asset generation for the
+                // Animator's `@import`, fixtures, goldens). Mirrors `mkpx scene`'s probe.
+                let out = parts.get(1).copied().unwrap_or("out.mkpx");
+                if let Err(e) = std::fs::write(out, session.save_bytes()) {
+                    eprintln!("save write failed '{}': {}", out, e);
+                    failed = true;
+                } else {
+                    println!("# save -> {}", out);
+                }
+            }
             other => {
                 eprintln!("unknown probe '{}'", other);
                 failed = true;

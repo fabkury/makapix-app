@@ -46,7 +46,7 @@ pub fn scene_main(args: &[String]) -> i32 {
                     }
                 }
             };
-            if let Err(e) = session.run_script(&src) {
+            if let Err(e) = run_script_with_imports(&mut session, &src) {
                 eprintln!("script error: {}", e);
                 return 2;
             }
@@ -138,6 +138,42 @@ pub fn scene_main(args: &[String]) -> i32 {
     }
 
     run_probes(&mut session, &args[probe_start..])
+}
+
+/// Run a scene script, handling the CLI-level `@import(path, name)` and
+/// `@import-split(path, name)` directives — asset embedding for scripted scenes. File I/O
+/// stays in the harness, never in the scene DSL; the imported prop's art is copied into the
+/// session (ADR-0002 self-containment), and props number in creation order exactly as if
+/// they were `GenProp` lines. Imports do not place actors — scripts place explicitly.
+fn run_script_with_imports(session: &mut SceneSession, src: &str) -> Result<(), String> {
+    for (ln, raw) in src.lines().enumerate() {
+        let line = raw.trim();
+        if let Some(rest) = line.strip_prefix("@import") {
+            let (split, rest) = match rest.strip_prefix("-split") {
+                Some(r) => (true, r),
+                None => (false, rest),
+            };
+            let inner = rest
+                .trim()
+                .strip_prefix('(')
+                .and_then(|s| s.strip_suffix(')'))
+                .ok_or_else(|| format!("line {}: @import needs (path[, name])", ln + 1))?;
+            let (path, name) = match inner.split_once(',') {
+                Some((p, n)) => (p.trim(), n.trim()),
+                None => (inner.trim(), ""),
+            };
+            let bytes = std::fs::read(path)
+                .map_err(|e| format!("line {}: cannot read '{}': {}", ln + 1, path, e))?;
+            session
+                .import_prop_bytes(&bytes, name, split, false)
+                .map_err(|e| format!("line {}: import '{}' failed: {}", ln + 1, path, e))?;
+        } else {
+            session
+                .run_script(raw)
+                .map_err(|e| format!("line {}: {}", ln + 1, e))?;
+        }
+    }
+    Ok(())
 }
 
 /// Evaluate the trailing probe specs; returns the process exit code.
