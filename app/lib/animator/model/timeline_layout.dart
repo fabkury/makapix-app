@@ -1,6 +1,11 @@
 // Timeline geometry — the pure frame↔pixel math behind every zoom level of the one-timeline
 // surface (Strip / Tracks / Focus). Engine-free and unit-tested; the painters and gesture
 // handlers consume this so hit zones and drawing can never disagree.
+//
+// Gesture safety (docs/animator/06-gesture-safety.md): [originX]/[rightInset] are the
+// adaptive side gutters — frame 0 and the last frame live inboard of the OS Back-gesture
+// zones — and [overscroll] lets Tracks/Focus scroll past both ends so edge keys can be
+// dragged from mid-screen.
 library;
 
 import 'dart:math' as math;
@@ -16,46 +21,75 @@ const double kKeyHitPx = 11.0;
 const double kLoopHandleHitPx = 22.0;
 
 class TimelineLayout {
-  /// Lane width in px.
+  /// Full band width in px (gutters included).
   final double width;
   final int frameCount;
   final double pxPerFrame;
 
-  /// Horizontal scroll offset in px (0 = frame 0 at the left edge).
+  /// Horizontal scroll offset in px (0 = frame 0 at the lane's left edge).
   final double scroll;
+
+  /// Left gutter: frame 0's cell starts at this band-x.
+  final double originX;
+
+  /// Right gutter width.
+  final double rightInset;
+
+  /// Extra scrollable px allowed past both ends of the content.
+  final double overscroll;
 
   const TimelineLayout({
     required this.width,
     required this.frameCount,
     required this.pxPerFrame,
     this.scroll = 0,
+    this.originX = 0,
+    this.rightInset = 0,
+    this.overscroll = 0,
   });
 
-  /// A layout that fits the whole scene in [width] (the Strip's default).
-  factory TimelineLayout.fit({required double width, required int frameCount}) {
+  /// A layout that fits the whole scene between the gutters (the Strip's default).
+  factory TimelineLayout.fit({
+    required double width,
+    required int frameCount,
+    double originX = 0,
+    double rightInset = 0,
+  }) {
+    final lane = math.max(1.0, width - originX - rightInset);
     final ppf = frameCount <= 0
         ? kMinPxPerFrame
-        : (width / frameCount).clamp(kMinPxPerFrame, kMaxPxPerFrame).toDouble();
-    return TimelineLayout(width: width, frameCount: frameCount, pxPerFrame: ppf);
+        : (lane / frameCount).clamp(kMinPxPerFrame, kMaxPxPerFrame).toDouble();
+    return TimelineLayout(
+      width: width,
+      frameCount: frameCount,
+      pxPerFrame: ppf,
+      originX: originX,
+      rightInset: rightInset,
+    );
   }
+
+  /// Drawable lane width between the gutters.
+  double get laneWidth => math.max(1.0, width - originX - rightInset);
 
   double get contentWidth => frameCount * pxPerFrame;
 
-  /// Max scroll keeping content pinned to the lane.
-  double get maxScroll => math.max(0, contentWidth - width);
+  /// Scroll bounds: content pinned to the lane, extended by [overscroll] on both ends.
+  double get maxScroll => math.max(0, contentWidth - laneWidth) + overscroll;
+  double get minScroll => -overscroll;
 
-  double clampScroll(double s) => s.clamp(0.0, maxScroll);
+  double clampScroll(double s) => s.clamp(minScroll, maxScroll);
 
-  /// Center-x of a frame's cell, in lane px.
-  double xAtFrame(int frame) => frame * pxPerFrame - scroll + pxPerFrame / 2;
+  /// Center-x of a frame's cell, in band px.
+  double xAtFrame(int frame) =>
+      originX + frame * pxPerFrame - scroll + pxPerFrame / 2;
 
-  /// Left edge of a frame's cell.
-  double leftOfFrame(int frame) => frame * pxPerFrame - scroll;
+  /// Left edge of a frame's cell, in band px.
+  double leftOfFrame(int frame) => originX + frame * pxPerFrame - scroll;
 
-  /// The frame whose cell contains lane-x (clamped into range).
+  /// The frame whose cell contains band-x (clamped into range).
   int frameAtX(double x) {
     if (frameCount <= 0) return 0;
-    final f = ((x + scroll) / pxPerFrame).floor();
+    final f = ((x - originX + scroll) / pxPerFrame).floor();
     return f.clamp(0, frameCount - 1);
   }
 
@@ -64,23 +98,33 @@ class TimelineLayout {
     if (frameCount <= 0) return (0, -1);
     final first = (scroll / pxPerFrame).floor().clamp(0, frameCount - 1);
     final last =
-        (((scroll + width) / pxPerFrame).ceil() - 1).clamp(0, frameCount - 1);
+        (((scroll + laneWidth) / pxPerFrame).ceil() - 1).clamp(0, frameCount - 1);
     return (first, last);
   }
 
-  /// Zoom about a lane-x focal point: returns the layout at [newPxPerFrame] with scroll
+  /// Zoom about a band-x focal point: returns the layout at [newPxPerFrame] with scroll
   /// adjusted so the frame under [focalX] stays put.
   TimelineLayout zoomedTo(double newPxPerFrame, double focalX) {
     final ppf = newPxPerFrame.clamp(kMinPxPerFrame, kMaxPxPerFrame).toDouble();
-    final focusFrame = (focalX + scroll) / pxPerFrame; // continuous frame index
-    final newScroll = focusFrame * ppf - focalX;
+    final laneX = focalX - originX;
+    final focusFrame = (laneX + scroll) / pxPerFrame; // continuous frame index
+    final newScroll = focusFrame * ppf - laneX;
     final zoomed = TimelineLayout(
-        width: width, frameCount: frameCount, pxPerFrame: ppf, scroll: 0);
+      width: width,
+      frameCount: frameCount,
+      pxPerFrame: ppf,
+      originX: originX,
+      rightInset: rightInset,
+      overscroll: overscroll,
+    );
     return TimelineLayout(
       width: width,
       frameCount: frameCount,
       pxPerFrame: ppf,
       scroll: zoomed.clampScroll(newScroll),
+      originX: originX,
+      rightInset: rightInset,
+      overscroll: overscroll,
     );
   }
 
@@ -89,6 +133,9 @@ class TimelineLayout {
         frameCount: frameCount,
         pxPerFrame: pxPerFrame,
         scroll: clampScroll(scroll + dx),
+        originX: originX,
+        rightInset: rightInset,
+        overscroll: overscroll,
       );
 
   /// Ruler label cadence: a frame number every ⌈32 px⌉ worth of frames, in 1/5/10/25/50/100
@@ -103,13 +150,15 @@ class TimelineLayout {
 }
 
 /// Cluster key-frame ticks that would land closer than [minGapPx] apart into single marks
-/// (the Strip's aggregated view at low zoom). Returns the lane-x of each drawn tick.
+/// (the Strip's aggregated view at low zoom). Returns the band-x of each drawn tick.
 List<double> aggregateTicks(Iterable<int> frames, TimelineLayout layout,
     {double minGapPx = 6}) {
   final xs = frames.map(layout.xAtFrame).toList()..sort();
+  final lo = layout.originX - minGapPx;
+  final hi = layout.originX + layout.laneWidth + minGapPx;
   final out = <double>[];
   for (final x in xs) {
-    if (x < -minGapPx || x > layout.width + minGapPx) continue;
+    if (x < lo || x > hi) continue;
     if (out.isEmpty || (x - out.last) >= minGapPx) {
       out.add(x);
     }

@@ -40,6 +40,7 @@ extension _AnimatorPlayback on _AnimatorPageState {
     setState(() => _playing = false);
     _sendSession('SetPlayhead($parked)');
     _state = SceneState.parse(engine.stateJson());
+    _hintEnd();
     _showFrame(parked);
     _overlayVN.value++;
   }
@@ -51,6 +52,7 @@ extension _AnimatorPlayback on _AnimatorPageState {
     // Cache hit shows instantly; a miss composites (skipping a tick at 50 fps is invisible —
     // the in-flight guard is _showFrame's own stale-frame check).
     _showFrame(f);
+    _hintLive('frame ${f + 1} / ${_state.frameCount}');
     _overlayVN.value++;
   }
 

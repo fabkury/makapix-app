@@ -3,10 +3,13 @@ part of 'animator_page.dart';
 // (Part of _AnimatorPageState — the editor part files' rationale: extensions on a State
 // subclass trip a false positive calling the @protected setState.)
 
-// The chrome bands: top band (☰ · title · readout · fit · cast), the transport row
-// (play/loop/zoom/EasingChip/undo/redo), and the one-timeline surface with its three zoom
-// levels — Strip (scrub lane + aggregated ticks + loop handles), Tracks (per-Actor lanes,
-// drag-to-retime), Focus (one Actor's per-property rows). Geometry via TimelineLayout only.
+// The chrome bands: top band (☰ · title · readout · fit · cast), the transport dock
+// (play/zoom/EasingChip/undo/redo — taps only, bottom-most), the hint strip (passive text
+// in the safe-area pad), and the one-timeline surface with its three zoom levels — Strip
+// (scrub lane + aggregated ticks + loop handles), Tracks (per-Actor lanes, drag-to-retime),
+// Focus (one Actor's per-property rows). Geometry via TimelineLayout only; the timeline
+// content sits inside adaptive side gutters so no drag has to start in the OS Back-gesture
+// zones (docs/animator/06-gesture-safety.md).
 extension _AnimatorTimeline on _AnimatorPageState {
   // ---- top band ----------------------------------------------------------------------------
 
@@ -223,40 +226,61 @@ extension _AnimatorTimeline on _AnimatorPageState {
 
   // ---- the timeline band -------------------------------------------------------------------
 
+  /// Adaptive side gutters (R1): the OS-reported Back-gesture insets, floored to a small
+  /// cosmetic margin on devices without edge gestures (3-button nav, desktop, iOS sides).
+  (double, double) _timelineGutters() {
+    final gi = MediaQuery.of(context).systemGestureInsets;
+    return (gi.left.clamp(8.0, 48.0), gi.right.clamp(8.0, 48.0));
+  }
+
   Widget _buildTimelineBand({bool landscape = false}) {
     final s = _chromeScale;
     final viewportH = MediaQuery.sizeOf(context).height;
     final laneCap = viewportH * (landscape ? 0.45 : 0.35);
+    final (gutterL, gutterR) = _timelineGutters();
     return LayoutBuilder(builder: (context, constraints) {
       final width = constraints.maxWidth;
-      final layout = _layoutFor(width);
       switch (_timelineZoom) {
         case TimelineZoom.strip:
-          return _stripBand(layout, 56 * s);
+          return _stripBand(_layoutFor(width, gutterL, gutterR), 56 * s);
         case TimelineZoom.tracks:
-          return _tracksBand(layout, s, laneCap);
+          // Tracks/Focus share one geometry over the lane area right of the 72px label
+          // column — the ruler gets the same leading inset, so their ticks align.
+          return _tracksBand(_layoutFor(width - 72 * s, gutterL, gutterR), s, laneCap);
         case TimelineZoom.focus:
-          return _focusBand(layout, s, laneCap);
+          return _focusBand(_layoutFor(width - 72 * s, gutterL, gutterR), s, laneCap);
       }
     });
   }
 
-  TimelineLayout _layoutFor(double width) {
+  TimelineLayout _layoutFor(double width, double gutterL, double gutterR) {
     if (_timelineZoom == TimelineZoom.strip) {
       // The Strip always fits the whole scene: it IS the scrubber.
-      return TimelineLayout.fit(width: width, frameCount: _state.frameCount);
+      return TimelineLayout.fit(
+        width: width,
+        frameCount: _state.frameCount,
+        originX: gutterL,
+        rightInset: gutterR,
+      );
     }
-    final l = TimelineLayout(
+    // Over-scroll half a lane past both ends so edge keys are draggable mid-screen (R5).
+    final over = math.max(1.0, width - gutterL - gutterR) / 2;
+    final probe = TimelineLayout(
       width: width,
       frameCount: _state.frameCount,
       pxPerFrame: _pxPerFrame,
-      scroll: 0,
+      originX: gutterL,
+      rightInset: gutterR,
+      overscroll: over,
     );
     return TimelineLayout(
       width: width,
       frameCount: _state.frameCount,
       pxPerFrame: _pxPerFrame,
-      scroll: l.clampScroll(_timeScroll),
+      scroll: probe.clampScroll(_timeScroll),
+      originX: gutterL,
+      rightInset: gutterR,
+      overscroll: over,
     );
   }
 
@@ -317,19 +341,24 @@ extension _AnimatorTimeline on _AnimatorPageState {
       final lo = math.min(a, b), hi = math.max(a, b);
       _sendSession('SetLoop($lo, $hi)');
       _state = SceneState.parse(engine.stateJson());
+      _hintLive('loop ${lo + 1} – ${hi + 1}');
       setState(() {});
       return;
     }
     _scrubTo(f);
   }
 
-  void _stripUp() => _loopDragEdge = null;
+  void _stripUp() {
+    _loopDragEdge = null;
+    _hintEnd();
+  }
 
   void _scrubTo(int frame) {
     if (_playing) _pause();
     if (frame == _state.playhead) return;
     _sendSession('SetPlayhead($frame)');
     _state = SceneState.parse(engine.stateJson());
+    _hintLive('frame ${frame + 1} / ${_state.frameCount}');
     _showFrame(frame);
     _overlayVN.value++;
     setState(() {});
@@ -341,7 +370,7 @@ extension _AnimatorTimeline on _AnimatorPageState {
     final laneH = 28.0 * s;
     final lanesH = math.min(_state.actors.length * laneH, laneCap);
     return Column(mainAxisSize: MainAxisSize.min, children: [
-      _ruler(layout),
+      _ruler(layout, labelInset: 72 * _chromeScale),
       SizedBox(
         height: math.max(lanesH, laneH),
         child: _state.actors.isEmpty
@@ -361,26 +390,32 @@ extension _AnimatorTimeline on _AnimatorPageState {
     ]);
   }
 
-  Widget _ruler(TimelineLayout layout) {
-    return SizedBox(
-      height: 20,
-      child: Listener(
-        behavior: HitTestBehavior.opaque,
-        onPointerDown: (e) => _rulerDown(e, layout),
-        onPointerMove: (e) => _rulerMove(e, layout),
-        onPointerUp: (_) => _rulerUp(),
-        onPointerCancel: (_) => _rulerUp(),
-        child: CustomPaint(
-          size: Size(layout.width, 20),
-          painter: TimelineRulerPainter(
-            layout: layout,
-            playhead: _playing ? _playbackFrame() : _state.playhead,
-            loopA: _state.loopA,
-            loopB: _state.loopB,
-            recordTint: _recordTint,
-          ),
+  Widget _ruler(TimelineLayout layout, {double labelInset = 0}) {
+    final ruler = Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: (e) => _rulerDown(e, layout),
+      onPointerMove: (e) => _rulerMove(e, layout),
+      onPointerUp: (_) => _rulerUp(),
+      onPointerCancel: (_) => _rulerUp(),
+      child: CustomPaint(
+        size: Size(layout.width, 20),
+        painter: TimelineRulerPainter(
+          layout: layout,
+          playhead: _playing ? _playbackFrame() : _state.playhead,
+          loopA: _state.loopA,
+          loopB: _state.loopB,
+          recordTint: _recordTint,
         ),
       ),
+    );
+    if (labelInset <= 0) return SizedBox(height: 20, child: ruler);
+    // Tracks/Focus: lead with the label-column width so ruler x == lane x.
+    return SizedBox(
+      height: 20,
+      child: Row(children: [
+        Container(width: labelInset, color: kLaneBg),
+        Expanded(child: ruler),
+      ]),
     );
   }
 
@@ -417,6 +452,7 @@ extension _AnimatorTimeline on _AnimatorPageState {
   void _rulerUp() {
     _touchPos.clear();
     _timelinePinching = false;
+    _hintEnd();
   }
 
   Widget _trackLane(ActorState a, TimelineLayout layout, double laneH) {
@@ -519,6 +555,7 @@ extension _AnimatorTimeline on _AnimatorPageState {
     final snapped = snapFrame(f, magnets);
     if (snapped != f) HapticFeedback.selectionClick();
     f = snapped;
+    _hintLive('frame ${kd.$3 + 1} → ${f + 1}');
     if (f != _keyDragTo) setState(() => _keyDragTo = f);
   }
 
@@ -527,6 +564,7 @@ extension _AnimatorTimeline on _AnimatorPageState {
     final to = _keyDragTo;
     _keyDrag = null;
     _keyDragTo = null;
+    _hintEnd();
     if (kd == null || to == null || to == kd.$3) {
       setState(() {});
       return;
@@ -573,7 +611,7 @@ extension _AnimatorTimeline on _AnimatorPageState {
           const Spacer(),
         ]),
       ),
-      _ruler(layout),
+      _ruler(layout, labelInset: 72 * _chromeScale),
       SizedBox(
         height: rowsH,
         child: ListView(
@@ -652,5 +690,41 @@ extension _AnimatorTimeline on _AnimatorPageState {
       setState(() => _selTween = (a.id, prop, hf));
       return;
     }
+  }
+
+  // ---- hint strip --------------------------------------------------------------------------
+
+  /// The bottom-most band: passive text over the safe-area pad (the one thing the mandatory
+  /// OS gesture zone tolerates — R2). Live values during gestures via [_hintVN]; a context
+  /// hint when idle. Mirrors the editor's tooltip band, single line.
+  Widget _buildHintStrip({bool compact = false}) {
+    final inset = MediaQuery.of(context).viewPadding.bottom;
+    final minPad = compact ? 8.0 : 16.0;
+    final gesturePad = inset < minPad ? minPad : inset;
+    final double stripHeight = 6 + 13.75 + 6 + gesturePad;
+    return IgnorePointer(
+      child: Container(
+        height: stripHeight,
+        color: const Color(0xFF0E1012),
+        padding: EdgeInsets.fromLTRB(12, 6, 12, gesturePad),
+        alignment: Alignment.topLeft,
+        child: ValueListenableBuilder<String?>(
+          valueListenable: _hintVN,
+          builder: (_, live, _) => Text(
+            live ?? _idleHint(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 11, color: Colors.white38),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _idleHint() {
+    if (_state.actors.isEmpty) return 'Import a prop to begin';
+    final sel = _state.selected;
+    if (sel == null) return 'Tap an actor to select · two fingers pan and zoom';
+    return 'Drag the actor to move it · keys record at the playhead';
   }
 }

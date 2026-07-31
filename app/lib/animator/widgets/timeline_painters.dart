@@ -83,6 +83,8 @@ class TimelineRulerPainter extends CustomPainter {
       old.layout.pxPerFrame != layout.pxPerFrame ||
       old.layout.scroll != layout.scroll ||
       old.layout.width != layout.width ||
+      old.layout.originX != layout.originX ||
+      old.layout.rightInset != layout.rightInset ||
       old.layout.frameCount != layout.frameCount ||
       old.playhead != playhead ||
       old.loopA != loopA ||
@@ -141,6 +143,8 @@ class StripLanePainter extends CustomPainter {
   bool shouldRepaint(StripLanePainter old) =>
       old.layout.pxPerFrame != layout.pxPerFrame ||
       old.layout.scroll != layout.scroll ||
+      old.layout.originX != layout.originX ||
+      old.layout.rightInset != layout.rightInset ||
       old.tickXs != tickXs ||
       old.playhead != playhead ||
       old.loopA != loopA ||
@@ -174,9 +178,10 @@ class TrackLanePainter extends CustomPainter {
     canvas.drawRRect(
       RRect.fromRectAndRadius(
         Rect.fromLTRB(
-            (-layout.scroll).clamp(-4, size.width),
+            layout.leftOfFrame(0).clamp(-4, size.width),
             barTop,
-            (layout.contentWidth - layout.scroll).clamp(0, size.width),
+            (layout.originX + layout.contentWidth - layout.scroll)
+                .clamp(0, size.width),
             size.height * 0.7),
         const Radius.circular(3),
       ),
@@ -211,6 +216,8 @@ class TrackLanePainter extends CustomPainter {
   bool shouldRepaint(TrackLanePainter old) =>
       old.layout.pxPerFrame != layout.pxPerFrame ||
       old.layout.scroll != layout.scroll ||
+      old.layout.originX != layout.originX ||
+      old.layout.rightInset != layout.rightInset ||
       old.keyFrames != keyFrames ||
       old.playhead != playhead ||
       old.selected != selected ||
@@ -299,6 +306,8 @@ class PropertyRowPainter extends CustomPainter {
   bool shouldRepaint(PropertyRowPainter old) =>
       old.layout.pxPerFrame != layout.pxPerFrame ||
       old.layout.scroll != layout.scroll ||
+      old.layout.originX != layout.originX ||
+      old.layout.rightInset != layout.rightInset ||
       old.keys != keys ||
       old.playhead != playhead ||
       old.selectedKeyFrame != selectedKeyFrame ||

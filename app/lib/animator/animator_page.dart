@@ -90,6 +90,11 @@ class _AnimatorPageState extends ConsumerState<AnimatorPage>
   final ValueNotifier<int> _overlayVN = ValueNotifier<int>(0);
   int _shownFrame = 0; // which scene frame _frameVN holds
 
+  // ---- Hint strip: live gesture values / brief confirmations over the safe-area pad.
+  // Null → the strip shows the computed idle hint. Same no-setState discipline as _frameVN.
+  final ValueNotifier<String?> _hintVN = ValueNotifier<String?>(null);
+  Timer? _hintFlashTimer;
+
   // View transform: zoom is relative to fit (1.0 = fit), pan in screen px.
   double _zoom = 1.0;
   Offset _pan = Offset.zero;
@@ -163,6 +168,8 @@ class _AnimatorPageState extends ConsumerState<AnimatorPage>
     // inside flushNow (the editor's exact ordering), then the async write proceeds safely.
     if (_engineReady) _autosave?.flushNow();
     _autosave?.stop();
+    _hintFlashTimer?.cancel();
+    _hintVN.dispose();
     _frameCache.dispose();
     _frameVN.value?.dispose();
     if (_engineReady) engine.dispose();
@@ -181,6 +188,32 @@ class _AnimatorPageState extends ConsumerState<AnimatorPage>
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  // ---- Hint-strip channel (consumed by _buildHintStrip in the timeline part).
+
+  /// Show a live value while a gesture is in flight.
+  void _hintLive(String s) {
+    _hintFlashTimer?.cancel();
+    _hintFlashTimer = null;
+    _hintVN.value = s;
+  }
+
+  /// Back to the idle hint.
+  void _hintEnd() {
+    _hintFlashTimer?.cancel();
+    _hintFlashTimer = null;
+    _hintVN.value = null;
+  }
+
+  /// A brief confirmation that fades back to the idle hint.
+  void _hintFlash(String s) {
+    _hintFlashTimer?.cancel();
+    _hintVN.value = s;
+    _hintFlashTimer = Timer(const Duration(seconds: 2), () {
+      _hintFlashTimer = null;
+      _hintVN.value = null;
+    });
   }
 
   @override
@@ -222,13 +255,17 @@ class _AnimatorPageState extends ConsumerState<AnimatorPage>
     );
   }
 
+  // Gesture-safe stack (docs/animator/06-gesture-safety.md §4.1): drags in the middle,
+  // taps at the extremes — the timeline sits above the tap-only transport dock, and the
+  // passive hint strip absorbs the bottom gesture zone.
   Widget _buildPortraitBody() {
     return Column(children: [
       _buildTopBand(),
       Expanded(child: _buildStageArea()),
       const Divider(height: 1),
-      _buildTransportRow(),
       _buildTimelineBand(),
+      _buildTransportRow(),
+      _buildHintStrip(),
     ]);
   }
 
@@ -241,8 +278,9 @@ class _AnimatorPageState extends ConsumerState<AnimatorPage>
         child: Column(children: [
           Expanded(child: _buildStageArea()),
           const Divider(height: 1),
-          _buildTransportRow(),
           _buildTimelineBand(landscape: true),
+          _buildTransportRow(),
+          _buildHintStrip(compact: true),
         ]),
       ),
     ]);

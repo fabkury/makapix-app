@@ -205,6 +205,7 @@ extension _AnimatorStage on _AnimatorPageState {
         ];
         _send('SetAtPlayhead(${sel!.id}, x, $nx); SetAtPlayhead(${sel.id}, y, $ny)');
         _liveRefresh();
+        _hintLive('x $nx · y $ny');
       case 2: // move the pivot (prop-local milli-px follow the world-space drag)
         final a = sel!;
         final dxMilli = ((c.dx - _dragStartCanvas.dx) * 1000).round();
@@ -344,6 +345,11 @@ extension _AnimatorStage on _AnimatorPageState {
     if (dropKey) HapticFeedback.lightImpact(); // the key-drop pulse
     _refreshState();
     _redrawCurrent();
+    if (dropKey && _state.autoKey) {
+      _hintFlash('Key · frame ${_state.playhead + 1}');
+    } else {
+      _hintEnd();
+    }
     if (mounted) setState(() {});
   }
 
