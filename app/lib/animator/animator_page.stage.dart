@@ -301,15 +301,17 @@ extension _AnimatorStage on _AnimatorPageState {
     _snapGuides = const [];
     if (!cancel && !moved && wasKind != 2) {
       // A tap: the ONLY stage selection path. Hit-test the down point; a pivot-reticle tap
-      // (kind 2) is exempt — grabbing the handle must never deselect.
+      // (kind 2) is exempt — grabbing the handle must never deselect. Tapping the
+      // already-selected actor toggles it OFF (and the key selection cascades away).
       final c = _dragStartCanvas;
       final hit = engine.hitTest(_state.playhead, c.dx.floor(), c.dy.floor());
       if (hit != null && hit != _state.selectedActor) {
         _sendSession('SelectActor($hit)');
         _refreshState();
         setState(() {});
-      } else if (hit == null && _state.selectedActor != null) {
+      } else if (_state.selectedActor != null) {
         _sendSession('SelectNone()');
+        _selTween = null;
         _refreshState();
         setState(() {});
       }

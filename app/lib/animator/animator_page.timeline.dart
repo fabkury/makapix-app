@@ -536,7 +536,10 @@ extension _AnimatorTimeline on _AnimatorPageState {
     return Row(children: [
       InkWell(
         onTap: () {
-          _sendSession('SelectActor(${a.id})');
+          // Tap-to-deselect: the selected actor's own label toggles it off.
+          final wasSelected = a.id == _state.selectedActor;
+          _sendSession(wasSelected ? 'SelectNone()' : 'SelectActor(${a.id})');
+          if (wasSelected) _selTween = null;
           _refreshState();
           _overlayVN.value++;
           setState(() {});
@@ -700,7 +703,15 @@ extension _AnimatorTimeline on _AnimatorPageState {
       return;
     }
     // Tap, or a drag in a non-selected lane: select on release (the teachable miss).
+    // Tapping the already-selected key toggles it off (freeing the lane from
+    // drag-moves-the-selected-key mode); the actor selection stays.
     if (cand != null) {
+      final st = _selTween;
+      if (st != null && st.$1 == cand.$1 && st.$2 == cand.$2 && st.$3 == cand.$3) {
+        setState(() => _selTween = null);
+        _hintFlash('Key deselected');
+        return;
+      }
       if (cand.$1 != _state.selectedActor) {
         _sendSession('SelectActor(${cand.$1})');
         _refreshState();
