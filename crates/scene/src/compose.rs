@@ -5,7 +5,7 @@
 //! (warm vs cold) guards that continuously.
 
 use crate::eval::{self, NetXf};
-use crate::model::{ActorMode, PixelStyle, PropId, Scene};
+use crate::model::{PixelStyle, PropId, Scene};
 use makapix_engine::buffer::RgbaBuffer;
 use makapix_engine::color;
 use makapix_engine::geom::{IRect, Point};

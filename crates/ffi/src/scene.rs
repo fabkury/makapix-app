@@ -370,7 +370,7 @@ pub extern "C" fn mkps_export_gif(ptr: *mut SceneSession, scale: u32, out_len: *
     EXPORT_ALPHA_LOSSY.store(false, Ordering::Relaxed);
     let n = s.frame_count();
     export_progress_set(0, 2 * n);
-    let mut hook = |_done: usize, _total: usize| -> bool {
+    let hook = |_done: usize, _total: usize| -> bool {
         crate::export_progress_inc();
         !EXPORT_CANCEL.load(Ordering::Relaxed)
     };
