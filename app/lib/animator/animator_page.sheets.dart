@@ -123,6 +123,155 @@ extension _AnimatorSheets on _AnimatorPageState {
     }
   }
 
+  // ---- Pin to… -----------------------------------------------------------------------------
+
+  /// Pick a pin target (or unpin). Eligible parents per the engine's one-level rule:
+  /// any other actor that is itself unpinned. Returns via pops: target id, -1 = unpin.
+  Future<void> _pinPickerFlow(int actorId) async {
+    final a0 = _state.actor(actorId);
+    if (a0 == null) return;
+    final targets =
+        _state.actors.where((o) => o.id != actorId && o.pinTo == null).toList();
+    final thumbs = <int, ui.Image?>{};
+    for (final t in targets) {
+      thumbs[t.id] = await _thumbFromRgba(engine.actorThumb(t.id, 40, 40), 40, 40);
+    }
+    if (!mounted) {
+      for (final img in thumbs.values) {
+        img?.dispose();
+      }
+      return;
+    }
+    final choice = await showAppSheet<int>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: const Color(0xFF1A1C1F),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Text('Pin "${a0.name}" to',
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+          ),
+          if (a0.pinTo != null)
+            ListTile(
+              dense: true,
+              leading: const Icon(Icons.link_off, size: 20),
+              title: const Text('None — unpin'),
+              onTap: () => Navigator.pop(ctx, -1),
+            ),
+          for (final t in targets)
+            ListTile(
+              dense: true,
+              leading: SizedBox(width: 40, height: 40, child: sheetThumb(thumbs[t.id])),
+              title: Text(t.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+              trailing: t.id == a0.pinTo
+                  ? Icon(Icons.check, size: 18, color: Theme.of(ctx).colorScheme.primary)
+                  : null,
+              onTap: () => Navigator.pop(ctx, t.id),
+            ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+    for (final img in thumbs.values) {
+      img?.dispose();
+    }
+    if (choice == null || !mounted) return;
+    if (choice == -1) {
+      _unpinActor(actorId);
+    } else if (choice != a0.pinTo) {
+      _pinActor(actorId, choice);
+    }
+  }
+
+  /// Pin with keep-position compensation: compute the child's world pose (unwrapping an
+  /// existing pin first), pin, then rewrite its transform tracks so nothing moves on
+  /// screen. Two undo steps by construction — the pin meta record cannot join the
+  /// gesture-bracketed track rewrite.
+  void _pinActor(int childId, int parentId) {
+    final c = _state.actor(childId);
+    final np = _state.actor(parentId);
+    if (c == null || np == null) return;
+    var world = PinXf(
+      x: c.pose.x,
+      y: c.pose.y,
+      rotMdeg: c.pose.rotMdeg,
+      scaleMilli: c.pose.scaleMilli,
+      flipH: c.pose.flipH,
+      flipV: c.pose.flipV,
+    );
+    if (c.pinTo != null) {
+      final op = _state.actor(c.pinTo);
+      if (op != null) world = worldForLocal(parent: op.pose, local: c.pose);
+    }
+    _act('SetPinTo($childId, $parentId)');
+    if (_state.actor(childId)?.pinTo != parentId) {
+      _toast("Couldn't pin — pins are one level only.");
+      return;
+    }
+    final local = localForWorld(parent: np.pose, world: _asPose(world));
+    _applyPoseRewrite(childId, c, local);
+    _hintFlash('Pinned to ${np.name}');
+  }
+
+  /// Unpin with keep-position compensation (world pose from the current parent, then
+  /// the tracks rewritten in scene space).
+  void _unpinActor(int childId) {
+    final c = _state.actor(childId);
+    if (c == null || c.pinTo == null) return;
+    final p = _state.actor(c.pinTo);
+    final world = p == null ? null : worldForLocal(parent: p.pose, local: c.pose);
+    _act('ClearPin($childId)');
+    if (world != null) _applyPoseRewrite(childId, c, world);
+    _hintFlash('Unpinned');
+  }
+
+  PoseState _asPose(PinXf x) => PoseState(
+      x: x.x,
+      y: x.y,
+      rotMdeg: x.rotMdeg,
+      scaleMilli: x.scaleMilli,
+      flipH: x.flipH,
+      flipV: x.flipV);
+
+  /// Rewrite the transform tracks so the value AT THE PLAYHEAD becomes [target], in one
+  /// gesture-bracketed batch (one undo record): keyless tracks get a new base; keyed
+  /// x/y/rot shift base + every key by the additive delta (tweens preserved); keyed
+  /// scale/flips are left untouched (rare — world appearance may change there).
+  void _applyPoseRewrite(int id, ActorState before, PinXf target) {
+    final parts = <String>['BeginGesture()'];
+    void additive(String prop, int oldVal, int newVal) {
+      final t = before.tracks[prop]!;
+      final token = _dslProp(prop);
+      if (!t.hasKeys) {
+        if (newVal != oldVal) parts.add('SetBase($id, $token, $newVal)');
+      } else {
+        final d = newVal - oldVal;
+        if (d == 0) return;
+        parts.add('SetBase($id, $token, ${t.base + d})');
+        for (final k in t.keys) {
+          parts.add('SetKeyTween($id, $token, ${k.frame}, ${k.v + d}, ${k.tween})');
+        }
+      }
+    }
+
+    additive('x', before.pose.x, target.x);
+    additive('y', before.pose.y, target.y);
+    additive('rot', before.pose.rotMdeg, target.rotMdeg);
+    if (!before.tracks['scale']!.hasKeys && target.scaleMilli != before.pose.scaleMilli) {
+      parts.add('SetBase($id, scale, ${target.scaleMilli})');
+    }
+    if (!before.tracks['flip_h']!.hasKeys && target.flipH != before.pose.flipH) {
+      parts.add('SetBase($id, fliph, ${target.flipH ? 1 : 0})');
+    }
+    if (!before.tracks['flip_v']!.hasKeys && target.flipV != before.pose.flipV) {
+      parts.add('SetBase($id, flipv, ${target.flipV ? 1 : 0})');
+    }
+    parts.add('EndGesture()');
+    if (parts.length > 2) _act(parts.join('; '));
+  }
+
   /// Uniform Cycle speed for a multi-frame Prop: scene frames each prop frame holds for
   /// (SetCycleAll). Sent only on a real change — a no-op still invalidates the engine's
   /// transform cache for the prop.
@@ -260,6 +409,35 @@ extension _AnimatorSheets on _AnimatorPageState {
               _transformSheet(a.id);
             }),
           ]),
+          sheetSection('Pin'),
+          Builder(builder: (_) {
+            final parent = a.pinTo == null ? null : _state.actor(a.pinTo);
+            final hasChildren = _state.actors.any((o) => o.pinTo == a.id);
+            final targets = _state.actors
+                .where((o) => o.id != a.id && o.pinTo == null)
+                .isNotEmpty;
+            final blocked = a.pinTo == null && (hasChildren || !targets);
+            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              sheetBtnRow([
+                sheetBtn(
+                  Icons.push_pin_outlined,
+                  parent == null ? 'Pin to…' : 'Pinned to ${parent.name}',
+                  blocked
+                      ? null
+                      : () {
+                          Navigator.pop(ctx);
+                          _pinPickerFlow(a.id);
+                        },
+                ),
+              ]),
+              if (hasChildren && a.pinTo == null)
+                const Padding(
+                  padding: EdgeInsets.only(top: 4),
+                  child: Text('Other actors are pinned to this one (one level only).',
+                      style: TextStyle(fontSize: 11, color: Colors.white38)),
+                ),
+            ]);
+          }),
           sheetSection('Arrange'),
           sheetBtnRow([
             sheetBtn(Icons.keyboard_double_arrow_up, 'Raise',
