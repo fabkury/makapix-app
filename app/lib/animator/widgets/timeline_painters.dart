@@ -36,16 +36,21 @@ class TimelineRulerPainter extends CustomPainter {
     if (recordTint) {
       canvas.drawRect(Offset.zero & size, Paint()..color = kRecordTint);
     }
-    // Loop dimming: outside [loopA, loopB].
+    // Loop dimming: outside [loopA, loopB], clamped to the CONTENT span — the gutters
+    // and any run-out past the scene's ends stay plain band background (a calm margin,
+    // not a darker hole at the scroll limits).
     final dim = Paint()..color = kLoopDim;
-    final loopLeft = layout.leftOfFrame(loopA);
-    final loopRight = layout.leftOfFrame(loopB) + layout.pxPerFrame;
-    if (loopLeft > 0) {
-      canvas.drawRect(Rect.fromLTRB(0, 0, loopLeft.clamp(0, size.width), size.height), dim);
+    final contentL = layout.leftOfFrame(0).clamp(0.0, size.width);
+    final contentR =
+        (layout.originX + layout.contentWidth - layout.scroll).clamp(0.0, size.width);
+    final loopLeft = layout.leftOfFrame(loopA).clamp(0.0, size.width);
+    final loopRight =
+        (layout.leftOfFrame(loopB) + layout.pxPerFrame).clamp(0.0, size.width);
+    if (loopLeft > contentL) {
+      canvas.drawRect(Rect.fromLTRB(contentL, 0, loopLeft, size.height), dim);
     }
-    if (loopRight < size.width) {
-      canvas.drawRect(
-          Rect.fromLTRB(loopRight.clamp(0, size.width), 0, size.width, size.height), dim);
+    if (loopRight < contentR) {
+      canvas.drawRect(Rect.fromLTRB(loopRight, 0, contentR, size.height), dim);
     }
     // Frame labels.
     final step = layout.labelStep();
