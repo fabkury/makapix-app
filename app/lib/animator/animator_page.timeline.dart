@@ -261,9 +261,11 @@ extension _AnimatorTimeline on _AnimatorPageState {
             case TimelineZoom.tracks:
               // Tracks/Focus share one geometry over the lane area right of the 72px
               // label column — the ruler gets the same leading inset, so ticks align.
-              return _tracksBand(_layoutFor(width - 72 * s, gutterL, gutterR), s, laneCap);
+              // The label column itself is the left Back-gesture inset (wider than the
+              // OS edge zone), so no left gutter: frame 0 sits flush against it.
+              return _tracksBand(_layoutFor(width - 72 * s, 0, gutterR), s, laneCap);
             case TimelineZoom.focus:
-              return _focusBand(_layoutFor(width - 72 * s, gutterL, gutterR), s, laneCap);
+              return _focusBand(_layoutFor(width - 72 * s, 0, gutterR), s, laneCap);
           }
         },
       );

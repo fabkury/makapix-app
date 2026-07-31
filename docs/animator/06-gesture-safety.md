@@ -108,7 +108,11 @@ home-indicator padding becomes the tooltip strip.
 The timeline's *content* is inset horizontally by the queried `systemGestureInsets`
 (~24–32 dp per side on gesture-nav Android, collapsing to a small cosmetic margin on
 3-button devices and on iOS). Frame 0's tick, the Playhead at frame 0, and the loop-start
-handle all live inboard of the Back zone (R1). Supporting mechanics:
+handle all live inboard of the Back zone (R1). In Tracks/Focus the **actor-label column is
+itself the left inset** (it is wider than the OS edge zone), so those levels carry no
+additional left gutter — frame 0 sits flush against the labels (refined 2026-07-31 after
+device feedback); the Strip, whose band spans the full screen width, keeps both gutters,
+and the right gutter applies everywhere. Supporting mechanics:
 
 - The x↔frame mapping (`TimelineLayout`) owns the insets; the gutters themselves are not
   part of the drag surface (a two-finger time-zoom cannot start in them either).
