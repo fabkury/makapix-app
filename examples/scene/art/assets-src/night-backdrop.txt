@@ -1,0 +1,8 @@
+# Campfire night: the sky — a deep night gradient over low rolling hills.
+NewDocument(128, 128)
+SelectTool(Gradient); SetGradientType(Linear)
+SetGradientStops([#05060FFF@0, #0E1830FF@0.75, #16264AFF@1])
+Stroke([(0,0),(0,127)])
+SelectTool(Ellipse); SetShapeFill(true); SetPrimaryColor(#0A101FFF)
+Stroke([(-30,106),(84,150)])
+Stroke([(52,112),(170,158)])

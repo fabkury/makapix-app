@@ -1,0 +1,12 @@
+# Aquarium: two wavy kelp strands with leaf flicks (swayed in-scene on a base pivot).
+NewDocument(12, 40)
+SelectTool(Pencil); SetBrushSize(2); SetPrimaryColor(#1E7A46FF)
+Stroke([(4,39),(2,32),(5,25),(3,17),(6,9),(4,2)])
+SetPrimaryColor(#2FA45CFF)
+Stroke([(9,39),(7,30),(10,22),(8,13),(10,4)])
+SetBrushSize(1)
+Stroke([(5,24),(8,21)])
+Stroke([(3,16),(0,13)])
+Stroke([(10,21),(11,17)])
+SetPrimaryColor(#1E7A46FF)
+Stroke([(6,8),(9,5)])

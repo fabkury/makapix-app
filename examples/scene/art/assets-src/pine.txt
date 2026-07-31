@@ -1,0 +1,10 @@
+# Campfire night: a pine silhouette (three stacked triangles + trunk), night-dark green.
+NewDocument(28, 44)
+SelectTool(Rectangle); SetShapeFill(true); SetPrimaryColor(#221408FF)
+Stroke([(12,35),(15,43)])
+SelectTool(Triangle); SetShapeFill(true); SetPrimaryColor(#0A1E12FF)
+Stroke([(2,22),(25,38)])
+Stroke([(4,12),(23,28)])
+Stroke([(7,2),(20,18)])
+SetPrimaryColor(#122B1AFF)
+Stroke([(9,6),(18,14)])

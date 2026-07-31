@@ -1,0 +1,12 @@
+# Rocket launch: the launch pad — deck on two legs with cross struts.
+NewDocument(48, 18)
+SelectTool(Rectangle); SetShapeFill(true); SetPrimaryColor(#5A6068FF)
+Stroke([(0,2),(47,6)])
+SetPrimaryColor(#3A4048FF)
+Stroke([(4,7),(8,17)])
+Stroke([(39,7),(43,17)])
+SelectTool(Line); SetBrushSize(1); SetPrimaryColor(#4A5058FF)
+Stroke([(8,8),(39,16)])
+Stroke([(39,8),(8,16)])
+SelectTool(Rectangle); SetShapeFill(true); SetPrimaryColor(#70787FFF)
+Stroke([(0,0),(47,1)])

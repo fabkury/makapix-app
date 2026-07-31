@@ -1,0 +1,5 @@
+# Aquarium: a light shaft — vertical alpha fade, rotated and pulsed in-scene.
+NewDocument(16, 80)
+SelectTool(Gradient); SetGradientType(Linear)
+SetGradientStops([#BFE8FF3C@0, #BFE8FF00@1])
+Stroke([(0,0),(0,79)])

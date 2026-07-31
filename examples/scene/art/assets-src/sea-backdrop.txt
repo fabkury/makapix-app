@@ -1,0 +1,13 @@
+# Aquarium deep: water column gradient over a sandy, pebbled floor.
+NewDocument(128, 128)
+SelectTool(Gradient); SetGradientType(Linear)
+SetGradientStops([#0A3A5CFF@0, #062A44FF@0.55, #03141FFF@1])
+Stroke([(0,0),(0,127)])
+SelectTool(Rectangle); SetShapeFill(true); SetPrimaryColor(#6E5C42FF)
+Stroke([(0,114),(127,117)])
+SetPrimaryColor(#8A7452FF)
+Stroke([(0,117),(127,127)])
+SelectTool(Pencil); SetBrushSize(1); SetPrimaryColor(#A08A64FF)
+Tap(12,120); Tap(30,124); Tap(52,119); Tap(75,123); Tap(98,120); Tap(115,125); Tap(40,121); Tap(88,125)
+SetPrimaryColor(#59492FFF)
+Tap(20,122); Tap(63,125); Tap(105,122); Tap(9,126)

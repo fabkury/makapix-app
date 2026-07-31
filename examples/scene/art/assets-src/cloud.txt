@@ -1,0 +1,8 @@
+# Sailing day: a puffy cloud — gray base, three white lobes.
+NewDocument(34, 14)
+SelectTool(Ellipse); SetShapeFill(true); SetPrimaryColor(#D0DCE6FF)
+Stroke([(2,6),(31,13)])
+SetPrimaryColor(#F8FCFFFF)
+Stroke([(0,4),(15,12)])
+Stroke([(8,0),(27,10)])
+Stroke([(18,4),(33,12)])

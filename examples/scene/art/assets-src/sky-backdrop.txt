@@ -1,0 +1,13 @@
+# Sailing day: bright sky over deep water, with a light horizon line.
+NewDocument(128, 128)
+SelectTool(Gradient); SetGradientType(Linear)
+SetGradientStops([#5FB8E8FF@0, #C8ECFFFF@1])
+Stroke([(0,0),(0,127)])
+SelectTool(SelectRect); SetSelectionMode(Replace)
+Stroke([(0,80),(127,127)])
+SelectTool(Gradient)
+SetGradientStops([#2E86C0FF@0, #175E90FF@1])
+Stroke([(0,80),(0,127)])
+SelectNone()
+SelectTool(Pencil); SetBrushSize(1); SetPrimaryColor(#E8F8FFFF)
+Stroke([(0,80),(127,80)])

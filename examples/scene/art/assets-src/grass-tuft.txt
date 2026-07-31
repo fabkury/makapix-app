@@ -1,0 +1,10 @@
+# Butterfly meadow: a tuft of grass blades.
+NewDocument(14, 12)
+SelectTool(Pencil); SetBrushSize(1); SetPrimaryColor(#3A8A2EFF)
+Stroke([(2,11),(1,4)])
+Stroke([(5,11),(4,2)])
+Stroke([(8,11),(9,3)])
+Stroke([(11,11),(12,5)])
+SetPrimaryColor(#4FAF3CFF)
+Stroke([(4,11),(3,6)])
+Stroke([(9,11),(10,6)])

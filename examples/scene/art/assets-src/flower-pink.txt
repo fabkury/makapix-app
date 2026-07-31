@@ -1,0 +1,12 @@
+# Butterfly meadow: a pink daisy on a stem (swayed in-scene on a base pivot).
+NewDocument(14, 24)
+SelectTool(Line); SetBrushSize(1); SetPrimaryColor(#2E7A34FF)
+Stroke([(7,23),(6,11)])
+Stroke([(7,18),(10,16)])
+SelectTool(Ellipse); SetShapeFill(true); SetPrimaryColor(#F078A8FF)
+Stroke([(4,0),(9,5)])
+Stroke([(2,3),(7,8)])
+Stroke([(7,3),(12,8)])
+Stroke([(4,6),(9,11)])
+SetPrimaryColor(#FFD84AFF)
+Stroke([(5,4),(8,7)])

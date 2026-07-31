@@ -1,0 +1,6 @@
+# A soft semi-transparent smoke/steam puff (airbrush over a translucent core).
+NewDocument(12, 12)
+SelectTool(Ellipse); SetShapeFill(true); SetPrimaryColor(#B8BEC855)
+Stroke([(2,2),(9,9)])
+SelectTool(Airbrush); SetBrushSize(5); SetIntensity(140); SetSeed(5); SetPrimaryColor(#9AA0AA88)
+Tap(6,6); Tap(4,7); Tap(8,5); Tap(6,4)

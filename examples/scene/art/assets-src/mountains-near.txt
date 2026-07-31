@@ -1,0 +1,9 @@
+# Aurora mountains: the near ridge, pure silhouette.
+NewDocument(128, 30)
+SelectTool(Triangle); SetShapeFill(true); SetPrimaryColor(#0E1830FF)
+Stroke([(-10,6),(30,30)])
+Stroke([(18,0),(70,30)])
+Stroke([(58,8),(100,30)])
+Stroke([(88,2),(138,30)])
+SelectTool(Rectangle); SetShapeFill(true); SetPrimaryColor(#0E1830FF)
+Stroke([(0,26),(127,29)])

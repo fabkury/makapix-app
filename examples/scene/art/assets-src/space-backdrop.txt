@@ -1,0 +1,7 @@
+# Rocket launch: near-black space with faint baked star dust (bright stars are actors).
+NewDocument(128, 128)
+SelectTool(Gradient); SetGradientType(Linear)
+SetGradientStops([#020208FF@0, #060A18FF@0.6, #0C1430FF@1])
+Stroke([(0,0),(0,127)])
+SelectTool(Airbrush); SetBrushSize(2); SetIntensity(60); SetSeed(11); SetPrimaryColor(#8090B066)
+Tap(14,20); Tap(40,8); Tap(66,30); Tap(92,12); Tap(112,44); Tap(24,52); Tap(78,60); Tap(50,40); Tap(104,72); Tap(10,80)

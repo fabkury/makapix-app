@@ -1,0 +1,12 @@
+# Aurora mountains: a shooting-star streak with a fading tail.
+NewDocument(12, 3)
+SelectTool(Pencil); SetBrushSize(1); SetPrimaryColor(#FFFFFF18)
+Stroke([(0,1),(1,1)])
+SetPrimaryColor(#FFFFFF40)
+Stroke([(2,1),(4,1)])
+SetPrimaryColor(#FFFFFF80)
+Stroke([(5,1),(7,1)])
+SetPrimaryColor(#FFFFFFC0)
+Stroke([(8,1),(9,1)])
+SetPrimaryColor(#FFFFFFFF)
+Tap(10,1); Tap(11,1); Tap(10,0); Tap(10,2)

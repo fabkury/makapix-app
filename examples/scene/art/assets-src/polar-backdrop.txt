@@ -1,0 +1,7 @@
+# Aurora mountains: polar night with a faint teal glow band above the horizon.
+NewDocument(128, 128)
+SelectTool(Gradient); SetGradientType(Linear)
+SetGradientStops([#030612FF@0, #071022FF@0.7, #0A1428FF@1])
+Stroke([(0,0),(0,127)])
+SelectTool(Rectangle); SetShapeFill(true); SetPrimaryColor(#10394833)
+Stroke([(0,82),(127,104)])

@@ -1,0 +1,6 @@
+# Aquarium: a translucent bubble — thin ring + a glint.
+NewDocument(7, 7)
+SelectTool(Ellipse); SetShapeFill(false); SetLineWidth(1); SetPrimaryColor(#DAF4FF88)
+Stroke([(0,0),(6,6)])
+SelectTool(Pencil); SetBrushSize(1); SetPrimaryColor(#FFFFFFCC)
+Tap(2,2)

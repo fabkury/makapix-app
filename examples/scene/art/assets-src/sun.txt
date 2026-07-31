@@ -1,0 +1,8 @@
+# Sailing day: the sun — warm core inside a translucent halo ring.
+NewDocument(22, 22)
+SelectTool(Ellipse); SetShapeFill(false); SetLineWidth(2); SetPrimaryColor(#FFE89A66)
+Stroke([(0,0),(21,21)])
+SetShapeFill(true); SetPrimaryColor(#FFD84AFF)
+Stroke([(3,3),(18,18)])
+SetPrimaryColor(#FFF2B0FF)
+Stroke([(6,5),(12,10)])

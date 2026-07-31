@@ -1,0 +1,12 @@
+# Butterfly meadow: a smaller violet flower.
+NewDocument(12, 20)
+SelectTool(Line); SetBrushSize(1); SetPrimaryColor(#2E7A34FF)
+Stroke([(6,19),(5,9)])
+Stroke([(6,15),(3,13)])
+SelectTool(Ellipse); SetShapeFill(true); SetPrimaryColor(#9A6AE0FF)
+Stroke([(3,0),(7,4)])
+Stroke([(1,3),(5,7)])
+Stroke([(5,3),(9,7)])
+Stroke([(3,5),(7,9)])
+SetPrimaryColor(#FFE28CFF)
+Stroke([(4,3),(6,5)])
