@@ -689,7 +689,10 @@ extension _AnimatorTimeline on _AnimatorPageState {
     final moved = _tlDragMoved;
     _clearLaneGesture();
     _hintEnd();
-    if (moved && kd != null) {
+    if (moved) {
+      // A drag either moves the selected key or does nothing at all — it NEVER changes
+      // the selection (only a clean tap selects, matching the stage grammar).
+      if (kd == null) return;
       if (to == null || to == kd.$3) {
         setState(() {});
         return;
@@ -702,9 +705,8 @@ extension _AnimatorTimeline on _AnimatorPageState {
       _selTween = (kd.$1, kd.$2, to); // the selection follows the moved key
       return;
     }
-    // Tap, or a drag in a non-selected lane: select on release (the teachable miss).
-    // Tapping the already-selected key toggles it off (freeing the lane from
-    // drag-moves-the-selected-key mode); the actor selection stays.
+    // A clean tap: select — or toggle the already-selected key off (freeing the lane
+    // from drag-moves-the-selected-key mode); the actor selection stays.
     if (cand != null) {
       final st = _selTween;
       if (st != null && st.$1 == cand.$1 && st.$2 == cand.$2 && st.$3 == cand.$3) {
