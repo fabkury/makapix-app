@@ -34,6 +34,7 @@ import 'dialogs/new_scene_dialog.dart';
 import 'gallery/scene_gallery_page.dart';
 import 'import/import_prop_dialog.dart';
 import 'model/pin_math.dart';
+import 'model/presets.dart';
 import 'model/scene_rules.dart';
 import 'model/scene_state.dart';
 import 'model/snapping.dart';

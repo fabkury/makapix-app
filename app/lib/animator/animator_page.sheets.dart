@@ -123,6 +123,30 @@ extension _AnimatorSheets on _AnimatorPageState {
     }
   }
 
+  /// Drop a motion preset's keys at the playhead (one undo step — the whole batch rides
+  /// one gesture bracket) and close the sheet so the result is immediately scrubbed.
+  void _applyPreset(BuildContext sheetCtx, int actorId, PresetKind k) {
+    final a = _state.actor(actorId);
+    if (a == null) return;
+    final dsl = buildPreset(
+      k,
+      actorId: actorId,
+      playhead: _state.playhead,
+      millifps: _state.millifps,
+      frameCount: _state.frameCount,
+      pose: a.pose,
+      canvasW: _state.w,
+      canvasH: _state.h,
+    );
+    if (dsl == null) {
+      _toast('Not enough frames after the playhead — move it earlier.');
+      return;
+    }
+    Navigator.pop(sheetCtx);
+    _act(dsl);
+    _hintFlash('${presetLabel(k)} · keys from frame ${_state.playhead + 1}');
+  }
+
   // ---- Pin to… -----------------------------------------------------------------------------
 
   /// Pick a pin target (or unpin). Eligible parents per the engine's one-level rule:
@@ -438,6 +462,21 @@ extension _AnimatorSheets on _AnimatorPageState {
                 ),
             ]);
           }),
+          sheetSection('Presets'),
+          sheetBtnRow([
+            sheetBtn(Icons.sports_basketball_outlined, 'Bounce',
+                () => _applyPreset(ctx, a.id, PresetKind.bounce)),
+            sheetBtn(Icons.login, 'Slide in',
+                () => _applyPreset(ctx, a.id, PresetKind.slideIn)),
+            sheetBtn(Icons.rotate_right, 'Spin',
+                () => _applyPreset(ctx, a.id, PresetKind.spin)),
+          ]),
+          sheetBtnRow([
+            sheetBtn(Icons.vibration, 'Shake',
+                () => _applyPreset(ctx, a.id, PresetKind.shake)),
+            sheetBtn(Icons.bubble_chart_outlined, 'Pop',
+                () => _applyPreset(ctx, a.id, PresetKind.pop)),
+          ]),
           sheetSection('Arrange'),
           sheetBtnRow([
             sheetBtn(Icons.keyboard_double_arrow_up, 'Raise',

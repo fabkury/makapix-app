@@ -61,8 +61,13 @@ The layout is **gesture-safe** (`docs/animator/06-gesture-safety.md`, implemente
 over the OS gesture zone, its content inside adaptive side gutters with Tracks/Focus
 over-scroll. Scenes persist as self-contained `.mkps` files with autosave + a My Scenes
 gallery; reachable from Contribute and via "Animate this" on any drawing (editor gallery +
-profile Private tab). **Deferred past v0.1:** Posing mode, "pin to" UI (format-level only),
-motion presets/paths, publish-to-Club.
+profile Private tab). Scene files travel between people via ☰ Open/Save scene file
+(2026-07-31), and the P1 batch (2026-07-31) closed the decided design: **Posing mode**
+(Actor-sheet chip, pill pose stepper, Focus Pose row), **"Pin to…"** with keep-position
+compensation (pure-Dart inverse of compose_pin, one-level rule surfaced), **background
+color** (shared ColorPickerDialog → SetBackground), **cycle speed** per multi-frame Prop,
+and **motion presets** (Bounce/Slide in/Spin/Shake/Pop — real editable keys at the
+playhead, one undo step each). **Deferred:** motion paths, publish-to-Club.
 **Phase 6 (Windows visual pass + Android device/memory validation) is still pending.**
 - `tools/memlab/` — **memory-limit stress study (2026-07-16, ✅ measured on Windows + Pixel 10 Pro XL)**:
   full-noise adversarial documents, headless CLI matrix + intent-gated in-app ladder. Findings + budgets:
