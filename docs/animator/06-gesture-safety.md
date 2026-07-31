@@ -112,9 +112,12 @@ handle all live inboard of the Back zone (R1). Supporting mechanics:
 
 - The x↔frame mapping (`TimelineLayout`) owns the insets; the gutters themselves are not
   part of the drag surface (a two-finger time-zoom cannot start in them either).
-- **Over-scroll padding** in Tracks and Focus: the timeline scrolls ~half a screen past
-  both ends, so frame 0 or the last frame can be brought to mid-screen before grabbing Keys
-  or loop handles there (R5). Strip (fit-all) relies on the gutters alone.
+- **R5 for edge keys is satisfied by the retiming grammar, not by over-scroll**: keys move
+  via select-then-drag from anywhere in their lane (relative frame delta), so a key at
+  frame 0 never needs to be grabbed at its own position. The half-lane over-scroll that
+  originally served this was removed after device feedback (2026-07-31) — scrolling now
+  clamps hard, frame 0 at the left gutter's inner edge and the last frame at the right's,
+  with no empty region past either end.
 - Endpoints need no dedicated buttons: scrubbing is absolute (tap jumps, drag follows), and
   a drag *ending* at an edge is safe — frame 0 is always one safe drag away.
   (Go-to-start/end taps were considered and declined; the dock stays lean.)

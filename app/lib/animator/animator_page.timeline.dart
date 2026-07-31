@@ -280,15 +280,16 @@ extension _AnimatorTimeline on _AnimatorPageState {
         rightInset: gutterR,
       );
     }
-    // Over-scroll half a lane past both ends so edge keys are draggable mid-screen (R5).
-    final over = math.max(1.0, width - gutterL - gutterR) / 2;
+    // Hard scroll bounds — no empty void past either end: frame 0 rests at the left
+    // gutter's inner edge, the last frame at the right gutter's. (Edge keys no longer
+    // need to be brought inboard: select-then-drag retimes a key from anywhere in its
+    // lane, so the old half-lane over-scroll lost its reason to exist.)
     final probe = TimelineLayout(
       width: width,
       frameCount: _state.frameCount,
       pxPerFrame: _pxPerFrame,
       originX: gutterL,
       rightInset: gutterR,
-      overscroll: over,
     );
     return TimelineLayout(
       width: width,
@@ -297,7 +298,6 @@ extension _AnimatorTimeline on _AnimatorPageState {
       scroll: probe.clampScroll(_timeScroll),
       originX: gutterL,
       rightInset: gutterR,
-      overscroll: over,
     );
   }
 
