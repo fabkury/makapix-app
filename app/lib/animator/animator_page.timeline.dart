@@ -407,6 +407,10 @@ extension _AnimatorTimeline on _AnimatorPageState {
     ]);
   }
 
+  /// Ruler height — deliberately generous: the header is the timeline's main tap/drag
+  /// surface (scrub, scroll, tap-jump, pinch), so it gets a fat finger-friendly band.
+  static const double _kRulerH = 40;
+
   Widget _ruler(TimelineLayout layout, {double labelInset = 0}) {
     final ruler = Listener(
       behavior: HitTestBehavior.opaque,
@@ -415,7 +419,7 @@ extension _AnimatorTimeline on _AnimatorPageState {
       onPointerUp: (_) => _rulerUp(layout),
       onPointerCancel: (_) => _rulerUp(layout, cancel: true),
       child: CustomPaint(
-        size: Size(layout.width, 20),
+        size: Size(layout.width, _kRulerH),
         painter: TimelineRulerPainter(
           layout: layout,
           playhead: _playing ? _playbackFrame() : _state.playhead,
@@ -425,11 +429,11 @@ extension _AnimatorTimeline on _AnimatorPageState {
         ),
       ),
     );
-    if (labelInset <= 0) return SizedBox(height: 20, child: ClipRect(child: ruler));
+    if (labelInset <= 0) return SizedBox(height: _kRulerH, child: ClipRect(child: ruler));
     // Tracks/Focus: lead with the label-column width so ruler x == lane x. ClipRect keeps
     // off-view painting (a scrolled-out playhead goes negative-x) inside the lane box.
     return SizedBox(
-      height: 20,
+      height: _kRulerH,
       child: Row(children: [
         Container(width: labelInset, color: kLaneBg),
         Expanded(child: ClipRect(child: ruler)),
