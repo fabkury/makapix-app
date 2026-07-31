@@ -4,15 +4,16 @@ part of 'animator_page.dart';
 // subclass trip a false positive calling the @protected setState.)
 
 // The Stage — the primary editing surface (design 03 §1: "the stage is the editor"). A raw
-// Listener with the editor's finger-count state machine: one finger = select / drag the
-// Actor (auto-keyed via the GestureBegin/SetAtPlayhead/EndGesture bracket) or drag the pivot;
-// two fingers = pinch — on the selected Actor's body it scales+rotates the ACTOR (15° stops,
-// 1.0 scale detent, haptic ticks), elsewhere it pans/zooms the view.
+// Listener with the strict select-then-act grammar (docs/animator/06-gesture-safety.md
+// §4.3): a TAP selects (on pointer-up, via engine hit-test); a one-finger drag starting
+// ANYWHERE acts on the current selection — Move mode drags position, Rotate mode orbits the
+// pivot with 15° stops — auto-keyed via the BeginGesture/SetAtPlayhead/EndGesture bracket;
+// the pivot reticle keeps its own grab; TWO fingers always pan/zoom the view. Scale is
+// deliberately not a gesture (it lives in the Transform sheet).
 extension _AnimatorStage on _AnimatorPageState {
   Widget _buildStageArea() {
     return LayoutBuilder(builder: (context, constraints) {
       final box = constraints.biggest;
-      _lastStageBox = box;
       return Container(
         color: const Color(0xFF222428),
         child: ClipRect(
@@ -51,7 +52,7 @@ extension _AnimatorStage on _AnimatorPageState {
                             ),
                             s,
                             off,
-                            dragging: _dragKind == 1,
+                            dragging: _dragKind == 1 || _dragKind == 3,
                           ),
                         ),
                       if (sel != null)
@@ -92,6 +93,12 @@ extension _AnimatorStage on _AnimatorPageState {
       ),
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
+        chromeIconToggle(
+          const [Icons.open_with, Icons.rotate_left],
+          const ['Move — a drag anywhere moves the actor', 'Rotate — a drag orbits the pivot'],
+          _stageMode.index,
+          (i) => setState(() => _stageMode = _StageMode.values[i]),
+        ),
         Text(sel.name,
             style: const TextStyle(fontSize: 12, color: Colors.white70),
             overflow: TextOverflow.ellipsis),
@@ -127,18 +134,18 @@ extension _AnimatorStage on _AnimatorPageState {
   void _stageDown(PointerDownEvent e, Size box) {
     _touchPos[e.pointer] = e.localPosition;
     if (_touchPos.length >= 2) {
-      // Second finger: cancel a nascent drag, start a pinch.
+      // Second finger: cancel a nascent drag; a pinch is ALWAYS the view (no actor pinch).
       _cancelStageDrag();
       _pinching = true;
-      _startPinchAny(box);
+      _startViewPinch();
       return;
     }
-    if (_playing) _pause(); // v0.1: touching the stage pauses playback
+    if (_playing) _pause(); // touching the stage pauses playback
     final c = _toCanvas(e.localPosition, box);
     final sel = _state.selected;
-    final (s, _) = _view(box);
+    final (s, off) = _view(box);
 
-    // Pivot grab: within 28 SCREEN px of the selected Actor's pivot reticle.
+    // Pivot grab keeps its start-point-specific handle: within 28 SCREEN px of the reticle.
     if (sel != null) {
       final pv = _pivotCanvas(sel);
       if ((c - pv).distance * s <= 28) {
@@ -150,38 +157,32 @@ extension _AnimatorStage on _AnimatorPageState {
       }
     }
 
-    // Actor hit: topmost opaque pixel via the engine; select + begin move drag.
-    final hit = engine.hitTest(_state.playhead, c.dx.floor(), c.dy.floor());
-    if (hit != null) {
-      if (hit != _state.selectedActor) {
-        _sendSession('SelectActor($hit)');
-        _refreshState();
-        _overlayVN.value++;
-        setState(() {});
-      }
-      final a = _state.actor(hit)!;
-      _dragPointer = e.pointer;
-      _dragKind = 1;
-      _dragStartX = a.pose.x;
-      _dragStartY = a.pose.y;
-      _dragStartCanvas = c;
-      _beginGesture();
+    // Strict select-then-act: no hit-test, no selection change on the way down — a drag
+    // acts on the CURRENT selection from anywhere; taps (re)select on pointer-up.
+    _dragPointer = e.pointer;
+    _dragStartCanvas = c;
+    if (sel == null) {
+      _dragKind = 0;
       return;
     }
-    // Empty stage: a tap (no drag) clears the selection on pointer-up.
-    _dragPointer = e.pointer;
-    _dragKind = 0;
-    _dragStartCanvas = c;
+    if (_stageMode == _StageMode.rotate) {
+      _dragKind = 3;
+      _rotStartMdeg = sel.pose.rotMdeg;
+      _rotAccum = 0;
+      final pivotScreen = off + _pivotCanvas(sel) * s;
+      _rotPrevBearing = (e.localPosition - pivotScreen).direction;
+    } else {
+      _dragKind = 1;
+      _dragStartX = sel.pose.x;
+      _dragStartY = sel.pose.y;
+    }
+    _beginGesture();
   }
 
   void _stageMove(PointerMoveEvent e, Size box) {
     _touchPos[e.pointer] = e.localPosition;
     if (_pinching) {
-      if (_pinchMode == 1) {
-        _updateActorPinch(box);
-      } else {
-        _updateViewPinch(box);
-      }
+      _updateViewPinch(box);
       return;
     }
     if (e.pointer != _dragPointer) return;
@@ -220,6 +221,38 @@ extension _AnimatorStage on _AnimatorPageState {
             'SetAtPlayhead(${a.id}, x, $nx); SetAtPlayhead(${a.id}, y, $ny)');
         _dragStartCanvas = c;
         _liveRefresh();
+      case 3: // rotate: the finger orbits the pivot (bearing deltas, multi-turn safe)
+        final a = sel!;
+        final (s, off) = _view(box);
+        final pivotScreen = off + _pivotCanvas(a) * s;
+        final v = e.localPosition - pivotScreen;
+        if (v.distance < 24) break; // min-radius guard: bearings are noise near the pivot
+        final bearing = v.direction;
+        var d = bearing - _rotPrevBearing;
+        while (d > math.pi) {
+          d -= 2 * math.pi;
+        }
+        while (d < -math.pi) {
+          d += 2 * math.pi;
+        }
+        _rotAccum += d;
+        _rotPrevBearing = bearing;
+        var rot = _rotStartMdeg + (_rotAccum * 180000 / math.pi).round();
+        final snapR = snapRotation(rot);
+        rot = snapR.value;
+        _hapticOnSnap(snapR.snapped);
+        _snapGuides = snapR.snapped
+            ? [
+                SnapGuide(
+                  badge: '${normalizeMdeg(rot) ~/ 1000}°',
+                  badgeAnchorCanvas:
+                      Offset(a.pose.x.toDouble(), a.pose.y.toDouble()),
+                )
+              ]
+            : const [];
+        _send('SetAtPlayhead(${a.id}, rot, $rot)');
+        _liveRefresh();
+        _hintLive('rot ${normalizeMdeg(rot) ~/ 1000}°');
       default:
         break;
     }
@@ -228,106 +261,45 @@ extension _AnimatorStage on _AnimatorPageState {
   void _stageUp(PointerEvent e, Size box, {bool cancel = false}) {
     _touchPos.remove(e.pointer);
     if (_pinching) {
-      if (_touchPos.length < 2) {
-        _pinching = false;
-        if (_pinchMode == 1) _endGesture();
-        _pinchMode = 0;
-      }
+      if (_touchPos.length < 2) _pinching = false;
       return;
     }
     if (e.pointer != _dragPointer) return;
-    final wasDrag = _dragKind != 0;
-    final moved = wasDrag &&
+    final wasKind = _dragKind;
+    final moved =
         (_toCanvas(e.localPosition, box) - _dragStartCanvas).distance >= 0.5;
     _dragPointer = null;
-    if (_dragKind == 0 && !cancel) {
-      // Tap on empty stage → clear selection.
-      if (_state.selectedActor != null) {
+    _dragKind = 0;
+    _snapGuides = const [];
+    if (!cancel && !moved && wasKind != 2) {
+      // A tap: the ONLY stage selection path. Hit-test the down point; a pivot-reticle tap
+      // (kind 2) is exempt — grabbing the handle must never deselect.
+      final c = _dragStartCanvas;
+      final hit = engine.hitTest(_state.playhead, c.dx.floor(), c.dy.floor());
+      if (hit != null && hit != _state.selectedActor) {
+        _sendSession('SelectActor($hit)');
+        _refreshState();
+        setState(() {});
+      } else if (hit == null && _state.selectedActor != null) {
         _sendSession('SelectNone()');
         _refreshState();
         setState(() {});
       }
     }
-    _dragKind = 0;
-    _snapGuides = const [];
     _overlayVN.value++;
-    if (wasDrag) {
-      _endGesture(dropKey: moved || true);
+    if (wasKind != 0) {
+      _endGesture(dropKey: moved);
+    } else {
+      _hintEnd();
     }
   }
 
   void _cancelStageDrag() {
-    if (_dragKind != 0 && _gestureOpen) {
-      // The pinch takes over: keep the bracket open — the actor pinch shares it.
-      _pinchMode = _state.selected != null ? _pinchModeForMid() : 0;
-      if (_pinchMode == 0) _endGesture();
-    } else {
-      _pinchMode = _state.selected != null ? _pinchModeForMid() : 0;
-      if (_pinchMode == 1) _beginGesture();
-    }
+    // A second finger always means the view: close any open bracket quietly.
+    if (_dragKind != 0 && _gestureOpen) _endGesture(dropKey: false);
     _dragPointer = null;
     _dragKind = 0;
     _snapGuides = const [];
-  }
-
-  /// Actor pinch iff the midpoint lands inside the selected Actor's bounds inflated by 24
-  /// screen px; else view pinch.
-  int _pinchModeForMid() {
-    final sel = _state.selected;
-    if (sel == null || _touchPos.length < 2) return 0;
-    final ps = _touchPos.values.toList();
-    final mid = (ps[0] + ps[1]) / 2;
-    final c = _toCanvas(mid, _lastStageBox);
-    final (s, _) = _view(_lastStageBox);
-    final inflate = 24 / s;
-    final r = Rect.fromLTWH(
-      sel.bounds[0] - inflate,
-      sel.bounds[1] - inflate,
-      sel.bounds[2] + 2 * inflate,
-      sel.bounds[3] + 2 * inflate,
-    );
-    return r.contains(c) ? 1 : 0;
-  }
-
-  void _startPinchAny(Size box) {
-    final ps = _touchPos.values.toList();
-    _startViewPinch();
-    if (_pinchMode == 1) {
-      final sel = _state.selected!;
-      _pinchStartAngle = (ps[1] - ps[0]).direction;
-      _pinchStartScaleMilli = sel.pose.scaleMilli;
-      _pinchStartRotMdeg = sel.pose.rotMdeg;
-      if (!_gestureOpen) _beginGesture();
-    }
-  }
-
-  void _updateActorPinch(Size box) {
-    final sel = _state.selected;
-    if (sel == null || _touchPos.length < 2) return;
-    final ps = _touchPos.values.toList();
-    final dist = (ps[0] - ps[1]).distance.clamp(1.0, double.infinity);
-    final angle = (ps[1] - ps[0]).direction;
-
-    var scaleMilli = (_pinchStartScaleMilli * dist / _pinchStartDist).round();
-    final snapS = snapScale(scaleMilli);
-    scaleMilli = snapS.value.clamp(100, 8000);
-
-    final dMdeg = ((angle - _pinchStartAngle) * 180000 / math.pi).round();
-    var rot = _pinchStartRotMdeg + dMdeg;
-    final snapR = snapRotation(rot);
-    rot = snapR.value;
-    _hapticOnSnap(snapS.snapped || snapR.snapped);
-    _snapGuides = snapR.snapped
-        ? [
-            SnapGuide(
-              badge: '${normalizeMdeg(rot) ~/ 1000}°',
-              badgeAnchorCanvas: Offset(sel.pose.x.toDouble(), sel.pose.y.toDouble()),
-            )
-          ]
-        : const [];
-
-    _send('SetAtPlayhead(${sel.id}, scale, $scaleMilli); SetAtPlayhead(${sel.id}, rot, $rot)');
-    _liveRefresh();
   }
 
   // ---- the auto-key gesture bracket --------------------------------------------------------

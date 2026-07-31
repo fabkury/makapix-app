@@ -39,6 +39,11 @@ extension _AnimatorEngine on _AnimatorPageState {
   void _refreshState() {
     if (!_engineReady) return;
     _state = SceneState.parse(engine.stateJson());
+    // The pill's Move|Rotate mode auto-resets whenever the selection changes (06 §4.3).
+    if (_state.selectedActor != _modeSelId) {
+      _modeSelId = _state.selectedActor;
+      _stageMode = _StageMode.move;
+    }
     _syncMemBudgetUi();
   }
 

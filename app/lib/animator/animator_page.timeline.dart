@@ -725,6 +725,8 @@ extension _AnimatorTimeline on _AnimatorPageState {
     if (_state.actors.isEmpty) return 'Import a prop to begin';
     final sel = _state.selected;
     if (sel == null) return 'Tap an actor to select · two fingers pan and zoom';
-    return 'Drag the actor to move it · keys record at the playhead';
+    return _stageMode == _StageMode.rotate
+        ? 'Drag to orbit the pivot · snaps every 15°'
+        : 'Drag anywhere to move · the pill switches to Rotate';
   }
 }

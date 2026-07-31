@@ -59,6 +59,10 @@ const _kCycleRevealPref = 'animator.cycleRevealShown';
 
 enum TimelineZoom { strip, tracks, focus }
 
+/// What a one-finger Stage drag does to the selected Actor (the pill's Move | Rotate
+/// toggle; auto-resets to move on selection change — 06-gesture-safety §4.3).
+enum _StageMode { move, rotate }
+
 class AnimatorPage extends ConsumerStatefulWidget {
   const AnimatorPage({super.key});
   @override
@@ -98,20 +102,21 @@ class _AnimatorPageState extends ConsumerState<AnimatorPage>
   // View transform: zoom is relative to fit (1.0 = fit), pan in screen px.
   double _zoom = 1.0;
   Offset _pan = Offset.zero;
-  Size _lastStageBox = Size.zero;
 
-  // ---- Stage gestures (the editor's raw-Listener state machine, shortened).
+  // ---- Stage gestures (strict select-then-act: taps select on pointer-up, a one-finger
+  // drag acts on the CURRENT selection from anywhere, two fingers are always the view).
   final Map<int, Offset> _touchPos = {};
   int? _dragPointer;
   bool _pinching = false;
-  int _dragKind = 0; // 0 none · 1 move-actor · 2 pivot
-  int _pinchMode = 0; // 0 view · 1 actor (scale/rotate)
+  int _dragKind = 0; // 0 none · 1 move-actor · 2 pivot · 3 rotate (orbit)
   double _pinchStartDist = 0, _pinchStartZoom = 1;
   Offset _pinchStartMid = Offset.zero, _pinchStartPan = Offset.zero;
-  double _pinchStartAngle = 0;
-  int _pinchStartScaleMilli = 1000, _pinchStartRotMdeg = 0;
   int _dragStartX = 0, _dragStartY = 0;
   Offset _dragStartCanvas = Offset.zero;
+  _StageMode _stageMode = _StageMode.move;
+  int? _modeSelId; // the selection _stageMode was last reset for
+  int _rotStartMdeg = 0; // rotate-orbit drag state
+  double _rotAccum = 0, _rotPrevBearing = 0;
   bool _gestureOpen = false;
   bool _lastSnapEngaged = false;
   List<SnapGuide> _snapGuides = const [];

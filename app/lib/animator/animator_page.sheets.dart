@@ -4,8 +4,10 @@ part of 'animator_page.dart';
 // subclass trip a false positive calling the @protected setState.)
 
 // The bottom sheets — built from the shared chrome (lib/ui/chrome_sheets.dart): the Cast
-// sheet (props: place, style, rename, remove), the Actor sheet (z-order, flips, opacity,
-// mode chip, duplicate, delete), and Scene settings (fps, frames, background, auto-key).
+// sheet (props: place, style, rename, remove), the Actor sheet (visibility, opacity,
+// z-order, duplicate, delete), the Transform sheet (scale, rotation, position, pivot,
+// flips — the non-gestural transforms, 06-gesture-safety §4.3: scale is deliberately not a
+// gesture), and Scene settings (fps, frames, auto-key).
 extension _AnimatorSheets on _AnimatorPageState {
   Future<ui.Image?> _thumbFromRgba(Uint8List rgba, int tw, int th) async {
     if (rgba.isEmpty) return null;
@@ -175,24 +177,6 @@ extension _AnimatorSheets on _AnimatorPageState {
                 setSheet(() {});
               },
             ),
-            stateChip(
-              icon: Icons.flip,
-              label: 'Flip H',
-              value: a.pose.flipH,
-              onChanged: (v) {
-                _act('SetAtPlayhead(${a.id}, fliph, ${v ? 1 : 0})');
-                setSheet(() {});
-              },
-            ),
-            stateChip(
-              icon: Icons.flip_camera_android,
-              label: 'Flip V',
-              value: a.pose.flipV,
-              onChanged: (v) {
-                _act('SetAtPlayhead(${a.id}, flipv, ${v ? 1 : 0})');
-                setSheet(() {});
-              },
-            ),
           ]),
           const SizedBox(height: 6),
           Builder(builder: (_) {
@@ -203,6 +187,13 @@ extension _AnimatorSheets on _AnimatorPageState {
             });
             return Row(children: children);
           }),
+          sheetSection('Transform'),
+          sheetBtnRow([
+            sheetBtn(Icons.open_with, 'Transform…', () {
+              Navigator.pop(ctx);
+              _transformSheet(a.id);
+            }),
+          ]),
           sheetSection('Arrange'),
           sheetBtnRow([
             sheetBtn(Icons.keyboard_double_arrow_up, 'Raise',
@@ -285,6 +276,114 @@ extension _AnimatorSheets on _AnimatorPageState {
     }
     parts.add('EndGesture()');
     _act(parts.join('; '));
+  }
+
+  // ---- Transform sheet ---------------------------------------------------------------------
+
+  /// The non-gestural transforms' one home (06-gesture-safety §4.3): scale (deliberately not
+  /// a gesture — pixel art overwhelmingly wants 1:1), precise rotation/position, pivot
+  /// numerics, and flips. Everything routes through SetAtPlayhead, so auto-key records these
+  /// edits exactly like stage gestures.
+  Future<void> _transformSheet(int actorId) async {
+    if (_state.actor(actorId) == null) return;
+    await showAppSheet(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1A1C1F),
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
+        final a = _state.actor(actorId);
+        if (a == null) return const SizedBox.shrink();
+        void send(String dsl) {
+          _act(dsl);
+          setSheet(() {});
+        }
+
+        return sheetScaffold([
+          sheetHeader(thumb: null, title: 'Transform', subtitle: a.name),
+          sheetSection('Scale'),
+          Builder(builder: (_) {
+            final children = <Widget>[];
+            labeledPowSlider(ctx, children, '×', a.pose.scaleMilli / 1000.0, 0.1, 8.0,
+                (v) {
+              final snapped = snapScale((v * 1000).round()); // the 1.0 detent
+              send('SetAtPlayhead(${a.id}, scale, ${snapped.value.clamp(100, 8000)})');
+            }, integer: false);
+            return Row(children: children);
+          }),
+          sheetSection('Rotation'),
+          Builder(builder: (_) {
+            final children = <Widget>[];
+            labeledSlider(ctx, children, 'Degrees',
+                normalizeMdeg(a.pose.rotMdeg) / 1000.0, -180, 180, (v) {
+              send('SetAtPlayhead(${a.id}, rot, ${(v * 1000).round()})');
+            });
+            return Row(children: children);
+          }),
+          sheetSection('Position'),
+          _numRow(ctx, 'X', a.pose.x.toDouble(),
+              (v) => send('SetAtPlayhead(${a.id}, x, ${v.round()})')),
+          _numRow(ctx, 'Y', a.pose.y.toDouble(),
+              (v) => send('SetAtPlayhead(${a.id}, y, ${v.round()})')),
+          sheetSection('Pivot'),
+          _numRow(ctx, 'Pivot X', a.pose.pivotXMilli / 1000.0,
+              (v) => send('SetAtPlayhead(${a.id}, pivotx, ${(v * 1000).round()})'),
+              integer: false),
+          _numRow(ctx, 'Pivot Y', a.pose.pivotYMilli / 1000.0,
+              (v) => send('SetAtPlayhead(${a.id}, pivoty, ${(v * 1000).round()})'),
+              integer: false),
+          sheetSection('Flip'),
+          Wrap(spacing: 8, runSpacing: 4, children: [
+            stateChip(
+              icon: Icons.flip,
+              label: 'Flip H',
+              value: a.pose.flipH,
+              onChanged: (v) => send('SetAtPlayhead(${a.id}, fliph, ${v ? 1 : 0})'),
+            ),
+            stateChip(
+              icon: Icons.flip_camera_android,
+              label: 'Flip V',
+              value: a.pose.flipV,
+              onChanged: (v) => send('SetAtPlayhead(${a.id}, flipv, ${v ? 1 : 0})'),
+            ),
+          ]),
+          const SizedBox(height: 10),
+        ]);
+      }),
+    );
+  }
+
+  /// A compact numeric stepper row: −/+ nudge by [step], the underlined value taps to type
+  /// (the chrome sliders' exact-entry dialog). Position edits may exceed the canvas — the
+  /// generous ±4096 bound is the typing clamp, not a semantic limit.
+  Widget _numRow(BuildContext ctx, String name, double value, ValueChanged<double> onChanged,
+      {bool integer = true, double step = 1, double min = -4096, double max = 4096}) {
+    final shown = integer ? value.round().toString() : value.toStringAsFixed(2);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(children: [
+        SizedBox(
+            width: 64,
+            child: Text(name,
+                style: const TextStyle(fontSize: 12, color: Colors.white60))),
+        miniBtn('−', () => onChanged((value - step).clamp(min, max))),
+        InkWell(
+          onTap: () => editSliderValue(ctx, name, value, min, max, onChanged,
+              integer: integer, decimals: 2),
+          borderRadius: BorderRadius.circular(4),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Text(shown,
+                style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.white70,
+                    decoration: TextDecoration.underline,
+                    decorationColor: Colors.white24)),
+          ),
+        ),
+        miniBtn('+', () => onChanged((value + step).clamp(min, max))),
+      ]),
+    );
   }
 
   // ---- Scene settings ----------------------------------------------------------------------

@@ -49,14 +49,20 @@ Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending)
 ## Makapix Animator (third pillar, v0.1 — built 2026-07-30, on-device validation pending)
 The scene/keyframe animation pillar (design: `docs/animator/`, ADRs 0001/0002, vocabulary in
 `CONTEXT.md`): import Props (PNG/GIF/WEBP/`.mkpx` — multi-layer drawings offer the Whole/Parts
-card and self-assemble as separate Actors), pose them on the Stage with auto-keyed
-drag/pinch/twist (15° stops, scale detent, snap guides, haptics), review with the
-one-timeline surface (Strip / Tracks / Focus zoom levels: scrub, loop region, drag-to-retime,
-per-key easing chip), play via the composited-frame cache, and export GIF (alpha thresholded,
-disclosed) or animated lossless WEBP with exact frame timing. Scenes persist as self-contained
-`.mkps` files with autosave + a My Scenes gallery; reachable from Contribute and via
-"Animate this" on any drawing (editor gallery + profile Private tab). **Deferred past v0.1:**
-Posing mode, "pin to" UI (format-level only), motion presets/paths, publish-to-Club.
+card and self-assemble as separate Actors), pose them on the Stage with the auto-keyed
+**select-then-act grammar** (tap selects; a one-finger drag anywhere moves — or, via the
+pill's Move|Rotate toggle, orbits — the selected Actor with 15° stops, snap guides, and
+haptics; two fingers are always the view; scale and precise numerics live in the Transform
+sheet), review with the one-timeline surface (Strip / Tracks / Focus zoom levels: scrub,
+loop region, drag-to-retime, per-key easing chip), play via the composited-frame cache, and
+export GIF (alpha thresholded, disclosed) or animated lossless WEBP with exact frame timing.
+The layout is **gesture-safe** (`docs/animator/06-gesture-safety.md`, implemented
+2026-07-31): the timeline sits above a tap-only transport dock with a passive hint strip
+over the OS gesture zone, its content inside adaptive side gutters with Tracks/Focus
+over-scroll. Scenes persist as self-contained `.mkps` files with autosave + a My Scenes
+gallery; reachable from Contribute and via "Animate this" on any drawing (editor gallery +
+profile Private tab). **Deferred past v0.1:** Posing mode, "pin to" UI (format-level only),
+motion presets/paths, publish-to-Club.
 **Phase 6 (Windows visual pass + Android device/memory validation) is still pending.**
 - `tools/memlab/` — **memory-limit stress study (2026-07-16, ✅ measured on Windows + Pixel 10 Pro XL)**:
   full-noise adversarial documents, headless CLI matrix + intent-gated in-app ladder. Findings + budgets:
