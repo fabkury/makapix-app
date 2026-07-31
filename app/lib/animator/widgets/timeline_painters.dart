@@ -67,15 +67,17 @@ class TimelineRulerPainter extends CustomPainter {
           ..color = Colors.white24,
       );
     }
-    // Playhead.
+    // Playhead (culled when scrolled out of view — never painted past the lane box).
     final px = layout.xAtFrame(playhead);
-    canvas.drawLine(
-      Offset(px, 0),
-      Offset(px, size.height),
-      Paint()
-        ..strokeWidth = 1.4
-        ..color = Colors.white,
-    );
+    if (px >= -2 && px <= size.width + 2) {
+      canvas.drawLine(
+        Offset(px, 0),
+        Offset(px, size.height),
+        Paint()
+          ..strokeWidth = 1.4
+          ..color = Colors.white,
+      );
+    }
   }
 
   @override
@@ -208,15 +210,17 @@ class TrackLanePainter extends CustomPainter {
               : (isSel ? Colors.amberAccent : Colors.white70),
       );
     }
-    // Playhead hairline through the lane.
+    // Playhead hairline through the lane (culled when scrolled out of view).
     final px = layout.xAtFrame(playhead);
-    canvas.drawLine(
-      Offset(px, 0),
-      Offset(px, size.height),
-      Paint()
-        ..strokeWidth = 1
-        ..color = Colors.white38,
-    );
+    if (px >= -2 && px <= size.width + 2) {
+      canvas.drawLine(
+        Offset(px, 0),
+        Offset(px, size.height),
+        Paint()
+          ..strokeWidth = 1
+          ..color = Colors.white38,
+      );
+    }
   }
 
   @override
@@ -299,15 +303,17 @@ class PropertyRowPainter extends CustomPainter {
         Paint()..color = isDragged ? Colors.amber : (isSel ? Colors.amberAccent : Colors.white70),
       );
     }
-    // Playhead hairline.
+    // Playhead hairline (culled when scrolled out of view).
     final px = layout.xAtFrame(playhead);
-    canvas.drawLine(
-      Offset(px, 0),
-      Offset(px, size.height),
-      Paint()
-        ..strokeWidth = 1
-        ..color = Colors.white38,
-    );
+    if (px >= -2 && px <= size.width + 2) {
+      canvas.drawLine(
+        Offset(px, 0),
+        Offset(px, size.height),
+        Paint()
+          ..strokeWidth = 1
+          ..color = Colors.white38,
+      );
+    }
   }
 
   @override

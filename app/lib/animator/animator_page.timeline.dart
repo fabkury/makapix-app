@@ -425,13 +425,14 @@ extension _AnimatorTimeline on _AnimatorPageState {
         ),
       ),
     );
-    if (labelInset <= 0) return SizedBox(height: 20, child: ruler);
-    // Tracks/Focus: lead with the label-column width so ruler x == lane x.
+    if (labelInset <= 0) return SizedBox(height: 20, child: ClipRect(child: ruler));
+    // Tracks/Focus: lead with the label-column width so ruler x == lane x. ClipRect keeps
+    // off-view painting (a scrolled-out playhead goes negative-x) inside the lane box.
     return SizedBox(
       height: 20,
       child: Row(children: [
         Container(width: labelInset, color: kLaneBg),
-        Expanded(child: ruler),
+        Expanded(child: ClipRect(child: ruler)),
       ]),
     );
   }
@@ -563,22 +564,24 @@ extension _AnimatorTimeline on _AnimatorPageState {
         ),
       ),
       Expanded(
-        child: Listener(
-          behavior: HitTestBehavior.opaque,
-          onPointerDown: (e) => _laneDown(e, a, layout),
-          onPointerMove: (e) => _laneMove(e, layout),
-          onPointerUp: (e) => _laneUp(e),
-          onPointerCancel: (e) => _laneUp(e),
-          child: CustomPaint(
-            size: Size(layout.width, laneH),
-            painter: TrackLanePainter(
-              layout: layout,
-              keyFrames: a.keyFrames(),
-              playhead: _playing ? _playbackFrame() : _state.playhead,
-              selected: selected,
-              selectedFrame: _selTween?.$1 == a.id ? _selTween?.$3 : null,
-              draggedFrom: _keyDrag?.$1 == a.id ? _keyDrag?.$3 : null,
-              draggedTo: _keyDragTo,
+        child: ClipRect(
+          child: Listener(
+            behavior: HitTestBehavior.opaque,
+            onPointerDown: (e) => _laneDown(e, a, layout),
+            onPointerMove: (e) => _laneMove(e, layout),
+            onPointerUp: (e) => _laneUp(e),
+            onPointerCancel: (e) => _laneUp(e),
+            child: CustomPaint(
+              size: Size(layout.width, laneH),
+              painter: TrackLanePainter(
+                layout: layout,
+                keyFrames: a.keyFrames(),
+                playhead: _playing ? _playbackFrame() : _state.playhead,
+                selected: selected,
+                selectedFrame: _selTween?.$1 == a.id ? _selTween?.$3 : null,
+                draggedFrom: _keyDrag?.$1 == a.id ? _keyDrag?.$3 : null,
+                draggedTo: _keyDragTo,
+              ),
             ),
           ),
         ),
@@ -762,23 +765,25 @@ extension _AnimatorTimeline on _AnimatorPageState {
             style: const TextStyle(fontSize: 10, color: Colors.white54)),
       ),
       Expanded(
-        child: Listener(
-          behavior: HitTestBehavior.opaque,
-          onPointerDown: (e) => _rowDown(e, a, prop, layout),
-          onPointerMove: (e) => _laneMove(e, layout),
-          onPointerUp: (e) => _laneUp(e),
-          onPointerCancel: (e) => _laneUp(e),
-          child: CustomPaint(
-            size: Size(layout.width, rowH),
-            painter: PropertyRowPainter(
-              layout: layout,
-              keys: keys,
-              playhead: _playing ? _playbackFrame() : _state.playhead,
-              selectedKeyFrame:
-                  _selTween?.$1 == a.id && _selTween?.$2 == prop ? _selTween?.$3 : null,
-              draggedFrom:
-                  _keyDrag?.$1 == a.id && _keyDrag?.$2 == prop ? _keyDrag?.$3 : null,
-              draggedTo: _keyDragTo,
+        child: ClipRect(
+          child: Listener(
+            behavior: HitTestBehavior.opaque,
+            onPointerDown: (e) => _rowDown(e, a, prop, layout),
+            onPointerMove: (e) => _laneMove(e, layout),
+            onPointerUp: (e) => _laneUp(e),
+            onPointerCancel: (e) => _laneUp(e),
+            child: CustomPaint(
+              size: Size(layout.width, rowH),
+              painter: PropertyRowPainter(
+                layout: layout,
+                keys: keys,
+                playhead: _playing ? _playbackFrame() : _state.playhead,
+                selectedKeyFrame:
+                    _selTween?.$1 == a.id && _selTween?.$2 == prop ? _selTween?.$3 : null,
+                draggedFrom:
+                    _keyDrag?.$1 == a.id && _keyDrag?.$2 == prop ? _keyDrag?.$3 : null,
+                draggedTo: _keyDragTo,
+              ),
             ),
           ),
         ),
