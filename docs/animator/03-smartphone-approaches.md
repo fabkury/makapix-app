@@ -11,12 +11,18 @@ a preview. On a phone this must invert. **The stage (canvas) is the primary edit
 the timeline is an instrument panel.** Users animate by *doing things to props at moments in
 time*, not by managing rows of keyframes:
 
-- **Scrub, then touch.** The core loop is: drag the Playhead → grab an Actor and
-  move/pinch/twist it → a Key drops (auto-key) → scrub to feel it → adjust. Zero buttons in
-  the loop.
-- **Manipulation gestures are the keyframe UI.** Drag = position key. Pinch = scale key.
-  Two-finger twist = rotation key. The gesture vocabulary users bring from every photo app
-  *is* the animation vocabulary. (This is the phone's genuine advantage over the desktop:
+- **Scrub, then touch.** The core loop is: drag the Playhead → select an Actor and drag it
+  into pose → a Key drops (auto-key) → scrub to feel it → adjust. Zero buttons in the loop.
+- **Select, then act — anywhere.** Tap selects; a one-finger drag starting *anywhere* on the
+  Stage moves the selected Actor (relative delta — the finger never covers the art, and an
+  Actor parked at a screen edge stays grabbable). With the Actor pill's mode toggle on
+  Rotate, the same drag orbits the pivot with 15° snap stops. Two fingers always pan/zoom
+  the view: one finger acts, two fingers navigate — the Editor's exact grammar. Scale is
+  deliberately *not* a gesture (pixel art overwhelmingly wants 1:1; accidental pinch-scaling
+  was the likeliest mis-trigger) — it lives in the Transform sheet with the other precision
+  edits. The platform physics behind this grammar:
+  [06-gesture-safety.md](06-gesture-safety.md). (Direct manipulation remains the phone's
+  genuine advantage over the desktop:
   [touch scrubbing and direct manipulation feel more immediate than mouse workflows](https://aimensa.com/alight-motion-ui-animation-motion-graphics) —
   the phone is a *better* posing device, and a worse spreadsheet. Design to the strength.)
 - **On-stage affordances instead of panels.** Pivot marker on the selected prop; motion path
@@ -36,9 +42,11 @@ user's job, newcomers pose props, see nothing move, and conclude the app is brok
 
 ## 3. One timeline, three zoom levels
 
-The desktop trio (track view / dopesheet / graph editor) collapses into one bottom-docked
-surface with semantic zoom, echoing the Editor's own bottom-docked timeline so the app keeps
-one spatial grammar:
+The desktop trio (track view / dopesheet / graph editor) collapses into one surface with
+semantic zoom, docked just above the bottom tap dock — the screen's bottom-most strip
+belongs to taps and the tooltip line, never drags, and the timeline's content sits inside
+adaptive side gutters ([06-gesture-safety.md](06-gesture-safety.md)). It echoes the Editor's
+low-docked timeline so the app keeps one spatial grammar:
 
 1. **Strip (collapsed, default)** — a single lane: scrubber + aggregated key ticks + loop
    region. The stage gets maximum room. Most sessions never leave this level.
@@ -102,6 +110,9 @@ commitments:
   the exception path, not the workflow.
 - **Two-finger timeline gestures** — pinch zooms time, two-finger drag pans it, matching every
   mobile video editor users have touched.
+- **Respect the OS's own gestures.** No interaction requires starting a drag inside a system
+  gesture zone (screen edges, the bottom bar); the rules and the layout that satisfies them
+  are load-bearing design, not polish — [06-gesture-safety.md](06-gesture-safety.md).
 
 ## 7. Preview truth as a feature
 

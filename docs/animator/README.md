@@ -1,11 +1,13 @@
 # Makapix Animator — design foundation
 
 *The UX/product foundation for the app's third pillar: a first-class, smartphone-first
-animation tool for pixel art. Brainstormed and then grilled to decisions on 2026-07-30.
-This folder reads as post-decision truth; the two hardest-to-reverse calls also have ADRs
-([0001](../adr/0001-frame-grid-timing.md), [0002](../adr/0002-self-contained-scenes.md)),
-and the canonical vocabulary lives in [CONTEXT.md](../../CONTEXT.md). Documents 01–04 are
-UX/product only; the technical side lives in [05-feasibility.md](05-feasibility.md).*
+animation tool for pixel art. Brainstormed and then grilled to decisions on 2026-07-30;
+gesture-safety rules and the resulting layout/grammar redesign decided 2026-07-31 after the
+first Android device pass. This folder reads as post-decision truth; the two
+hardest-to-reverse calls also have ADRs ([0001](../adr/0001-frame-grid-timing.md),
+[0002](../adr/0002-self-contained-scenes.md)), and the canonical vocabulary lives in
+[CONTEXT.md](../../CONTEXT.md). Documents 01–04 and 06 are UX/product; the technical side
+lives in [05-feasibility.md](05-feasibility.md).*
 
 ## The idea in one paragraph
 
@@ -31,6 +33,7 @@ walk, bounce, blink, and emote — without redrawing anything, and without leavi
 | Import | Layered `.mkpx` shows a **Whole / Parts** card (>1 layer only). **Playing vs. Posing is a per-Actor mode.** |
 | Properties (v1) | Position, rotation, uniform scale, flip H/V, opacity, draggable pivot. Opacity exports true to WEBP; GIF export thresholds it with a notice. |
 | Interaction | Auto-key **on by default**; per-Prop pixel style (cleanEdge vs. nearest); one-level **"pin to"** parenting; **one timeline, three zoom levels**. |
+| Gesture safety | **No drag may require starting in an OS gesture zone** (decided 2026-07-31): bottom tap dock + tooltip strip, adaptive side gutters, select-then-drag-anywhere Stage grammar with a Move/Rotate mode, scale demoted to the Transform sheet — [06-gesture-safety.md](06-gesture-safety.md). |
 | Scene file | **`.mkps`**, fully self-contained — embeds all Prop art ([ADR-0002](../adr/0002-self-contained-scenes.md)). |
 | Front door | Contribute-hub entry (Scene gallery) + **"Animate this"** on drawings; Club-post entry waits for remix permissions. |
 | v0.1 slice | **Full Tier 0 plus Playing Cycles** (imported GIFs animate); Posing, parenting, presets, paths come after. |
@@ -46,6 +49,7 @@ walk, bounce, blink, and emote — without redrawing anything, and without leavi
 | [03-smartphone-approaches.md](03-smartphone-approaches.md) | The design stances that make a phone animator first-class rather than a shrunken desktop tool. |
 | [04-recommendations.md](04-recommendations.md) | The Editor⇄Animator seam, scope guardrails, risks, Club ties, and next steps. |
 | [05-feasibility.md](05-feasibility.md) | Technical feasibility on this codebase: reuse maps (Rust + Flutter), the `crates/scene` design sketch, `.mkps` container, FFI seam, memory under the Android wall, phases and risks. |
+| [06-gesture-safety.md](06-gesture-safety.md) | The Android/iOS system-gesture inventory, the app-wide collision rules (R1–R5), and the 2026-07-31 layout + interaction-grammar redesign that satisfies them. |
 
 ## The one-line thesis
 

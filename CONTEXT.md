@@ -80,3 +80,21 @@ _Avoid_: animation (ambiguous), loop (reserve for Scene loop regions)
 One frame of a multi-frame Prop used as a held stance. An Actor in Posing mode shows the Pose
 chosen by hold Keys instead of playing its Cycle. Playing vs. Posing is a per-Actor mode.
 _Avoid_: state, variant
+
+## Gesture safety (app-wide rules)
+
+Rules, not vocabulary — canonical here because they are platform physics that bind every
+pillar (decided 2026-07-31; the inventory behind them and the Animator's application live in
+[docs/animator/06-gesture-safety.md](docs/animator/06-gesture-safety.md)):
+
+- **R1 — Side edges**: no interaction may require *starting* a drag inside the side gesture
+  insets (Android Back). Taps are fine; drags may *end* there.
+- **R2 — Bottom**: no interaction may require starting a drag in the bottom gesture zone
+  (Home / app switch — a zone no API can reclaim); tap targets sit above the home indicator.
+- **R3 — Top**: no drag starts at the very top edge (notification shade, Control Center).
+- **R4 — Corners**: nothing requires precision at a screen corner.
+- **R5 — Pannable surfaces need an edge story**: content that can park at an edge gets
+  indirect manipulation, scroll padding, or a hold-then-drag rescue — never luck.
+
+Known follow-up: the Editor's bottom rows contain sideways slider drags (R2 exposure);
+noted, not yet redesigned.

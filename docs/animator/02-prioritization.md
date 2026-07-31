@@ -12,7 +12,9 @@ A feature's UI cost on a phone is the sum of:
 - **Chrome** — persistent pixels it demands (panels, rows, handles). The Editor's three-row
   grammar shows how little there is to spend.
 - **Gestures** — how many distinct touch interactions it needs, and whether they collide with
-  ones already claimed (drag, pinch, long-press are near-exhausted on any canvas app).
+  ones already claimed by the app (drag, pinch, long-press are near-exhausted on any canvas
+  app) or by the OS itself (edge and bottom-bar navigation —
+  [06-gesture-safety.md](06-gesture-safety.md)).
 - **Concept load** — what the user must hold in their head before the feature makes sense.
   Keyframes alone are a real hurdle for newcomers; every additional concept (parenting, curves,
   time-remap) multiplies.
@@ -31,7 +33,7 @@ beats redrawing — for an Editor graduate, on a phone, publishing loops to the 
 | Scene setup (size ≤256, fps from the GIF-safe list, duration, background) | Low | One-time sheet; the Editor's new-drawing flow already sets the pattern. |
 | Import Props (.mkpx / PNG / GIF / WEBP; Whole/Parts card for layered .mkpx) | Low | Reuses gallery/file-picker patterns that already exist in the app. |
 | Place / stack / duplicate Actors | Low | Direct manipulation; z-order is a list. |
-| Transform Keys: position, uniform scale, rotation, flip, opacity, pivot | **Low, if auto-key** | The Stage *is* the input surface: drag, pinch, twist. No inspector typing required for the core loop. |
+| Transform Keys: position, uniform scale, rotation, flip, opacity, pivot | **Low, if auto-key** | The Stage *is* the input surface: select-then-drag, Rotate-mode orbit ([06-gesture-safety.md](06-gesture-safety.md)); scale is deliberately sheet-only. No inspector typing required for the core loop. |
 | Auto-key (record mode) | Low | One armed/disarmed state. It *removes* UI: no "add keyframe" button in the main loop. |
 | Tween + easing presets | Low–Med | A per-tween chip cycling a curated set (linear · ease · ease-in · ease-out · hold). The *graph editor* is what's expensive; presets deliver ~90% of its value for ~5% of its cost. |
 | Hold/step keys | Low | One member of the easing set, not a separate concept. Carries all sprite-swapping. |
