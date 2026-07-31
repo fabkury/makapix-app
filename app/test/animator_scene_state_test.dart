@@ -34,6 +34,8 @@ void main() {
     expect(s.selectedActor, 3);
     expect(s.usesAlpha, isTrue);
     expect(s.cast, hasLength(1));
+    expect(s.cast.first.cycle, [2, 2, 2]);
+    expect(s.cast.first.uniformStep, 2, reason: 'all entries agree');
     expect(s.cast.first.cycleLen, 6);
     expect(s.cast.first.style, 'cleanedge');
 
@@ -63,5 +65,14 @@ void main() {
     final s2 = SceneState.parse('{"actors":[{"id":1}]}');
     expect(s2.actors.single.tracks.length, kTrackNames.length);
     expect(s2.actors.single.keyFrames(), isEmpty);
+  });
+
+  test('cycle list tolerates absence and reports mixed maps', () {
+    final s = SceneState.parse('{"cast":[{"id":1,"frames":3,"cycle":[1,2,4]}]}');
+    expect(s.cast.single.cycle, [1, 2, 4]);
+    expect(s.cast.single.uniformStep, isNull, reason: 'mixed steps have no uniform value');
+    final bare = SceneState.parse('{"cast":[{"id":2}]}');
+    expect(bare.cast.single.cycle, isEmpty);
+    expect(bare.cast.single.uniformStep, isNull);
   });
 }

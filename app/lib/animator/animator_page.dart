@@ -19,6 +19,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:makapix_club/club/state/edit_bridge.dart';
+import 'package:makapix_club/editor/dialogs/color_picker_dialog.dart';
 import 'package:makapix_club/editor/persistence/autosave_controller.dart';
 import 'package:makapix_club/editor/persistence/drawing_store.dart';
 import 'package:makapix_club/editor/widgets/painters.dart' show CanvasPainter;

@@ -33,6 +33,28 @@ const int kMaxActors = 64;
 int defaultFrameCount(int millifps) =>
     (2 * millifps ~/ 1000).clamp(1, kMaxSceneFrames);
 
+/// `'#RRGGBBAA'` (uppercase, always 8 digits) for a color — the engine's exact
+/// `state_json` background format, valid as a `SetBackground` argument.
+String hexOfColor(int argb) {
+  final a = (argb >> 24) & 0xFF, r = (argb >> 16) & 0xFF;
+  final g = (argb >> 8) & 0xFF, b = argb & 0xFF;
+  String h(int v) => v.toRadixString(16).padLeft(2, '0').toUpperCase();
+  return '#${h(r)}${h(g)}${h(b)}${h(a)}';
+}
+
+/// Parse `'#RRGGBB[AA]'` (case-insensitive, `#` optional) into 0xAARRGGBB;
+/// null when malformed. Mirrors the engine's `Rgba8::from_hex` leniency.
+int? colorOfHex(String s) {
+  var t = s.trim();
+  if (t.startsWith('#')) t = t.substring(1);
+  if (t.length != 6 && t.length != 8) return null;
+  final v = int.tryParse(t, radix: 16);
+  if (v == null) return null;
+  if (t.length == 6) return 0xFF000000 | v;
+  final rgb = v >> 8, a = v & 0xFF;
+  return (a << 24) | rgb;
+}
+
 /// The five easing names, in the chip's cycling order (engine tween tokens).
 const List<String> kEasingCycle = ['linear', 'ease', 'easein', 'easeout', 'hold'];
 

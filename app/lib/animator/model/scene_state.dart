@@ -142,6 +142,9 @@ class CastEntryState {
   final int id;
   final String name;
   final int w, h, frames;
+
+  /// Raw per-prop-frame step list (scene frames each prop frame holds for).
+  final List<int> cycle;
   final int cycleLen;
   final String style; // 'nearest' | 'cleanedge'
   final bool hasSemiAlpha;
@@ -152,11 +155,19 @@ class CastEntryState {
     required this.w,
     required this.h,
     required this.frames,
+    this.cycle = const [],
     required this.cycleLen,
     required this.style,
     required this.hasSemiAlpha,
     required this.artEpoch,
   });
+
+  /// The uniform step when every entry agrees; null for mixed/empty maps.
+  int? get uniformStep {
+    if (cycle.isEmpty) return null;
+    final s = cycle.first;
+    return cycle.every((e) => e == s) ? s : null;
+  }
 
   static CastEntryState fromJson(Map<String, dynamic> m) => CastEntryState(
         id: (m['id'] as num?)?.toInt() ?? 0,
@@ -164,6 +175,10 @@ class CastEntryState {
         w: (m['w'] as num?)?.toInt() ?? 1,
         h: (m['h'] as num?)?.toInt() ?? 1,
         frames: (m['frames'] as num?)?.toInt() ?? 1,
+        cycle: [
+          for (final v in (m['cycle'] as List?) ?? const [])
+            if (v is num) v.toInt(),
+        ],
         cycleLen: (m['cycle_len'] as num?)?.toInt() ?? 1,
         style: m['style'] as String? ?? 'nearest',
         hasSemiAlpha: m['has_semi_alpha'] == true,

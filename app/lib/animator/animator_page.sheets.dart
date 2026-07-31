@@ -67,6 +67,9 @@ extension _AnimatorSheets on _AnimatorPageState {
                       _act(
                           'SetPropStyle(${p.id}, ${p.style == 'cleanedge' ? 'nearest' : 'cleanedge'})');
                       setSheet(() {});
+                    case 'cycle':
+                      await _cycleSpeedDialog(p);
+                      setSheet(() {});
                     case 'rename':
                       Navigator.pop(ctx);
                       _renameProp(p);
@@ -82,6 +85,8 @@ extension _AnimatorSheets on _AnimatorPageState {
                       child: Text(p.style == 'cleanedge'
                           ? 'Switch to nearest (chunky)'
                           : 'Switch to cleanEdge (crisp)')),
+                  if (p.frames > 1)
+                    const PopupMenuItem(value: 'cycle', child: Text('Cycle speed…')),
                   const PopupMenuItem(value: 'rename', child: Text('Rename')),
                   const PopupMenuItem(value: 'remove', child: Text('Remove…')),
                 ],
@@ -115,6 +120,55 @@ extension _AnimatorSheets on _AnimatorPageState {
     );
     if (name != null && name.isNotEmpty) {
       _act('RenameProp(${p.id}, $name)');
+    }
+  }
+
+  /// Uniform Cycle speed for a multi-frame Prop: scene frames each prop frame holds for
+  /// (SetCycleAll). Sent only on a real change — a no-op still invalidates the engine's
+  /// transform cache for the prop.
+  Future<void> _cycleSpeedDialog(CastEntryState p) async {
+    var step = (p.uniformStep ?? 1).clamp(1, 8);
+    final applied = await showDialog<int>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setD) {
+        return AlertDialog(
+          title: const Text('Cycle speed'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (p.uniformStep == null)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 8),
+                  child: Text(
+                      'This prop has mixed per-frame steps — applying sets one uniform speed.',
+                      style: TextStyle(fontSize: 12, color: Colors.white54)),
+                ),
+              Row(children: [
+                miniBtn('−', () => setD(() => step = (step - 1).clamp(1, 8))),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                      '$step scene frame${step == 1 ? '' : 's'} per prop frame',
+                      style: const TextStyle(fontSize: 13)),
+                ),
+                miniBtn('+', () => setD(() => step = (step + 1).clamp(1, 8))),
+              ]),
+              const SizedBox(height: 6),
+              Text('${p.frames} × $step = ${p.frames * step} scene frames per loop',
+                  style: const TextStyle(fontSize: 11, color: Colors.white38)),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, step), child: const Text('Apply')),
+          ],
+        );
+      }),
+    );
+    if (applied != null && applied != p.uniformStep) {
+      _act('SetCycleAll(${p.id}, $applied)');
     }
   }
 
@@ -426,6 +480,31 @@ extension _AnimatorSheets on _AnimatorPageState {
               setSheet(() {});
             });
             return Row(children: children);
+          }),
+          sheetSection('Background'),
+          Builder(builder: (_) {
+            final argb = colorOfHex(_state.background) ?? 0x00000000;
+            return Row(children: [
+              swatchButton(Color(argb), () async {
+                final picked = await showDialog<Color>(
+                  context: ctx,
+                  builder: (_) => ColorPickerDialog(initial: Color(argb)),
+                );
+                if (picked == null) return;
+                final hex = hexOfColor(picked.toARGB32());
+                if (hex == _state.background) return;
+                _act('SetBackground($hex)');
+                setSheet(() {});
+              }),
+              const SizedBox(width: 8),
+              Text(_state.background,
+                  style: const TextStyle(fontSize: 12, color: Colors.white54)),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text('Alpha 0 keeps the canvas transparent',
+                    style: TextStyle(fontSize: 10, color: Colors.white38)),
+              ),
+            ]);
           }),
           sheetSection('Session'),
           Wrap(spacing: 8, children: [

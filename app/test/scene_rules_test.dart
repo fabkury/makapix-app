@@ -26,6 +26,18 @@ void main() {
     expect(defaultFrameCount(50000), 100);
   });
 
+  test('hex helpers round-trip the engine background format', () {
+    expect(hexOfColor(0xFF102030), '#102030FF');
+    expect(hexOfColor(0x80FF0000), '#FF000080');
+    expect(colorOfHex('#102030FF'), 0xFF102030);
+    expect(colorOfHex('102030'), 0xFF102030, reason: '6 digits imply opaque');
+    expect(colorOfHex('#ff000080'), 0x80FF0000, reason: 'case-insensitive');
+    expect(colorOfHex('nope'), isNull);
+    expect(colorOfHex('#12345'), isNull);
+    expect(hexOfColor(colorOfHex('#00000000')!), '#00000000',
+        reason: 'the transparent default survives the round-trip');
+  });
+
   test('easing chip cycle round-trips through engine tokens', () {
     for (final chip in kEasingCycle) {
       expect(chipForToken(easingToken(chip)), chip);
