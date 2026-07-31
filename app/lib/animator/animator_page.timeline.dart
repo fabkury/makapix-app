@@ -537,7 +537,8 @@ extension _AnimatorTimeline on _AnimatorPageState {
               keyFrames: a.keyFrames(),
               playhead: _playing ? _playbackFrame() : _state.playhead,
               selected: selected,
-              draggedFrom: _keyDrag?.$1 == a.id && _keyDrag?.$2 == null ? _keyDrag?.$3 : null,
+              selectedFrame: _selTween?.$1 == a.id ? _selTween?.$3 : null,
+              draggedFrom: _keyDrag?.$1 == a.id ? _keyDrag?.$3 : null,
               draggedTo: _keyDragTo,
             ),
           ),
@@ -546,18 +547,27 @@ extension _AnimatorTimeline on _AnimatorPageState {
     ]);
   }
 
+  void _clearLaneGesture() {
+    _keyDrag = null;
+    _keyDragTo = null;
+    _tlArmedMove = null;
+    _tlSelectCandidate = null;
+    _tlDragMoved = false;
+  }
+
   void _laneDown(PointerDownEvent e, ActorState a, TimelineLayout layout) {
     _touchPos[e.pointer] = e.localPosition;
     if (_touchPos.length >= 2) {
-      // Second finger: the lane joins the pan/zoom machine; drop any nascent key drag.
-      _keyDrag = null;
-      _keyDragTo = null;
+      // Second finger: the lane joins the pan/zoom machine; drop any nascent gesture.
+      _clearLaneGesture();
       _hintEnd();
       _startTimelinePinch(layout);
       return;
     }
     final x = e.localPosition.dx;
-    // A key tick within the fat hit zone → start a retime drag (all props at that frame).
+    _tlDownX = x;
+    _tlDragMoved = false;
+    // What a TAP here selects: the key tick under the finger, else nearest at/left.
     int? hitFrame;
     double best = kKeyHitPx + 1;
     for (final f in a.keyFrames()) {
@@ -568,18 +578,16 @@ extension _AnimatorTimeline on _AnimatorPageState {
       }
     }
     if (hitFrame != null) {
-      if (_playing) _pause();
-      _keyDrag = (a.id, null, hitFrame);
-      _keyDragTo = hitFrame;
-      if (a.id != _state.selectedActor) _sendSession('SelectActor(${a.id})');
-      return;
+      _tlSelectCandidate = (a.id, null, hitFrame);
+    } else {
+      final f = layout.frameAtX(x);
+      final lefts = a.keyFrames().where((k) => k <= f).toList()..sort();
+      _tlSelectCandidate = lefts.isEmpty ? null : (a.id, null, lefts.last);
     }
-    // A tween segment tap: select the nearest key at/left of x for the easing chip.
-    final f = layout.frameAtX(x);
-    final lefts = a.keyFrames().where((k) => k <= f).toList()..sort();
-    if (lefts.isNotEmpty) {
-      setState(() => _selTween = (a.id, null, lefts.last));
-    }
+    // A drag moves the SELECTED key, and only in its own actor's lane (strict
+    // select-then-drag). Armed here, live on first real movement.
+    final st = _selTween;
+    _tlArmedMove = (st != null && st.$1 == a.id) ? (st.$1, st.$2, st.$3) : null;
   }
 
   void _laneMove(PointerMoveEvent e, TimelineLayout layout) {
@@ -588,11 +596,22 @@ extension _AnimatorTimeline on _AnimatorPageState {
       _timelinePinchMove(layout);
       return;
     }
+    final dx = e.localPosition.dx - _tlDownX;
+    if (!_tlDragMoved && dx.abs() > 6) {
+      _tlDragMoved = true;
+      final armed = _tlArmedMove;
+      if (armed != null) {
+        if (_playing) _pause();
+        _keyDrag = armed;
+        _keyDragTo = armed.$3;
+      }
+    }
     final kd = _keyDrag;
-    if (kd == null) return;
-    final a = _state.actor(kd.$1);
-    if (a == null) return;
-    var f = layout.frameAtX(e.localPosition.dx);
+    if (kd == null || !_tlDragMoved) return;
+    // Relative retime: the key moves by the drag's frame delta (never jumps to the
+    // finger — the drag may start anywhere in the lane).
+    var f = (kd.$3 + (dx / layout.pxPerFrame).round())
+        .clamp(0, _state.frameCount - 1);
     final magnets = <int>{
       ..._state.allKeyFrames().where((k) => k != kd.$3),
       _state.loopA,
@@ -611,26 +630,37 @@ extension _AnimatorTimeline on _AnimatorPageState {
       if (_touchPos.length < 2) {
         _timelinePinching = false;
         _touchPos.clear();
+        _clearLaneGesture();
       }
       return;
     }
     final kd = _keyDrag;
     final to = _keyDragTo;
-    _keyDrag = null;
-    _keyDragTo = null;
+    final cand = _tlSelectCandidate;
+    final moved = _tlDragMoved;
+    _clearLaneGesture();
     _hintEnd();
-    if (kd == null || to == null || to == kd.$3) {
-      setState(() {});
+    if (moved && kd != null) {
+      if (to == null || to == kd.$3) {
+        setState(() {});
+        return;
+      }
+      if (kd.$2 == null) {
+        _act('MoveActorKeys(${kd.$1}, ${kd.$3}, $to)');
+      } else {
+        _act('MoveKey(${kd.$1}, ${_dslProp(kd.$2!)}, ${kd.$3}, $to)');
+      }
+      _selTween = (kd.$1, kd.$2, to); // the selection follows the moved key
       return;
     }
-    if (kd.$2 == null) {
-      _act('MoveActorKeys(${kd.$1}, ${kd.$3}, $to)');
-    } else {
-      _act('MoveKey(${kd.$1}, ${_dslProp(kd.$2!)}, ${kd.$3}, $to)');
-    }
-    // Keep the tween selection following the moved key.
-    if (_selTween != null && _selTween!.$1 == kd.$1 && _selTween!.$3 == kd.$3) {
-      _selTween = (kd.$1, kd.$2, to);
+    // Tap, or a drag in a non-selected lane: select on release (the teachable miss).
+    if (cand != null) {
+      if (cand.$1 != _state.selectedActor) {
+        _sendSession('SelectActor(${cand.$1})');
+        _refreshState();
+      }
+      setState(() => _selTween = cand);
+      _hintFlash('Frame ${cand.$3 + 1} selected · drag this lane to move it');
     }
   }
 
@@ -730,14 +760,15 @@ extension _AnimatorTimeline on _AnimatorPageState {
   void _rowDown(PointerDownEvent e, ActorState a, String prop, TimelineLayout layout) {
     _touchPos[e.pointer] = e.localPosition;
     if (_touchPos.length >= 2) {
-      _keyDrag = null;
-      _keyDragTo = null;
+      _clearLaneGesture();
       _hintEnd();
       _startTimelinePinch(layout);
       return;
     }
     final t = a.tracks[prop]!;
     final x = e.localPosition.dx;
+    _tlDownX = x;
+    _tlDragMoved = false;
     int? hitFrame;
     double best = kKeyHitPx + 1;
     for (final k in t.keys) {
@@ -747,14 +778,12 @@ extension _AnimatorTimeline on _AnimatorPageState {
         hitFrame = k.frame;
       }
     }
-    if (hitFrame != null) {
-      if (_playing) _pause();
-      final hf = hitFrame; // closure below would lose the null promotion
-      _keyDrag = (a.id, prop, hf);
-      _keyDragTo = hf;
-      setState(() => _selTween = (a.id, prop, hf));
-      return;
-    }
+    _tlSelectCandidate = hitFrame == null ? null : (a.id, prop, hitFrame);
+    // A Focus drag moves the selected key only in ITS OWN property row.
+    final st = _selTween;
+    _tlArmedMove = (st != null && st.$1 == a.id && st.$2 == prop)
+        ? (st.$1, st.$2, st.$3)
+        : null;
   }
 
   // ---- hint strip --------------------------------------------------------------------------

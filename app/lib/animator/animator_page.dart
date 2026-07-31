@@ -130,8 +130,14 @@ class _AnimatorPageState extends ConsumerState<AnimatorPage>
   double _timeScroll = 0;
   int? _focusActor;
   (int actor, String? prop, int keyFrame)? _selTween;
-  // Key drag (Tracks: all props at a frame; Focus: one prop).
-  (int actor, String? prop, int from)? _keyDrag;
+  // Key retiming (Tracks: all props at a frame; Focus: one prop) — strict select-then-
+  // drag, the stage's grammar on the time axis: a drag anywhere in the SELECTED key's
+  // lane/row moves it by the drag's frame delta; drags elsewhere select on release.
+  (int actor, String? prop, int from)? _keyDrag; // the active move drag
+  (int actor, String? prop, int from)? _tlArmedMove; // becomes _keyDrag on first movement
+  (int actor, String? prop, int frame)? _tlSelectCandidate; // selected on tap/release
+  double _tlDownX = 0;
+  bool _tlDragMoved = false;
   int? _keyDragTo;
   int? _loopDragEdge; // 0 = a, 1 = b
   bool _timelinePinching = false;

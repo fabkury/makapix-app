@@ -158,6 +158,9 @@ class TrackLanePainter extends CustomPainter {
   final Set<int> keyFrames;
   final int playhead;
   final bool selected;
+
+  /// The selected key's frame (select-then-drag: this is the one a drag moves).
+  final int? selectedFrame;
   final int? draggedFrom;
   final int? draggedTo;
   const TrackLanePainter({
@@ -165,6 +168,7 @@ class TrackLanePainter extends CustomPainter {
     required this.keyFrames,
     required this.playhead,
     required this.selected,
+    this.selectedFrame,
     this.draggedFrom,
     this.draggedTo,
   });
@@ -187,18 +191,21 @@ class TrackLanePainter extends CustomPainter {
       ),
       Paint()..color = kBarColor,
     );
-    // Key ticks (the dragged key rides the finger at draggedTo).
+    // Key ticks (the dragged key rides the finger at draggedTo; the selected one glows).
     for (final f in keyFrames) {
       final drawn = (f == draggedFrom && draggedTo != null) ? draggedTo! : f;
       final x = layout.xAtFrame(drawn);
       if (x < -8 || x > size.width + 8) continue;
       final isDragged = f == draggedFrom && draggedTo != null;
+      final isSel = !isDragged && f == selectedFrame;
       canvas.drawLine(
         Offset(x, size.height * 0.2),
         Offset(x, size.height * 0.8),
         Paint()
-          ..strokeWidth = isDragged ? 3 : 2
-          ..color = isDragged ? Colors.amber : Colors.white70,
+          ..strokeWidth = isDragged || isSel ? 3 : 2
+          ..color = isDragged
+              ? Colors.amber
+              : (isSel ? Colors.amberAccent : Colors.white70),
       );
     }
     // Playhead hairline through the lane.
@@ -221,6 +228,7 @@ class TrackLanePainter extends CustomPainter {
       old.keyFrames != keyFrames ||
       old.playhead != playhead ||
       old.selected != selected ||
+      old.selectedFrame != selectedFrame ||
       old.draggedFrom != draggedFrom ||
       old.draggedTo != draggedTo;
 }
