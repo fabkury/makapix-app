@@ -4,8 +4,9 @@ part of 'animator_page.dart';
 // subclass trip a false positive calling the @protected setState.)
 
 // Bytes crossing the app boundary: the Prop import flow (probe → Whole/Parts card → the
-// engine's one import chokepoint), and export/share (the editor's exact thin-wrapper shape
-// over lib/share/image_share.dart: scale dialog → background encode with progress → save or
+// engine's one import chokepoint), scene files (.mkps open/save — how scenes travel between
+// people), and export/share (the editor's exact thin-wrapper shape over
+// lib/share/image_share.dart: scale dialog → background encode with progress → save or
 // share sheet). The GIF alpha notice (design: disclosed threshold) fires before encoding.
 extension _AnimatorFileIo on _AnimatorPageState {
   static const List<String> _importFormats = ['mkpx', 'png', 'gif', 'webp'];
@@ -132,6 +133,51 @@ extension _AnimatorFileIo on _AnimatorPageState {
       _toast('This prop has its own loop — it keeps playing while you animate it.');
     }
     return props.isNotEmpty;
+  }
+
+  // ---- scene files (.mkps between people) --------------------------------------------------
+
+  /// "Open scene file…": pick a .mkps, validate it, copy it into My Scenes, and switch to
+  /// it. ADR-0002 self-containment: the app edits the library copy, never the picked file.
+  Future<void> _openSceneFileFlow() async {
+    if (!_engineReady) return;
+    try {
+      final res = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['mkps'],
+        withData: true,
+      );
+      if (res == null || res.files.isEmpty) return;
+      final f = res.files.single;
+      final bytes = f.bytes;
+      if (bytes == null || bytes.isEmpty) {
+        _toast('Could not read that file.');
+        return;
+      }
+      final base = f.name.contains('.')
+          ? f.name.substring(0, f.name.lastIndexOf('.'))
+          : f.name;
+      await _importSceneBytes(bytes, base.isEmpty ? 'Untitled' : base);
+    } catch (e) {
+      _toast('Open failed: $e');
+    }
+  }
+
+  /// "Save scene file…": the current scene as a compact .mkps through the system save
+  /// dialog (the explicit-save convention: compact envelope; autosave stays plain).
+  Future<void> _saveSceneFileFlow() async {
+    if (!_engineReady) return;
+    final bytes = engine.saveCompact();
+    if (bytes.isEmpty) {
+      _toast('Could not serialize the scene.');
+      return;
+    }
+    await _saveExport(
+      bytes,
+      fileName: '${sanitizeShareFilename(_sceneTitle)}.mkps',
+      ext: 'mkps',
+      done: 'Scene file saved.',
+    );
   }
 
   // ---- export / share ----------------------------------------------------------------------

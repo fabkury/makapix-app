@@ -96,6 +96,10 @@ extension _AnimatorTimeline on _AnimatorPageState {
             _openSceneGallery();
           case 'new':
             _newSceneFlow();
+          case 'openfile':
+            _openSceneFileFlow();
+          case 'savefile':
+            _saveSceneFileFlow();
           case 'import':
             _importPropFlow();
           case 'export':
@@ -111,6 +115,8 @@ extension _AnimatorTimeline on _AnimatorPageState {
         const PopupMenuDivider(),
         const PopupMenuItem(value: 'gallery', child: ListTile(leading: Icon(Icons.movie_filter_outlined), title: Text('My Scenes'), dense: true)),
         const PopupMenuItem(value: 'new', child: ListTile(leading: Icon(Icons.add), title: Text('New scene'), dense: true)),
+        const PopupMenuItem(value: 'openfile', child: ListTile(leading: Icon(Icons.folder_open), title: Text('Open scene file…'), dense: true)),
+        const PopupMenuItem(value: 'savefile', child: ListTile(leading: Icon(Icons.save_outlined), title: Text('Save scene file…'), dense: true)),
         const PopupMenuDivider(),
         const PopupMenuItem(value: 'import', child: ListTile(leading: Icon(Icons.add_photo_alternate_outlined), title: Text('Import prop…'), dense: true)),
         const PopupMenuItem(value: 'export', child: ListTile(leading: Icon(Icons.save_alt), title: Text('Export…'), dense: true)),

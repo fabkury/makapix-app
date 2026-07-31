@@ -180,6 +180,47 @@ extension _AnimatorPersistence on _AnimatorPageState {
     }
   }
 
+  /// "Open scene file…" landing: validate the bytes in a throwaway session, copy them into
+  /// the library as a NEW scene titled after the file, then switch to it. Opening the same
+  /// file twice deliberately makes two scenes — the picked file is never written back.
+  Future<void> _importSceneBytes(Uint8List bytes, String title) async {
+    final store = _store;
+    if (store == null) return;
+    var ok = false;
+    int w = 0, h = 0, frames = 1, fps = 12500;
+    final probe = SceneEngine.forLoad();
+    try {
+      ok = probe.load(bytes);
+      if (ok) {
+        w = probe.width;
+        h = probe.height;
+        frames = probe.frameCount;
+        fps = SceneState.parse(probe.stateJson()).millifps;
+      }
+    } finally {
+      probe.dispose();
+    }
+    if (!ok) {
+      _toast("That .mkps can't be opened (corrupt, or over the scene memory budget).");
+      return;
+    }
+    final id = SceneStore.newId();
+    final now = DateTime.now().toUtc();
+    await store.writeDoc(id, bytes);
+    await store.writeMeta(SceneMeta(
+      id: id,
+      title: title,
+      createdAt: now,
+      updatedAt: now,
+      width: w,
+      height: h,
+      frameCount: frames,
+      fpsMilli: fps,
+    ));
+    await _switchToScene(id);
+    if (mounted) _toast('Opened "$title" into My Scenes.');
+  }
+
   // ---- the cross-pillar bridge -------------------------------------------------------------
 
   Future<void> _consumeAnimatorRequest(AnimatorRequest req) async {

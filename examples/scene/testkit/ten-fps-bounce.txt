@@ -1,0 +1,21 @@
+# Testkit: the slowest curated rate (10 fps, exact 10 cs/frame). A gravity bounce:
+# easein falling (accelerate), easeout rising (decelerate). Timing should feel
+# chunky but even — the exported GIF must play at exactly the same rhythm.
+# Build: mkpx scene run examples/scene/testkit/ten-fps-bounce.txt save:ten-fps-bounce.mkps
+NewScene(64,64,10000)
+SetFrameCount(20)
+SetBackground(#0F131AFF)
+GenPropSolid(64,4,#303840FF)
+GenPropSolid(10,10,#E04030FF)
+PlaceActorAt(1, 0, 58)
+RenameActor(1, Floor)
+PlaceActorAt(2, 8, 6)
+RenameActor(2, Ball)
+SetKeyTween(2, y, 0, 6, easein)
+SetKeyTween(2, y, 10, 48, easeout)
+SetKey(2, y, 19, 6)
+SetKeyTween(2, x, 0, 8, easeinout)
+SetKeyTween(2, x, 10, 44, easeinout)
+SetKey(2, x, 19, 8)
+SetLoop(0, 19)
+SetPlayhead(0)

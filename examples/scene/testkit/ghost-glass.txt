@@ -1,0 +1,28 @@
+# Testkit: semi-transparent props crossfading — exercises opacity tweens, alpha
+# compositing, AND the export honesty story: GIF export must show the threshold
+# notice (uses_alpha), WebP must carry the true alpha.
+# Build: mkpx scene run examples/scene/testkit/ghost-glass.txt save:ghost-glass.mkps
+NewScene(64,64,12500)
+SetFrameCount(25)
+SetBackground(#202830FF)
+GenPropSolid(28,28,#FF404080)
+GenPropSolid(28,28,#40FF4080)
+GenPropSolid(28,28,#4060FF80)
+PlaceActorAt(1, 8, 8)
+RenameActor(1, FadeOut)
+SetKeyTween(1, opacity, 0, 255, easeinout)
+SetKey(1, opacity, 24, 0)
+PlaceActorAt(2, 20, 14)
+RenameActor(2, FadeIn)
+SetKeyTween(2, opacity, 0, 0, easeinout)
+SetKey(2, opacity, 24, 255)
+PlaceActorAt(3, 14, 24)
+RenameActor(3, Drifter)
+SetKeyTween(3, opacity, 0, 128, easeinout)
+SetKeyTween(3, opacity, 12, 255, easeinout)
+SetKey(3, opacity, 24, 128)
+SetKeyTween(3, x, 0, 14, easeinout)
+SetKeyTween(3, x, 12, 22, easeinout)
+SetKey(3, x, 24, 14)
+SetLoop(0, 24)
+SetPlayhead(0)

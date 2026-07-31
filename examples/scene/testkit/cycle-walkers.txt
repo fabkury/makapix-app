@@ -1,0 +1,27 @@
+# Testkit: Playing Cycles — multi-frame Props looping on their own clocks while
+# keyframed. Walker crosses while cycling at 1 step/frame. Slowpoke holds each prop
+# frame for 2. Mixed has per-frame steps 1/2/4 (cycle length 7) and bobs.
+# Build: mkpx scene run examples/scene/testkit/cycle-walkers.txt save:cycle-walkers.mkps
+NewScene(96,48,12500)
+SetFrameCount(32)
+SetBackground(#141820FF)
+GenProp(12,12,4,11)
+GenProp(12,12,4,22)
+SetCycleAll(2, 2)
+GenProp(12,12,3,33)
+SetCycleStep(3, 0, 1)
+SetCycleStep(3, 1, 2)
+SetCycleStep(3, 2, 4)
+PlaceActorAt(1, 4, 6)
+RenameActor(1, Walker)
+SetKeyTween(1, x, 0, 4, linear)
+SetKey(1, x, 31, 80)
+PlaceActorAt(2, 42, 32)
+RenameActor(2, Slowpoke)
+PlaceActorAt(3, 72, 24)
+RenameActor(3, Mixed)
+SetKeyTween(3, y, 0, 24, easeinout)
+SetKeyTween(3, y, 16, 34, easeinout)
+SetKey(3, y, 31, 24)
+SetLoop(0, 31)
+SetPlayhead(0)
