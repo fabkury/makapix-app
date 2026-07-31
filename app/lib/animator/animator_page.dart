@@ -136,7 +136,7 @@ class _AnimatorPageState extends ConsumerState<AnimatorPage>
   int? _loopDragEdge; // 0 = a, 1 = b
   bool _timelinePinching = false;
   double _tlPinchStartDist = 0, _tlPinchStartPpf = 8;
-  double _tlPinchFocalX = 0;
+  double _tlPinchFocusFrame = 0; // continuous frame under the fingers' midpoint
 
   // ---- Playback (the Club clock model: Ticker + frame cache, no FFI in the hot loop).
   bool _playing = false;

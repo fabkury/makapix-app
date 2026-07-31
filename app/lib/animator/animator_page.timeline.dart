@@ -39,8 +39,12 @@ extension _AnimatorTimeline on _AnimatorPageState {
             ]),
           ),
         ),
-        Text('${_state.playhead + 1} / ${_state.frameCount}',
-            style: const TextStyle(fontSize: 12, color: Colors.white54)),
+        ValueListenableBuilder<int>(
+          valueListenable: _overlayVN,
+          builder: (_, _, _) => Text(
+              '${(_playing ? _playbackFrame() : _state.playhead) + 1} / ${_state.frameCount}',
+              style: const TextStyle(fontSize: 12, color: Colors.white54)),
+        ),
         IconButton(
           tooltip: 'Fit view',
           icon: const Icon(Icons.fit_screen, size: 20),
@@ -246,16 +250,23 @@ extension _AnimatorTimeline on _AnimatorPageState {
     final (gutterL, gutterR) = _timelineGutters();
     return LayoutBuilder(builder: (context, constraints) {
       final width = constraints.maxWidth;
-      switch (_timelineZoom) {
-        case TimelineZoom.strip:
-          return _stripBand(_layoutFor(width, gutterL, gutterR), 56 * s);
-        case TimelineZoom.tracks:
-          // Tracks/Focus share one geometry over the lane area right of the 72px label
-          // column — the ruler gets the same leading inset, so their ticks align.
-          return _tracksBand(_layoutFor(width - 72 * s, gutterL, gutterR), s, laneCap);
-        case TimelineZoom.focus:
-          return _focusBand(_layoutFor(width - 72 * s, gutterL, gutterR), s, laneCap);
-      }
+      // Rebuild with the playback/overlay notifier so the cursor moves in real time
+      // while playing (the painters' shouldRepaint gates the actual repaint work).
+      return ValueListenableBuilder<int>(
+        valueListenable: _overlayVN,
+        builder: (_, _, _) {
+          switch (_timelineZoom) {
+            case TimelineZoom.strip:
+              return _stripBand(_layoutFor(width, gutterL, gutterR), 56 * s);
+            case TimelineZoom.tracks:
+              // Tracks/Focus share one geometry over the lane area right of the 72px
+              // label column — the ruler gets the same leading inset, so ticks align.
+              return _tracksBand(_layoutFor(width - 72 * s, gutterL, gutterR), s, laneCap);
+            case TimelineZoom.focus:
+              return _focusBand(_layoutFor(width - 72 * s, gutterL, gutterR), s, laneCap);
+          }
+        },
+      );
     });
   }
 
@@ -425,15 +436,37 @@ extension _AnimatorTimeline on _AnimatorPageState {
     );
   }
 
-  // Ruler pointers: one finger scrubs; two fingers pinch-zoom time / pan.
+  // Two-finger machine, shared by the ruler AND the lanes: zoom from the finger
+  // distance, pan from the moving midpoint — the continuous frame captured under the
+  // start midpoint stays under the live midpoint (a still-distance drag is a pure pan).
+  void _startTimelinePinch(TimelineLayout layout) {
+    _timelinePinching = true;
+    final ps = _touchPos.values.toList();
+    _tlPinchStartDist = (ps[0].dx - ps[1].dx).abs().clamp(1.0, double.infinity);
+    _tlPinchStartPpf = _pxPerFrame;
+    _tlPinchFocusFrame = layout.continuousFrameAt((ps[0].dx + ps[1].dx) / 2);
+  }
+
+  void _timelinePinchMove(TimelineLayout layout) {
+    final ps = _touchPos.values.toList();
+    if (ps.length < 2) return;
+    final dist = (ps[0].dx - ps[1].dx).abs().clamp(1.0, double.infinity);
+    final midX = (ps[0].dx + ps[1].dx) / 2;
+    final next = layout.panZoomedTo(
+        _tlPinchStartPpf * dist / _tlPinchStartDist, _tlPinchFocusFrame, midX);
+    if (next.pxPerFrame != _pxPerFrame || next.scroll != _timeScroll) {
+      setState(() {
+        _pxPerFrame = next.pxPerFrame;
+        _timeScroll = next.scroll;
+      });
+    }
+  }
+
+  // Ruler pointers: one finger scrubs; two fingers pan/zoom time.
   void _rulerDown(PointerDownEvent e, TimelineLayout layout) {
     _touchPos[e.pointer] = e.localPosition;
     if (_touchPos.length >= 2) {
-      _timelinePinching = true;
-      final ps = _touchPos.values.toList();
-      _tlPinchStartDist = (ps[0].dx - ps[1].dx).abs().clamp(1, double.infinity);
-      _tlPinchStartPpf = _pxPerFrame;
-      _tlPinchFocalX = (ps[0].dx + ps[1].dx) / 2;
+      _startTimelinePinch(layout);
       return;
     }
     _scrubTo(layout.frameAtX(e.localPosition.dx));
@@ -442,14 +475,7 @@ extension _AnimatorTimeline on _AnimatorPageState {
   void _rulerMove(PointerMoveEvent e, TimelineLayout layout) {
     _touchPos[e.pointer] = e.localPosition;
     if (_timelinePinching) {
-      final ps = _touchPos.values.toList();
-      if (ps.length < 2) return;
-      final dist = (ps[0].dx - ps[1].dx).abs().clamp(1.0, double.infinity);
-      final next = layout.zoomedTo(_tlPinchStartPpf * dist / _tlPinchStartDist, _tlPinchFocalX);
-      setState(() {
-        _pxPerFrame = next.pxPerFrame;
-        _timeScroll = next.scroll;
-      });
+      _timelinePinchMove(layout);
       return;
     }
     _scrubTo(layout.frameAtX(e.localPosition.dx));
@@ -502,8 +528,8 @@ extension _AnimatorTimeline on _AnimatorPageState {
           behavior: HitTestBehavior.opaque,
           onPointerDown: (e) => _laneDown(e, a, layout),
           onPointerMove: (e) => _laneMove(e, layout),
-          onPointerUp: (_) => _laneUp(),
-          onPointerCancel: (_) => _laneUp(),
+          onPointerUp: (e) => _laneUp(e),
+          onPointerCancel: (e) => _laneUp(e),
           child: CustomPaint(
             size: Size(layout.width, laneH),
             painter: TrackLanePainter(
@@ -521,6 +547,15 @@ extension _AnimatorTimeline on _AnimatorPageState {
   }
 
   void _laneDown(PointerDownEvent e, ActorState a, TimelineLayout layout) {
+    _touchPos[e.pointer] = e.localPosition;
+    if (_touchPos.length >= 2) {
+      // Second finger: the lane joins the pan/zoom machine; drop any nascent key drag.
+      _keyDrag = null;
+      _keyDragTo = null;
+      _hintEnd();
+      _startTimelinePinch(layout);
+      return;
+    }
     final x = e.localPosition.dx;
     // A key tick within the fat hit zone → start a retime drag (all props at that frame).
     int? hitFrame;
@@ -548,6 +583,11 @@ extension _AnimatorTimeline on _AnimatorPageState {
   }
 
   void _laneMove(PointerMoveEvent e, TimelineLayout layout) {
+    _touchPos[e.pointer] = e.localPosition;
+    if (_timelinePinching) {
+      _timelinePinchMove(layout);
+      return;
+    }
     final kd = _keyDrag;
     if (kd == null) return;
     final a = _state.actor(kd.$1);
@@ -565,7 +605,15 @@ extension _AnimatorTimeline on _AnimatorPageState {
     if (f != _keyDragTo) setState(() => _keyDragTo = f);
   }
 
-  void _laneUp() {
+  void _laneUp(PointerEvent e) {
+    _touchPos.remove(e.pointer);
+    if (_timelinePinching) {
+      if (_touchPos.length < 2) {
+        _timelinePinching = false;
+        _touchPos.clear();
+      }
+      return;
+    }
     final kd = _keyDrag;
     final to = _keyDragTo;
     _keyDrag = null;
@@ -649,8 +697,8 @@ extension _AnimatorTimeline on _AnimatorPageState {
           behavior: HitTestBehavior.opaque,
           onPointerDown: (e) => _rowDown(e, a, prop, layout),
           onPointerMove: (e) => _laneMove(e, layout),
-          onPointerUp: (_) => _laneUp(),
-          onPointerCancel: (_) => _laneUp(),
+          onPointerUp: (e) => _laneUp(e),
+          onPointerCancel: (e) => _laneUp(e),
           child: CustomPaint(
             size: Size(layout.width, rowH),
             painter: PropertyRowPainter(
@@ -680,6 +728,14 @@ extension _AnimatorTimeline on _AnimatorPageState {
       };
 
   void _rowDown(PointerDownEvent e, ActorState a, String prop, TimelineLayout layout) {
+    _touchPos[e.pointer] = e.localPosition;
+    if (_touchPos.length >= 2) {
+      _keyDrag = null;
+      _keyDragTo = null;
+      _hintEnd();
+      _startTimelinePinch(layout);
+      return;
+    }
     final t = a.tracks[prop]!;
     final x = e.localPosition.dx;
     int? hitFrame;

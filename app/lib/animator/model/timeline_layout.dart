@@ -102,6 +102,34 @@ class TimelineLayout {
     return (first, last);
   }
 
+  /// The continuous (unclamped, fractional) frame index under band-x — the anchor a
+  /// two-finger gesture holds on to.
+  double continuousFrameAt(double x) => (x - originX + scroll) / pxPerFrame;
+
+  /// The unified two-finger pan+zoom: the layout at [newPxPerFrame] with scroll set so
+  /// continuous [focusFrame] sits under band-x [focalX]. Zoom comes from the finger
+  /// distance, pan from the moving midpoint — same formula, no separate modes.
+  TimelineLayout panZoomedTo(double newPxPerFrame, double focusFrame, double focalX) {
+    final ppf = newPxPerFrame.clamp(kMinPxPerFrame, kMaxPxPerFrame).toDouble();
+    final probe = TimelineLayout(
+      width: width,
+      frameCount: frameCount,
+      pxPerFrame: ppf,
+      originX: originX,
+      rightInset: rightInset,
+      overscroll: overscroll,
+    );
+    return TimelineLayout(
+      width: width,
+      frameCount: frameCount,
+      pxPerFrame: ppf,
+      scroll: probe.clampScroll(focusFrame * ppf - (focalX - originX)),
+      originX: originX,
+      rightInset: rightInset,
+      overscroll: overscroll,
+    );
+  }
+
   /// Zoom about a band-x focal point: returns the layout at [newPxPerFrame] with scroll
   /// adjusted so the frame under [focalX] stays put.
   TimelineLayout zoomedTo(double newPxPerFrame, double focalX) {

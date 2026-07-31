@@ -90,6 +90,22 @@ void main() {
     expect(tight.maxScroll, 900);
   });
 
+  test('panZoomedTo: still fingers pan, moving fingers zoom about the midpoint', () {
+    const l = TimelineLayout(
+        width: 132, frameCount: 100, pxPerFrame: 8, scroll: 100, originX: 32, overscroll: 50);
+    final focus = l.continuousFrameAt(80.0);
+    expect(focus, closeTo(18.5, 1e-9));
+    // Same distance (same ppf), midpoint moved +30 → a pure pan of −30.
+    final p = l.panZoomedTo(8, focus, 110.0);
+    expect(p.pxPerFrame, 8);
+    expect(p.scroll, closeTo(70, 1e-9));
+    // Zooming while the midpoint moves keeps the SAME continuous frame under it.
+    final z = l.panZoomedTo(16, focus, 110.0);
+    expect(z.continuousFrameAt(110.0), closeTo(focus, 1e-9));
+    // Panning past the end clamps into the over-scroll bounds.
+    expect(l.panZoomedTo(8, focus, 5000.0).scroll, l.minScroll);
+  });
+
   test('zoomedTo keeps the focal frame stable with a nonzero origin', () {
     const l = TimelineLayout(
         width: 232, frameCount: 100, pxPerFrame: 4, scroll: 120, originX: 32);
