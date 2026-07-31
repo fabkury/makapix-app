@@ -103,6 +103,34 @@ extension _AnimatorStage on _AnimatorPageState {
             style: const TextStyle(fontSize: 12, color: Colors.white70),
             overflow: TextOverflow.ellipsis),
         const SizedBox(width: 6),
+        // Posing: step the held prop frame at the playhead (auto-key drops hold keys).
+        Builder(builder: (_) {
+          final frames = _state.prop(sel.prop)?.frames ?? 1;
+          if (sel.playing || frames < 2) return const SizedBox.shrink();
+          final shown = math.min(sel.pose.pose, frames - 1);
+          return Row(mainAxisSize: MainAxisSize.min, children: [
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              iconSize: 16,
+              tooltip: 'Previous pose (keys at the playhead)',
+              icon: const Icon(Icons.chevron_left),
+              onPressed: shown > 0
+                  ? () => _act('SetAtPlayhead(${sel.id}, pose, ${shown - 1})')
+                  : null,
+            ),
+            Text('${shown + 1}/$frames',
+                style: const TextStyle(fontSize: 11, color: Colors.white54)),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              iconSize: 16,
+              tooltip: 'Next pose (keys at the playhead)',
+              icon: const Icon(Icons.chevron_right),
+              onPressed: shown < frames - 1
+                  ? () => _act('SetAtPlayhead(${sel.id}, pose, ${shown + 1})')
+                  : null,
+            ),
+          ]);
+        }),
         IconButton(
           visualDensity: VisualDensity.compact,
           iconSize: 16,

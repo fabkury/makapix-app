@@ -600,7 +600,9 @@ extension _AnimatorTimeline on _AnimatorPageState {
       );
     }
     final rowH = 26.0 * s;
-    final rowsH = math.min(kFocusTracks.length * rowH, laneCap);
+    // Posing actors get a Pose row (hold keys) under the five standard properties.
+    final rows = [...kFocusTracks, if (!actor.playing) 'pose'];
+    final rowsH = math.min(rows.length * rowH, laneCap);
     return Column(mainAxisSize: MainAxisSize.min, children: [
       SizedBox(
         height: 24,
@@ -622,7 +624,7 @@ extension _AnimatorTimeline on _AnimatorPageState {
         height: rowsH,
         child: ListView(
           children: [
-            for (final prop in kFocusTracks) _propertyRow(actor, prop, layout, rowH),
+            for (final prop in rows) _propertyRow(actor, prop, layout, rowH),
           ],
         ),
       ),
@@ -673,6 +675,7 @@ extension _AnimatorTimeline on _AnimatorPageState {
         'rot' => 'Rotation',
         'scale' => 'Scale',
         'opacity' => 'Opacity',
+        'pose' => 'Pose',
         _ => prop,
       };
 

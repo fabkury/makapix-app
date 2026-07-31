@@ -231,6 +231,18 @@ extension _AnimatorSheets on _AnimatorPageState {
                 setSheet(() {});
               },
             ),
+            if ((prop?.frames ?? 1) > 1)
+              stateChip(
+                icon: Icons.filter_frames,
+                label: 'Posing',
+                value: !a.playing,
+                tooltip: 'Playing loops the prop\'s own Cycle. Posing holds one '
+                    'chosen frame — step poses from the pill; pose keys are hold keys.',
+                onChanged: (v) {
+                  _act('SetActorMode(${a.id}, ${v ? 'posing' : 'playing'})');
+                  setSheet(() {});
+                },
+              ),
           ]),
           const SizedBox(height: 6),
           Builder(builder: (_) {
