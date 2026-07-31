@@ -143,6 +143,10 @@ class _AnimatorPageState extends ConsumerState<AnimatorPage>
   bool _timelinePinching = false;
   double _tlPinchStartDist = 0, _tlPinchStartPpf = 8;
   double _tlPinchFocusFrame = 0; // continuous frame under the fingers' midpoint
+  // Ruler one-finger modes (Tracks/Focus): grab the playhead = scrub, elsewhere = scroll.
+  int _rulerMode = 0; // 0 none · 1 scrub · 2 pan
+  double _rulerPanDownX = 0, _rulerPanScroll0 = 0;
+  bool _rulerPanMoved = false;
 
   // ---- Playback (the Club clock model: Ticker + frame cache, no FFI in the hot loop).
   bool _playing = false;

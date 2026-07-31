@@ -412,8 +412,8 @@ extension _AnimatorTimeline on _AnimatorPageState {
       behavior: HitTestBehavior.opaque,
       onPointerDown: (e) => _rulerDown(e, layout),
       onPointerMove: (e) => _rulerMove(e, layout),
-      onPointerUp: (_) => _rulerUp(),
-      onPointerCancel: (_) => _rulerUp(),
+      onPointerUp: (_) => _rulerUp(layout),
+      onPointerCancel: (_) => _rulerUp(layout, cancel: true),
       child: CustomPaint(
         size: Size(layout.width, 20),
         painter: TimelineRulerPainter(
@@ -462,14 +462,27 @@ extension _AnimatorTimeline on _AnimatorPageState {
     }
   }
 
-  // Ruler pointers: one finger scrubs; two fingers pan/zoom time.
+  // Ruler pointers (Tracks/Focus): grabbing the playhead cursor scrubs; one finger
+  // anywhere else scrolls (the header has no keys by design — a free drag surface); a
+  // tap jumps the playhead on release; two fingers pan/zoom time.
   void _rulerDown(PointerDownEvent e, TimelineLayout layout) {
     _touchPos[e.pointer] = e.localPosition;
     if (_touchPos.length >= 2) {
+      _rulerMode = 0;
       _startTimelinePinch(layout);
       return;
     }
-    _scrubTo(layout.frameAtX(e.localPosition.dx));
+    final x = e.localPosition.dx;
+    final shown = _playing ? _playbackFrame() : _state.playhead;
+    if ((layout.xAtFrame(shown) - x).abs() <= kLoopHandleHitPx) {
+      _rulerMode = 1; // the playhead is grabbed: scrub from the start
+      _scrubTo(layout.frameAtX(x));
+    } else {
+      _rulerMode = 2; // pan candidate; a motionless release becomes a tap-jump
+      _rulerPanDownX = x;
+      _rulerPanScroll0 = _timeScroll;
+      _rulerPanMoved = false;
+    }
   }
 
   void _rulerMove(PointerMoveEvent e, TimelineLayout layout) {
@@ -478,12 +491,38 @@ extension _AnimatorTimeline on _AnimatorPageState {
       _timelinePinchMove(layout);
       return;
     }
-    _scrubTo(layout.frameAtX(e.localPosition.dx));
+    switch (_rulerMode) {
+      case 1:
+        _scrubTo(layout.frameAtX(e.localPosition.dx));
+      case 2:
+        final dx = e.localPosition.dx - _rulerPanDownX;
+        if (!_rulerPanMoved && dx.abs() > 6) _rulerPanMoved = true;
+        if (!_rulerPanMoved) return;
+        final ns = layout.clampScroll(_rulerPanScroll0 - dx);
+        if (ns != _timeScroll) {
+          final shifted = TimelineLayout(
+            width: layout.width,
+            frameCount: layout.frameCount,
+            pxPerFrame: layout.pxPerFrame,
+            scroll: ns,
+            originX: layout.originX,
+            rightInset: layout.rightInset,
+            overscroll: layout.overscroll,
+          );
+          final (first, last) = shifted.visibleRange();
+          _hintLive('frames ${first + 1} – ${last + 1}');
+          setState(() => _timeScroll = ns);
+        }
+    }
   }
 
-  void _rulerUp() {
+  void _rulerUp(TimelineLayout layout, {bool cancel = false}) {
     _touchPos.clear();
     _timelinePinching = false;
+    if (!cancel && _rulerMode == 2 && !_rulerPanMoved) {
+      _scrubTo(layout.frameAtX(_rulerPanDownX)); // the tap-jump, on release
+    }
+    _rulerMode = 0;
     _hintEnd();
   }
 
