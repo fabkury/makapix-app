@@ -115,6 +115,15 @@ workflows:
             nm -gU "$FW/MakapixFFI" | grep '_mkpx_' || echo "(none in symbol table)"
             exit 1
           fi
+          # The same dylib carries the Animator's SceneSession ABI (_mkps_*, 24 functions as of
+          # v0.1) — verify that family too, so a dead Animator can't ship silently.
+          SCENE=$(xcrun dyld_info -exports "$FW/MakapixFFI" | grep -c '_mkps_' || true)
+          echo "Exported _mkps_* symbols in MakapixFFI.framework: $SCENE"
+          if [ "$SCENE" -lt 15 ]; then
+            echo "FAIL: the embedded engine framework exports too few Animator (_mkps_*) symbols."
+            nm -gU "$FW/MakapixFFI" | grep '_mkps_' || echo "(none in symbol table)"
+            exit 1
+          fi
           codesign -v "$FW" && echo "Framework code signature: OK"
     artifacts:
       - app/build/ios/ipa/*.ipa
