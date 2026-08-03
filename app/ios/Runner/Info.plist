@@ -98,5 +98,87 @@
 	     every TestFlight/App Store upload. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- Uniform Type Identifiers for the file formats the pickers filter on. Without these,
+	     iOS resolves the extensions to dynamic (dyn.*) types, file_picker drops them from the
+	     allowed-type list (FilePickerUtils.m skips dyn.*), and the Files document picker
+	     shows every file grayed out. Exported = formats this app owns (.mkpx drawings,
+	     .mkps scenes); imported = formats it consumes but doesn't own (.gpl GIMP palettes,
+	     .apng images). Saving was never affected — the export picker doesn't filter. -->
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>club.makapix.mkpx</string>
+			<key>UTTypeDescription</key>
+			<string>Makapix Drawing</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>mkpx</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>club.makapix.mkps</string>
+			<key>UTTypeDescription</key>
+			<string>Makapix Scene</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>mkps</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>org.gimp.gpl</string>
+			<key>UTTypeDescription</key>
+			<string>GIMP Palette</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>gpl</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>org.mozilla.apng</string>
+			<key>UTTypeDescription</key>
+			<string>Animated PNG</string>
+			<!-- An .apng is a backward-compatible PNG stream, so conforming to public.png
+			     also lets it through any picker that filters on plain PNG. -->
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.png</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>apng</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 </dict>
 </plist>
