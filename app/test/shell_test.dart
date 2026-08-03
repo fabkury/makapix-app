@@ -7,6 +7,8 @@
 // the shell can be tested without the editor's native FFI engine (the real EditorPage is
 // driven by cargo tests + the `mkpx` harness, and exercised by `./build.ps1 -Run`). We
 // assert on the shell's navigation — which pillar is mounted — and on the real Club welcome.
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -24,6 +26,7 @@ import 'package:makapix_club/club/state/feed_providers.dart';
 import 'package:makapix_club/club/state/paged.dart';
 import 'package:makapix_club/club/state/publish_providers.dart';
 import 'package:makapix_club/shell/app_shell.dart';
+import 'package:makapix_club/shell/incoming_files.dart';
 
 /// A signed-out [AuthController] that performs no token load / network.
 class _SignedOutAuth extends AuthController {
@@ -120,5 +123,31 @@ void main() {
     await tester.pump();
     expect(_animatorShowing, findsOneWidget,
         reason: 'pendingAnimatorProvider mounts the Animator pillar');
+  });
+
+  testWidgets('incoming "Open in Makapix" files mount the pillar their type belongs to',
+      (tester) async {
+    await tester.pumpWidget(_harness());
+    await tester.pump();
+
+    final container = ProviderScope.containerOf(tester.element(find.byType(AppShell)));
+    final bytes = Uint8List.fromList([1, 2, 3]);
+
+    // A .mkps scene file lands on the Animator bridge and surfaces that pillar.
+    expect(dispatchIncomingFile(container, 'Bouncing ball.mkps', bytes), isTrue);
+    await tester.pump();
+    expect(_animatorShowing, findsOneWidget,
+        reason: 'an incoming scene file mounts the Animator pillar');
+    expect(container.read(pendingAnimatorProvider), isA<OpenSceneBytes>());
+
+    // Back to Club, then a .mkpx drawing lands on the editor bridge.
+    container.read(pendingAnimatorProvider.notifier).state = null; // the stub never consumes
+    container.read(openClubProvider.notifier).state++;
+    await tester.pump();
+    expect(dispatchIncomingFile(container, 'Sprite.mkpx', bytes), isTrue);
+    await tester.pump();
+    expect(_editorShowing, findsOneWidget,
+        reason: 'an incoming drawing file mounts the editor pillar');
+    expect(container.read(pendingLocalLibraryProvider), isA<OpenDrawingBytes>());
   });
 }

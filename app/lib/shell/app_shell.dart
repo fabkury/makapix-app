@@ -14,6 +14,8 @@
 // state survives remounts via its Riverpod providers; the creative pillars preserve their
 // in-progress documents across switches (and crashes) by autosaving to their on-disk
 // libraries and reloading on re-entry.
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -22,6 +24,7 @@ import '../club/edit/club_edit_request.dart';
 import '../club/state/edit_bridge.dart';
 import '../club/ui/club_pillar.dart';
 import '../editor/editor_page.dart';
+import 'incoming_files.dart';
 
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({
@@ -52,6 +55,25 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   void _select(int i) {
     if (_index != i) setState(() => _index = i);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // "Open in Makapix": documents the OS hands the app route onto the same pending
+    // bridges as in-app requests; the listeners in build() then switch pillars.
+    IncomingFiles.attach(_onIncomingFile);
+  }
+
+  @override
+  void dispose() {
+    IncomingFiles.detach();
+    super.dispose();
+  }
+
+  void _onIncomingFile(String name, Uint8List bytes) {
+    if (!mounted) return;
+    dispatchIncomingFile(ProviderScope.containerOf(context, listen: false), name, bytes);
   }
 
   @override

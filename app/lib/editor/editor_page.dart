@@ -498,6 +498,11 @@ class _EditorPageState extends ConsumerState<EditorPage>
     ref.listen<ClubEditRequest?>(pendingClubEditProvider, (prev, next) {
       if (next != null) _consumeClubEdit(next);
     });
+    // Local-library / incoming-file requests can also arrive while this pillar is already
+    // mounted (an "Open in Makapix" .mkpx handed over while the editor is active).
+    ref.listen<LocalLibraryRequest?>(pendingLocalLibraryProvider, (prev, next) {
+      if (next != null) _consumeLocalLibraryRequest(next);
+    });
     // Start/stop the marching-ants clock to match what's on screen (catch-all for every
     // setState-driven change: selection, tool switch, draft). Side-effect-free re controller
     // listeners — it never markNeedsBuild, so no rebuild loop. [audit]

@@ -141,6 +141,41 @@
 			</dict>
 		</dict>
 	</array>
+	<!-- "Open in Makapix": the app is the owner-opener of its two document types, so Files /
+	     AirDrop / Mail / share sheets offer it for .mkpx and .mkps. Documents arrive as
+	     copies (LSSupportsOpeningDocumentsInPlace false — ADR-0002 self-containment: the app
+	     imports into its own library and never edits the handed file in place).
+	     IncomingFilesPlugin.swift receives them; lib/shell/incoming_files.dart routes each
+	     to the right pillar. -->
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Makapix Drawing</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>club.makapix.mkpx</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Makapix Scene</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>club.makapix.mkps</string>
+			</array>
+		</dict>
+	</array>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<false/>
 	<key>UTImportedTypeDeclarations</key>
 	<array>
 		<dict>

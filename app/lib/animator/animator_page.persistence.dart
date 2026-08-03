@@ -234,6 +234,10 @@ extension _AnimatorPersistence on _AnimatorPageState {
         await _switchToScene(id);
       case AnimateDrawing(:final id):
         await _animateDrawing(id);
+      case OpenSceneBytes(:final bytes, :final title):
+        // An "Open in Makapix" .mkps handed over by the OS — the same landing as the
+        // in-app "Open scene file…" picker flow.
+        await _importSceneBytes(bytes, title);
     }
   }
 

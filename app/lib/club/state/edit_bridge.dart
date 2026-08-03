@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../edit/club_edit_request.dart';
@@ -34,6 +36,15 @@ class NewLocalDrawing extends LocalLibraryRequest {
   const NewLocalDrawing();
 }
 
+/// Load external .mkpx bytes as a NEW library drawing — the "Open in Makapix" landing
+/// (a file handed to the app by the OS; see lib/shell/incoming_files.dart). [name] is the
+/// source filename, shown in the keep/discard prompt and stripped for the title.
+class OpenDrawingBytes extends LocalLibraryRequest {
+  final Uint8List bytes;
+  final String name;
+  const OpenDrawingBytes(this.bytes, this.name);
+}
+
 final pendingLocalLibraryProvider = StateProvider<LocalLibraryRequest?>((ref) => null);
 
 /// Bumped by a Club surface (the Contribute hub's Animator card) to ask the shell to open the
@@ -64,6 +75,15 @@ class OpenScene extends AnimatorRequest {
 class AnimateDrawing extends AnimatorRequest {
   final String id;
   const AnimateDrawing(this.id);
+}
+
+/// Open external .mkps bytes — the "Open in Makapix" landing (a scene file handed to the
+/// app by the OS; see lib/shell/incoming_files.dart). Validated and copied into My Scenes
+/// as a new scene titled [title], exactly like the in-app "Open scene file…" flow.
+class OpenSceneBytes extends AnimatorRequest {
+  final Uint8List bytes;
+  final String title;
+  const OpenSceneBytes(this.bytes, this.title);
 }
 
 final pendingAnimatorProvider = StateProvider<AnimatorRequest?>((ref) => null);

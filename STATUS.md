@@ -62,7 +62,13 @@ over the OS gesture zone, its content inside adaptive side gutters with Tracks/F
 over-scroll. Scenes persist as self-contained `.mkps` files with autosave + a My Scenes
 gallery; reachable from Contribute and via "Animate this" on any drawing (editor gallery +
 profile Private tab). Scene files travel between people via ☰ Open/Save scene file
-(2026-07-31), and the P1 batch (2026-07-31) closed the decided design: **Posing mode**
+(2026-07-31); on iOS the app declares UTIs for `.mkps`/`.mkpx`/`.gpl`/`.apng` (2026-08-03 —
+without them the Files picker grayed everything out) and registers as the owner-opener of
+`.mkps`/`.mkpx`, so **"Open in Makapix"** works from Files/AirDrop/Mail: a native buffer
+(`ios/Runner/IncomingFilesPlugin.swift`) hands incoming documents to
+`lib/shell/incoming_files.dart`, which routes scenes to the Animator and drawings to the
+editor over the existing cross-pillar bridges. The P1 batch (2026-07-31) closed the decided
+design: **Posing mode**
 (Actor-sheet chip, pill pose stepper, Focus Pose row), **"Pin to…"** with keep-position
 compensation (pure-Dart inverse of compose_pin, one-level rule surfaced), **background
 color** (shared ColorPickerDialog → SetBackground), **cycle speed** per multi-frame Prop,

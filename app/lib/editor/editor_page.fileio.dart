@@ -57,10 +57,15 @@ extension _EditorFileIo on _EditorPageState {
     final name = res.files.single.name;
     final bytes = await File(res.files.single.path!).readAsBytes();
     if (!mounted) return;
-    // Opening an external file is a NEW library drawing (never overwrites the current one). Ask
-    // keep/discard/cancel for a non-blank canvas, release the current drawing accordingly, then
-    // load; only adopt a new drawing if the load succeeds, so a corrupt file leaves the current
-    // drawing intact.
+    await _loadExternalMkpx(bytes, name);
+  }
+
+  // Land external .mkpx bytes as a NEW library drawing (never overwrites the current one) —
+  // shared by "Open file…" above and the incoming "Open in Makapix" bridge (OpenDrawingBytes).
+  // Ask keep/discard/cancel for a non-blank canvas, release the current drawing accordingly,
+  // then load; only adopt a new drawing if the load succeeds, so a corrupt file leaves the
+  // current drawing intact.
+  Future<void> _loadExternalMkpx(Uint8List bytes, String name) async {
     if (!await _releaseOutgoingDrawingInteractive('"$name"')) return;
     if (engine.load(bytes)) {
       _clubSource = null;

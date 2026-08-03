@@ -46,27 +46,35 @@ extension _EditorPersistence on _EditorPageState {
     final pending = ref.read(pendingClubEditProvider);
     if (pending != null && mounted) await _consumeClubEdit(pending);
 
-    // Consume any pending local-library request from the profile's Private tab. The editor is
-    // freshly mounted on every switch into this pillar, so reading here on mount is sufficient
-    // (mirrors the Club-edit path). _openExistingDrawing / _switchToNewDrawing carry their own
-    // keep/discard prompt for the outgoing drawing.
+    // Consume any pending local-library request (the profile's Private tab, or an incoming
+    // "Open in Makapix" file) that arrived before this pillar was mounted.
     final localReq = ref.read(pendingLocalLibraryProvider);
-    if (localReq != null && mounted) {
-      ref.read(pendingLocalLibraryProvider.notifier).state = null; // consume once
-      switch (localReq) {
-        case OpenLocalDrawing(:final id):
-          await _openExistingDrawing(id);
-        case NewLocalDrawing():
-          await _switchToNewDrawing(title: 'Untitled', mutateEngine: () {
-            _send('NewDocument(64,64)');
-            _resendEngineTool();
-          });
-          if (mounted) {
-            _refreshState();
-            _redraw();
-            setState(() {});
-          }
-      }
+    if (localReq != null && mounted) await _consumeLocalLibraryRequest(localReq);
+  }
+
+  // Consume a local-library request — from the profile's Private tab or the incoming-file
+  // bridge. Cleared first so it doesn't re-fire (the bridge rule). Runs from mount above and
+  // from the build() listener, so requests land whether or not the editor was already the
+  // active pillar. _openExistingDrawing / _switchToNewDrawing / _loadExternalMkpx carry their
+  // own keep/discard prompt for the outgoing drawing.
+  Future<void> _consumeLocalLibraryRequest(LocalLibraryRequest req) async {
+    ref.read(pendingLocalLibraryProvider.notifier).state = null; // consume once
+    if (!_engineReady) return;
+    switch (req) {
+      case OpenLocalDrawing(:final id):
+        await _openExistingDrawing(id);
+      case NewLocalDrawing():
+        await _switchToNewDrawing(title: 'Untitled', mutateEngine: () {
+          _send('NewDocument(64,64)');
+          _resendEngineTool();
+        });
+        if (mounted) {
+          _refreshState();
+          _redraw();
+          setState(() {});
+        }
+      case OpenDrawingBytes(:final bytes, :final name):
+        await _loadExternalMkpx(bytes, name);
     }
   }
 
