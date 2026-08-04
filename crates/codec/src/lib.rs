@@ -204,6 +204,46 @@ pub fn upscale_nearest(w: u32, h: u32, rgba: &[u8], scale: u32) -> Vec<u8> {
     out
 }
 
+/// Bounding rect `(x, y, w, h)` in source pixels of every RGBA pixel differing between two
+/// same-size buffers, or `None` when they are byte-identical. Drives the animated-WebP delta
+/// frames: rows are compared as whole slices first (cheap skip for unchanged rows), then the
+/// first/last differing pixel of each changed row widens the box.
+fn diff_rect(w: u32, h: u32, prev: &[u8], cur: &[u8]) -> Option<(u32, u32, u32, u32)> {
+    let w = w as usize;
+    let row_bytes = w * 4;
+    let (mut min_x, mut max_x, mut min_y, mut max_y) = (usize::MAX, 0usize, usize::MAX, 0usize);
+    for y in 0..h as usize {
+        let a = &prev[y * row_bytes..(y + 1) * row_bytes];
+        let b = &cur[y * row_bytes..(y + 1) * row_bytes];
+        if a == b {
+            continue;
+        }
+        let first = (0..w).find(|&x| a[x * 4..x * 4 + 4] != b[x * 4..x * 4 + 4]).unwrap();
+        let last = (0..w).rfind(|&x| a[x * 4..x * 4 + 4] != b[x * 4..x * 4 + 4]).unwrap();
+        min_x = min_x.min(first);
+        max_x = max_x.max(last);
+        if min_y == usize::MAX {
+            min_y = y;
+        }
+        max_y = y;
+    }
+    if min_y == usize::MAX {
+        return None;
+    }
+    Some((min_x as u32, min_y as u32, (max_x - min_x + 1) as u32, (max_y - min_y + 1) as u32))
+}
+
+/// Copy the `rw`×`rh` RGBA sub-rect at (`x`,`y`) out of a `w`-pixel-wide buffer (row memcpys).
+fn crop_rgba(w: u32, rgba: &[u8], x: u32, y: u32, rw: u32, rh: u32) -> Vec<u8> {
+    let (w, x, y, rw, rh) = (w as usize, x as usize, y as usize, rw as usize, rh as usize);
+    let mut out = Vec::with_capacity(rw * rh * 4);
+    for row in y..y + rh {
+        let start = (row * w + x) * 4;
+        out.extend_from_slice(&rgba[start..start + rw * 4]);
+    }
+    out
+}
+
 /// Encode a single frame's RGBA to PNG.
 pub fn encode_png(w: u32, h: u32, rgba: &[u8]) -> Result<Vec<u8>, CodecError> {
     let img = RgbaImage::from_raw(w, h, rgba.to_vec()).ok_or(CodecError::Unsupported)?;
@@ -227,7 +267,9 @@ pub fn encode_webp(w: u32, h: u32, rgba: &[u8]) -> Result<Vec<u8>, CodecError> {
 
 /// Encode frames to an **animated lossless** WebP (durations in microseconds). Each frame is encoded
 /// to a lossless VP8L bitstream (image-webp) and the bitstreams are muxed into a VP8X/ANIM/ANMF
-/// container by hand — pure Rust, no libwebp. A single-frame input is just a static WebP.
+/// container by hand — pure Rust, no libwebp. The first frame covers the full canvas; every later
+/// frame is a delta sub-frame holding only the changed pixels' bounding rect (a 1×1 rewrite when
+/// identical), always exactly one ANMF per input frame. A single-frame input is just a static WebP.
 pub fn encode_animated_webp(w: u32, h: u32, frames: &[(Vec<u8>, u32)]) -> Result<Vec<u8>, CodecError> {
     encode_animated_webp_with(w, h, frames, 1, &mut |_, _| true)
 }
@@ -251,7 +293,8 @@ pub fn encode_animated_webp_with(
 /// Streaming lossless-WebP encoder (the [`encode_gif_streaming`] twin): pulls one frame at a time
 /// via `next` so the caller composites on demand and never holds all frames' RGBA at once (audit
 /// #10). Only the small **compressed** VP8L chunks accumulate — never the raw frames — so the peak
-/// is one raw frame plus the growing (compressed) container. Byte-identical to the slice path.
+/// is the current + previous raw **source** frames (kept for the delta diff) plus the upscaled
+/// changed sub-rect; two full upscaled frames are never resident. Byte-identical to the slice path.
 pub fn encode_animated_webp_streaming(
     w: u32,
     h: u32,
@@ -275,13 +318,84 @@ pub fn encode_animated_webp_streaming(
         }
         return Ok(out);
     }
-    // 1. Lossless-encode each frame and pull out its VP8L bitstream chunk (raw frame dropped after).
-    let mut vp8l: Vec<(Vec<u8>, u32)> = Vec::with_capacity(count);
+    // 1. Lossless-encode each frame's changed sub-rect and pull out its VP8L bitstream chunk.
+    //    Frame 0 is the full canvas; every later frame encodes only the bounding rect of the
+    //    pixels that differ from the previous frame (a 1×1 rewrite when identical) — the diff
+    //    runs at SOURCE resolution so only the changed area is ever upscaled.
+    struct AnmfFrame {
+        vp8l: Vec<u8>,
+        dur_ms: u32,
+        // Output-space rect; x/y kept even because ANMF stores them halved.
+        x: u32,
+        y: u32,
+        w: u32,
+        h: u32,
+    }
+    let src_len = (sw as usize) * (sh as usize) * 4;
+    let mut frames_out: Vec<AnmfFrame> = Vec::with_capacity(count);
+    let mut prev: Option<Vec<u8>> = None;
     let mut i = 0usize;
     while let Some((rgba, dur_us)) = next() {
-        let webp = encode_webp(w, h, &up(&rgba))?;
+        if rgba.len() != src_len {
+            return Err(CodecError::Unsupported);
+        }
+        let (mut sx, mut sy, mut rw, mut rh) = match &prev {
+            None => (0, 0, sw, sh),
+            Some(p) => match diff_rect(sw, sh, p, &rgba) {
+                Some(r) => r,
+                None => {
+                    // Identical frame: a 1×1 OUTPUT-space rect rewriting pixel (0,0) with its own
+                    // value — the smallest legal ANMF payload (the format cannot express an empty
+                    // frame, and its rect need not align to upscaled source blocks). Kept out of
+                    // the generic path because upscaling it to scale×scale would cross image-webp's
+                    // single-pixel→full-Huffman-trees cliff (~40 B vs ~160 B).
+                    let webp = encode_webp(1, 1, &rgba[0..4])?;
+                    let chunk = extract_vp8l(&webp)
+                        .ok_or_else(|| CodecError::Encode("missing VP8L chunk".into()))?;
+                    frames_out.push(AnmfFrame {
+                        vp8l: chunk,
+                        dur_ms: (dur_us / 1000).max(1),
+                        x: 0,
+                        y: 0,
+                        w: 1,
+                        h: 1,
+                    });
+                    prev = Some(rgba);
+                    i += 1;
+                    if !progress(i, count) {
+                        return Err(CodecError::Canceled);
+                    }
+                    continue;
+                }
+            },
+        };
+        // ANMF stores x/2 and y/2, so the output-space origin must be even. `sx*scale` is odd
+        // only when both factors are odd, so `sx-1 >= 0` and the snapped origin lands even; the
+        // right/bottom edge is unchanged, keeping the rect inside the canvas.
+        if (sx * scale) % 2 == 1 {
+            sx -= 1;
+            rw += 1;
+        }
+        if (sy * scale) % 2 == 1 {
+            sy -= 1;
+            rh += 1;
+        }
+        let sub = if (rw, rh) == (sw, sh) {
+            upscale_nearest(sw, sh, &rgba, scale)
+        } else {
+            upscale_nearest(rw, rh, &crop_rgba(sw, &rgba, sx, sy, rw, rh), scale)
+        };
+        let webp = encode_webp(rw * scale, rh * scale, &sub)?;
         let chunk = extract_vp8l(&webp).ok_or_else(|| CodecError::Encode("missing VP8L chunk".into()))?;
-        vp8l.push((chunk, (dur_us / 1000).max(1)));
+        frames_out.push(AnmfFrame {
+            vp8l: chunk,
+            dur_ms: (dur_us / 1000).max(1),
+            x: sx * scale,
+            y: sy * scale,
+            w: rw * scale,
+            h: rh * scale,
+        });
+        prev = Some(rgba);
         i += 1;
         if !progress(i, count) {
             return Err(CodecError::Canceled);
@@ -301,15 +415,19 @@ pub fn encode_animated_webp_streaming(
     anim.extend_from_slice(&[0, 0, 0, 0]);
     anim.extend_from_slice(&0u16.to_le_bytes()); // 0 = loop forever
     push_chunk(&mut body, b"ANIM", &anim);
-    // ANMF per frame: full-canvas, overwrite (no blend), no dispose.
-    for (chunk, dur_ms) in &vp8l {
+    // ANMF per frame: frame 0 covers the full canvas; later frames only their changed bounding
+    // rect (1×1 when identical), overwrite (no blend), no dispose — the untouched canvas carries
+    // over. X/Y are stored halved; the encode loop keeps them even.
+    for f in &frames_out {
+        debug_assert!(f.x % 2 == 0 && f.y % 2 == 0);
         let mut anmf = Vec::new();
-        anmf.extend_from_slice(&[0, 0, 0, 0, 0, 0]); // frame x, y = 0
-        anmf.extend_from_slice(&(w - 1).to_le_bytes()[0..3]);
-        anmf.extend_from_slice(&(h - 1).to_le_bytes()[0..3]);
-        anmf.extend_from_slice(&dur_ms.to_le_bytes()[0..3]);
+        anmf.extend_from_slice(&(f.x / 2).to_le_bytes()[0..3]);
+        anmf.extend_from_slice(&(f.y / 2).to_le_bytes()[0..3]);
+        anmf.extend_from_slice(&(f.w - 1).to_le_bytes()[0..3]);
+        anmf.extend_from_slice(&(f.h - 1).to_le_bytes()[0..3]);
+        anmf.extend_from_slice(&f.dur_ms.to_le_bytes()[0..3]);
         anmf.push(0x02); // B = 1 (do not blend / overwrite), D = 0 (no dispose)
-        push_chunk(&mut anmf, b"VP8L", chunk);
+        push_chunk(&mut anmf, b"VP8L", &f.vp8l);
         push_chunk(&mut body, b"ANMF", &anmf);
     }
     // 3. RIFF wrapper.
@@ -573,5 +691,124 @@ mod tests {
         assert_eq!(frames.len(), 2, "two animated frames");
         assert_eq!(frames[0].rgba, red, "frame 0 lossless");
         assert_eq!(frames[1].rgba, blue, "frame 1 lossless incl. alpha");
+    }
+
+    /// Test-only ANMF walker: one `(x, y, w, h, anmf_chunk_len)` per animation frame, with the
+    /// rect decoded back to output-space pixels (x/y are stored halved, w/h minus one).
+    fn anmf_rects(webp: &[u8]) -> Vec<(u32, u32, u32, u32, usize)> {
+        let le3 = |b: &[u8]| u32::from_le_bytes([b[0], b[1], b[2], 0]);
+        let mut out = Vec::new();
+        let mut pos = 12;
+        while pos + 8 <= webp.len() {
+            let size =
+                u32::from_le_bytes([webp[pos + 4], webp[pos + 5], webp[pos + 6], webp[pos + 7]]) as usize;
+            if &webp[pos..pos + 4] == b"ANMF" {
+                let p = &webp[pos + 8..pos + 8 + size];
+                out.push((le3(&p[0..3]) * 2, le3(&p[3..6]) * 2, le3(&p[6..9]) + 1, le3(&p[9..12]) + 1, size));
+            }
+            pos += 8 + size + (size & 1);
+        }
+        out
+    }
+
+    #[test]
+    fn webp_animation_identical_frames_are_degenerate_1x1() {
+        let (w, h) = (8u32, 8u32);
+        let mut frame = vec![40u8, 80, 120, 255].repeat((w * h) as usize);
+        frame[100..104].copy_from_slice(&[10, 20, 30, 128]); // one semi-alpha pixel must survive
+        let frames = vec![(frame.clone(), 50_000); 3];
+        for scale in [1u32, 2] {
+            let webp = encode_animated_webp_with(w, h, &frames, scale, &mut |_, _| true).unwrap();
+            let back = decode(&webp).unwrap();
+            assert_eq!(back.len(), 3, "one decoded frame per source frame (scale {scale})");
+            let expect = upscale_nearest(w, h, &frame, scale);
+            for (i, fr) in back.iter().enumerate() {
+                assert_eq!(fr.rgba, expect, "frame {i} lossless (scale {scale})");
+            }
+            let rects = anmf_rects(&webp);
+            assert_eq!(rects.len(), 3);
+            assert_eq!((rects[0].0, rects[0].1, rects[0].2, rects[0].3), (0, 0, w * scale, h * scale));
+            for r in &rects[1..] {
+                assert_eq!(
+                    (r.0, r.1, r.2, r.3),
+                    (0, 0, 1, 1),
+                    "identical frame collapses to a 1×1 output rect (scale {scale})"
+                );
+                assert!(r.4 >= 32, "ANMF chunk must meet the decoder's 32-byte minimum (got {})", r.4);
+                assert!(r.4 <= 64, "degenerate frame must stay tiny (got {})", r.4);
+            }
+        }
+    }
+
+    #[test]
+    fn webp_animation_subrect_partial_change_roundtrip() {
+        // 16×16 deterministic gradient; frame 1 changes a 3×3 region at (5,7) — including one
+        // pixel dropping to half alpha and one to full transparency (the no-blend overwrite must
+        // carry alpha DECREASES) — and frame 2 a 2×2 region touching the right/bottom edge.
+        let (w, h) = (16u32, 16u32);
+        let mut f0 = Vec::with_capacity((w * h * 4) as usize);
+        for y in 0..h {
+            for x in 0..w {
+                f0.extend_from_slice(&[(x * 16) as u8, (y * 16) as u8, (x + y) as u8, 255]);
+            }
+        }
+        let set = |f: &mut [u8], x: u32, y: u32, p: [u8; 4]| {
+            let o = ((y * w + x) * 4) as usize;
+            f[o..o + 4].copy_from_slice(&p);
+        };
+        let mut f1 = f0.clone();
+        for (i, &(x, y)) in
+            [(5, 7), (6, 7), (7, 7), (5, 8), (6, 8), (7, 8), (5, 9), (6, 9), (7, 9)].iter().enumerate()
+        {
+            let a = match i {
+                0 => 128, // opaque → half alpha
+                1 => 0,   // opaque → fully transparent
+                _ => 255,
+            };
+            set(&mut f1, x, y, [200, 40, 40, a]);
+        }
+        let mut f2 = f1.clone();
+        for &(x, y) in &[(14, 14), (15, 14), (14, 15), (15, 15)] {
+            set(&mut f2, x, y, [0, 255, 0, 200]);
+        }
+        let sources = [&f0, &f1, &f2];
+        let frames: Vec<(Vec<u8>, u32)> = sources.iter().map(|f| ((*f).clone(), 50_000)).collect();
+        for s in [1u32, 2, 3] {
+            let webp = encode_animated_webp_with(w, h, &frames, s, &mut |_, _| true).unwrap();
+            assert_eq!(
+                webp,
+                encode_animated_webp_with(w, h, &frames, s, &mut |_, _| true).unwrap(),
+                "deterministic output (scale {s})"
+            );
+            let back = decode(&webp).unwrap();
+            assert_eq!(back.len(), 3);
+            for (i, src) in sources.iter().enumerate() {
+                assert_eq!(back[i].rgba, upscale_nearest(w, h, src, s), "frame {i} lossless (scale {s})");
+            }
+            let rects: Vec<_> = anmf_rects(&webp).iter().map(|r| (r.0, r.1, r.2, r.3)).collect();
+            // Frame 1's source rect (5,7,3,3) even-snaps to (4,6,4,4) whenever sx·scale is odd.
+            let f1_rect = match s {
+                1 => (4, 6, 4, 4),
+                2 => (10, 14, 6, 6),
+                3 => (12, 18, 12, 12),
+                _ => unreachable!(),
+            };
+            assert_eq!(rects[0], (0, 0, 16 * s, 16 * s), "frame 0 full canvas (scale {s})");
+            assert_eq!(rects[1], f1_rect, "frame 1 changed rect (scale {s})");
+            assert_eq!(rects[2], (14 * s, 14 * s, 2 * s, 2 * s), "frame 2 edge rect (scale {s})");
+        }
+    }
+
+    #[test]
+    fn webp_animation_full_change_still_full_rect() {
+        let (w, h) = (4u32, 4u32);
+        let red = vec![255u8, 0, 0, 255].repeat((w * h) as usize);
+        let blue = vec![0u8, 0, 255, 128].repeat((w * h) as usize);
+        let webp = encode_animated_webp(w, h, &[(red.clone(), 80_000), (blue.clone(), 120_000)]).unwrap();
+        let rects: Vec<_> = anmf_rects(&webp).iter().map(|r| (r.0, r.1, r.2, r.3)).collect();
+        assert_eq!(rects, vec![(0, 0, 4, 4), (0, 0, 4, 4)], "fully-changed frame keeps the full rect");
+        let frames = decode(&webp).unwrap();
+        assert_eq!(frames[0].rgba, red);
+        assert_eq!(frames[1].rgba, blue);
     }
 }
