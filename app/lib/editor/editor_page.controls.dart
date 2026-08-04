@@ -780,6 +780,7 @@ extension _EditorControls on _EditorPageState {
   // Long-pressing the empty swatch area surfaces the single "Add current color" option (same action
   // as the palette controls menu).
   void _addColorMenu() {
+    if (_playing) _pause();
     showAppSheet(
       context: context,
       builder: (ctx) => SafeArea(
@@ -800,6 +801,7 @@ extension _EditorControls on _EditorPageState {
   // The palette page owns palette-level management (switch/new/rename/duplicate/reorder/
   // import/export/clear/delete + presets); the row-2 strip keeps color-level editing.
   Future<void> _openPalettePage() async {
+    if (_playing) _pause();
     await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => PalettePage(
         host: EnginePaletteHost(engine, onMutated: () => _autosave?.markActivity()),
@@ -812,6 +814,7 @@ extension _EditorControls on _EditorPageState {
   }
 
   void _paletteSwatchMenu(int i, Color c, {required bool vertical}) {
+    if (_playing) _pause();
     // The sheet follows the swatch as it moves so you can nudge it several steps without
     // reopening; the four arrows are remapped per orientation (paletteMoveTargets) so they always
     // point the way the swatch visually travels — the strip transposes in landscape.

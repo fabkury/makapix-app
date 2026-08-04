@@ -248,6 +248,7 @@ extension _EditorPersistence on _EditorPageState {
       _toast('Library is still loading…');
       return;
     }
+    if (_playing) _pause();
     await _autosave?.flushNow(); // make sure the current drawing shows up fresh in the list
     if (!mounted) return;
     final result = await Navigator.of(context).push<GalleryResult>(

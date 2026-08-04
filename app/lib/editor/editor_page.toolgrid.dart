@@ -162,6 +162,7 @@ extension _EditorToolgrid on _EditorPageState {
   // fixed slots 1&2 and never appear in `tools`); the choice hides the tool from the grid and
   // persists. Leading uses iconWidget (not a raw Icon) because tool icons can be custom MpxIcons.
   void _pinnedThirdConfigSheet() {
+    if (_playing) _pause();
     showAppSheet(
       context: context,
       showDragHandle: true,
