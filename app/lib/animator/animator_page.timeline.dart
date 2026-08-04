@@ -92,6 +92,10 @@ extension _AnimatorTimeline on _AnimatorPageState {
     return PopupMenuButton<String>(
       icon: const Icon(Icons.menu),
       tooltip: 'Menu',
+      // Opening any menu pauses playback (same contract as scrubbing or touching the stage).
+      onOpened: () {
+        if (_playing) _pause();
+      },
       onSelected: (v) {
         switch (v) {
           case 'club':

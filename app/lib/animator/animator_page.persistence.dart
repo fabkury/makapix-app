@@ -163,6 +163,7 @@ extension _AnimatorPersistence on _AnimatorPageState {
   Future<void> _openSceneGallery() async {
     final store = _store;
     if (store == null) return;
+    if (_playing) _pause(); // park the playhead before the flush serializes the scene
     await _autosave?.flushNow();
     if (!mounted) return;
     final result = await Navigator.of(context).push<SceneGalleryResult>(
@@ -227,6 +228,7 @@ extension _AnimatorPersistence on _AnimatorPageState {
     // Clear first so it doesn't re-fire (the editor bridge's rule).
     ref.read(pendingAnimatorProvider.notifier).state = null;
     if (!_engineReady || _store == null) return;
+    if (_playing) _pause(); // external requests open modals over a live scene
     switch (req) {
       case NewScene():
         await _newSceneFlow();

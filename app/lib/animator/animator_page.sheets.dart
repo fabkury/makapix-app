@@ -21,6 +21,7 @@ extension _AnimatorSheets on _AnimatorPageState {
 
   Future<void> _castSheet() async {
     if (!_engineReady) return;
+    if (_playing) _pause(); // also stops the warm loop competing with the thumb renders below
     // Pre-render prop thumbnails (fresh copies; disposed when the sheet closes).
     final thumbs = <int, ui.Image?>{};
     for (final p in _state.cast) {
@@ -372,6 +373,7 @@ extension _AnimatorSheets on _AnimatorPageState {
   Future<void> _actorSheet(int actorId) async {
     final a0 = _state.actor(actorId);
     if (a0 == null) return;
+    if (_playing) _pause();
     final thumb = await _thumbFromRgba(engine.actorThumb(actorId, 48, 48), 48, 48);
     if (!mounted) return;
     await showAppSheet(
@@ -759,6 +761,7 @@ extension _AnimatorSheets on _AnimatorPageState {
   }
 
   Future<void> _renameScene() async {
+    if (_playing) _pause(); // reachable from the title tap, not only the menu
     final ctrl = TextEditingController(text: _sceneTitle);
     final name = await showDialog<String>(
       context: context,
