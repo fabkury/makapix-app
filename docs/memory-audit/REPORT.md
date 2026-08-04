@@ -358,13 +358,20 @@ census to a narrower, on-demand probe at the same time.
 > false, so dropping the old doc before materialize would let a crafted `.mkpx` on the Club remix
 > path destroy the user's drawing; the 2× load transient is inherent to the crash-safety guarantee).
 > The `TransferableTypedData`/lazy-`mkpxBytes` halves of #14 were dropped (no benefit / UX coupling).
-> The `mkpx_import` off-isolate half of #3 remains open.
+>
+> **Status 2026-08-04:** the `mkpx_import` off-isolate half of #3 shipped, closing #3 fully — the
+> decode runs on a background isolate (`mkpx_decode_image` produces a session-free decoded-frames
+> blob; only its native address crosses back, both isolates sharing the engine library's process
+> heap) and `mkpx_import_decoded` applies it to the live session on the UI isolate, so imports stay
+> undoable and the opaque session pointer still never crosses (F-12). Both shell import paths (file
+> import + Club edit intake) now use it under a modal spinner, and a memory-budget refusal is
+> reported distinctly (rc −2 / `ImportStatus.refused`) instead of reading as success.
 
 | # | Change | Gain | Cost | Risk |
 |---|---|---|---|---|
 | 1 ✅ | **Route `import_decoded` through `edit_doc("import", …)`** (`import.rs:160`) | Closes P-0 — restores the "never over budget" invariant, the refusal telemetry and the census recalibration at the one edge that lacks them | Tiny — the before-clone it needs already exists; delete the hand-rolled protocol | **Low**: same rollback semantics as every sibling op; add an FFI-level over-budget import test (none exists today) |
 | 2 ✅ | **Dart hygiene batch**: dispose `srcImg`+codec in `_importImage`; nullptr-check + `calloc`/`try-finally` in `save()`/`saveCompact()` (pattern-match the `export*` guards); clear thumb caches on document switch; stop `_antCtrl` when there is nothing animated to draw | Kills the only true leak; makes the OOM-adjacent paths safe; removes idle 60 Hz work | ~half a day | **Minimal** — each fix is local; existing widget tests cover the paths |
-| 3 ◑ | **Sum-cap animated decode** in `decode_animated` (running-bytes total, error past e.g. 384 MiB) ✅ + move `mkpx_import`'s decode off the UI isolate (open) | Closes the GIF-bomb abort (P-3); unfreezes import UI | Tiny (cap) + small (isolate) | **None** for the cap; isolate move follows the existing `encodeInBackground` pattern |
+| 3 ✅ | **Sum-cap animated decode** in `decode_animated` (running-bytes total, error past e.g. 384 MiB) ✅ + move `mkpx_import`'s decode off the UI isolate ✅ (2026-08-04) | Closes the GIF-bomb abort (P-3); unfreezes import UI | Tiny (cap) + small (isolate) | **None** for the cap; isolate move follows the existing `encodeInBackground` pattern |
 | 4 ⏸ | **Render the display at `canvas_rect` when `!overscan_view`** (`session.rs:569`), offsetting tool previews by the gutter origin | Removes fatal-class table allocs per move (payload is unchanged for sparse content — the "8/9" framing overstated it; the real win is 2 tables/move, and only on 64-bit) | Small edit, wide surface (~9 preview draw sites + `canvas.rs` washes) | **DEFERRED** — review found a real, silently-shipping bug (`blit_wrapped`, see recipe below) and only a modest sparse-case payoff. #5 already captures the bigger per-move copy |
 | 5 ✅ | **Reuse the display transfer buffer**: persistent native scratch buffer in `Engine.display()`/`compositeFrame()`, return a view (no `fromList` copy, no per-move malloc/free), free in `dispose()` | Removes 1 of 3 full copies per pointer move + the per-move malloc/free; also `compositeFrame` (playback) | ~a day incl. lifetime care | **Low-moderate** — the view is valid only until the next call; safe because `decodeImageFromPixels` copies synchronously (engine source verified). Coupled to that behavior; re-verify on Flutter bumps |
 | 6 ✅ | **Stop deep-copying masks on the stamp path**: `selection_arc()` (Arc bump) at the 8 per-event paint sites; `RgbaBuffer::clear_in_place` (reuse table when uniquely owned) for the Move-drag clear | Removes 72 KiB × N per move with a selection; removes a fatal-class table alloc per move-drag event (after the first) | Small | **Low**: behavior-identical; goldens + a COW test confirm. (Review: `move_draft_paint` gets no benefit — a sharer always pins its table — so `clear_in_place` is applied only at the layer-drag site) |
