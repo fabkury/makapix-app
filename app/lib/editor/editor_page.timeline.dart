@@ -119,6 +119,7 @@ extension _EditorTimeline on _EditorPageState {
   // Long-pressing the empty film-strip area surfaces the "Add animation frame" option (same action
   // as the + button at the end of the strip).
   void _addFrameMenu() {
+    if (_playing) _pause();
     showAppSheet(
       context: context,
       builder: (ctx) => SafeArea(
@@ -157,6 +158,10 @@ extension _EditorTimeline on _EditorPageState {
     return PopupMenuButton<String>(
       tooltip: 'Menu',
       icon: const Icon(Icons.menu),
+      // Opening any menu stops the animation preview (the Play tool's contract).
+      onOpened: () {
+        if (_playing) _pause();
+      },
       onSelected: _onEditorMenu,
       itemBuilder: (_) => [
         PopupMenuItem<String>(

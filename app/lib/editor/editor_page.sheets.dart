@@ -27,6 +27,7 @@ extension _EditorSheets on _EditorPageState {
   // layer as Up/Down move it through the stack, and each rebuild re-reads the layer's state
   // from the engine (the captured map would go stale while the sheet stays open).
   void _layerOptions(int initial) {
+    if (_playing) _pause();
     int cur = initial;
     int? dragOpacity; // non-null while the opacity slider is being dragged
     showAppSheet(
@@ -209,6 +210,7 @@ extension _EditorSheets on _EditorPageState {
   // keep the sheet open and `cur` tracks the frame across reorders; duration lives in the
   // state zone (tap opens the existing duration dialog for this frame).
   void _frameMenu(int initial) {
+    if (_playing) _pause();
     int cur = initial;
     showAppSheet(
       context: context,
