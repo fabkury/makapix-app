@@ -35,8 +35,8 @@ Widget cachedNetworkArtImage(String url, BoxFit fit) => CachedNetworkImage(
 /// per-post cap — whether detected up front from server metadata or mid-decode from the
 /// codec's authoritative frame count) renders through this. Today it is native unsynced
 /// playback; the recorded upgrade is a just-in-time catch-up decoder that keeps even
-/// over-cap posts on the shared clock (docs/plans/feed-animation-sync.md). Keep the
-/// signature stable and route ALL over-cap paths through here.
+/// over-cap posts on the shared clock. Keep the signature stable and route ALL
+/// over-cap paths through here.
 Widget buildUnsyncedAnimatedFallback(String url, BoxFit fit) => cachedNetworkArtImage(url, fit);
 
 /// An animated artwork whose displayed frame is a pure function of the wall clock

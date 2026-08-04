@@ -117,7 +117,7 @@ Scale anchors: canvas ≤256×256; storage = 3w×3h = 768×768 (the Move-gutter 
 `Session::import_decoded` (`crates/engine/src/import.rs:160-209`) hand-rolls the structural-edit
 protocol (`frames.clone()` → mutate → `record_doc_structure("import", …)`) instead of going
 through `edit_doc` (`session.rs:1121`), whose own comment names *import* among the mutations it
-guards — and so does the shipped plan (`docs/plans/memory-budget-enforcement.md`, M3). Verified
+guards — and so did the shipped memory-budget-enforcement plan (M3; retired to git history). Verified
 first-hand: no post-import census, no rollback, no refusal telemetry, and `mem_exact`/`mem_slack`
 are left stale (subsequent pixel edits trust a too-small cached census until the slack bound
 trips). With `as_layer=true` an import is purely additive on an existing document, so unique

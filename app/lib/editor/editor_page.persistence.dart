@@ -6,7 +6,6 @@ part of 'editor_page.dart';
 // Local artwork persistence: the working library (each drawing is its own folder), silent crash-safe
 // autosave of the current drawing, recovery on launch, and switching between drawings. The Rust
 // engine is untouched — this is all shell-side over the existing `.mkpx` save/load FFI.
-// Plan + rationale: docs/plans/persistence-autosave.md.
 // The user's decision for the current drawing when new artwork is about to replace the canvas.
 enum _OutgoingChoice { discard, save }
 

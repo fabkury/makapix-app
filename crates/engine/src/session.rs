@@ -1014,7 +1014,7 @@ impl Session {
         self.doc.frames.len() - 1
     }
 
-    // ---- memory budget (SPEC §8.2b; docs/plans/memory-budget-enforcement.md M3) ----
+    // ---- memory budget (SPEC §8.2b) ----
 
     /// Effective (soft, hard) unique-payload budgets (override or the document.rs defaults).
     pub fn mem_budgets(&self) -> (usize, usize) {

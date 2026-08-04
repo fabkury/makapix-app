@@ -51,8 +51,8 @@ final animationBytesFetcherProvider = Provider<Future<Uint8List> Function(String
 /// are deduped onto one in-flight future. There is no cancellation: a decode whose tile
 /// disposed still lands in the cache and is almost certainly reused on scroll-back.
 ///
-/// A later just-in-time catch-up decoder (the designated over-cap upgrade — see
-/// docs/plans/feed-animation-sync.md) slots in behind [request] without touching widgets.
+/// A later just-in-time catch-up decoder (the designated over-cap upgrade) slots in
+/// behind [request] without touching widgets.
 class AnimationDecoder {
   AnimationDecoder({
     required this.cache,
