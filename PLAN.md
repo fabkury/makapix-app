@@ -4,7 +4,7 @@
 > app — **how we build it, in what order, on this Windows 11 workstation**. The SPEC is the stable *what*; this
 > PLAN sequences the work, defines the dev/test environment, and sets acceptance gates per phase. The
 > social-networking pillar has its own phased rollout in [`SPEC-CLUB.md`](SPEC-CLUB.md) §28. See
-> [`README.md`](README.md) for the product model.
+> [`README.md`](README.md) and [`docs/BUILDING.md`](docs/BUILDING.md) for the product model.
 > **Last updated:** 2026-06-26.
 
 ---

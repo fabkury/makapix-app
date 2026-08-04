@@ -1,93 +1,85 @@
+<div align="center">
+
+<img src="docs/media/logo.png" alt="Makapix Club logo" width="140">
+
 # Makapix Club
 
-**Makapix Club** is a pixel-art social network: draw animated pixel art, publish it, react, comment,
-follow, and remix. It exists as two independent, coexisting clients of the same `makapix.club` server:
+**Draw, animate, and share pixel art — right from your phone.**
 
-- the **website** — [makapix.club](https://makapix.club) (a Next.js + FastAPI app, separate repo);
-- **this app** — a **native (Rust + Flutter)** Makapix Club client for iOS, Android, and Windows.
+<a href="https://apps.apple.com/us/app/makapix-club/id6788845118"><img src="docs/media/badges/app-store-badge.svg" alt="Download on the App Store" height="50"></a>&nbsp;&nbsp;<a href="https://play.google.com/store/apps/details?id=club.makapix.app"><img src="docs/media/badges/google-play-badge.png" alt="Get it on Google Play" height="74"></a>
 
-**Get the app:**
+*Also on the web at [makapix.club](https://makapix.club)*
 
-- **iOS** — [Makapix Club on the App Store](https://apps.apple.com/us/app/makapix-club/id6788845118).
-- **Android** — [Makapix Club on Google Play](https://play.google.com/store/apps/details?id=club.makapix.app).
-  (Or build and sideload from source — see below.)
-- **Windows** — build from source (see below).
+</div>
 
-This repository is **the app**. It has two pillars sharing one binary:
+---
 
-1. **Makapix Editor** — the built-in **animated pixel-art editor**: a deterministic, headless **Rust
-   engine** with a thin **Flutter** shell. Draw, edit, and remix artwork natively — no account needed.
-2. **The Club social layer** — feeds, reactions, comments, follows, profiles, search, notifications,
-   players, and publishing — the full native counterpart to the website's social features.
+<p align="center">
+  <img src="docs/media/screenshot-feed.png" alt="The home feed: a grid of animated pixel artworks" width="240">&nbsp;
+  <img src="docs/media/screenshot-editor.png" alt="The Makapix Editor with an artwork open, showing the frame timeline, palette, and tools" width="240">&nbsp;
+  <img src="docs/media/screenshot-artwork.png" alt="An artwork page with emoji reactions and comments" width="240">
+</p>
 
-> **Terminology** (so the docs stay unambiguous):
-> - **Makapix Club** — the product/community. It has two faces: the **website** and **this app**.
-> - **Makapix Editor** — the pixel-art editor *feature inside this app*. Not a separate product, not the app.
-> - **This app** — the native Makapix Club client = *Makapix Editor* (the editor pillar) **+** the social
->   experience (the Club pillar).
+## What is Makapix Club?
 
-## Documents
+Makapix Club is a community built around one thing: **pixel art**. People draw it, post it, react to
+it, remix it, and even play it on real pixel-art displays. This app is the club in your pocket — a
+fast, native app for iOS and Android with a complete animated-pixel-art studio built in.
 
-> **`SPEC.md`** and **`SPEC-CLUB.md`** are detailed internal design specifications (the editor engine and
-> the social layer + server contract, respectively) and are **not included in this public repository**.
+And if you just want to draw? Go ahead. **The editor works fully offline, no account needed.**
 
-- **[`STATUS.md`](STATUS.md)** — honest implementation coverage; the status document.
-- **[`PLAN.md`](PLAN.md)** — the build plan & Windows dev environment for the Editor pillar.
-- **[`CLAUDE.md`](CLAUDE.md)** — the working repo guide (build commands, architecture, platform gotchas).
-- **`docs/`** — deep dives: [`docs/mkpx-format/`](docs/mkpx-format/) (the `.mkpx` container spec),
-  [`docs/memlab/REPORT.md`](docs/memlab/REPORT.md) (measured memory limits on real devices),
-  [`docs/play-release.md`](docs/play-release.md) + [`docs/ios-release/PLAN.md`](docs/ios-release/PLAN.md)
-  (store release pipelines).
+## 🎨 Draw
 
-## Core decisions
+The built-in **Makapix Editor** is a serious tool for making animated pixel art:
 
-- Rust core, first-class & up front; Flutter shell over a hand-written C-ABI FFI (`dart:ffi`).
-- Deterministic, headless engine is the source of truth; CPU reference compositor is canonical.
-- 8-bit RGBA sRGB; premultiplied internal; integer-exact (goldens never fork per platform).
-- Canvas 1×1–256×256; frames 1–1024; layers 1–64; per-frame 128-state undo with auto-compaction.
-- Tiling (32×32) + copy-on-write + lazy alloc are mandatory; enforced memory budgets keep worst-case
-  documents inside real device limits (`docs/memlab/REPORT.md`).
-- Lossless, chunked, versioned `.mkpx` (v10: content-addressed tile dictionary, byte-deterministic);
-  first-class palettes; full import (GIF/WebP/PNG/APNG/JPEG/BMP).
-- The **social layer lives entirely in Dart** (`app/lib/club`); the Rust engine stays network-free &
-  dependency-free. Dart fetches, Rust computes.
-- Dev/test on **Windows** (engine + desktop + Android device); **iOS builds in Codemagic cloud CI**.
+- **Animation first** — up to 1024 frames on a thumbnail timeline, with live playback while you edit.
+- **Room to work** — canvases up to 256×256, up to 64 layers, and deep undo (128 steps per frame).
+- **A full toolbox** — pencil, brush, airbrush, eraser, fill, gradient, dodge & burn, HSV and
+  brightness adjustment, flip, rotate, resize, rectangle/oval/lasso selections, move & copy, a color
+  picker, and a ruler that measures distances and angles.
+- **Palettes that matter** — a full-screen palette manager with color naming, smart sorting, and
+  `.gpl` palette import.
+- **Bring anything in, take anything out** — import GIF, PNG, APNG, WebP, JPEG, and BMP; export PNG,
+  sprite sheets, animated GIF, and lossless animated WebP.
+- **Never lose work** — every drawing autosaves to your on-device gallery as you go.
 
-## The editor dev loop, in one line
+## 🌐 Share
 
-`edit Rust → cargo test / mkpx run … (oracles, ASCII dumps, PNG diffs) → read results → edit Rust` —
-all on a Windows workstation, no device or emulator in the common case.
+The Club is the social half of the app — the same community you see at
+[makapix.club](https://makapix.club), so anything you post from your phone is instantly on the web too:
 
-## Build & run on Windows
+- Browse **feeds** of fresh and promoted artwork, follow trending **hashtags**, and **search** for
+  art and artists.
+- **React** with emoji, **comment**, and **follow** the artists you love.
+- **Publish straight from the editor** — pick a title, tags, a license, and go.
+- **Remix** — open a remixable artwork right in the editor, make it yours, and post your take.
+- Build your **profile** with highlights, and keep up through **notifications**.
 
-```powershell
-./build.ps1 -Run        # builds the DLL + tests + Windows app, bundles the DLL, launches it
-# or manually:
-cargo build -p makapix-ffi --release
-cargo test                                          # full Rust suite
-cargo run -p makapix-cli -- run examples/showcase.txt "render:0:out.png:6" state assert.roundtrip
-cd app && flutter run -d windows                    # interactive UI (debug)
-```
+## 📺 Put it on a real display
 
-The prebuilt release app is at `app/build/windows/x64/runner/Release/makapix_club.exe`.
+Pixel art deserves better than a browser tab. Makapix Club supports **players** — networked
+pixel-art displays that show artwork from the Club. Register your player in the app, then use the
+Player Bar to beam any artwork you're looking at straight onto the display on your shelf.
 
-## Build & install on Android
+## Under the hood
 
-The Rust engine cross-compiles to an Android `.so` (bundled into the APK via `jniLibs`); the Dart loader
-opens `libmakapix_ffi.so` on Android. One-time prereqs: Android SDK + NDK, `rustup target add
-aarch64-linux-android armv7-linux-androideabi`, `cargo install cargo-ndk`.
+For the technically curious: the editor is a deterministic, dependency-free **Rust** engine under a
+**Flutter** shell, speaking over a hand-written C FFI — the same engine on iOS, Android, and Windows,
+plus a headless CLI that drives the test suite. It renders integer-exact, so an artwork is
+byte-for-byte identical on every platform, and it ships with memory budgets measured on real devices
+([docs/memlab/REPORT.md](docs/memlab/REPORT.md)). Drawings are stored in `.mkpx`, a lossless,
+versioned container format documented in [docs/mkpx-format/](docs/mkpx-format/).
 
-```powershell
-./build_android.ps1              # cross-compiles .so (arm64+arm32) + builds app-release.apk
-./build_android.ps1 -Install     # also installs to a USB-connected phone (USB debugging on)
-```
+## Build from source
 
-The APK lands at `app/build/app/outputs/flutter-apk/app-release.apk`, app id **`club.makapix.app`**.
-**Sideload (no cable):** copy the APK to the phone → tap it → allow "install unknown apps" → Install.
-**Over USB:** enable Developer Options + USB debugging on the phone, connect it, then `adb install -r <apk>`.
+The store builds above are the easy path; Windows (and any tinkering) is source-only. See
+**[docs/BUILDING.md](docs/BUILDING.md)** for Windows, Android, and iOS build instructions, the
+developer documentation map, and the project's design principles.
 
-## iOS (cloud CI only)
+## License
 
-iOS is never built locally: `codemagic.yaml` builds the ipa in Codemagic, with the engine shipped as a
-dynamic `MakapixFFI.framework`, and delivers it to TestFlight / the App Store. See
-[`docs/ios-release/PLAN.md`](docs/ios-release/PLAN.md).
+[Apache-2.0](LICENSE).
+
+<sub>Apple, the Apple logo, and App Store are trademarks of Apple Inc. Google Play and the Google
+Play logo are trademarks of Google LLC. Artwork in the screenshots belongs to the Makapix Club
+artists who posted it.</sub>

@@ -16,7 +16,8 @@ server; this app does not depend on it. Two pillars share one Flutter binary:
 Terminology, kept strict: *Makapix Club* = the product (website **and** this app); *Makapix Editor* = the
 editor feature **inside** this app, not a separate product. Don't conflate them.
 
-**Doc map:** `README.md` (product hub) · `STATUS.md` (feature coverage; with the git log, the live
+**Doc map:** `README.md` (end-user landing page; its images live in `docs/media/`) ·
+`docs/BUILDING.md` (build-from-source guide + developer doc map) · `STATUS.md` (feature coverage; with the git log, the live
 frontier) · `docs/plans/` (per-phase C0…C4 + per-feature plans) · `docs/memlab/REPORT.md` (measured memory
 limits — the numbers to design against) · `docs/play-release.md` + `docs/ios-release/PLAN.md` (store
 pipelines). The detailed design specs — `SPEC.md` (editor engine) and `SPEC-CLUB.md` (social layer +
