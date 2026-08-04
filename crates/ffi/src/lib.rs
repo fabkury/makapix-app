@@ -345,10 +345,54 @@ pub extern "C" fn mkpx_save_compact(ptr: *mut Session, out_len: *mut u64) -> *mu
     Box::into_raw(bytes) as *mut u8
 }
 
+/// Shared tail of the two import entry points: build the `ImportConfig` and apply decoded frames
+/// to the live session. Returns 0 on success, -1 on empty input, -2 when the memory-budget gate
+/// rolled the import back (a refusal is registered on the session).
+#[allow(clippy::too_many_arguments)]
+fn import_frames_into(
+    s: &mut Session,
+    frames: &[makapix_engine::import::DecodedFrame],
+    mode: c_int,
+    as_layer: c_int,
+    start_frame: u32,
+    crop_x: i32,
+    crop_y: i32,
+    crop_w: i32,
+    crop_h: i32,
+) -> c_int {
+    use makapix_engine::geom::IRect;
+    use makapix_engine::import::{Anchor, ImportConfig, ScaleMode};
+    if frames.is_empty() {
+        return -1;
+    }
+    let crop_rect = if crop_w > 0 && crop_h > 0 {
+        Some(IRect::new(crop_x, crop_y, crop_w as u32, crop_h as u32))
+    } else {
+        None
+    };
+    let cfg = ImportConfig {
+        mode: match mode {
+            1 => ScaleMode::Stretch,
+            2 => ScaleMode::Crop,
+            _ => ScaleMode::Fit,
+        },
+        anchor: Anchor::Center,
+        start_frame: start_frame as usize,
+        as_layer: as_layer != 0,
+        crop_rect,
+    };
+    if s.import_decoded(frames, cfg) {
+        0
+    } else {
+        -2
+    }
+}
+
 /// Import an image file (GIF/PNG/APNG/JPEG/BMP/WebP) into the document.
 /// `mode`: 0=Fit, 1=Stretch, 2=Crop. `as_layer`: 0/1. A non-empty crop rect (`crop_w>0 && crop_h>0`,
 /// source pixels) places that region 1:1 centered on the canvas (downscaled to fit only when larger,
-/// never upscaled), overriding `mode`. Returns 0 on success, -1 on failure.
+/// never upscaled), overriding `mode`. Returns 0 on success, -1 on decode failure, -2 when the
+/// memory-budget gate refused the import (document unchanged).
 #[no_mangle]
 #[allow(clippy::too_many_arguments)]
 pub extern "C" fn mkpx_import(
@@ -372,26 +416,108 @@ pub extern "C" fn mkpx_import(
         Ok(f) => f,
         Err(_) => return -1,
     };
-    use makapix_engine::geom::IRect;
-    use makapix_engine::import::{Anchor, ImportConfig, ScaleMode};
-    let crop_rect = if crop_w > 0 && crop_h > 0 {
-        Some(IRect::new(crop_x, crop_y, crop_w as u32, crop_h as u32))
-    } else {
-        None
+    import_frames_into(s, &frames, mode, as_layer, start_frame, crop_x, crop_y, crop_w, crop_h)
+}
+
+// ---- background-decode import (audit #3, off-isolate half) ----
+//
+// The decode is the expensive part of an image import (LZW/inflate/VP8L over up to 1024 frames,
+// capped at 384 MiB decoded), and `mkpx_import` runs it synchronously on whichever thread calls
+// it — on the shell's UI isolate that froze the editor for seconds. These two functions split the
+// seam: `mkpx_decode_image` needs NO session, so the shell runs it on a background isolate and
+// hands the resulting native buffer's ADDRESS back to the UI isolate (both isolates load this
+// same library, so the buffer lives in shared process memory — the same property the export
+// progress atomics rely on); `mkpx_import_decoded` then applies it to the live session, which is
+// only placement blits. The opaque session pointer still never crosses isolates (audit F-12).
+
+/// Decode an image file (GIF/PNG/APNG/JPEG/BMP/WebP) into a flat decoded-frames blob, with no
+/// session involved. Blob layout (all integers little-endian u32):
+/// `[frame_count]` then per frame `[w][h][duration_us][w*h*4 straight-RGBA bytes]`.
+/// Returns a malloc'd buffer (free with `mkpx_free_bytes`) or null on decode failure.
+#[no_mangle]
+pub extern "C" fn mkpx_decode_image(data: *const u8, len: usize, out_len: *mut u64) -> *mut u8 {
+    if data.is_null() {
+        return std::ptr::null_mut();
+    }
+    let bytes = unsafe { slice::from_raw_parts(data, len) };
+    let frames = match makapix_codec::decode(bytes) {
+        Ok(f) => f,
+        Err(_) => return std::ptr::null_mut(),
     };
-    let cfg = ImportConfig {
-        mode: match mode {
-            1 => ScaleMode::Stretch,
-            2 => ScaleMode::Crop,
-            _ => ScaleMode::Fit,
-        },
-        anchor: Anchor::Center,
-        start_frame: start_frame as usize,
-        as_layer: as_layer != 0,
-        crop_rect,
+    let total: usize = 4 + frames.iter().map(|f| 12 + f.rgba.len()).sum::<usize>();
+    let mut v = Vec::with_capacity(total);
+    v.extend_from_slice(&(frames.len() as u32).to_le_bytes());
+    for f in &frames {
+        v.extend_from_slice(&f.w.to_le_bytes());
+        v.extend_from_slice(&f.h.to_le_bytes());
+        v.extend_from_slice(&f.duration_us.to_le_bytes());
+        v.extend_from_slice(&f.rgba);
+    }
+    bytes_out(v, out_len)
+}
+
+/// Apply a `mkpx_decode_image` blob to the document — the placement half of `mkpx_import`, same
+/// `mode`/`as_layer`/crop semantics. The blob is parsed defensively (strict lengths, checked
+/// arithmetic), so a corrupt buffer fails cleanly instead of panicking across the boundary.
+/// Returns 0 on success, -1 on a malformed blob, -2 when the memory-budget gate refused the
+/// import (document unchanged). The caller still owns the blob (free with `mkpx_free_bytes`).
+#[no_mangle]
+#[allow(clippy::too_many_arguments)]
+pub extern "C" fn mkpx_import_decoded(
+    ptr: *mut Session,
+    blob: *const u8,
+    len: usize,
+    mode: c_int,
+    as_layer: c_int,
+    start_frame: u32,
+    crop_x: i32,
+    crop_y: i32,
+    crop_w: i32,
+    crop_h: i32,
+) -> c_int {
+    use makapix_engine::import::DecodedFrame;
+    let s = match session(ptr) {
+        Some(s) => s,
+        None => return -1,
     };
-    s.import_decoded(&frames, cfg);
-    0
+    if blob.is_null() {
+        return -1;
+    }
+    let b = unsafe { slice::from_raw_parts(blob, len) };
+    let read_u32 = |at: usize| -> Option<u32> {
+        b.get(at..at + 4).map(|s| u32::from_le_bytes([s[0], s[1], s[2], s[3]]))
+    };
+    let count = match read_u32(0) {
+        Some(c) => c as usize,
+        None => return -1,
+    };
+    let mut frames = Vec::new();
+    let mut at = 4usize;
+    for _ in 0..count {
+        let (w, h, duration_us) = match (read_u32(at), read_u32(at + 4), read_u32(at + 8)) {
+            (Some(w), Some(h), Some(d)) => (w, h, d),
+            _ => return -1,
+        };
+        let px = match (w as u64).checked_mul(h as u64).and_then(|n| n.checked_mul(4)) {
+            Some(n) if w > 0 && h > 0 && n <= (len as u64) => n as usize,
+            _ => return -1,
+        };
+        at += 12;
+        let end = match at.checked_add(px) {
+            Some(e) => e,
+            None => return -1,
+        };
+        let rgba = match b.get(at..end) {
+            Some(s) => s.to_vec(),
+            None => return -1,
+        };
+        at = end;
+        frames.push(DecodedFrame { rgba, w, h, duration_us });
+    }
+    if at != len {
+        return -1;
+    }
+    import_frames_into(s, &frames, mode, as_layer, start_frame, crop_x, crop_y, crop_w, crop_h)
 }
 
 /// Upscale (nearest-neighbor) then encode one frame's RGBA as PNG or lossless WebP, with coarse
@@ -755,6 +881,92 @@ mod tests {
         mkpx_free_bytes(out, len);
         let back = makapix_codec::decode(&exported).unwrap();
         assert_eq!(back.len(), 3);
+        mkpx_free(p);
+    }
+
+    fn three_frame_gif() -> Vec<u8> {
+        let (w, h) = (16u32, 16u32);
+        let frame = |r: u8, g: u8, b: u8| vec![r, g, b, 255].repeat((w * h) as usize);
+        makapix_codec::encode_gif(
+            w,
+            h,
+            &[(frame(255, 0, 0), 80_000), (frame(0, 255, 0), 80_000), (frame(0, 0, 255), 80_000)],
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn ffi_decode_blob_import_matches_direct() {
+        // The split path (decode_image → import_decoded) must produce the exact document the
+        // fused mkpx_import produces — .mkpx saves are byte-deterministic, so compare those.
+        let gif = three_frame_gif();
+
+        let direct = mkpx_new(16, 16);
+        assert_eq!(mkpx_import(direct, gif.as_ptr(), gif.len(), 1, 0, 0, 0, 0, 0, 0), 0);
+
+        let mut blob_len: u64 = 0;
+        let blob = mkpx_decode_image(gif.as_ptr(), gif.len(), &mut blob_len);
+        assert!(!blob.is_null() && blob_len > 0);
+        let split = mkpx_new(16, 16);
+        assert_eq!(mkpx_import_decoded(split, blob, blob_len as usize, 1, 0, 0, 0, 0, 0, 0), 0);
+        mkpx_free_bytes(blob, blob_len);
+        assert_eq!(mkpx_frame_count(split), 3);
+
+        let (mut la, mut lb) = (0u64, 0u64);
+        let (sa, sb) = (mkpx_save(direct, &mut la), mkpx_save(split, &mut lb));
+        assert!(!sa.is_null() && !sb.is_null());
+        let (ba, bb) = unsafe {
+            (slice::from_raw_parts(sa, la as usize), slice::from_raw_parts(sb, lb as usize))
+        };
+        assert_eq!(ba, bb, "split-path document must be byte-identical to the direct import");
+        mkpx_free_bytes(sa, la);
+        mkpx_free_bytes(sb, lb);
+        mkpx_free(direct);
+        mkpx_free(split);
+    }
+
+    #[test]
+    fn ffi_decode_image_rejects_garbage() {
+        let junk = [0u8; 64];
+        let mut len: u64 = 0;
+        assert!(mkpx_decode_image(junk.as_ptr(), junk.len(), &mut len).is_null());
+    }
+
+    #[test]
+    fn ffi_import_decoded_rejects_malformed_blob() {
+        let gif = three_frame_gif();
+        let mut blob_len: u64 = 0;
+        let blob = mkpx_decode_image(gif.as_ptr(), gif.len(), &mut blob_len);
+        assert!(!blob.is_null());
+        let p = mkpx_new(16, 16);
+        // Truncated blob (header intact, pixel data cut short) must fail cleanly, no import.
+        assert_eq!(mkpx_import_decoded(p, blob, blob_len as usize - 7, 1, 0, 0, 0, 0, 0, 0), -1);
+        // Trailing garbage past the last frame is rejected too (strict length).
+        assert_eq!(mkpx_import_decoded(p, blob, blob_len as usize, 1, 0, 0, 0, 0, 0, 0), 0);
+        assert_eq!(mkpx_frame_count(p), 3);
+        mkpx_free_bytes(blob, blob_len);
+        mkpx_free(p);
+    }
+
+    #[test]
+    fn ffi_import_refused_over_budget_returns_minus_two() {
+        let gif = three_frame_gif();
+        let mut blob_len: u64 = 0;
+        let blob = mkpx_decode_image(gif.as_ptr(), gif.len(), &mut blob_len);
+        assert!(!blob.is_null());
+        let p = mkpx_new(16, 16);
+        let script = b"SetMemBudget(1,1)";
+        let err = mkpx_run(p, script.as_ptr(), script.len());
+        assert!(err.is_null());
+        assert_eq!(
+            mkpx_import_decoded(p, blob, blob_len as usize, 1, 0, 0, 0, 0, 0, 0),
+            -2,
+            "budget refusal must be distinguishable from a decode failure"
+        );
+        assert_eq!(mkpx_frame_count(p), 1, "refused import leaves the document unchanged");
+        // The fused entry point reports the refusal the same way.
+        assert_eq!(mkpx_import(p, gif.as_ptr(), gif.len(), 1, 0, 0, 0, 0, 0, 0), -2);
+        mkpx_free_bytes(blob, blob_len);
         mkpx_free(p);
     }
 }

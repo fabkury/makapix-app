@@ -163,9 +163,13 @@ impl Session {
     /// and registers a refusal, exactly like `add_frame`/`duplicate_frame`/paste. Before this the
     /// import hand-rolled `record_doc_structure` and so was the one structural op that could drive
     /// the document over budget (and produce a file its own loader then refuses on reload). [audit P-0]
-    pub fn import_decoded(&mut self, frames: &[DecodedFrame], cfg: ImportConfig) {
+    ///
+    /// Returns `true` when the import committed; `false` when the input was empty or the budget
+    /// gate rolled the whole import back (a refusal is registered) — so the shell can tell
+    /// "nothing happened" apart from success instead of reading a refusal as an import.
+    pub fn import_decoded(&mut self, frames: &[DecodedFrame], cfg: ImportConfig) -> bool {
         if frames.is_empty() {
-            return;
+            return false;
         }
         let (cw, ch) = (self.doc.size.w as u32, self.doc.size.h as u32);
         let storage = self.doc.storage();
@@ -178,6 +182,7 @@ impl Session {
             sbuf
         };
 
+        let refusals_before = self.mem_refusal_state().0;
         self.edit_doc("import", |s| {
             for (i, df) in frames.iter().enumerate() {
                 let target = cfg.start_frame + i;
@@ -210,6 +215,7 @@ impl Session {
             }
             s.doc.active_frame = cfg.start_frame.min(s.doc.frames.len() - 1);
         });
+        self.mem_refusal_state().0 == refusals_before
     }
 }
 
