@@ -66,6 +66,8 @@ typedef _FreeBytesC = Void Function(Pointer<Uint8>, Uint64);
 typedef _FreeBytesD = void Function(Pointer<Uint8>, int);
 typedef _ImportC = Int32 Function(Pointer<Void>, Pointer<Uint8>, IntPtr, Int32, Int32, Uint32, Int32, Int32, Int32, Int32);
 typedef _ImportD = int Function(Pointer<Void>, Pointer<Uint8>, int, int, int, int, int, int, int, int);
+typedef _DecodeImageC = Pointer<Uint8> Function(Pointer<Uint8>, IntPtr, Pointer<Uint64>);
+typedef _DecodeImageD = Pointer<Uint8> Function(Pointer<Uint8>, int, Pointer<Uint64>);
 typedef _ExportPngC = Pointer<Uint8> Function(Pointer<Void>, Uint32, Uint32, Pointer<Uint64>);
 typedef _ExportPngD = Pointer<Uint8> Function(Pointer<Void>, int, int, Pointer<Uint64>);
 typedef _ExportLayerPngC = Pointer<Uint8> Function(Pointer<Void>, Uint32, Uint32, Uint32, Pointer<Uint64>);
@@ -105,6 +107,27 @@ DynamicLibrary _open() {
     } catch (_) {}
   }
   throw Exception('Could not locate makapix_ffi.dll. Build it with: cargo build -p makapix-ffi --release');
+}
+
+/// Outcome of applying an image import to the document. [failed] = undecodable or corrupt
+/// input; [refused] = the engine's memory-budget gate rolled the whole import back (the
+/// document is unchanged) — worth telling the user apart from a bad file.
+enum ImportStatus { ok, failed, refused }
+
+/// A decoded-frames blob produced by [Engine.decodeImageInBackground], living in the engine
+/// library's native heap (NOT GC-tracked). Apply it with [Engine.importDecoded] and ALWAYS
+/// [dispose] it in a `finally` — on every path, including when the import is never applied.
+class DecodedImage {
+  final int _addr;
+  final int _len;
+  bool _freed = false;
+  DecodedImage._(this._addr, this._len);
+
+  void dispose() {
+    if (_freed) return;
+    _freed = true;
+    Engine._sFreeBytes(Pointer<Uint8>.fromAddress(_addr), _len);
+  }
 }
 
 class Engine {
@@ -154,6 +177,8 @@ class Engine {
   late final _FreeStringD _freeStr = _lib.lookupFunction<_FreeStringC, _FreeStringD>('mkpx_free_string');
   late final _FreeBytesD _freeBytes = _lib.lookupFunction<_FreeBytesC, _FreeBytesD>('mkpx_free_bytes');
   late final _ImportD _import = _lib.lookupFunction<_ImportC, _ImportD>('mkpx_import');
+  // Same C signature as mkpx_import, but takes a mkpx_decode_image blob instead of file bytes.
+  late final _ImportD _importDecoded = _lib.lookupFunction<_ImportC, _ImportD>('mkpx_import_decoded');
   late final _ExportPngD _exportPng = _lib.lookupFunction<_ExportPngC, _ExportPngD>('mkpx_export_png');
   late final _ExportLayerPngD _exportLayerPng = _lib.lookupFunction<_ExportLayerPngC, _ExportLayerPngD>('mkpx_export_layer_png');
   // The still-WebP twins share the PNG exports' C signatures.
@@ -353,6 +378,22 @@ class Engine {
     return ok;
   }
 
+  /// Apply a [DecodedImage] (from [decodeImageInBackground]) to the document — the placement
+  /// half of [importImage], same `mode`/`asLayer`/crop semantics. Runs on the calling isolate
+  /// against the live session, so it belongs on the UI isolate; the expensive decode already
+  /// happened in the background. The caller still owns `img` (dispose it in a `finally`).
+  ImportStatus importDecoded(DecodedImage img,
+      {int mode = 0, bool asLayer = true, int startFrame = 0, int cropX = 0, int cropY = 0, int cropW = 0, int cropH = 0}) {
+    if (img._freed) return ImportStatus.failed;
+    final rc = _importDecoded(_s, Pointer<Uint8>.fromAddress(img._addr), img._len, mode,
+        asLayer ? 1 : 0, startFrame, cropX, cropY, cropW, cropH);
+    return switch (rc) {
+      0 => ImportStatus.ok,
+      -2 => ImportStatus.refused,
+      _ => ImportStatus.failed,
+    };
+  }
+
   // `scale` on every export is an integer nearest-neighbor upscale (1..=32, clamped engine-side).
   Uint8List exportPng(int frame, {int scale = 1}) {
     final lenPtr = malloc<Uint64>();
@@ -456,6 +497,44 @@ class Engine {
 
   static void resetExportProgressStatic() => _sProgressReset();
   static void cancelExportStatic() => _sCancel();
+
+  // Session-free decode + free, bound on the static library handle so a background isolate
+  // (and DecodedImage.dispose) can call them without owning an Engine instance.
+  static final _DecodeImageD _sDecodeImage =
+      _staticLib.lookupFunction<_DecodeImageC, _DecodeImageD>('mkpx_decode_image');
+  static final _FreeBytesD _sFreeBytes =
+      _staticLib.lookupFunction<_FreeBytesC, _FreeBytesD>('mkpx_free_bytes');
+
+  /// Decode an image file (GIF/PNG/APNG/JPEG/BMP/WebP) into engine-native decoded frames **off
+  /// the UI thread** — the expensive half of an import (audit #3). Only the resulting buffer's
+  /// native ADDRESS crosses back from the isolate: both isolates load the same engine library,
+  /// so the buffer lives in shared process memory (the same property the export progress
+  /// atomics rely on), and the opaque session pointer still never crosses [audit F-12]. Falls
+  /// back to a synchronous decode if the isolate can't run. Null when the input can't be
+  /// decoded. The caller owns the result — dispose it in a `finally`.
+  static Future<DecodedImage?> decodeImageInBackground(Uint8List bytes) async {
+    (int, int) r;
+    try {
+      r = await Isolate.run(() => _decodeImageNative(bytes));
+    } catch (_) {
+      r = _decodeImageNative(bytes);
+    }
+    return r.$1 == 0 ? null : DecodedImage._(r.$1, r.$2);
+  }
+
+  /// (address, length) of a malloc'd decoded-frames blob, or (0, 0) on decode failure.
+  static (int, int) _decodeImageNative(Uint8List bytes) {
+    final p = malloc<Uint8>(bytes.length);
+    final lenPtr = malloc<Uint64>();
+    try {
+      p.asTypedList(bytes.length).setAll(0, bytes);
+      final out = _sDecodeImage(p, bytes.length, lenPtr);
+      return out == nullptr ? (0, 0) : (out.address, lenPtr.value);
+    } finally {
+      malloc.free(p);
+      malloc.free(lenPtr);
+    }
+  }
 
   /// Build a throwaway document from a decoded raster (`width`×`height`, any supported still or
   /// animation) and encode it to `format` ('gif' | 'webp' | 'png') at `scale`, **off the UI thread**.

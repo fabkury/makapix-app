@@ -149,28 +149,68 @@ extension _EditorFileIo on _EditorPageState {
         ),
       ),
     );
-    if (ok != true) {
-      srcImg.dispose();
-      return;
-    }
+    srcImg.dispose(); // only needed for the dialog title + crop bounds [audit]
+    if (ok != true) return;
 
-    final done = engine.importImage(bytes,
-        mode: mode,
-        asLayer: asLayer,
-        startFrame: engine.activeFrame,
-        cropX: cropRect?.left.toInt() ?? 0,
-        cropY: cropRect?.top.toInt() ?? 0,
-        cropW: cropRect?.width.toInt() ?? 0,
-        cropH: cropRect?.height.toInt() ?? 0);
-    if (done) {
-      _refreshState();
-      _redraw();
-      _toast('Imported ${res.files.single.name} (${engine.frameCount} frames)');
-    } else {
-      _toast('Import failed (unsupported or too large)');
+    // Decode on a background isolate under a modal spinner: the decode is the expensive half
+    // of an import (seconds for a many-frame GIF) and used to freeze the UI [audit #3]. The
+    // modal also keeps the document from changing under the import — a frame tap mid-decode
+    // would retarget startFrame.
+    final status = await _runWithImportSpinner(() async {
+      final img = await Engine.decodeImageInBackground(bytes);
+      if (img == null) return ImportStatus.failed;
+      try {
+        if (!mounted) return ImportStatus.failed; // engine may be gone; skip the apply
+        return engine.importDecoded(img,
+            mode: mode,
+            asLayer: asLayer,
+            startFrame: engine.activeFrame,
+            cropX: cropRect?.left.toInt() ?? 0,
+            cropY: cropRect?.top.toInt() ?? 0,
+            cropW: cropRect?.width.toInt() ?? 0,
+            cropH: cropRect?.height.toInt() ?? 0);
+      } finally {
+        img.dispose();
+      }
+    });
+    if (!mounted) return;
+    switch (status) {
+      case ImportStatus.ok:
+        _refreshState();
+        _redraw();
+        _toast('Imported ${res.files.single.name} (${engine.frameCount} frames)');
+      case ImportStatus.refused:
+        _toast('Import refused: it would not fit in the memory budget');
+      case ImportStatus.failed:
+        _toast('Import failed (unsupported or corrupt)');
     }
-    srcImg.dispose(); // done with the preview image on the success path too [audit]
     setState(() {});
+  }
+
+  // Run `work` (a decode + import) under a modal, non-dismissible "Importing…" spinner. Mirrors
+  // the share flow's progress-dialog idiom (image_share.dart): `dialogOpen` guards the closing
+  // pop against the dialog having gone away with the whole route.
+  Future<T> _runWithImportSpinner<T>(Future<T> Function() work) async {
+    var dialogOpen = true;
+    unawaited(showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 20),
+            Expanded(child: Text('Importing…')),
+          ]),
+        ),
+      ),
+    ).whenComplete(() => dialogOpen = false));
+    try {
+      return await work();
+    } finally {
+      if (dialogOpen && mounted) Navigator.of(context, rootNavigator: true).pop();
+    }
   }
 
   // Post to Makapix Club: export the document as a LOSSLESS WebP (static for one frame, animated
@@ -252,8 +292,21 @@ extension _EditorFileIo on _EditorPageState {
       // palettes intact. The engine auto-detects plain vs compact profile.
       ok = engine.load(req.bytes);
     } else {
+      // Downloaded render (often a many-frame GIF): decode off the UI isolate under the same
+      // modal spinner as file import [audit #3], then stretch into the fresh document.
       _send('NewDocument(${req.width},${req.height})');
-      ok = engine.importImage(req.bytes, mode: 1, asLayer: false, startFrame: 0);
+      ok = await _runWithImportSpinner(() async {
+        final img = await Engine.decodeImageInBackground(req.bytes);
+        if (img == null) return false;
+        try {
+          if (!mounted) return false;
+          return engine.importDecoded(img, mode: 1, asLayer: false, startFrame: 0) ==
+              ImportStatus.ok;
+        } finally {
+          img.dispose();
+        }
+      });
+      if (!mounted) return;
     }
     _resendEngineTool();
     await _createFreshDrawing(title: req.sourceTitle);
