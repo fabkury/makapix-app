@@ -28,10 +28,79 @@ pub const MIN_DURATION_US: u32 = 16_667; // ≈ 1/60 s
 pub const MAX_DURATION_US: u32 = 1_000_000; // 1000 ms
 pub const DEFAULT_DURATION_US: u32 = 100_000; // 100 ms
 
+/// Per-layer blend mode. The explicit discriminants ARE the `.mkpx` wire bytes (format spec
+/// §12.2 table) and the conditional content-hash byte — never renumber, only append.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum BlendMode {
     #[default]
-    Normal,
+    Normal = 0,
+    Multiply = 1,
+    Screen = 2,
+    Overlay = 3,
+    Darken = 4,
+    Lighten = 5,
+    Addition = 6,
+    Subtract = 7,
+    Difference = 8,
+    Exclusion = 9,
+    HardLight = 10,
+}
+
+impl BlendMode {
+    /// Wire byte → mode; unknown (future/corrupt) degrades to `Normal` (spec §8, §19).
+    pub fn from_u8(b: u8) -> BlendMode {
+        match b {
+            1 => BlendMode::Multiply,
+            2 => BlendMode::Screen,
+            3 => BlendMode::Overlay,
+            4 => BlendMode::Darken,
+            5 => BlendMode::Lighten,
+            6 => BlendMode::Addition,
+            7 => BlendMode::Subtract,
+            8 => BlendMode::Difference,
+            9 => BlendMode::Exclusion,
+            10 => BlendMode::HardLight,
+            _ => BlendMode::Normal,
+        }
+    }
+
+    /// Canonical token — the DSL argument and probe JSON value ("HardLight"; UIs may render
+    /// a spaced display name).
+    pub fn name(self) -> &'static str {
+        match self {
+            BlendMode::Normal => "Normal",
+            BlendMode::Multiply => "Multiply",
+            BlendMode::Screen => "Screen",
+            BlendMode::Overlay => "Overlay",
+            BlendMode::Darken => "Darken",
+            BlendMode::Lighten => "Lighten",
+            BlendMode::Addition => "Addition",
+            BlendMode::Subtract => "Subtract",
+            BlendMode::Difference => "Difference",
+            BlendMode::Exclusion => "Exclusion",
+            BlendMode::HardLight => "HardLight",
+        }
+    }
+
+    /// Strict token parse for the DSL (`None` on unknown — the DSL errors; the wire is
+    /// tolerant via [`Self::from_u8`]). Keep the asymmetry: scripts should fail loudly,
+    /// files should degrade gracefully.
+    pub fn from_name(s: &str) -> Option<BlendMode> {
+        Some(match s {
+            "Normal" => BlendMode::Normal,
+            "Multiply" => BlendMode::Multiply,
+            "Screen" => BlendMode::Screen,
+            "Overlay" => BlendMode::Overlay,
+            "Darken" => BlendMode::Darken,
+            "Lighten" => BlendMode::Lighten,
+            "Addition" => BlendMode::Addition,
+            "Subtract" => BlendMode::Subtract,
+            "Difference" => BlendMode::Difference,
+            "Exclusion" => BlendMode::Exclusion,
+            "HardLight" => BlendMode::HardLight,
+            _ => return None,
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -76,10 +145,8 @@ impl Layer {
         h.write(&[self.visible as u8, self.locked as u8, self.opacity]);
         // Conditional inclusion (format spec §12.2): semantic fields added after v10 shipped
         // join the hash only when non-default, so every document that doesn't use them keeps
-        // its historical hash. `blend` is the first such field — its wire byte (0 = Normal,
-        // table in §12.2) is appended iff != Normal. Dead today (BlendMode has one variant);
-        // the rule ships ahead of the field on purpose. Future variants must be declared in
-        // spec-table order (or carry explicit discriminants) — this cast is the wire byte.
+        // its historical hash. `blend` is the first such field — its wire byte (the enum's
+        // explicit discriminant, table in §12.2) is appended iff != Normal.
         if self.blend != BlendMode::Normal {
             h.write(&[self.blend as u8]);
         }

@@ -1,6 +1,8 @@
 //! Color: 8-bit straight RGBA at the boundary, premultiplied internally; integer-exact
 //! sRGB math and HSV conversion (SPEC §6). No linear-light path.
 
+use crate::document::BlendMode;
+
 /// Straight (non-premultiplied) 8-bit RGBA — the public/boundary representation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Rgba8 {
@@ -128,6 +130,64 @@ pub fn over_opacity(mut src: Rgba8, dst: Rgba8, opacity: u8) -> Rgba8 {
         src.a = mul255(src.a, opacity);
     }
     over(src, dst)
+}
+
+// ---- Layer blend modes (SPEC §6.4; wire values in the format spec §12.2) ----
+
+/// Integer lerp `a→b` at `t∈0..=255`: `(a·(255−t) + b·t + 127)/255` — pinned rounding, u32 math.
+#[inline]
+fn lerp255(a: u8, b: u8, t: u8) -> u8 {
+    ((a as u32 * (255 - t as u32) + b as u32 * t as u32 + 127) / 255) as u8
+}
+
+/// HardLight's per-channel core: `cs < 128 → multiply(cb, 2cs)`, else `screen(cb, 2cs−255)`.
+/// The 128 split is pinned; u16 keeps `2·cs` in range (≤ 254 on the multiply branch,
+/// `510 − 2cs ≤ 254` on the screen branch's complement).
+#[inline]
+fn hard_light(cb: u8, cs: u8) -> u8 {
+    if cs < 128 {
+        mul255(cb, (2 * cs as u16) as u8)
+    } else {
+        255 - mul255(255 - cb, (510 - 2 * cs as u16) as u8)
+    }
+}
+
+/// Per-channel separable blend `B(cb, cs)` on straight u8 channels (W3C compositing §9.1.x),
+/// every branch integer-exact with pinned rounding via `mul255`.
+fn blend_channel(mode: BlendMode, cb: u8, cs: u8) -> u8 {
+    match mode {
+        BlendMode::Normal => cs,
+        BlendMode::Multiply => mul255(cb, cs),
+        BlendMode::Screen => 255 - mul255(255 - cb, 255 - cs),
+        BlendMode::Overlay => hard_light(cs, cb), // HardLight with cb/cs swapped
+        BlendMode::HardLight => hard_light(cb, cs),
+        BlendMode::Darken => cb.min(cs),
+        BlendMode::Lighten => cb.max(cs),
+        BlendMode::Addition => (cb as u16 + cs as u16).min(255) as u8,
+        BlendMode::Subtract => cb.saturating_sub(cs),
+        BlendMode::Difference => cb.abs_diff(cs),
+        // Non-negative by algebra (mul255(cb,cs) ≤ min(cb,cs)); the .min is defensive.
+        BlendMode::Exclusion => (cb as u32 + cs as u32 - 2 * mul255(cb, cs) as u32).min(255) as u8,
+    }
+}
+
+/// The blend-aware compositor primitive: `src` over `dst` under `mode` with layer `opacity`.
+/// `Normal` — or a transparent backdrop, which degrades every separable mode to plain
+/// source — is exactly [`over_opacity`]. Otherwise the W3C backdrop-alpha weighting replaces
+/// src's RGB with `Cs' = lerp(Cs, B(Cb, Cs), αb)` per channel (straight colors), then
+/// alpha-overs as usual. A transparent source stays a no-op for every mode, which is what
+/// keeps the compositor's absent-tile skip and `a == 0` early-return exact.
+pub fn composite(mode: BlendMode, src: Rgba8, dst: Rgba8, opacity: u8) -> Rgba8 {
+    if mode == BlendMode::Normal || dst.a == 0 {
+        return over_opacity(src, dst, opacity);
+    }
+    let mixed = Rgba8::new(
+        lerp255(src.r, blend_channel(mode, dst.r, src.r), dst.a),
+        lerp255(src.g, blend_channel(mode, dst.g, src.g), dst.a),
+        lerp255(src.b, blend_channel(mode, dst.b, src.b), dst.a),
+        src.a,
+    );
+    over_opacity(mixed, dst, opacity)
 }
 
 /// Integer-exact linear interpolation between two straight colors in sRGB at `t∈[0,1]`.
@@ -264,6 +324,130 @@ pub fn brightness_contrast(c: Rgba8, db: i32, cf: f32) -> Rgba8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const ALL_MODES: [BlendMode; 11] = [
+        BlendMode::Normal,
+        BlendMode::Multiply,
+        BlendMode::Screen,
+        BlendMode::Overlay,
+        BlendMode::Darken,
+        BlendMode::Lighten,
+        BlendMode::Addition,
+        BlendMode::Subtract,
+        BlendMode::Difference,
+        BlendMode::Exclusion,
+        BlendMode::HardLight,
+    ];
+
+    #[test]
+    fn blend_channel_hand_values() {
+        // Opaque backdrop + opaque source degenerates the weighting to B(cb, cs) exactly.
+        // cb = 100, cs = 200, hand-computed under mul255's round-half-up:
+        //   Multiply  round(100·200/255) = 78        Screen 255 − round(155·55/255) = 222
+        //   Overlay   hard_light(200, 100) = mul255(200, 200) = 157
+        //   HardLight 255 − mul255(155, 110) = 188   Exclusion 100 + 200 − 2·78 = 144
+        let src = Rgba8::rgb(200, 200, 200);
+        let dst = Rgba8::rgb(100, 100, 100);
+        let expect = [
+            (BlendMode::Multiply, 78),
+            (BlendMode::Screen, 222),
+            (BlendMode::Overlay, 157),
+            (BlendMode::Darken, 100),
+            (BlendMode::Lighten, 200),
+            (BlendMode::Addition, 255),
+            (BlendMode::Subtract, 0),
+            (BlendMode::Difference, 100),
+            (BlendMode::Exclusion, 144),
+            (BlendMode::HardLight, 188),
+        ];
+        for (mode, want) in expect {
+            let got = composite(mode, src, dst, 255);
+            assert_eq!((got.r, got.g, got.b, got.a), (want, want, want, 255), "{:?}", mode);
+        }
+    }
+
+    #[test]
+    fn hard_light_split_at_128() {
+        // cb = 100: cs = 127 takes the multiply branch (mul255(100, 254) = 100);
+        // cs = 128 takes the screen branch (255 − mul255(155, 254) = 101).
+        assert_eq!(hard_light(100, 127), 100);
+        assert_eq!(hard_light(100, 128), 101);
+        // Overlay is HardLight with the operands swapped.
+        assert_eq!(blend_channel(BlendMode::Overlay, 100, 200), hard_light(200, 100));
+    }
+
+    #[test]
+    fn composite_transparent_backdrop_degrades_to_src() {
+        let samples = [
+            (Rgba8::new(200, 10, 90, 255), 255),
+            (Rgba8::new(30, 250, 128, 128), 200),
+            (Rgba8::new(0, 0, 0, 64), 64),
+        ];
+        for mode in ALL_MODES {
+            for (src, op) in samples {
+                assert_eq!(
+                    composite(mode, src, Rgba8::TRANSPARENT, op),
+                    over_opacity(src, Rgba8::TRANSPARENT, op),
+                    "{:?}",
+                    mode
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn composite_half_alpha_backdrop_weights() {
+        // dst.a = 128 → Cs' = lerp255(cs, B, 128); with an opaque source the result is Cs'.
+        // cb = 100, cs = 200: Multiply → lerp255(200, 78, 128) = 139;
+        //                     Screen   → lerp255(200, 222, 128) = 211.
+        let src = Rgba8::rgb(200, 200, 200);
+        let dst = Rgba8::new(100, 100, 100, 128);
+        assert_eq!(composite(BlendMode::Multiply, src, dst, 255).r, 139);
+        assert_eq!(composite(BlendMode::Screen, src, dst, 255).r, 211);
+    }
+
+    #[test]
+    fn composite_normal_is_over_opacity() {
+        for src in [Rgba8::new(10, 200, 30, 255), Rgba8::new(255, 0, 128, 77), Rgba8::TRANSPARENT] {
+            for dst in [Rgba8::rgb(90, 90, 90), Rgba8::new(1, 2, 3, 40), Rgba8::TRANSPARENT] {
+                for op in [255, 128, 0] {
+                    assert_eq!(composite(BlendMode::Normal, src, dst, op), over_opacity(src, dst, op));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn composite_transparent_src_identity() {
+        // A transparent source is a no-op for every mode — the compositor's absent-tile skip
+        // and `a == 0` early-return depend on this being exact.
+        for mode in ALL_MODES {
+            for dst in [Rgba8::rgb(10, 200, 30), Rgba8::new(90, 40, 250, 128)] {
+                assert_eq!(composite(mode, Rgba8::TRANSPARENT, dst, 255), dst, "{:?}", mode);
+            }
+        }
+    }
+
+    #[test]
+    fn exclusion_never_overflows() {
+        for cb in 0..=255u8 {
+            for cs in 0..=255u8 {
+                let v = cb as i32 + cs as i32 - 2 * mul255(cb, cs) as i32;
+                assert!((0..=255).contains(&v), "cb={} cs={} v={}", cb, cs, v);
+            }
+        }
+    }
+
+    #[test]
+    fn blend_mode_names_and_bytes_roundtrip() {
+        for mode in ALL_MODES {
+            assert_eq!(BlendMode::from_u8(mode as u8), mode);
+            assert_eq!(BlendMode::from_name(mode.name()), Some(mode));
+        }
+        assert_eq!(BlendMode::from_u8(11), BlendMode::Normal, "unknown wire byte degrades");
+        assert_eq!(BlendMode::from_u8(200), BlendMode::Normal);
+        assert_eq!(BlendMode::from_name("Divide"), None, "unknown token errors");
+    }
 
     #[test]
     fn palette_sort_key_groups_and_ramps() {
