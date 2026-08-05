@@ -74,6 +74,15 @@ impl Layer {
         let mut h = Hasher::new();
         h.write(self.name.as_bytes());
         h.write(&[self.visible as u8, self.locked as u8, self.opacity]);
+        // Conditional inclusion (format spec §12.2): semantic fields added after v10 shipped
+        // join the hash only when non-default, so every document that doesn't use them keeps
+        // its historical hash. `blend` is the first such field — its wire byte (0 = Normal,
+        // table in §12.2) is appended iff != Normal. Dead today (BlendMode has one variant);
+        // the rule ships ahead of the field on purpose. Future variants must be declared in
+        // spec-table order (or carry explicit discriminants) — this cast is the wire byte.
+        if self.blend != BlendMode::Normal {
+            h.write(&[self.blend as u8]);
+        }
         let ph = self.pixels.content_hash();
         h.write(&ph.to_le_bytes());
         h.finish()
