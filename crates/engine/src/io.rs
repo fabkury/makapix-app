@@ -581,7 +581,7 @@ pub fn save_to_bytes(doc: &Document) -> Vec<u8> {
             frms.str(&l.name);
             frms.u8((l.visible as u8) | ((l.locked as u8) << 1));
             frms.u8(l.opacity);
-            frms.u8(0); // blend = Normal
+            frms.u8(l.blend as u8); // spec §12.2 wire value; readers map unknown → Normal
             let grid = grid_iter.next().expect("one grid per layer");
             let nt = grid.len();
             let mut i = 0usize;
@@ -830,7 +830,7 @@ pub fn load_from_bytes_tolerant_budgeted(data: &[u8], hard_budget: usize) -> Res
             let name = fr.str()?;
             let flags = fr.u8()?;
             let opacity = fr.u8()?;
-            let _blend = fr.u8()?;
+            let blend = BlendMode::from_u8(fr.u8()?); // unknown values degrade to Normal (§19)
             let mut pixels = RgbaBuffer::from_size(storage);
             let cells = pixels.num_tiles();
             let mut filled = 0usize;
@@ -857,7 +857,7 @@ pub fn load_from_bytes_tolerant_budgeted(data: &[u8], hard_budget: usize) -> Res
                 visible: flags & 1 != 0,
                 locked: flags & 2 != 0,
                 opacity,
-                blend: BlendMode::Normal,
+                blend,
                 pixels,
             });
         }
@@ -1054,6 +1054,47 @@ mod tests {
         doc.active_frame_mut().active_layer_mut().pixels.set(40, 40, Rgba8::rgb(0, 0, 255));
         let bytes = save_to_bytes(&doc);
         assert!(matches!(load_from_bytes_budgeted(&bytes, 4096), Err(IoError::OverBudget)));
+    }
+
+    #[test]
+    fn roundtrip_preserves_blend_mode() {
+        // A non-Normal blend participates in the conditional content hash (spec §12.2) on both
+        // the writer and the reader — a strict load passing proves the two sides agree.
+        let mut doc = Document::new(32, 32);
+        doc.active_frame_mut().active_layer_mut().pixels.set(3, 3, Rgba8::rgb(200, 10, 90));
+        let mut top = doc.new_layer("glow");
+        top.blend = BlendMode::Screen;
+        top.opacity = 180;
+        doc.active_frame_mut().layers.push(top);
+
+        let bytes = save_to_bytes(&doc);
+        let back = load_from_bytes(&bytes).unwrap();
+        assert_eq!(back.frames[0].layers[1].blend, BlendMode::Screen);
+        assert_eq!(back.content_hash(), doc.content_hash());
+        assert_eq!(save_to_bytes(&back), bytes, "save→load→save is byte-stable with blend set");
+    }
+
+    #[test]
+    fn unknown_blend_byte_loads_as_normal() {
+        // A future blend value in a v10 file degrades to Normal (spec §19) — and since the
+        // reader then rebuilds an all-Normal document, the stored (all-Normal) hash still
+        // matches: the load is CLEAN, not even a warning.
+        let doc = Document::new(16, 16);
+        let mut bytes = save_to_bytes(&doc);
+        // Layer record layout: id(4) · name(str) · flags(1) · opacity(1) · blend(1) — locate
+        // the default layer name in the plain stream and step past flags+opacity.
+        let name = b"Layer 1";
+        let pos = bytes.windows(name.len()).position(|w| w == name).expect("layer name in FRMS");
+        let blend_off = pos + name.len() + 2;
+        assert_eq!(bytes[blend_off], 0, "sanity: the blend byte of a Normal layer");
+        bytes[blend_off] = 200;
+        reseal_crc(&mut bytes);
+
+        let back = load_from_bytes(&bytes).expect("unknown blend value must not fail the load");
+        assert_eq!(back.frames[0].layers[0].blend, BlendMode::Normal);
+        let loaded =
+            load_from_bytes_tolerant_budgeted(&bytes, crate::document::MEM_HARD_BUDGET).unwrap();
+        assert!(loaded.warnings.is_empty(), "degrading to Normal re-matches the stored hash");
     }
 
     #[test]

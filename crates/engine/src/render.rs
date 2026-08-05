@@ -1,6 +1,6 @@
 //! The reference CPU compositor (SPEC §18) — the canonical image. Flattens a frame's
-//! visible layers bottom→top with per-layer opacity via alpha-over in sRGB. Any GPU
-//! fast-path in the shell is golden-tested against this.
+//! visible layers bottom→top with per-layer opacity and blend mode (`color::composite`,
+//! integer-exact in sRGB). Any GPU fast-path in the shell is golden-tested against this.
 
 use crate::buffer::{RgbaBuffer, TILE};
 use crate::color::{self, Rgba8};
@@ -51,7 +51,7 @@ pub fn composite_frame(frame: &Frame, src: IRect) -> RgbaBuffer {
             }
             let (lx, ly) = (sx - src.x, sy - src.y);
             let dst = out.get(lx, ly);
-            out.set(lx, ly, color::over_opacity(s, dst, layer.opacity));
+            out.set(lx, ly, color::composite(layer.blend, s, dst, layer.opacity));
         });
     }
     out
@@ -190,5 +190,30 @@ mod tests {
         d.active_frame_mut().layers.push(top);
         let flat = composite_active(&d);
         assert_eq!(flat.get(4, 4), Rgba8::rgb(0, 255, 0));
+    }
+
+    #[test]
+    fn composite_multiply_layer_darkens() {
+        // The flattened pixel must equal the color-level oracle exactly (opaque backdrop →
+        // pure B(cb, cs): mul255(100, 200) = 78 per channel).
+        let mut d = Document::new(8, 8);
+        d.active_frame_mut().layers[0].pixels.fill_all(Rgba8::rgb(100, 100, 100));
+        let mut top = d.new_layer("top");
+        top.blend = crate::document::BlendMode::Multiply;
+        top.pixels.fill_all(Rgba8::rgb(200, 200, 200));
+        d.active_frame_mut().layers.push(top);
+        let flat = composite_active(&d);
+        assert_eq!(flat.get(4, 4), Rgba8::rgb(78, 78, 78));
+        // Where the multiply layer has no backdrop below... both layers are filled here, so
+        // instead check the oracle equivalence directly against color::composite.
+        assert_eq!(
+            flat.get(4, 4),
+            color::composite(
+                crate::document::BlendMode::Multiply,
+                Rgba8::rgb(200, 200, 200),
+                Rgba8::rgb(100, 100, 100),
+                255
+            )
+        );
     }
 }

@@ -2583,10 +2583,11 @@ impl Session {
         self.reset_layer_sel();
     }
 
-    /// Merge layer `i` down onto the layer below it: composite `i`'s pixels — with its opacity,
-    /// via the compositor's own `over_opacity` blend — over layer `i-1`'s pixels, then remove
-    /// layer `i`. The merged layer keeps the below layer's identity and settings (name, opacity,
-    /// visibility, lock). An invisible or zero-opacity source contributes nothing (the compositor
+    /// Merge layer `i` down onto the layer below it: composite `i`'s pixels — with its opacity
+    /// AND blend mode, via the compositor's own `color::composite` — over layer `i-1`'s pixels,
+    /// then remove layer `i`. The source's blend is baked into the result (Photoshop-style); the
+    /// merged layer keeps the below layer's identity and settings (name, opacity, visibility,
+    /// lock, blend). An invisible or zero-opacity source contributes nothing (the compositor
     /// would have shown none of it), so the merge degenerates to a plain remove. One undo step.
     /// No-op on the bottom layer, an out-of-range index, or a locked layer below (its pixels are
     /// protected, like painting).
@@ -2607,7 +2608,7 @@ impl Session {
                         let p = src.pixels.get(x, y);
                         if p.a != 0 {
                             let d = dst.get(x, y);
-                            dst.set(x, y, crate::color::over_opacity(p, d, src.opacity));
+                            dst.set(x, y, crate::color::composite(src.blend, p, d, src.opacity));
                         }
                     }
                 }
