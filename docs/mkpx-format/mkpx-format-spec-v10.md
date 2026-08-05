@@ -152,7 +152,7 @@ Fixed payload, little-endian:
 | `u16` | `active_palette` | 0-based; `0xFFFF` = none. |
 | `u8` | `loop_mode` | 0 Loop · 1 Once · 2 PingPong (unknown → Loop). |
 | `u8` | `head_flags` | bit0 has `SELC` · bit1 has `THMB` · others reserved 0. |
-| `u128` | `content_hash` | `Document::content_hash()` (§12.2). **Verified on load.** |
+| `u128` | `content_hash` | `Document::content_hash()` (§12.2). Checked on load: strict in tests/CLI, a warning in production. |
 
 Explicit per-side gutter margins (v5) make the file self-describing and let the load-time remap (§13)
 stay clean if the runtime gutter policy ever changes. Storage geometry is derived:
@@ -237,7 +237,8 @@ repeat frame_count:
         str     name
         u8      flags                     (bit0 visible · bit1 locked; others reserved 0)
         u8      opacity
-        u8      blend                     (0 Normal; unknown → Normal)
+        u8      blend                     (0 Normal; 1..=10 reserved, §12.2; unknown → Normal;
+                                           joins the content hash only when ≠ 0)
         # tile-ref grid: exactly cells row-major cells, run-length encoded (v5):
         repeat until `cells` cells emitted:
             varint  run_len               (≥ 1)
@@ -348,12 +349,28 @@ over-engineering here). CRC-32C is used for its strong error detection; a pure-R
 
 ### 12.2 Content hash (semantic integrity)
 After reconstruction, the loader recomputes `Document::content_hash()` and compares it to
-`HEAD.content_hash` ⇒ `Corrupt("content hash mismatch")` on mismatch. The CRC proves *bytes survived
-the channel*; the content hash proves *the artwork was rebuilt correctly* (it catches a codec/logic
-bug the CRC can't, since the header hash is computed from the correct in-RAM document). The hash covers
-canvas size + per-frame duration + per-layer name/visible/locked/opacity + present-tile pixels; it
-excludes selection, palettes, ids, and loop mode — matching the engine's existing hash so cache/golden
-keys are unchanged.
+`HEAD.content_hash`. The CRC proves *bytes survived the channel*; the content hash proves *the artwork
+was rebuilt correctly* (it catches a codec/logic bug the CRC can't, since the header hash is computed
+from the correct in-RAM document).
+
+**Coverage (normative).** Document: canvas `w`,`h` + the per-frame hashes. Frame: `duration_us` + the
+per-layer hashes. Layer: the name's UTF-8 bytes, `[visible, locked, opacity]`, the **conditional blend
+byte** (below), then the LE bytes of the pixel/tile-census hash. Excluded: frame/layer ids, palettes
+and their color names, selection, `loop_mode`, and every `active_*` field — matching the engine's
+existing hash so cache/golden keys are unchanged.
+
+**Conditional inclusion (post-v10 semantic fields).** A semantic field added after v10 shipped joins
+the hash **iff it differs from its v10 default**, so every document that doesn't use the field keeps
+its historical hash and pre-field readers keep verifying files that don't use it. `blend` is the first
+such field: its wire byte (§8) is appended immediately after `opacity` iff ≠ 0. Reserved blend values:
+`0 Normal · 1 Multiply · 2 Screen · 3 Overlay · 4 Darken · 5 Lighten · 6 Addition · 7 Subtract ·
+8 Difference · 9 Exclusion · 10 Hard Light` (unknown → Normal, §19).
+
+**Verification stance.** Production loaders (the app, via `mkpx_load`) treat a mismatch as a load
+*warning*: the document loads and the shell logs. The test suite and the `mkpx` CLI stay **strict**
+(`Corrupt("content hash mismatch")`) — they are the codec-bug net. The CRC (§12.1, checked first)
+remains the fatal transport guard, so a warning can only mean "written under a different hash rule",
+never "damaged in transit".
 
 ---
 
@@ -365,10 +382,10 @@ pixels. v10:
 - Persists explicit per-side margins in `HEAD` (v5) — self-describing.
 - Stores gutter **content** only via the RLE ref-grid; an empty gutter is one long transparent run ⇒
   ~free (the sparse win, achieved without v9's `gutter_mode` enum).
-- On load, maps the persisted storage area onto the engine's runtime storage area by **aligning canvas
-  origins** — re-expanding when the persisted gutter is smaller than runtime (the same lift the legacy
-  loader used). If a future build changes the gutter policy, only this alignment changes; the file is
-  already self-describing.
+- On load, requires the persisted gutter to **equal** the runtime policy's gutter for that canvas —
+  a mismatch is rejected as `Corrupt("gutter geometry")`. The explicit fields keep the file
+  self-describing, so a future build could relax this to an origin-aligning remap without a format
+  change; v10 rejects.
 
 Storage-external pixels of an edge tile are canonically `(0,0,0,0)` (§7), keeping tile bytes, dedup,
 and hashing unambiguous.
@@ -443,16 +460,16 @@ peripheral envelope:
 ```
 signature   0x89 'M' 'K' 'P' 'Z' 0x0D 0x0A 0x1A     // 'Z' distinguishes compact from plain ('X')
 u32         uncompressed_len                          // bounded; sizes the inflate buffer (bomb guard)
-u32         crc32c                                    // CRC-32C over the DEFLATE stream (early corruption catch)
-bytes       deflate_stream = raw-DEFLATE(plain_bytes) // pinned miniz_oxide, fixed level
+bytes       deflate_stream = zlib(plain_bytes)        // pinned miniz_oxide, fixed level, zlib framing
 ```
-`open(bytes)`: detect signature; if compact, verify CRC, inflate into `≤ uncompressed_len` bytes, then
+`open(bytes)`: detect signature; if compact, inflate bounded by `uncompressed_len` (the inflated
+length must equal it; zlib's Adler-32 covers stream integrity — there is no separate CRC field), then
 feed the inner `plain` bytes to the engine loader (which verifies the inner `INTG` + content hash); if
 plain, load directly. `save_compact(doc)`: engine encodes `plain`, periphery deflates.
 
 **Where it lives (dependency boundary).** The DEFLATE envelope is **peripheral**, implemented in
-`crates/codec` / `crates/ffi` (and mirrored into `crates/cli` so the `mkpx` harness can round-trip
-compact files) — exactly where the charter permits **pure-Rust** deps. `miniz_oxide` is chosen: pure
+`crates/codec` / `crates/ffi` (the `mkpx` CLI currently reads only `plain` files) — exactly where the
+charter permits **pure-Rust** deps. `miniz_oxide` is chosen: pure
 Rust, no `build.rs`/C/NDK, Android-clean, the inflate/deflate that backs PNG. The engine core stays
 dependency-free and its hostile-input loader never inflates untrusted data (inflate happens at the
 periphery, under an explicit `uncompressed_len` bomb bound).
@@ -465,8 +482,8 @@ intact.
 
 ## 17. Decoder / load path (linear, panic-free)
 
-1. Detect signature (`plain` vs `compact`); `compact` → verify envelope CRC, inflate (bounded), recurse
-   on the inner bytes. Wrong magic ⇒ `BadMagic`.
+1. Detect signature (`plain` vs `compact`); `compact` → inflate (bounded; zlib's Adler-32 verifies the
+   stream), recurse on the inner bytes. Wrong magic ⇒ `BadMagic`.
 2. Verify `format_version == 10` (else `UnsupportedVersion`).
 3. Verify `INTG` CRC over the file body (else `Incomplete`/`Corrupt`; caller may fall back to `.bak`).
 4. Parse `HEAD` (first). Walk chunks; unknown critical → error, unknown ancillary → skip; reject
@@ -474,9 +491,9 @@ intact.
 5. Decode `TILE` into `Vec<Arc<Tile>>`; index `0` is one shared transparent `Arc` (or `None`).
 6. For each layer in `FRMS`, expand the RLE ref-grid into a storage-sized buffer whose cells reference
    the **same `Arc<Tile>`** for identical indices — **restoring in-RAM COW sharing on load**.
-7. Map persisted storage onto runtime storage by aligning canvas origins (§13).
+7. Require the persisted gutter to match the runtime policy (§13); mismatch ⇒ `Corrupt`.
 8. If `SELC` present and its dimensions match runtime storage, apply it; else drop.
-9. Recompute `content_hash`; compare to `HEAD` (§12.2).
+9. Recompute `content_hash`; compare to `HEAD` (§12.2) — strict in tests/CLI, a warning in production.
 
 ---
 
@@ -484,9 +501,11 @@ intact.
 
 Three independent layers, each catching a distinct failure mode, with minimal overlap:
 - **Whole-file CRC-32C** (`INTG`) — truncation (crash mid-autosave) and bit-rot.
-- **Content-hash verify** (load) — a reconstruction/codec/logic error.
+- **Content-hash check** (load; strict in tests/CLI, a warning in production — §12.2) — a
+  reconstruction/codec/logic error.
 - **Verify-on-encode** (compact/explicit) — never *persist* a corrupt explicit save.
-Plus the **compact envelope CRC** — corruption of the compressed transport before inflation.
+Plus the **compact envelope's zlib Adler-32** — corruption of the compressed transport before
+inflation.
 
 ---
 
@@ -494,7 +513,8 @@ Plus the **compact envelope CRC** — corruption of the compressed transport bef
 
 The loader returns a typed `IoError` and **never panics**:
 `BadMagic · UnsupportedVersion(u16) · Incomplete · Corrupt(&'static str) · TooLarge(&'static str) ·
-UnsupportedChunk([u8;4])`.
+UnsupportedChunk([u8;4]) · OverBudget` (the last = a well-formed file whose unique tile payload
+exceeds the session's document memory budget — refused before any tile is materialized).
 
 - **Bounds on every read**; any field/count reading past end ⇒ `Incomplete`.
 - **Caps on every count** (violation ⇒ `Corrupt`/`TooLarge`): canvas 8..=256; storage ≤ 768; cells ≤
@@ -506,7 +526,8 @@ UnsupportedChunk([u8;4])`.
   `uncompressed_len` (a decompression-bomb guard), which is itself capped.
 - **Every index domain-checked**: `tile_index ≤ tile_count`; `INDEXED` index `< ncolors`; `active_*`
   clamped; `duration_us` clamped; RLE `Σ run == 1024`; ref-grid `Σ run_len == cells`.
-- **Ids seeded, not looped**; **varints length/overflow-checked**; **CRC + content hash verified**.
+- **Ids seeded, not looped**; **varints length/overflow-checked**; **CRC verified**; content hash
+  checked per the §12.2 stance.
 - **Tolerant where the engine already is**: empty palette → default; stale selection → dropped; unknown
   `blend`/`loop_mode`/reserved bits → defaults.
 
