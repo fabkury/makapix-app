@@ -114,6 +114,45 @@ DynamicLibrary _open() {
 /// document is unchanged) — worth telling the user apart from a bad file.
 enum ImportStatus { ok, failed, refused }
 
+/// Outcome of loading a `.mkpx` into the engine — mirrors mkpx_load's return codes
+/// (crates/ffi/src/lib.rs; keep the two in sync).
+enum LoadStatus {
+  ok,
+
+  /// Loaded fully, but the file's stored content hash didn't match the rebuilt document.
+  /// Diagnostic only (e.g. written by a newer build with a different hash rule) — treat as
+  /// success; callers log it, never surface it.
+  okWithWarnings,
+
+  /// Neither the plain nor the compact `.mkpx` signature.
+  notMkpx,
+
+  /// Written by a newer (or unknown) version of the format.
+  unsupportedVersion,
+
+  corrupt,
+
+  /// Refused by the engine's document memory budget — too big for this device.
+  overBudget,
+
+  failed;
+
+  /// The document is in the engine and usable.
+  bool get loaded => this == LoadStatus.ok || this == LoadStatus.okWithWarnings;
+}
+
+/// Top-level (not on [Engine]) so pure-Dart tests cover it without the engine binary.
+/// Unknown codes map to [LoadStatus.failed], never to success.
+LoadStatus loadStatusFromRc(int rc) => switch (rc) {
+      0 => LoadStatus.ok,
+      1 => LoadStatus.okWithWarnings,
+      -2 => LoadStatus.notMkpx,
+      -3 => LoadStatus.unsupportedVersion,
+      -4 => LoadStatus.corrupt,
+      -5 => LoadStatus.overBudget,
+      _ => LoadStatus.failed,
+    };
+
 /// A decoded-frames blob produced by [Engine.decodeImageInBackground], living in the engine
 /// library's native heap (NOT GC-tracked). Apply it with [Engine.importDecoded] and ALWAYS
 /// [dispose] it in a `finally` — on every path, including when the import is never applied.
@@ -358,12 +397,12 @@ class Engine {
     }
   }
 
-  bool load(Uint8List data) {
+  LoadStatus load(Uint8List data) {
     final p = malloc<Uint8>(data.length);
     p.asTypedList(data.length).setAll(0, data);
-    final ok = _load(_s, p, data.length) == 0;
+    final rc = _load(_s, p, data.length);
     malloc.free(p);
-    return ok;
+    return loadStatusFromRc(rc);
   }
 
   /// Import an image; mode 0=Fit,1=Stretch,2=Crop. Pass a crop rect (source pixels) to use an
@@ -586,7 +625,7 @@ class Engine {
       {required String format, int frame = 0, int layer = 0, int scale = 1}) {
     final e = Engine(8, 8);
     try {
-      if (!e.load(docBytes)) return Uint8List(0);
+      if (!e.load(docBytes).loaded) return Uint8List(0);
       switch (format) {
         case 'webp':
           return e.exportWebp(scale: scale);

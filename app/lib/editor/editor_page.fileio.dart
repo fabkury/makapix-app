@@ -51,6 +51,16 @@ extension _EditorFileIo on _EditorPageState {
     }
   }
 
+  /// User-facing message for a failed `.mkpx` load, by cause.
+  String _loadFailureMessage(LoadStatus s) => switch (s) {
+        LoadStatus.unsupportedVersion =>
+          'This file was made with a newer version of Makapix — update the app to open it.',
+        LoadStatus.notMkpx => "This isn't a .mkpx file.",
+        LoadStatus.corrupt => "This file is damaged and can't be opened.",
+        LoadStatus.overBudget => 'This artwork is too large to open on this device.',
+        _ => 'Could not open this file.',
+      };
+
   Future<void> _open() async {
     final res = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['mkpx']);
     if (res == null || res.files.single.path == null) return;
@@ -62,13 +72,17 @@ extension _EditorFileIo on _EditorPageState {
     // load; only adopt a new drawing if the load succeeds, so a corrupt file leaves the current
     // drawing intact.
     if (!await _releaseOutgoingDrawingInteractive('"$name"')) return;
-    if (engine.load(bytes)) {
+    final status = engine.load(bytes);
+    if (status.loaded) {
+      if (status == LoadStatus.okWithWarnings) {
+        debugPrint('open: "$name" loaded with a content-hash warning');
+      }
       _clubSource = null;
       await _createFreshDrawing(title: name.replaceAll(RegExp(r'\.mkpx$', caseSensitive: false), ''));
       if (mounted) _toast('Opened $name');
     } else {
       _startAutosave(); // load failed; resume autosaving the still-current drawing
-      if (mounted) _toast('Failed to load (corrupt or wrong version)');
+      if (mounted) _toast(_loadFailureMessage(status));
     }
     if (mounted) {
       _refreshState();
@@ -287,10 +301,15 @@ extension _EditorFileIo on _EditorPageState {
     if (!_engineReady) return;
     if (!await _releaseOutgoingDrawingInteractive('"${req.sourceTitle}"')) return;
     var ok = true;
+    LoadStatus? mkpxStatus;
     if (req.isMkpx) {
       // A layers (.mkpx) file: load as a full document — layers, frames,
       // palettes intact. The engine auto-detects plain vs compact profile.
-      ok = engine.load(req.bytes);
+      mkpxStatus = engine.load(req.bytes);
+      if (mkpxStatus == LoadStatus.okWithWarnings) {
+        debugPrint('club edit: "${req.sourceTitle}" loaded with a content-hash warning');
+      }
+      ok = mkpxStatus.loaded;
     } else {
       // Downloaded render (often a many-frame GIF): decode off the UI isolate under the same
       // modal spinner as file import [audit #3], then stretch into the fresh document.
@@ -311,7 +330,12 @@ extension _EditorFileIo on _EditorPageState {
     _resendEngineTool();
     await _createFreshDrawing(title: req.sourceTitle);
     if (!mounted) return;
-    if (!ok) _toast('Could not load this artwork into the editor.');
+    if (!ok) {
+      // A layers file from a newer app is the one cause the user can actually fix — name it.
+      _toast(mkpxStatus == LoadStatus.unsupportedVersion
+          ? 'This file was made with a newer version of Makapix — update the app to open it.'
+          : 'Could not load this artwork into the editor.');
+    }
     setState(() {
       _clubSource = ClubEditSource(
         postId: req.sourcePostId,

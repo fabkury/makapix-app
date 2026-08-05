@@ -125,11 +125,19 @@ extension _EditorPersistence on _EditorPageState {
   }
 
   // Load a drawing's bytes into the engine, falling back to its `.bak` on a corrupt primary. Uses
-  // `engine.load` as the validator so the right file is both chosen and loaded in one pass.
+  // `engine.load` as the validator so the right file is both chosen and loaded in one pass. A
+  // content-hash warning is NOT corruption (the primary still loads — a hash-rule difference must
+  // never resurrect an older backup); only real load failures fall back.
   Future<bool> _loadDrawingIntoEngine(String id) async {
     final store = _store;
     if (store == null || !_engineReady) return false;
-    final bytes = await store.readDoc(id, validate: (b) => engine.load(b));
+    final bytes = await store.readDoc(id, validate: (b) {
+      final s = engine.load(b);
+      if (s == LoadStatus.okWithWarnings) {
+        debugPrint('drawing $id loaded with a content-hash warning');
+      }
+      return s.loaded;
+    });
     return bytes != null;
   }
 

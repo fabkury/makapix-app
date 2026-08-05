@@ -98,7 +98,7 @@ class _DrawingLibraryGridState extends State<DrawingLibraryGrid> {
       final rendered = () {
         final eng = Engine(8, 8);
         try {
-          if (!eng.load(bytes)) return null;
+          if (!eng.load(bytes).loaded) return null;
           final w = eng.width, h = eng.height;
           const maxDim = 220;
           final scale = w >= h ? maxDim / w : maxDim / h;
