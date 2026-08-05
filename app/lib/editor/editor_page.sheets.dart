@@ -167,6 +167,7 @@ extension _EditorSheets on _EditorPageState {
         final inGroup = _selLayers.contains(cur);
         final belowLocked = cur > 0 && (layers[cur - 1] as Map<String, dynamic>)['locked'] == true;
         final opacity = dragOpacity ?? ((l['opacity'] ?? 255) as int);
+        final blend = '${l['blend'] ?? 'Normal'}';
 
         final frame = engine.activeFrame;
         final hash = engine.layerHash(frame, cur);
@@ -265,6 +266,26 @@ extension _EditorSheets on _EditorPageState {
               ),
             ),
           ]),
+          Row(children: [
+            const Icon(Icons.gradient, size: 18, color: Colors.white70),
+            const SizedBox(width: 4),
+            const Text('Blend'),
+            const Spacer(),
+            InkWell(
+              onTap: () async {
+                await _blendPicker(cur);
+                if (ctx.mounted) setS(() {}); // reveal the committed mode
+              },
+              borderRadius: BorderRadius.circular(4),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text(blendDisplayName(blend), style: const TextStyle(color: Colors.white70)),
+                  const Icon(Icons.chevron_right, size: 18, color: Colors.white54),
+                ]),
+              ),
+            ),
+          ]),
           _sheetSection('Arrange'),
           _sheetBtnRow([
             _sheetBtn(Icons.arrow_upward, 'Up', cur + 1 < count
@@ -324,6 +345,52 @@ extension _EditorSheets on _EditorPageState {
         ]);
       }),
     );
+  }
+
+  // Grouped blend-mode picker, apply-on-close: taps preview live via PreviewLayerBlend (a
+  // direct engine mutation, no undo record), and closing by ANY path — pop, swipe, back —
+  // first restores the original, then commits the selection iff it changed as ONE undo step
+  // (SetLayerBlend; the engine's equality guard backstops the check). An autosave firing
+  // mid-preview could persist the previewed mode; the window is the open sheet, accepted.
+  Future<void> _blendPicker(int cur) async {
+    final layers = _layerList();
+    if (cur >= layers.length) return;
+    final orig = '${(layers[cur] as Map<String, dynamic>)['blend'] ?? 'Normal'}';
+    var sel = orig;
+    await showAppSheet<void>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: const Color(0xFF1A1C1F),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) => _sheetScaffold(ctx, [
+          for (final (label, modes) in kBlendGroups) ...[
+            _sheetSection(label),
+            for (final m in modes)
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                selected: m == sel,
+                selectedTileColor: const Color(0x224080C0),
+                title: Text(blendDisplayName(m)),
+                trailing:
+                    m == sel ? const Icon(Icons.check, color: Color(0xFF4080C0)) : null,
+                onTap: () {
+                  setS(() => sel = m);
+                  _send('PreviewLayerBlend($cur, $m)');
+                  _redraw();
+                },
+              ),
+          ],
+        ]),
+      ),
+    );
+    // Restore BEFORE committing so edit_frame snapshots the true original as `before`.
+    _send('PreviewLayerBlend($cur, $orig)');
+    if (sel != orig) {
+      _act('SetLayerBlend($cur, $sel)');
+    } else {
+      _redraw();
+    }
   }
 
   // ── the frame sheet ───────────────────────────────────────────────────────

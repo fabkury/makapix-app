@@ -491,6 +491,21 @@ extension _EditorTimeline on _EditorPageState {
                             ),
                         ]),
                       ),
+                    // bottom-right: two-letter blend-mode badge, only when non-Normal
+                    if (blendBadge('${l['blend'] ?? 'Normal'}').isNotEmpty)
+                      Positioned(
+                        right: 1,
+                        bottom: 1,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+                          color: const Color(0xCC000000),
+                          child: Text(
+                            blendBadge('${l['blend'] ?? 'Normal'}'),
+                            style: const TextStyle(
+                                fontSize: 8, color: Colors.white70, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ),
                   ]),
                 ),
               );
