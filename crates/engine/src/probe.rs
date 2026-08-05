@@ -127,12 +127,20 @@ pub fn state_json(doc: &Document) -> String {
             if j > 0 {
                 s.push(',');
             }
+            // `blend` is emitted only when non-Normal: keeps the common-case payload flat
+            // (frame_detail is a known memory hotspot) and the pre-blend shape stable.
+            let blend = if l.blend != crate::document::BlendMode::Normal {
+                format!(",\"blend\":\"{}\"", l.blend.name())
+            } else {
+                String::new()
+            };
             s.push_str(&format!(
-                "{{\"name\":\"{}\",\"visible\":{},\"locked\":{},\"opacity\":{},\"present_tiles\":{}}}",
+                "{{\"name\":\"{}\",\"visible\":{},\"locked\":{},\"opacity\":{}{},\"present_tiles\":{}}}",
                 l.name.replace('"', "'"),
                 l.visible,
                 l.locked,
                 l.opacity,
+                blend,
                 l.pixels.present_tiles()
             ));
         }
@@ -546,6 +554,16 @@ mod tests {
         let s = state_json(&d);
         assert!(s.starts_with("{\"size\":[16,16]"));
         assert!(s.contains("\"frames\":1"));
+    }
+
+    #[test]
+    fn state_json_emits_blend_only_when_non_normal() {
+        let mut d = Document::new(8, 8);
+        let s = state_json(&d);
+        assert!(!s.contains("\"blend\""), "Normal layers carry no blend key: {s}");
+        d.frames[0].layers[0].blend = crate::document::BlendMode::Multiply;
+        let s = state_json(&d);
+        assert!(s.contains("\"opacity\":255,\"blend\":\"Multiply\",\"present_tiles\""), "{s}");
     }
 
     #[test]

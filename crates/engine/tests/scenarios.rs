@@ -1,6 +1,7 @@
 //! Scenario, property, and stress tests driven through the public DSL/Session API —
 //! the same surface the Flutter shell uses (SPEC §22.3).
 
+use makapix_engine::document::BlendMode;
 use makapix_engine::io;
 use makapix_engine::render;
 use makapix_engine::util::SeededRng;
@@ -528,4 +529,23 @@ fn tolerant_session_load_matches_strict_on_clean_files() {
     assert_eq!(t.doc.content_hash(), s.doc.content_hash());
     let active = t.doc.active_frame().active_layer;
     assert_eq!(t.layer_sel, vec![active], "the move-group from the previous document was reset");
+}
+
+#[test]
+fn blend_mode_roundtrips_through_mkpx_and_undo() {
+    let mut s = run(
+        "NewDocument(8,8)\nSelectTool(Pencil); SetPrimaryColor(#646464FF)\nStroke([(2,2)])\nAddLayer()\nSetPrimaryColor(#C8C8C8FF)\nStroke([(2,2)])\nSetLayerBlend(1, Multiply)",
+    );
+    let flat = render::composite_active(&s.doc);
+    assert_eq!(flat.get(2, 2), Rgba8::rgb(78, 78, 78), "multiply of 200 over 100");
+    // The mode survives the .mkpx round trip and keeps compositing identically.
+    let bytes = s.save_bytes();
+    let mut back = Session::empty();
+    back.load_bytes(&bytes).unwrap();
+    assert_eq!(back.doc.active_frame().layers[1].blend, BlendMode::Multiply);
+    assert_eq!(render::composite_active(&back.doc).get(2, 2), Rgba8::rgb(78, 78, 78));
+    // One undo on the live session reverts just the blend change.
+    assert!(s.doc.undo());
+    assert_eq!(s.doc.active_frame().layers[1].blend, BlendMode::Normal);
+    assert_eq!(render::composite_active(&s.doc).get(2, 2), Rgba8::rgb(200, 200, 200));
 }

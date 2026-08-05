@@ -5,7 +5,7 @@
 
 use crate::buffer::RgbaBuffer;
 use crate::color::Rgba8;
-use crate::document::{Document, Frame, LoopMode};
+use crate::document::{BlendMode, Document, Frame, LoopMode};
 use crate::geom::{IRect, Point, PointF};
 use crate::io;
 use crate::render;
@@ -3014,6 +3014,23 @@ impl Session {
             self.doc.active_frame_mut().layers[i].locked = v;
         }
     }
+    /// Set a layer's blend mode — one undo step. Re-selecting the current mode records nothing
+    /// (the blend picker's apply-on-close commit would otherwise push a no-op step).
+    pub fn set_layer_blend(&mut self, i: usize, b: BlendMode) {
+        let layers = &self.doc.active_frame().layers;
+        if i >= layers.len() || layers[i].blend == b {
+            return;
+        }
+        self.edit_frame(|s| s.doc.active_frame_mut().layers[i].blend = b);
+    }
+    /// UI-preview-only direct mutation, no undo record (the `set_layer_locked` idiom): the
+    /// blend picker previews live and always restores the original before committing via
+    /// [`Self::set_layer_blend`].
+    pub fn preview_layer_blend(&mut self, i: usize, b: BlendMode) {
+        if i < self.doc.active_frame().layers.len() {
+            self.doc.active_frame_mut().layers[i].blend = b;
+        }
+    }
     pub fn rename_layer(&mut self, i: usize, name: impl Into<String>) {
         if i < self.doc.active_frame().layers.len() {
             let name = name.into();
@@ -3813,6 +3830,54 @@ mod tests {
         s.tap(1, 1);
         s.run_script("SetLayerLocked(0, true); MergeDown(1)").unwrap();
         assert_eq!(s.doc.active_frame().layers.len(), 2);
+    }
+
+    #[test]
+    fn set_layer_blend_is_one_undo_step_and_equality_skips() {
+        let mut s = Session::new(4, 4);
+        s.run_script("SetLayerBlend(0, Multiply)").unwrap();
+        assert_eq!(s.doc.active_frame().layers[0].blend, BlendMode::Multiply);
+        // Re-selecting the current mode records nothing.
+        s.run_script("SetLayerBlend(0, Multiply)").unwrap();
+        assert!(s.doc.undo(), "the first set is one undo step");
+        assert_eq!(s.doc.active_frame().layers[0].blend, BlendMode::Normal);
+        assert!(!s.doc.undo(), "no duplicate step was recorded");
+        // An unknown token errors (strict DSL); an out-of-range index is a no-op.
+        assert!(s.run_script("SetLayerBlend(0, Divide)").is_err());
+        s.run_script("SetLayerBlend(9, Screen)").unwrap();
+        assert!(!s.doc.undo());
+    }
+
+    #[test]
+    fn preview_layer_blend_records_no_undo() {
+        let mut s = Session::new(4, 4);
+        s.run_script("PreviewLayerBlend(0, Screen)").unwrap();
+        assert_eq!(s.doc.active_frame().layers[0].blend, BlendMode::Screen);
+        assert!(!s.doc.undo(), "preview is a direct mutation, not an undo step");
+    }
+
+    #[test]
+    fn merge_down_bakes_blend() {
+        let mut s = Session::new(4, 4);
+        s.settings.primary = Rgba8::rgb(100, 100, 100);
+        s.tap(0, 0);
+        s.run_script("AddLayer()").unwrap();
+        s.settings.primary = Rgba8::rgb(200, 200, 200);
+        s.tap(0, 0);
+        // The source's blend AND opacity bake exactly like the compositor.
+        s.run_script("SetLayerBlend(1, Multiply); SetLayerOpacity(1, 200); MergeDown(1)").unwrap();
+        let expect = crate::color::composite(
+            BlendMode::Multiply,
+            Rgba8::rgb(200, 200, 200),
+            Rgba8::rgb(100, 100, 100),
+            200,
+        );
+        assert_eq!(s.pixel(0, 0, 0, 0), expect);
+        assert_eq!(s.doc.active_frame().layers.len(), 1);
+        // One undo restores the two-layer stack with the blend intact.
+        assert!(s.doc.undo());
+        assert_eq!(s.doc.active_frame().layers.len(), 2);
+        assert_eq!(s.doc.active_frame().layers[1].blend, BlendMode::Multiply);
     }
 
     #[test]

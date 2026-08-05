@@ -3,7 +3,7 @@
 
 use super::Session;
 use crate::color::Rgba8;
-use crate::document::LoopMode;
+use crate::document::{BlendMode, LoopMode};
 use crate::geom::{MAX_DIM, MIN_DIM};
 use crate::selection::CombineMode;
 use crate::tool::{BrushShape, GradientKind, Stop, ToolKind};
@@ -34,6 +34,8 @@ pub enum Action {
     SetLayerOpacity(usize, u8),
     SetLayerVisible(usize, bool),
     SetLayerLocked(usize, bool),
+    SetLayerBlend(usize, BlendMode),
+    PreviewLayerBlend(usize, BlendMode),
     RenameLayer(usize, String),
     DuplicateLayerToFrames(Vec<usize>),
     SelectTool(ToolKind),
@@ -219,6 +221,8 @@ impl Session {
             SetLayerOpacity(i, o) => self.set_layer_opacity(i, o),
             SetLayerVisible(i, v) => self.set_layer_visible(i, v),
             SetLayerLocked(i, v) => self.set_layer_locked(i, v),
+            SetLayerBlend(i, b) => self.set_layer_blend(i, b),
+            PreviewLayerBlend(i, b) => self.preview_layer_blend(i, b),
             RenameLayer(i, name) => self.rename_layer(i, name),
             DuplicateLayerToFrames(t) => self.duplicate_layer_to_frames(&t),
             SelectTool(t) => self.tool = t,
@@ -513,6 +517,10 @@ fn parse_line(line: &str) -> Result<Action, String> {
     let color = |k: usize| -> Result<Rgba8, String> {
         Rgba8::from_hex(args.get(k).copied().unwrap_or("")).ok_or("bad color".into())
     };
+    let blend = |k: usize| -> Result<BlendMode, String> {
+        let s = args.get(k).copied().unwrap_or("");
+        BlendMode::from_name(s).ok_or_else(|| format!("bad blend mode '{}'", s))
+    };
 
     Ok(match name {
         "NewDocument" => NewDocument(u16a(0)?, u16a(1)?),
@@ -544,6 +552,8 @@ fn parse_line(line: &str) -> Result<Action, String> {
         "SetLayerOpacity" => SetLayerOpacity(usza(0)?, u8a(1)?),
         "SetLayerVisible" => SetLayerVisible(usza(0)?, boola(1)?),
         "SetLayerLocked" => SetLayerLocked(usza(0)?, boola(1)?),
+        "SetLayerBlend" => SetLayerBlend(usza(0)?, blend(1)?),
+        "PreviewLayerBlend" => PreviewLayerBlend(usza(0)?, blend(1)?),
         "RenameLayer" => {
             // index, then the rest is the (free-text) name — split on the first comma only so
             // names may themselves contain commas.
