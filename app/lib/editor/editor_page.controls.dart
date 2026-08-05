@@ -696,11 +696,12 @@ extension _EditorControls on _EditorPageState {
     final vertical = axis == Axis.vertical;
     final s = _chromeScale;
     final pairs = (_palette.length + 1) ~/ 2;
-    // Picker-style split: the color forced opaque on one half, its real alpha over the
-    // transparency checker on the other. The swatch follows the row's orientation — landscape
-    // (vertical lane): 60×38 wide, opaque left / composited right (60 fits the 72-wide lane
-    // with 6-px margins); portrait (horizontal strip): 38×60 tall, opaque top / composited
-    // bottom (60 fits the 72-high band the same way).
+    // Same dual indicator as every palette swatch: a translucent primary splits along the
+    // anti-diagonal (top-left triangle forced opaque, bottom-right its real alpha over the
+    // transparency checker); opaque colors stay a plain fill. The swatch itself still follows
+    // the row's orientation — landscape (vertical lane): 60×38 wide (60 fits the 72-wide lane
+    // with 6-px margins); portrait (horizontal strip): 38×60 tall (60 fits the 72-high band
+    // the same way) — and the corner-to-corner cut adapts with it.
     final primarySwatch = GestureDetector(
       onTap: () => _pickColor(initial: _primary, onPick: _setPrimary),
       child: Padding(
@@ -710,8 +711,7 @@ extension _EditorControls on _EditorPageState {
               color: _primary,
               width: (vertical ? 60 : 38) * s,
               height: (vertical ? 38 : 60) * s,
-              split: true,
-              splitAxis: vertical ? Axis.horizontal : Axis.vertical,
+              diagonal: true,
               borderRadius: 4,
               borderColor: Colors.white70,
               borderWidth: 2),

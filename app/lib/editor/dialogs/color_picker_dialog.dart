@@ -198,9 +198,10 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
         children: [
           const Text('Pick color'),
           const Spacer(),
-          // Opaque | real-alpha halves over the transparency checker, so a translucent pick
-          // shows both its hue and how it will actually composite on the canvas.
-          AlphaSwatch(color: _color, width: 72, height: 24, split: true),
+          // Same dual indicator as the row-2 swatches: a translucent pick splits along the
+          // anti-diagonal (opaque top-left / real alpha over the transparency checker
+          // bottom-right), showing both its hue and how it will actually composite.
+          AlphaSwatch(color: _color, width: 72, height: 24, diagonal: true),
         ],
       ),
       content: SizedBox(
