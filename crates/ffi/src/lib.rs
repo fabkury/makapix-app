@@ -300,30 +300,77 @@ pub extern "C" fn mkpx_save(ptr: *mut Session, out_len: *mut u64) -> *mut u8 {
     Box::into_raw(bytes) as *mut u8
 }
 
+// mkpx_load return codes — keep in sync with `LoadStatus` / `loadStatusFromRc` in
+// app/lib/engine_ffi.dart.
+const LOAD_OK: c_int = 0;
+const LOAD_WARN_HASH: c_int = 1;
+const LOAD_ERR_OTHER: c_int = -1;
+const LOAD_ERR_NOT_MKPX: c_int = -2;
+const LOAD_ERR_UNSUPPORTED: c_int = -3;
+const LOAD_ERR_CORRUPT: c_int = -4;
+const LOAD_ERR_OVER_BUDGET: c_int = -5;
+
+/// Exhaustive on purpose: a new `IoError` variant must pick its code here, not fall to `-1`.
+fn load_error_code(e: &makapix_engine::io::IoError) -> c_int {
+    use makapix_engine::io::IoError;
+    match e {
+        IoError::BadMagic => LOAD_ERR_NOT_MKPX,
+        // An unknown critical chunk is a newer-writer artifact, same as a newer version.
+        IoError::UnsupportedVersion(_) | IoError::UnsupportedChunk(_) => LOAD_ERR_UNSUPPORTED,
+        // TooLarge is the crafted-input caps (spec §19), not the budget — corrupt for shells.
+        IoError::Incomplete | IoError::Corrupt(_) | IoError::TooLarge(_) => LOAD_ERR_CORRUPT,
+        IoError::OverBudget => LOAD_ERR_OVER_BUDGET,
+    }
+}
+
+fn compact_error_code(e: &makapix_codec::mkpx_compact::CompactError) -> c_int {
+    use makapix_codec::mkpx_compact::CompactError;
+    match e {
+        CompactError::BadMagic => LOAD_ERR_NOT_MKPX,
+        // TooLarge here is the inflate bomb guard — crafted input, so corrupt.
+        CompactError::TooLarge | CompactError::Corrupt => LOAD_ERR_CORRUPT,
+    }
+}
+
 /// Load a `.mkpx` document from bytes — accepts both the **plain** container and the **compact**
-/// (DEFLATE) envelope, auto-detected by signature. Returns 0 on success, -1 on failure.
+/// (DEFLATE) envelope, auto-detected by signature.
+///
+/// Return codes (keep in sync with `LoadStatus` / `loadStatusFromRc` in app/lib/engine_ffi.dart):
+/// -  `0` — loaded, fully consistent.
+/// -  `1` — loaded **with warnings**: the stored content hash didn't match the rebuilt document.
+///          Diagnostic only (e.g. the file was written by a build with a newer hash rule); the
+///          document is installed and fully usable — shells should log, never block.
+/// - `-1` — other failure (null session).
+/// - `-2` — not a `.mkpx` file (neither the plain nor the compact signature).
+/// - `-3` — unsupported: a newer/unknown format version, or an unknown critical chunk.
+/// - `-4` — corrupt: CRC mismatch, truncation, a structural bound/cap violation, or a corrupt
+///          compact envelope.
+/// - `-5` — refused: the document would exceed the session's memory budget (SPEC §8.2b).
+///
+/// On any negative return the session's document is unchanged.
 #[no_mangle]
 pub extern "C" fn mkpx_load(ptr: *mut Session, data: *const u8, len: usize) -> c_int {
     let s = match session(ptr) {
         Some(s) => s,
-        None => return -1,
+        None => return LOAD_ERR_OTHER,
     };
     let bytes = unsafe { slice::from_raw_parts(data, len) };
+    fn finish(s: &mut Session, plain: &[u8]) -> c_int {
+        match s.load_bytes_tolerant(plain) {
+            Ok(w) if w.is_empty() => LOAD_OK,
+            Ok(_) => LOAD_WARN_HASH,
+            Err(e) => load_error_code(&e),
+        }
+    }
     if makapix_codec::mkpx_compact::is_compact(bytes) {
         // Inflate the compact envelope at the periphery, then load the plain bytes in the engine.
         match makapix_codec::mkpx_compact::open(bytes) {
-            Ok(plain) => match s.load_bytes(&plain) {
-                Ok(()) => 0,
-                Err(_) => -1,
-            },
-            Err(_) => -1,
+            Ok(plain) => finish(s, &plain),
+            Err(e) => compact_error_code(&e),
         }
     } else {
-        // Plain container — load directly, no copy.
-        match s.load_bytes(bytes) {
-            Ok(()) => 0,
-            Err(_) => -1,
-        }
+        // Plain container (or garbage → BadMagic from the engine loader) — load directly, no copy.
+        finish(s, bytes)
     }
 }
 
@@ -967,6 +1014,115 @@ mod tests {
         // The fused entry point reports the refusal the same way.
         assert_eq!(mkpx_import(p, gif.as_ptr(), gif.len(), 1, 0, 0, 0, 0, 0, 0), -2);
         mkpx_free_bytes(blob, blob_len);
+        mkpx_free(p);
+    }
+
+    /// CRC-32C (tableless), duplicated from the engine's private impl so the production
+    /// surface doesn't grow a test-only export.
+    fn crc32c(bytes: &[u8]) -> u32 {
+        let mut crc = 0xFFFF_FFFFu32;
+        for &b in bytes {
+            let mut c = (crc ^ b as u32) & 0xFF;
+            for _ in 0..8 {
+                c = if c & 1 != 0 { (c >> 1) ^ 0x82F6_3B78 } else { c >> 1 };
+            }
+            crc = (crc >> 8) ^ c;
+        }
+        crc ^ 0xFFFF_FFFF
+    }
+
+    /// Rewrite the INTG trailer's CRC (last 4 bytes; trailer is 13) after tampering the body —
+    /// otherwise a tamper test exercises the CRC guard, which runs before everything else.
+    fn reseal_crc(bytes: &mut [u8]) {
+        let body_end = bytes.len() - 13;
+        let crc = crc32c(&bytes[..body_end]).to_le_bytes();
+        let n = bytes.len();
+        bytes[n - 4..].copy_from_slice(&crc);
+    }
+
+    /// A plain-profile save of a 16×16 document with real content, as owned bytes.
+    fn saved_plain_doc() -> Vec<u8> {
+        let p = mkpx_new(16, 16);
+        let script = b"SelectTool(Pencil); Tap(5,5)";
+        let _ = mkpx_run(p, script.as_ptr(), script.len());
+        let mut len: u64 = 0;
+        let saved = mkpx_save(p, &mut len);
+        assert!(!saved.is_null() && len > 0);
+        let v = unsafe { slice::from_raw_parts(saved, len as usize) }.to_vec();
+        mkpx_free_bytes(saved, len);
+        mkpx_free(p);
+        v
+    }
+
+    /// The stored content hash sits in HEAD at signature(8) + chunk header(9) + fixed fields(24).
+    const HEAD_HASH_OFF: usize = 8 + 9 + 24;
+    /// The HEAD format_version field is the first payload field: signature(8) + chunk header(9).
+    const HEAD_VERSION_OFF: usize = 8 + 9;
+
+    #[test]
+    fn ffi_load_hash_mismatch_returns_one_and_loads() {
+        let mut bytes = saved_plain_doc();
+        bytes[HEAD_HASH_OFF] ^= 0xFF;
+        reseal_crc(&mut bytes);
+        let p = mkpx_new(8, 8);
+        assert_eq!(mkpx_load(p, bytes.as_ptr(), bytes.len()), 1, "warning, not failure");
+        assert_eq!(mkpx_width(p), 16, "the document was installed despite the warning");
+        // The compact envelope around the same tampered plain reports the same warning.
+        let compact = makapix_codec::mkpx_compact::compress(&bytes);
+        let p2 = mkpx_new(8, 8);
+        assert_eq!(mkpx_load(p2, compact.as_ptr(), compact.len()), 1);
+        assert_eq!(mkpx_width(p2), 16);
+        mkpx_free(p);
+        mkpx_free(p2);
+    }
+
+    #[test]
+    fn ffi_load_bad_magic_is_minus_two() {
+        let junk = b"definitely not an .mkpx file, of any profile";
+        let p = mkpx_new(8, 8);
+        assert_eq!(mkpx_load(p, junk.as_ptr(), junk.len()), -2);
+        assert_eq!(mkpx_width(p), 8, "a failed load leaves the session document unchanged");
+        mkpx_free(p);
+    }
+
+    #[test]
+    fn ffi_load_newer_version_is_minus_three() {
+        let mut bytes = saved_plain_doc();
+        bytes[HEAD_VERSION_OFF..HEAD_VERSION_OFF + 2].copy_from_slice(&11u16.to_le_bytes());
+        reseal_crc(&mut bytes);
+        let p = mkpx_new(8, 8);
+        assert_eq!(mkpx_load(p, bytes.as_ptr(), bytes.len()), -3);
+        assert_eq!(mkpx_width(p), 8);
+        mkpx_free(p);
+    }
+
+    #[test]
+    fn ffi_load_corrupt_is_minus_four() {
+        let bytes = saved_plain_doc();
+        let p = mkpx_new(8, 8);
+        // Truncated plain container (INTG trailer gone).
+        assert_eq!(mkpx_load(p, bytes.as_ptr(), bytes.len() / 2), -4);
+        // Compact envelope with a corrupted DEFLATE tail.
+        let mut compact = makapix_codec::mkpx_compact::compress(&bytes);
+        let last = compact.len() - 1;
+        compact[last] ^= 0xFF;
+        assert_eq!(mkpx_load(p, compact.as_ptr(), compact.len()), -4);
+        assert_eq!(mkpx_width(p), 8);
+        mkpx_free(p);
+    }
+
+    #[test]
+    fn ffi_load_over_budget_is_minus_five() {
+        let bytes = saved_plain_doc();
+        let p = mkpx_new(16, 16);
+        let script = b"SetMemBudget(1,1)";
+        let err = mkpx_run(p, script.as_ptr(), script.len());
+        assert!(err.is_null());
+        assert_eq!(
+            mkpx_load(p, bytes.as_ptr(), bytes.len()),
+            -5,
+            "budget refusal must be distinguishable from corruption"
+        );
         mkpx_free(p);
     }
 }
