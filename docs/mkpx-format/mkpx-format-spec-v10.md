@@ -237,7 +237,7 @@ repeat frame_count:
         str     name
         u8      flags                     (bit0 visible · bit1 locked; others reserved 0)
         u8      opacity
-        u8      blend                     (0 Normal; 1..=10 reserved, §12.2; unknown → Normal;
+        u8      blend                     (0 Normal; 1..=10 per the §12.2 table; unknown → Normal;
                                            joins the content hash only when ≠ 0)
         # tile-ref grid: exactly cells row-major cells, run-length encoded (v5):
         repeat until `cells` cells emitted:
@@ -362,9 +362,12 @@ existing hash so cache/golden keys are unchanged.
 **Conditional inclusion (post-v10 semantic fields).** A semantic field added after v10 shipped joins
 the hash **iff it differs from its v10 default**, so every document that doesn't use the field keeps
 its historical hash and pre-field readers keep verifying files that don't use it. `blend` is the first
-such field: its wire byte (§8) is appended immediately after `opacity` iff ≠ 0. Reserved blend values:
+such field: its wire byte (§8) is appended immediately after `opacity` iff ≠ 0. Blend values
+(implemented in the engine, 2026-08-05):
 `0 Normal · 1 Multiply · 2 Screen · 3 Overlay · 4 Darken · 5 Lighten · 6 Addition · 7 Subtract ·
-8 Difference · 9 Exclusion · 10 Hard Light` (unknown → Normal, §19).
+8 Difference · 9 Exclusion · 10 Hard Light` (unknown → Normal, §19). The blend math itself lives
+in the engine (`color::composite`: W3C separable blends under backdrop-alpha weighting,
+integer-exact), not in this container spec.
 
 **Verification stance.** Production loaders (the app, via `mkpx_load`) treat a mismatch as a load
 *warning*: the document loads and the shell logs. The test suite and the `mkpx` CLI stay **strict**
