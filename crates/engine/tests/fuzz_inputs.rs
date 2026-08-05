@@ -124,10 +124,11 @@ fn corrupt_mkpx_never_panics() {
     let good = sess.save_bytes();
     assert!(!good.is_empty(), "expected a non-empty .mkpx save");
 
-    // Every truncation length.
+    // Every truncation length — strict and tolerant paths get the same never-panic coverage.
     for len in 0..good.len() {
         let mut s = Session::new(8, 8);
         let _ = s.load_bytes(&good[..len]);
+        let _ = s.load_bytes_tolerant(&good[..len]);
     }
 
     // Single-byte corruptions at sampled offsets.
@@ -138,6 +139,7 @@ fn corrupt_mkpx_never_panics() {
         bytes[i] ^= rng.byte().max(1);
         let mut s = Session::new(8, 8);
         let _ = s.load_bytes(&bytes);
+        let _ = s.load_bytes_tolerant(&bytes);
     }
 
     // Pure random garbage of varying length (including would-be huge length/id prefixes).
@@ -149,6 +151,7 @@ fn corrupt_mkpx_never_panics() {
         }
         let mut s = Session::new(8, 8);
         let _ = s.load_bytes(&bytes);
+        let _ = s.load_bytes_tolerant(&bytes);
     }
 }
 

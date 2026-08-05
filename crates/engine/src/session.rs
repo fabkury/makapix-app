@@ -3214,18 +3214,33 @@ impl Session {
         self.doc.unique_payload_bytes()
     }
     pub fn load_bytes(&mut self, data: &[u8]) -> Result<(), io::IoError> {
+        let (_, hard) = self.mem_budgets();
+        let doc = io::load_from_bytes_budgeted(data, hard)?;
+        self.adopt_loaded_doc(doc);
+        Ok(())
+    }
+
+    /// [`Self::load_bytes`] for the production shell: a content-hash mismatch comes back as a
+    /// warning and the document still loads. Tests and the `mkpx` CLI stay on the strict
+    /// [`Self::load_bytes`].
+    pub fn load_bytes_tolerant(&mut self, data: &[u8]) -> Result<Vec<io::LoadWarning>, io::IoError> {
+        let (_, hard) = self.mem_budgets();
+        let loaded = io::load_from_bytes_tolerant_budgeted(data, hard)?;
+        self.adopt_loaded_doc(loaded.doc);
+        Ok(loaded.warnings)
+    }
+
+    fn adopt_loaded_doc(&mut self, doc: Document) {
         // The selection now travels inside the document (deserialized by `io`), so it is NOT cleared
         // here — a crash-recovery load restores the user's selection. The clipboard / paste draft are
         // genuine session state and are reset.
-        let (_, hard) = self.mem_budgets();
-        self.doc = io::load_from_bytes_budgeted(data, hard)?;
+        self.doc = doc;
         self.mem_recalibrate();
         self.clipboard = None;
         self.paste_draft = None;
         self.move_draft = None; // a stale draft would reference the previous document's frame [F-29]
         self.move_sel_before = None; // drop any half-open selection-move drag
         self.reset_layer_sel(); // the move-group indexed the previous document's layers
-        Ok(())
     }
 
     // ---- gradient oracle access ----

@@ -1,6 +1,7 @@
 //! Scenario, property, and stress tests driven through the public DSL/Session API —
 //! the same surface the Flutter shell uses (SPEC §22.3).
 
+use makapix_engine::io;
 use makapix_engine::render;
 use makapix_engine::util::SeededRng;
 use makapix_engine::Rgba8;
@@ -506,8 +507,25 @@ fn mem_budget_refuses_over_budget_files_at_load() {
     let bytes = s.save_bytes();
     let mut tiny = Session::empty();
     tiny.run_script("SetMemBudget(65536,65536)").unwrap();
-    assert!(tiny.load_bytes(&bytes).is_err(), "16 KiB budget must refuse a 256 KiB file");
+    assert!(
+        matches!(tiny.load_bytes(&bytes), Err(io::IoError::OverBudget)),
+        "a 64 KiB budget must refuse the file with the typed budget error"
+    );
     let mut normal = Session::empty();
     normal.load_bytes(&bytes).unwrap();
     assert_eq!(normal.doc.content_hash(), s.doc.content_hash());
+}
+
+#[test]
+fn tolerant_session_load_matches_strict_on_clean_files() {
+    // Same document through both paths: no warnings, same content, and the session tail
+    // (clipboard/draft/layer-group resets) ran for the tolerant twin too.
+    let s = run("NewDocument(64,64)\nSelectTool(Pencil); SetPrimaryColor(#FF0000FF)\nStroke([(5,5),(20,20)])");
+    let bytes = s.save_bytes();
+    let mut t = run("NewDocument(16,16)\nAddLayer()\nSetMoveGroup(0,1)");
+    let warnings = t.load_bytes_tolerant(&bytes).unwrap();
+    assert!(warnings.is_empty(), "a clean file loads without warnings");
+    assert_eq!(t.doc.content_hash(), s.doc.content_hash());
+    let active = t.doc.active_frame().active_layer;
+    assert_eq!(t.layer_sel, vec![active], "the move-group from the previous document was reset");
 }

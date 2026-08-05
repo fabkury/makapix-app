@@ -33,6 +33,10 @@ pub enum IoError {
     Corrupt(&'static str),
     TooLarge(&'static str),
     UnsupportedChunk([u8; 4]),
+    /// Well-formed file whose unique tile payload exceeds the session's document memory budget
+    /// (SPEC §8.2b) — refused before any tile is materialized. Distinct from `TooLarge` (the
+    /// crafted-input caps) so shells can tell "too big for this device" from corruption.
+    OverBudget,
 }
 
 impl std::fmt::Display for IoError {
@@ -46,8 +50,24 @@ impl std::fmt::Display for IoError {
             IoError::UnsupportedChunk(c) => {
                 write!(f, "unsupported critical chunk {:?}", String::from_utf8_lossy(c))
             }
+            IoError::OverBudget => write!(f, "refused: .mkpx exceeds the document memory budget"),
         }
     }
+}
+
+/// Non-fatal findings from a tolerant load (format spec §12.2, verification stance).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoadWarning {
+    /// The rebuilt document hashes differently from `HEAD.content_hash`. The bytes survived the
+    /// channel (the CRC passed) and every structural bound held — most likely the file was
+    /// written by a build with a different hash rule (e.g. a newer semantic field), not corrupted.
+    ContentHashMismatch { stored: crate::util::Hash, computed: crate::util::Hash },
+}
+
+/// A tolerantly loaded document plus any non-fatal warnings.
+pub struct Loaded {
+    pub doc: Document,
+    pub warnings: Vec<LoadWarning>,
 }
 
 // ---- CRC-32C (Castagnoli, reflected poly 0x82F63B78), pure-Rust const table ----
@@ -699,7 +719,23 @@ pub fn load_from_bytes(data: &[u8]) -> Result<Document, IoError> {
 /// `Arc` per dictionary tile) exceeds `hard_budget` are refused before any tile is allocated.
 /// Decision 2026-07-16: refuse rather than load-and-lock — with uniform budgets no compliant
 /// build can produce such a file, so this only rejects crafted/corrupt input.
+///
+/// **Strict**: a content-hash mismatch is an error here (tests, the `mkpx` CLI, and the
+/// roundtrip probes stay on this path). The production shell loads through
+/// [`load_from_bytes_tolerant_budgeted`], which reports the mismatch as a warning instead.
 pub fn load_from_bytes_budgeted(data: &[u8], hard_budget: usize) -> Result<Document, IoError> {
+    let loaded = load_from_bytes_tolerant_budgeted(data, hard_budget)?;
+    match loaded.warnings.first() {
+        None => Ok(loaded.doc),
+        Some(LoadWarning::ContentHashMismatch { .. }) => Err(IoError::Corrupt("content hash mismatch")),
+    }
+}
+
+/// The production load path: identical to [`load_from_bytes_budgeted`] except the content-hash
+/// self-check is reported as a [`LoadWarning`] instead of an error — the document still loads.
+/// Everything else (CRC, truncation, structural bounds, version, budget) remains fatal, so a
+/// warning here means "written under a different hash rule", never "damaged in transit".
+pub fn load_from_bytes_tolerant_budgeted(data: &[u8], hard_budget: usize) -> Result<Loaded, IoError> {
     // Signature + fixed INTG trailer, then verify the whole-file CRC before trusting any body.
     if data.len() < 8 + INTG_LEN {
         return Err(IoError::Incomplete);
@@ -761,7 +797,7 @@ pub fn load_from_bytes_budgeted(data: &[u8], hard_budget: usize) -> Result<Docum
     // Memory budget (SPEC §8.2b): the dictionary IS the document's unique tile payload — refuse
     // over-budget files up front, before materializing a single tile.
     if tile_count.saturating_mul(4096) > hard_budget {
-        return Err(IoError::TooLarge("memory budget"));
+        return Err(IoError::OverBudget);
     }
     let mut dict: Vec<Arc<Tile>> = Vec::with_capacity(tile_count.min(tr.remaining() / 2 + 1));
     for _ in 0..tile_count {
@@ -891,11 +927,15 @@ pub fn load_from_bytes_budgeted(data: &[u8], hard_budget: usize) -> Result<Docum
         selection,
     };
 
-    // Semantic integrity: the reconstruction must hash to the stored artwork hash.
-    if doc.content_hash() != stored_hash {
-        return Err(IoError::Corrupt("content hash mismatch"));
+    // Semantic integrity (spec §12.2): the reconstruction should hash to the stored artwork
+    // hash. A mismatch is a WARNING here — the strict wrapper above promotes it to an error
+    // for tests/CLI, while the production shell loads the document and just logs.
+    let mut warnings = Vec::new();
+    let computed = doc.content_hash();
+    if computed != stored_hash {
+        warnings.push(LoadWarning::ContentHashMismatch { stored: stored_hash, computed });
     }
-    Ok(doc)
+    Ok(Loaded { doc, warnings })
 }
 
 #[cfg(test)]
@@ -964,6 +1004,56 @@ mod tests {
         let back = load_from_bytes(&bytes).unwrap();
         assert!(back.palettes[0].color_names.iter().all(|n| n.is_none()));
         assert_eq!(back.palettes[0].color_names.len(), back.palettes[0].colors.len());
+    }
+
+    /// Rewrite the INTG trailer's CRC after tampering with the body — without this, a tamper
+    /// test exercises the CRC guard (checked first) instead of the guard under test.
+    fn reseal_crc(bytes: &mut [u8]) {
+        let body_end = bytes.len() - INTG_LEN;
+        let crc = crc32c(&bytes[..body_end]).to_le_bytes();
+        let n = bytes.len();
+        bytes[n - 4..].copy_from_slice(&crc);
+    }
+
+    #[test]
+    fn tampered_stored_hash_warns_tolerant_rejects_strict() {
+        let mut doc = Document::new(48, 32);
+        doc.active_frame_mut().active_layer_mut().pixels.set(5, 6, Rgba8::rgb(10, 20, 30));
+        let mut bytes = save_to_bytes(&doc);
+        // The stored content hash sits in HEAD at signature(8) + chunk header(4+1+4) + the
+        // fixed fields before it (version 2 + canvas 4 + gutter 8 + frame_count 4 +
+        // active_frame 2 + active_palette 2 + loop_mode 1 + head_flags 1 = 24).
+        const HASH_OFF: usize = 8 + 9 + 24;
+        bytes[HASH_OFF] ^= 0xFF;
+        reseal_crc(&mut bytes);
+
+        assert!(matches!(load_from_bytes(&bytes), Err(IoError::Corrupt("content hash mismatch"))));
+        let loaded =
+            load_from_bytes_tolerant_budgeted(&bytes, crate::document::MEM_HARD_BUDGET).unwrap();
+        assert_eq!(loaded.warnings.len(), 1);
+        assert!(matches!(loaded.warnings[0], LoadWarning::ContentHashMismatch { .. }));
+        assert_eq!(loaded.doc.content_hash(), doc.content_hash(), "pixels survive intact");
+    }
+
+    #[test]
+    fn tolerant_load_is_clean_on_a_good_file() {
+        let mut doc = Document::new(16, 16);
+        doc.active_frame_mut().active_layer_mut().pixels.set(1, 2, Rgba8::WHITE);
+        let bytes = save_to_bytes(&doc);
+        let loaded =
+            load_from_bytes_tolerant_budgeted(&bytes, crate::document::MEM_HARD_BUDGET).unwrap();
+        assert!(loaded.warnings.is_empty());
+        assert_eq!(loaded.doc.content_hash(), doc.content_hash());
+    }
+
+    #[test]
+    fn over_budget_is_a_distinct_error() {
+        // Two distinct tiles → 8192 B of unique payload against a 4096 B budget.
+        let mut doc = Document::new(64, 64);
+        doc.active_frame_mut().active_layer_mut().pixels.set(0, 0, Rgba8::rgb(255, 0, 0));
+        doc.active_frame_mut().active_layer_mut().pixels.set(40, 40, Rgba8::rgb(0, 0, 255));
+        let bytes = save_to_bytes(&doc);
+        assert!(matches!(load_from_bytes_budgeted(&bytes, 4096), Err(IoError::OverBudget)));
     }
 
     #[test]
