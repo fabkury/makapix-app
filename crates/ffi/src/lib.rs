@@ -336,15 +336,15 @@ fn compact_error_code(e: &makapix_codec::mkpx_compact::CompactError) -> c_int {
 /// (DEFLATE) envelope, auto-detected by signature.
 ///
 /// Return codes (keep in sync with `LoadStatus` / `loadStatusFromRc` in app/lib/engine_ffi.dart):
-/// -  `0` — loaded, fully consistent.
-/// -  `1` — loaded **with warnings**: the stored content hash didn't match the rebuilt document.
-///          Diagnostic only (e.g. the file was written by a build with a newer hash rule); the
-///          document is installed and fully usable — shells should log, never block.
+/// - `0` — loaded, fully consistent.
+/// - `1` — loaded **with warnings**: the stored content hash didn't match the rebuilt document.
+///   Diagnostic only (e.g. the file was written by a build with a newer hash rule); the document
+///   is installed and fully usable — shells should log, never block.
 /// - `-1` — other failure (null session).
 /// - `-2` — not a `.mkpx` file (neither the plain nor the compact signature).
 /// - `-3` — unsupported: a newer/unknown format version, or an unknown critical chunk.
 /// - `-4` — corrupt: CRC mismatch, truncation, a structural bound/cap violation, or a corrupt
-///          compact envelope.
+///   compact envelope.
 /// - `-5` — refused: the document would exceed the session's memory budget (SPEC §8.2b).
 ///
 /// On any negative return the session's document is unchanged.
