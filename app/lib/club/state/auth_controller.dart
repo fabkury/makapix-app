@@ -40,6 +40,13 @@ final authControllerProvider = StateNotifierProvider<AuthController, AuthState>(
 final currentUserSubProvider =
     Provider<String?>((ref) => ref.watch(authControllerProvider.select((s) => s.me?.user.sub)));
 
+/// Whether the signed-in user holds the moderator (or owner) site role — the
+/// single gate for every moderation affordance. Role changes only land via a
+/// `/auth/me` refetch, so this is as live as [ClubMe] itself. The `select`
+/// keeps token refreshes and profile edits from rebuilding moderation UI.
+final isModeratorProvider = Provider<bool>(
+    (ref) => ref.watch(authControllerProvider.select((s) => s.me?.canModerate ?? false)));
+
 // ---- state ----
 
 enum AuthStatus { loading, signedOut, signingIn, signedIn, error }

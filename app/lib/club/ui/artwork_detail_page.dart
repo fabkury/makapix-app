@@ -231,6 +231,7 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
                       style: TextStyle(fontSize: 12, color: Colors.amber)),
                 ]),
               ),
+            if (ref.watch(isModeratorProvider)) _modStatusChips(post),
             const Divider(height: 24),
             ReactionsBar(postId: post.id),
             if (post.description != null && post.description!.isNotEmpty) ...[
@@ -280,7 +281,7 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
   List<Widget> _hashtagWrap(BuildContext context, Post post) {
     final tagStyle = TextStyle(
         fontSize: 14, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.primary);
-    final canModerate = ref.watch(authControllerProvider).me?.canModerate ?? false;
+    final canModerate = ref.watch(isModeratorProvider);
     final showModMarker = post.modHashtags.isNotEmpty && (canModerate || _isOwner(post));
     return [
       Wrap(spacing: 10, runSpacing: 6, children: [
@@ -513,8 +514,12 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
     // failure mode against a server without the feature (contract §2).
     final cfg = ref.watch(serverConfigProvider).valueOrNull;
     final modEnabled = cfg?.modHashtagsEnabled ?? false;
-    final canModerate = ref.watch(authControllerProvider).me?.canModerate ?? false;
+    final canModerate = ref.watch(isModeratorProvider);
     final showMod = modEnabled && canModerate && !post.isPlaylist;
+    // Post-level moderator actions (hide/promote/approve/delete) are gated on
+    // the role alone — they predate the moderation config key, like the
+    // website's `p/{sqid}` moderator block.
+    final showModTools = canModerate && !post.isPlaylist;
     // Report is visible to everyone (incl. signed-out) once the moderation key
     // is live, except on your own post and on playlists (D6/A14/A16).
     final showReport = cfg?.moderationEnabled == true && !post.isPlaylist && !_isOwner(post);
@@ -529,11 +534,13 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
     if (!showOwner &&
         !showMkpx &&
         !showMod &&
+        !showModTools &&
         !showReport &&
         !showUseAvatar &&
         !showDownload) {
       return const [];
     }
+    final anyModEntry = showMod || showModTools;
     return [
       PopupMenuButton<String>(
         tooltip: 'More actions',
@@ -549,6 +556,12 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
           if (v == 'detach') _detachMkpx(context, post);
           if (v == 'download') showDownloadSheet(context, ref, post: post);
           if (v == 'mod_hashtags') _editModHashtags(context, post);
+          if (v == 'mod_hide') _modSetHidden(context, post, true);
+          if (v == 'mod_unhide') _modSetHidden(context, post, false);
+          if (v == 'mod_promote') _modPromote(context, post);
+          if (v == 'mod_demote') _modDemote(context, post);
+          if (v == 'mod_approve') _modApprovePublic(context, post);
+          if (v == 'mod_delete') _modDeletePermanently(context, post);
           if (v == 'use_avatar') _useAsProfilePhoto(context, post);
           if (v == 'report') {
             Navigator.push(context,
@@ -614,7 +627,7 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
                 Text('Download…'),
               ]),
             ),
-          if (showMod && (showDownload || showMkpx || showOwner)) const PopupMenuDivider(),
+          if (anyModEntry && (showDownload || showMkpx || showOwner)) const PopupMenuDivider(),
           if (showMod)
             const PopupMenuItem(
               value: 'mod_hashtags',
@@ -624,7 +637,49 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
                 Text('Edit mod hashtags…'),
               ]),
             ),
-          if (showUseAvatar && (showOwner || showMkpx || showDownload || showMod))
+          if (showModTools) ...[
+            PopupMenuItem(
+              value: post.hiddenByMod ? 'mod_unhide' : 'mod_hide',
+              child: Row(children: [
+                Icon(
+                    post.hiddenByMod
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                    size: 16),
+                const SizedBox(width: 8),
+                Text(post.hiddenByMod ? 'Unhide post (mod)' : 'Hide post (mod)…'),
+              ]),
+            ),
+            PopupMenuItem(
+              value: post.promoted ? 'mod_demote' : 'mod_promote',
+              child: Row(children: [
+                Icon(post.promoted ? Icons.star_outline : Icons.star, size: 16),
+                const SizedBox(width: 8),
+                Text(post.promoted ? 'Demote…' : 'Promote…'),
+              ]),
+            ),
+            if (!post.publicVisibility)
+              const PopupMenuItem(
+                value: 'mod_approve',
+                child: Row(children: [
+                  Icon(Icons.check_circle_outline, size: 16),
+                  SizedBox(width: 8),
+                  Text('Approve public visibility'),
+                ]),
+              ),
+            // Same gate as the website: permanent delete only once the post is
+            // already off the public surfaces (mod- or owner-hidden).
+            if (post.hiddenByMod || post.hiddenByUser)
+              const PopupMenuItem(
+                value: 'mod_delete',
+                child: Row(children: [
+                  Icon(Icons.delete_forever_outlined, size: 16, color: Colors.redAccent),
+                  SizedBox(width: 8),
+                  Text('Delete permanently…', style: TextStyle(color: Colors.redAccent)),
+                ]),
+              ),
+          ],
+          if (showUseAvatar && (showOwner || showMkpx || showDownload || anyModEntry))
             const PopupMenuDivider(),
           if (showUseAvatar)
             const PopupMenuItem(
@@ -635,7 +690,8 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
                 Text('Use as profile photo…'),
               ]),
             ),
-          if (showReport && (showOwner || showMkpx || showDownload || showMod || showUseAvatar))
+          if (showReport &&
+              (showOwner || showMkpx || showDownload || anyModEntry || showUseAvatar))
             const PopupMenuDivider(),
           if (showReport)
             const PopupMenuItem(
@@ -723,6 +779,221 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
     // the entry only renders when the config key is present.
     final cap = ref.read(serverConfigProvider).valueOrNull?.maxModHashtagsPerPost ?? 16;
     showModHashtagsSheet(context, post: post, cap: cap);
+  }
+
+  // ---- moderator post actions (the website's `p/{sqid}` moderator block) ----
+
+  /// Display names for `promoted_category` (server notification copy).
+  static const Map<String, String> kPromoteCategories = {
+    'frontpage': 'Recommended',
+    'editor-pick': "Editor's Pick",
+    'weekly-pack': 'Weekly Pack',
+    "daily's-best": "Daily's Best",
+  };
+
+  /// Moderation-state chips under the meta line, visible to moderators only —
+  /// they carry the state the kebab entries act on (a menu of "Unhide" with no
+  /// visible reason reads as a bug).
+  Widget _modStatusChips(Post post) {
+    Widget chip(IconData icon, String label, Color color) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, size: 12, color: color),
+            const SizedBox(width: 4),
+            Text(label, style: TextStyle(fontSize: 11, color: color)),
+          ]),
+        );
+    final chips = <Widget>[
+      if (post.hiddenByMod)
+        chip(Icons.visibility_off, 'Hidden by moderators', Colors.redAccent),
+      if (!post.publicVisibility)
+        chip(Icons.hourglass_empty, 'Awaiting approval', Colors.amber),
+      if (post.promoted)
+        chip(Icons.star, 'Promoted · ${kPromoteCategories[post.promotedCategory] ?? post.promotedCategory ?? '—'}',
+            Theme.of(context).colorScheme.primary),
+    ];
+    if (chips.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Wrap(spacing: 6, runSpacing: 6, children: chips),
+    );
+  }
+
+  /// Refetch every surface a moderator action can change (detail + feeds).
+  void _refreshAfterModAction() {
+    ref.invalidate(postDetailProvider(widget.sqid));
+    ref.invalidate(feedProvider);
+    ref.invalidate(ownerFeedProvider);
+    ref.invalidate(hashtagFeedProvider);
+  }
+
+  Future<void> _modSetHidden(BuildContext context, Post post, bool hide) async {
+    final messenger = ScaffoldMessenger.of(context);
+    if (hide) {
+      final yes = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Hide this post as moderator?'),
+          content: const Text('It disappears from feeds and search for everyone. '
+              'The artist cannot undo a moderator hide; you can.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Hide')),
+          ],
+        ),
+      );
+      if (yes != true) return;
+    }
+    try {
+      await ref.read(moderationApiProvider).setModHidden(post.id, hide);
+      _refreshAfterModAction();
+      messenger.showSnackBar(SnackBar(
+          content: Text(hide ? 'Post hidden by moderator.' : 'Post is visible again.')));
+    } on ClubError catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      messenger.showSnackBar(
+          SnackBar(content: Text(hide ? 'Could not hide the post.' : 'Could not unhide the post.')));
+    }
+  }
+
+  Future<void> _modPromote(BuildContext context, Post post) async {
+    final messenger = ScaffoldMessenger.of(context);
+    // Category radio dialog, doubling as the confirmation (the artist is notified).
+    var category = 'frontpage';
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: const Text('Promote this post?'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            RadioGroup<String>(
+              groupValue: category,
+              onChanged: (v) => setState(() => category = v ?? category),
+              child: Column(children: [
+                for (final e in kPromoteCategories.entries)
+                  RadioListTile<String>(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(e.value),
+                    value: e.key,
+                  ),
+              ]),
+            ),
+            const SizedBox(height: 4),
+            const Text('The artist is notified of the promotion.',
+                style: TextStyle(fontSize: 12, color: Colors.white54)),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Promote')),
+          ],
+        ),
+      ),
+    );
+    if (yes != true) return;
+    try {
+      await ref.read(moderationApiProvider).promotePost(post.id, category: category);
+      _refreshAfterModAction();
+      messenger.showSnackBar(
+          SnackBar(content: Text('Promoted to ${kPromoteCategories[category]}.')));
+    } on ClubError catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(content: Text('Could not promote the post.')));
+    }
+  }
+
+  Future<void> _modDemote(BuildContext context, Post post) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Demote this post?'),
+        content: Text('It leaves '
+            '${kPromoteCategories[post.promotedCategory] ?? 'its promoted category'} '
+            'and returns to normal feed placement.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Demote')),
+        ],
+      ),
+    );
+    if (yes != true) return;
+    try {
+      await ref.read(moderationApiProvider).demotePost(post.id);
+      _refreshAfterModAction();
+      messenger.showSnackBar(const SnackBar(content: Text('Post demoted.')));
+    } on ClubError catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(content: Text('Could not demote the post.')));
+    }
+  }
+
+  Future<void> _modApprovePublic(BuildContext context, Post post) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(moderationApiProvider).setPublicVisibility(post.id, true);
+      _refreshAfterModAction();
+      messenger.showSnackBar(
+          const SnackBar(content: Text('Approved — the post can appear in Recent and search.')));
+    } on ClubError catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(content: Text('Could not approve the post.')));
+    }
+  }
+
+  /// Irreversible: two-step confirmation (dialog, then a "cannot be undone"
+  /// dialog) before `DELETE /post/{id}/permanent`.
+  Future<void> _modDeletePermanently(BuildContext context, Post post) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final nav = Navigator.of(context);
+    final first = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Permanently delete this post?'),
+        content: const Text('The post, its comments and reactions, and the stored '
+            'artwork files are all removed.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (first != true || !context.mounted) return;
+    final second = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('This cannot be undone'),
+        content: Text('Really delete "${post.title.isEmpty ? 'Untitled' : post.title}" forever? '
+            'There is no grace period and no recovery.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep the post')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete forever'),
+          ),
+        ],
+      ),
+    );
+    if (second != true) return;
+    try {
+      await ref.read(moderationApiProvider).deletePostPermanently(post.id);
+      _refreshAfterModAction();
+      messenger.showSnackBar(const SnackBar(content: Text('Post permanently deleted.')));
+      nav.pop(); // leave the detail view — the post no longer exists
+    } on ClubError catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(content: Text('Could not delete the post.')));
+    }
   }
 
   /// Preview-confirm, then have the server snapshot this post's artwork into

@@ -29,6 +29,10 @@ class Post {
   final int? mkpxFileBytes;
   final DateTime? mkpxAttachedAt; // changes on attach AND replace (cache stamp)
   final bool hiddenByUser; // owner chose to hide it (only they can see it)
+  final bool hiddenByMod; // taken down by a moderator (owner cannot self-clear)
+  // Approved for Recent Artworks / search. The server serializes it for every
+  // viewer, but only moderator UI acts on it (pending-approval queue, approve).
+  final bool publicVisibility;
 
   Post({
     required this.id,
@@ -60,6 +64,8 @@ class Post {
     this.mkpxFileBytes,
     this.mkpxAttachedAt,
     this.hiddenByUser = false,
+    this.hiddenByMod = false,
+    this.publicVisibility = false,
   });
 
   bool get isAnimated => frameCount > 1;
@@ -110,6 +116,8 @@ class Post {
         mkpxFileBytes: (j['mkpx_file_bytes'] as num?)?.toInt(),
         mkpxAttachedAt: DateTime.tryParse((j['mkpx_attached_at'] ?? '').toString()),
         hiddenByUser: j['hidden_by_user'] == true,
+        hiddenByMod: j['hidden_by_mod'] == true,
+        publicVisibility: j['public_visibility'] == true,
       );
 }
 
