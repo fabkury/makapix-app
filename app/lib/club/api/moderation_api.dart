@@ -1,5 +1,6 @@
 import '../models/page.dart';
 import '../models/post.dart';
+import '../models/umd.dart';
 import 'club_api_client.dart';
 
 /// Moderator-role endpoints (`roles` ∋ moderator|owner — site roles, not post
@@ -92,4 +93,41 @@ class ModerationApi {
         });
         return Page<Post>.fromJson((resp.data as Map).cast<String, dynamic>(), Post.fromJson);
       });
+
+  // ---- User management (UMD, the website's /u/{sqid}/manage) ----
+  //
+  // The UMD router is mounted ONLY at the unversioned root (like PMD), so
+  // these go through [ClubApiClient.dioRoot]. The server 403s "Cannot manage
+  // the site owner" for the owner as target — surface that message as-is.
+
+  String _umd(String sqid) => '/admin/user/${Uri.encodeComponent(sqid)}';
+
+  /// `GET /admin/user/{sqid}/manage` — the aggregate UMD payload.
+  Future<UmdUserData> getUserManagement(String sqid) => client.guard(() async {
+        final resp = await client.dioRoot.get('${_umd(sqid)}/manage');
+        return UmdUserData.fromJson((resp.data as Map).cast<String, dynamic>());
+      });
+
+  /// `POST`/`DELETE /admin/user/{sqid}/trust` — grant/revoke
+  /// `auto_public_approval` (trusted users skip the pending-approval queue).
+  Future<void> setUserTrusted(String sqid, bool trusted) => client.guard(() => trusted
+      ? client.dioRoot.post('${_umd(sqid)}/trust')
+      : client.dioRoot.delete('${_umd(sqid)}/trust'));
+
+  /// `POST`/`DELETE /admin/user/{sqid}/hide` — hide/unhide the user profile.
+  Future<void> setUserHidden(String sqid, bool hidden) => client.guard(() => hidden
+      ? client.dioRoot.post('${_umd(sqid)}/hide')
+      : client.dioRoot.delete('${_umd(sqid)}/hide'));
+
+  /// `POST /admin/user/{sqid}/ban?duration_days=N` — block authentication
+  /// without deleting any data. Null [durationDays] = permanent (the server
+  /// stores the year-9999 sentinel); otherwise 1–365 days.
+  Future<void> banUser(String sqid, {int? durationDays}) =>
+      client.guard(() => client.dioRoot.post('${_umd(sqid)}/ban', queryParameters: {
+            'duration_days': ?durationDays,
+          }));
+
+  /// `DELETE /admin/user/{sqid}/ban` — lift the ban immediately.
+  Future<void> unbanUser(String sqid) =>
+      client.guard(() => client.dioRoot.delete('${_umd(sqid)}/ban'));
 }

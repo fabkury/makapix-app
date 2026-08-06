@@ -29,6 +29,7 @@ import 'club_account_page.dart';
 import 'edit_profile_page.dart';
 import 'follows_page.dart';
 import 'report_page.dart';
+import 'user_management_page.dart';
 import 'widgets/badges_sheet.dart';
 import 'widgets/common.dart';
 import 'widgets/external_links.dart';
@@ -87,6 +88,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     // needs the resolved profile (built before the fetch completes → hidden).
     final rules = ref.watch(serverConfigProvider).valueOrNull?.moderation;
     final signedIn = ref.watch(authControllerProvider).isSignedIn;
+    final canModerate = ref.watch(isModeratorProvider);
     final profile = async.valueOrNull;
     return Scaffold(
       appBar: AppBar(
@@ -94,8 +96,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         actions: [
           _miniFollow(profile, signedIn),
           if (profile != null && !profile.isBlockedByViewer) _shareButton(context, ref, profile),
-          if (rules != null && profile != null && !profile.isOwnProfile)
-            _menu(context, ref, profile, signedIn, rules),
+          // Report/block need the moderation config key; the moderator's
+          // Manage entry is role-gated alone (like the website's UMD link).
+          if ((rules != null || canModerate) && profile != null && !profile.isOwnProfile)
+            _menu(context, ref, profile, signedIn, rules, canModerate),
         ],
       ),
       body: async.when(
@@ -165,8 +169,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     );
   }
 
-  Widget _menu(
-      BuildContext context, WidgetRef ref, UserProfile p, bool signedIn, ModerationRules rules) {
+  Widget _menu(BuildContext context, WidgetRef ref, UserProfile p, bool signedIn,
+      ModerationRules? rules, bool canModerate) {
     return PopupMenuButton<String>(
       tooltip: 'More actions',
       onSelected: (v) {
@@ -174,22 +178,39 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           case 'report':
             Navigator.push(context,
                 MaterialPageRoute(builder: (_) => ReportPage(target: ReportTarget.user(p))));
+          case 'manage':
+            Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => UserManagementPage(sqid: p.sqid, handle: p.handle)));
           case 'block':
-            _confirmBlock(context, ref, p, rules);
+            if (rules != null) _confirmBlock(context, ref, p, rules);
           case 'unblock':
-            _unblock(context, ref, p, rules);
+            if (rules != null) _unblock(context, ref, p, rules);
         }
       },
       itemBuilder: (_) => [
-        const PopupMenuItem(
-          value: 'report',
-          child: Row(children: [
-            Icon(Icons.flag_outlined, size: 18),
-            SizedBox(width: 10),
-            Text('Report user…'),
-          ]),
-        ),
-        if (signedIn && !p.isBlockedByViewer)
+        if (canModerate) ...[
+          const PopupMenuItem(
+            value: 'manage',
+            child: Row(children: [
+              Icon(Icons.shield_outlined, size: 18),
+              SizedBox(width: 10),
+              Text('User Management…'),
+            ]),
+          ),
+          if (rules != null) const PopupMenuDivider(),
+        ],
+        if (rules != null)
+          const PopupMenuItem(
+            value: 'report',
+            child: Row(children: [
+              Icon(Icons.flag_outlined, size: 18),
+              SizedBox(width: 10),
+              Text('Report user…'),
+            ]),
+          ),
+        if (rules != null && signedIn && !p.isBlockedByViewer)
           PopupMenuItem(
             value: 'block',
             child: Row(children: [
@@ -198,7 +219,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
               Text('Block @${p.handle}…'),
             ]),
           ),
-        if (signedIn && p.isBlockedByViewer)
+        if (rules != null && signedIn && p.isBlockedByViewer)
           PopupMenuItem(
             value: 'unblock',
             child: Row(children: [
