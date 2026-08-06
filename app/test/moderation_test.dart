@@ -2,6 +2,7 @@
 // and pure logic. Runs without the engine binary or network, like all Dart tests.
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:makapix_club/club/models/comment.dart';
 import 'package:makapix_club/club/models/post.dart';
 
 void main() {
@@ -38,6 +39,24 @@ void main() {
       expect(p.publicVisibility, isTrue);
       expect(p.promoted, isTrue);
       expect(p.promotedCategory, 'frontpage');
+    });
+  });
+
+  group('Comment hidden_by_mod', () {
+    test('parses and survives markDeleted/withReplies copies', () {
+      final c = Comment.fromJson({
+        'id': 'c1',
+        'body': 'hi',
+        'hidden_by_mod': true,
+      });
+      expect(c.hiddenByMod, isTrue);
+      expect(c.deleted, isFalse);
+      expect(c.markDeleted().hiddenByMod, isTrue);
+      expect(c.withReplies(const []).hiddenByMod, isTrue);
+    });
+
+    test('defaults to false when omitted (public payloads)', () {
+      expect(Comment.fromJson({'id': 'c2', 'body': 'x'}).hiddenByMod, isFalse);
     });
   });
 }

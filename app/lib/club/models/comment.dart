@@ -56,6 +56,10 @@ class Comment {
   /// server PR #234 — docs/ugc-safety msg 0008). Mod-deleted tombstones no
   /// longer set `deleted_by_owner`, so [deleted] must OR both flags.
   final bool deletedByMod;
+
+  /// `hidden_by_mod` — the server omits hidden comments from the list for
+  /// regular viewers, so a true value only ever reaches moderators.
+  final bool hiddenByMod;
   final List<Comment> replies;
 
   const Comment({
@@ -69,6 +73,7 @@ class Comment {
     required this.likedByMe,
     required this.deleted,
     this.deletedByMod = false,
+    this.hiddenByMod = false,
     this.replies = const [],
   });
 
@@ -87,6 +92,7 @@ class Comment {
             j['deleted_by_owner'] == true ||
             j['deleted_by_mod'] == true,
         deletedByMod: j['deleted_by_mod'] == true,
+        hiddenByMod: j['hidden_by_mod'] == true,
       );
 
   /// A soft-deleted copy (keeps replies visible, as the server does). Used for optimistic deletes.
@@ -101,6 +107,7 @@ class Comment {
         likedByMe: likedByMe,
         deleted: true,
         deletedByMod: deletedByMod,
+        hiddenByMod: hiddenByMod,
         replies: replies,
       );
 
@@ -115,6 +122,7 @@ class Comment {
         likedByMe: likedByMe,
         deleted: deleted,
         deletedByMod: deletedByMod,
+        hiddenByMod: hiddenByMod,
         replies: r,
       );
 

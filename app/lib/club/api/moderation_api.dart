@@ -58,6 +58,30 @@ class ModerationApi {
   Future<void> deletePostPermanently(int postId) =>
       client.guard(() => client.dio.delete('/post/$postId/permanent'));
 
+  // ---- Comment actions ----
+  //
+  // Mod *deletion* of a comment needs no method here: the regular
+  // `DELETE /post/comments/{id}` (PostApi.deleteComment) detects the moderator
+  // case server-side and writes the "[deleted by moderator]" tombstone.
+
+  /// `POST /post/comments/{id}/undelete` — restore a deleted comment
+  /// (re-instates the preserved original body when it still exists).
+  Future<void> undeleteComment(String commentId) => client.guard(() =>
+      client.dio.post('/post/comments/${Uri.encodeComponent(commentId)}/undelete'));
+
+  /// `POST`/`DELETE /post/comments/{id}/hide` — hide/unhide without deleting.
+  /// Hidden comments stay visible to moderators only.
+  Future<void> setCommentHidden(String commentId, bool hidden) => client.guard(() => hidden
+      ? client.dio.post('/post/comments/${Uri.encodeComponent(commentId)}/hide')
+      : client.dio.delete('/post/comments/${Uri.encodeComponent(commentId)}/hide'));
+
+  /// `POST /post/comments/{id}/purge-original` — permanently discard a deleted
+  /// comment's preserved pre-deletion text (for PII etc.). Irreversible; the
+  /// server 400s when the comment is not deleted. Callers put a two-step
+  /// confirmation in front.
+  Future<void> purgeCommentOriginal(String commentId) => client.guard(() =>
+      client.dio.post('/post/comments/${Uri.encodeComponent(commentId)}/purge-original'));
+
   /// `GET /admin/pending-approval` — posts awaiting public-visibility approval
   /// (newest first, cursor-paged).
   Future<Page<Post>> pendingApproval({int limit = 50, String? cursor}) =>

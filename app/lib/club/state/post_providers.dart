@@ -224,6 +224,39 @@ class CommentsController extends StateNotifier<AsyncValue<List<Comment>>> {
     }
   }
 
+  // ---- moderator actions (role-gated UI; the server is the real gate) ----
+  // No optimistic edits here: each is a rare, deliberate act — a reload after
+  // the round-trip keeps the tombstone/hidden rendering exactly server-true.
+
+  /// Restore a deleted comment. Returns a user-facing message on failure.
+  Future<String?> undelete(String commentId) => _modAction(
+      () => ref.read(moderationApiProvider).undeleteComment(commentId),
+      'Could not restore the comment.');
+
+  /// Hide/unhide a comment (visible to moderators only while hidden).
+  Future<String?> setHiddenByMod(String commentId, bool hidden) => _modAction(
+      () => ref.read(moderationApiProvider).setCommentHidden(commentId, hidden),
+      hidden ? 'Could not hide the comment.' : 'Could not unhide the comment.');
+
+  /// Permanently purge a deleted comment's preserved original text.
+  Future<String?> purgeOriginal(String commentId) => _modAction(
+      () => ref.read(moderationApiProvider).purgeCommentOriginal(commentId),
+      'Could not purge the comment text.');
+
+  Future<String?> _modAction(Future<void> Function() call, String fallback) async {
+    try {
+      await call();
+      await load();
+      return null;
+    } on ClubError catch (e) {
+      await load();
+      return e.message;
+    } catch (_) {
+      await load();
+      return fallback;
+    }
+  }
+
   static List<Comment> _withAppended(List<Comment> tree, Comment c, String? parentId) {
     if (parentId == null) return [...tree, c];
     return [for (final t in tree) t.id == parentId ? t.withReplies([...t.replies, c]) : t];
