@@ -16,6 +16,7 @@ import 'auth/onboarding_wizard.dart';
 import 'club_account_page.dart';
 import 'club_welcome_page.dart';
 import 'contribute_page.dart';
+import 'moderation_hub_page.dart';
 import 'my_players_page.dart';
 import 'notifications_page.dart';
 import 'post_management_page.dart';
@@ -202,6 +203,9 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
         final sqid = ref.read(authControllerProvider).me?.user.sub ?? '';
         if (sqid.isNotEmpty) _push(ArtistDashboardPage(userKey: sqid));
         break;
+      case 'moderation':
+        _push(const ModerationHubPage());
+        break;
       case 'settings':
         _push(const SettingsPage());
         break;
@@ -240,6 +244,7 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
     _syncFeedToPager();
     final unread = ref.watch(unreadCountProvider);
     final mySqid = auth.me?.user.sub;
+    final canModerate = ref.watch(isModeratorProvider);
     final cs = Theme.of(context).colorScheme;
     // Trending-hashtag strip below the top bar — feed pages only (hidden on
     // Contribute, `_feed == null`), and only once tags have loaded.
@@ -262,6 +267,7 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
               _menuItem('my-posts', Icons.grid_view_outlined, 'My Posts'),
               _menuItem('players', Icons.cast_outlined, 'My Players'),
               _menuItem('dashboard', Icons.insights_outlined, 'Artist Dashboard'),
+              if (canModerate) _menuItem('moderation', Icons.shield_outlined, 'Moderation'),
               _menuItem('settings', Icons.settings_outlined, 'Settings'),
               _menuItem('about', Icons.info_outline, 'About Makapix Club'),
               const PopupMenuDivider(),
