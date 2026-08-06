@@ -27,6 +27,7 @@ import 'package:makapix_club/ui/layout.dart';
 
 import 'blend_modes.dart';
 import 'gallery/gallery_page.dart';
+import 'haptics.dart';
 import 'palette_io.dart';
 import 'palette_page.dart';
 import 'persistence/autosave_controller.dart';

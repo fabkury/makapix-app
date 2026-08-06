@@ -94,7 +94,10 @@ extension _EditorToolgrid on _EditorPageState {
         final box = key.currentContext?.findRenderObject() as RenderBox?;
         if (box != null) {
           final center = box.localToGlobal(box.size.center(Offset.zero));
-          if (d.offset.dx > center.dx) insert = oi + 1; // dropped on the right half → after
+          // d.offset is the dragged feedback's top-left (child anchor); every tile shares
+          // this tile's size, so half its width locates the feedback's midpoint. The tile
+          // goes after the hovered one once its midpoint crosses the hovered midpoint.
+          if (d.offset.dx + box.size.width / 2 > center.dx) insert = oi + 1;
         }
         if (_dropIndex != insert) {
           // A sharp tick at the exact moment the tiles reflow: the dragging finger hides the
@@ -117,7 +120,10 @@ extension _EditorToolgrid on _EditorPageState {
         );
         return LongPressDraggable<String>(
           data: dsl,
-          dragAnchorStrategy: pointerDragAnchorStrategy,
+          // Child anchor: the feedback starts exactly over the tile — no jump at pick-up —
+          // and tracks the finger 1:1 from there. (The pointer strategy snaps the tile's
+          // corner to the fingertip, a visible half-tile hop the moment the drag engages.)
+          dragAnchorStrategy: childDragAnchorStrategy,
           onDragStarted: () => setState(() {
             _dragTool = dsl;
             // start the gap where the tool currently sits (insertion index into the others list,
