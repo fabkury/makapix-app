@@ -130,4 +130,22 @@ class ModerationApi {
   /// `DELETE /admin/user/{sqid}/ban` — lift the ban immediately.
   Future<void> unbanUser(String sqid) =>
       client.guard(() => client.dioRoot.delete('${_umd(sqid)}/ban'));
+
+  /// `POST /admin/user/{sqid}/reputation` — apply a signed [delta]
+  /// (±1000 max) with a required [reason] (≥8 chars). Returns the new total.
+  /// The server writes a history row, notifies the user, and audit-logs.
+  Future<int> adjustUserReputation(String sqid,
+          {required int delta, required String reason}) =>
+      client.guard(() async {
+        final resp = await client.dioRoot
+            .post('${_umd(sqid)}/reputation', data: {'delta': delta, 'reason': reason});
+        return ((resp.data as Map?)?['new_total'] as num?)?.toInt() ?? 0;
+      });
+
+  /// `GET /admin/user/{sqid}/email` — reveal the user's email. The server
+  /// audit-logs the reveal BEFORE returning it; the UI warns first.
+  Future<String> revealUserEmail(String sqid) => client.guard(() async {
+        final resp = await client.dioRoot.get('${_umd(sqid)}/email');
+        return ((resp.data as Map?)?['email'] ?? '').toString();
+      });
 }

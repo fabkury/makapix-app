@@ -2,6 +2,7 @@
 // and pure logic. Runs without the engine binary or network, like all Dart tests.
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:makapix_club/club/edit/reputation_gear.dart';
 import 'package:makapix_club/club/models/comment.dart';
 import 'package:makapix_club/club/models/post.dart';
 import 'package:makapix_club/club/models/umd.dart';
@@ -114,6 +115,40 @@ void main() {
         'banned_until': '2020-01-01T00:00:00Z',
       });
       expect(u.isBanned, isFalse);
+    });
+  });
+
+  group('reputation gear', () {
+    test('endpoints and center', () {
+      expect(deltaFromGear(0), 0);
+      expect(deltaFromGear(1), 1000);
+      expect(deltaFromGear(-1), -1000);
+    });
+
+    test('gamma bias keeps the center fine-grained', () {
+      // Halfway along the slider maps well below half the range.
+      final half = deltaFromGear(0.5);
+      expect(half, greaterThan(0));
+      expect(half, lessThan(500));
+      // Symmetric.
+      expect(deltaFromGear(-0.5), -half);
+    });
+
+    test('gearFromDelta inverts deltaFromGear', () {
+      for (final d in [-1000, -137, -5, -1, 1, 5, 42, 999, 1000]) {
+        expect(deltaFromGear(gearFromDelta(d)), d, reason: 'delta $d');
+      }
+      // Out-of-range text input clamps instead of throwing.
+      expect(deltaFromGear(gearFromDelta(5000)), 1000);
+      expect(deltaFromGear(gearFromDelta(-5000)), -1000);
+    });
+
+    test('validation: nonzero delta and a substantive reason', () {
+      expect(reputationAdjustValid(0, 'long enough reason'), isFalse);
+      expect(reputationAdjustValid(5, 'short'), isFalse);
+      expect(reputationAdjustValid(5, '   padded '), isFalse);
+      expect(reputationAdjustValid(5, 'long enough reason'), isTrue);
+      expect(reputationAdjustValid(-1000, 'long enough reason'), isTrue);
     });
   });
 }

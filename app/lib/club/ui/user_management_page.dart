@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../edit/reputation_gear.dart';
 import '../models/club_error.dart';
 import '../models/umd.dart';
 import '../state/api_providers.dart';
@@ -104,7 +106,15 @@ class _UmdBody extends ConsumerWidget {
               subtitle: const Text('Blocks sign-in for a period; deletes nothing'),
               onTap: () => _ban(context, ref),
             ),
+          ListTile(
+            leading: const Icon(Icons.alternate_email),
+            title: const Text('Reveal email…'),
+            subtitle: const Text('The reveal is recorded in the audit log'),
+            onTap: () => _revealEmail(context, ref),
+          ),
         ]),
+        const SizedBox(height: 16),
+        _ReputationCard(user: user),
       ],
     );
   }
@@ -237,6 +247,190 @@ class _UmdBody extends ConsumerWidget {
             ? '@${user.handle} banned permanently.'
             : '@${user.handle} banned for $days ${days == 1 ? 'day' : 'days'}.',
         failed: 'Could not ban the user.');
+  }
+
+  /// Two dialogs by design: consent first (the server audit-logs the reveal
+  /// BEFORE returning the address), then the address with a copy affordance.
+  Future<void> _revealEmail(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Reveal @${user.handle}’s email?'),
+        content: const Text('Use only for moderation duties. '
+            'The reveal is recorded in the moderation audit log.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Reveal')),
+        ],
+      ),
+    );
+    if (yes != true || !context.mounted) return;
+    final String email;
+    try {
+      email = await ref.read(moderationApiProvider).revealUserEmail(user.sqid);
+    } on ClubError catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      return;
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(content: Text('Could not reveal the email.')));
+      return;
+    }
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('@${user.handle}'),
+        content: SelectableText(email.isEmpty ? '(no email on file)' : email),
+        actions: [
+          if (email.isNotEmpty)
+            TextButton(
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: email));
+                Navigator.pop(ctx);
+                messenger.showSnackBar(const SnackBar(content: Text('Email copied.')));
+              },
+              child: const Text('Copy'),
+            ),
+          FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+        ],
+      ),
+    );
+  }
+}
+
+/// Reputation adjustment (UMD): the website's gamma-1.5 geared slider, plus an
+/// exact-value field that stays in sync both ways, and the required reason.
+class _ReputationCard extends ConsumerStatefulWidget {
+  final UmdUserData user;
+  const _ReputationCard({required this.user});
+
+  @override
+  ConsumerState<_ReputationCard> createState() => _ReputationCardState();
+}
+
+class _ReputationCardState extends ConsumerState<_ReputationCard> {
+  double _gear = 0; // slider position ∈ [-1, 1]; the delta derives from it
+  final _deltaField = TextEditingController(text: '0');
+  final _reason = TextEditingController();
+  bool _busy = false;
+
+  int get _delta => deltaFromGear(_gear);
+
+  @override
+  void dispose() {
+    _deltaField.dispose();
+    _reason.dispose();
+    super.dispose();
+  }
+
+  void _setGear(double t) => setState(() {
+        _gear = t;
+        _deltaField.text = '${deltaFromGear(t)}';
+      });
+
+  void _setDeltaText(String s) {
+    final v = int.tryParse(s.trim());
+    if (v == null) return; // partial input ("-", empty) — keep the slider put
+    setState(() => _gear = gearFromDelta(v));
+  }
+
+  Future<void> _apply() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final delta = _delta;
+    setState(() => _busy = true);
+    try {
+      final total = await ref.read(moderationApiProvider).adjustUserReputation(
+          widget.user.sqid,
+          delta: delta,
+          reason: _reason.text.trim());
+      ref.invalidate(umdUserProvider(widget.user.sqid));
+      _reason.clear();
+      _setGear(0);
+      messenger.showSnackBar(SnackBar(
+          content: Text('Reputation ${delta > 0 ? '+' : ''}$delta — now $total. '
+              'The user is notified.')));
+    } on ClubError catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(content: Text('Could not adjust reputation.')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final delta = _delta;
+    final valid = reputationAdjustValid(delta, _reason.text);
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Reputation',
+              style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white70)),
+          const SizedBox(height: 4),
+          Text(
+            delta == 0
+                ? 'Current: ${widget.user.reputation}'
+                : 'Current: ${widget.user.reputation}   →   '
+                    '${widget.user.reputation + delta} (${delta > 0 ? '+' : ''}$delta)',
+            style: const TextStyle(fontSize: 13),
+          ),
+          // Geared: travel near the center maps to single digits, the ends
+          // reach ±1000 (deltaFromGear's gamma bias — same as the website).
+          Slider(
+            value: _gear,
+            min: -1,
+            max: 1,
+            onChanged: _busy ? null : _setGear,
+          ),
+          Row(children: [
+            SizedBox(
+              width: 96,
+              child: TextField(
+                controller: _deltaField,
+                enabled: !_busy,
+                keyboardType: const TextInputType.numberWithOptions(signed: true),
+                decoration: const InputDecoration(
+                  labelText: 'Delta',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                onChanged: _setDeltaText,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text('Reputation tiers upload limits and storage quota.',
+                  style: TextStyle(fontSize: 11, color: Colors.white38)),
+            ),
+          ]),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _reason,
+            enabled: !_busy,
+            maxLength: 500,
+            decoration: const InputDecoration(
+              labelText: 'Reason (required, min 8 characters)',
+              border: OutlineInputBorder(),
+              counterText: '',
+              isDense: true,
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton(
+              onPressed: _busy || !valid ? null : _apply,
+              child: Text(_busy ? 'Applying…' : 'Apply'),
+            ),
+          ),
+        ]),
+      ),
+    );
   }
 }
 
