@@ -11,7 +11,11 @@ remain, and **playlists are fully deferred** (2026-07-07: don't develop until fu
 server feature itself is mostly planned-but-deferred). Of **C5**, **player control + send-to-player**
 (the Player Bar, 2026-06-29) and **player registration & management** (My Players, 2026-07-17) have
 shipped; live MQTT notifications and the soft-player kiosk are **not yet** started.
-Of **C6** (moderation & extras), **mod-hashtags shipped 2026-07-05**; the rest is **not yet** started. The
+Of **C6** (moderation & extras), **mod-hashtags shipped 2026-07-05**, and **in-app moderation shipped
+2026-08-06**: moderator post actions on the artwork kebab (hide/unhide · promote/demote · approve ·
+permanent delete), comment mod actions (delete/undelete · hide · purge), the User Management page
+(trust · hide · ban · reputation · email reveal), and the Moderation hub with the pending-approval
+queue; the reports queue, audit log, and pulse remain website-only. The
 two pillars sit under a neutral app shell
 (`lib/shell/app_shell.dart`): the app **opens on the Club pillar** (signed-out users get Club's welcome/sign-in
 funnel) and the editor is a co-equal feature reachable **without login** — the Club top bar's **Contribute**
@@ -180,7 +184,10 @@ through C3 plus most of C4. Verified against the code 2026-07-26:
 11. **C4 remainder** — highlights *management* (pin/unpin) and categories. **Playlists are fully deferred**
     (2026-07-07; don't develop until further notice). **C5** — player control + send-to-player (2026-06-29)
     and player registration & management (2026-07-17) shipped; MQTT live notifications and the soft-player
-    kiosk remain. **C6** moderation & extras — mod-hashtags shipped 2026-07-05; the rest not started (see
+    kiosk remain. **C6** moderation & extras — mod-hashtags shipped 2026-07-05; in-app moderation
+    shipped 2026-08-06 (post kebab actions, comment mod menu, User Management incl. reputation +
+    email reveal, Moderation hub + pending-approval queue); still website-only: reports queue,
+    violations/badges panels, cross-user bulk PMD, recent-posts feed, pulse, audit log, metrics (see
     `SPEC-CLUB.md` §28).
 
 **Deferred by decision, not omission:**
