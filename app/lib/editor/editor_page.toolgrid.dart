@@ -96,7 +96,12 @@ extension _EditorToolgrid on _EditorPageState {
           final center = box.localToGlobal(box.size.center(Offset.zero));
           if (d.offset.dx > center.dx) insert = oi + 1; // dropped on the right half → after
         }
-        if (_dropIndex != insert) setState(() => _dropIndex = insert);
+        if (_dropIndex != insert) {
+          // A sharp tick at the exact moment the tiles reflow: the dragging finger hides the
+          // grid, so the reorganization must be feelable, not just visible. (No-op on desktop.)
+          HapticFeedback.selectionClick();
+          setState(() => _dropIndex = insert);
+        }
       },
       builder: (ctx, cand, rej) {
         // While dragged, this tile shows a placeholder gap at its live position (the preview slot).

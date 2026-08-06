@@ -14,7 +14,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import 'package:makapix_club/ui/layout.dart';
-import 'package:flutter/services.dart' show AssetBundle, rootBundle;
+import 'package:flutter/services.dart' show AssetBundle, HapticFeedback, rootBundle;
 
 import '../engine_ffi.dart';
 import 'palette_io.dart';
@@ -406,8 +406,13 @@ class _PalettePageState extends State<PalettePage> {
               style: TextStyle(color: Colors.white54, fontSize: 13)),
         ),
         footer: _presetsFooter(),
+        // Handle-started drags skip the framework's long-press haptic, so give pick-up and drop
+        // their own cues, mirroring the row-3 tool grid. (Stock ReorderableListView exposes no
+        // mid-drag shift moment, so there are no per-reflow ticks here.)
+        onReorderStart: (_) => HapticFeedback.selectionClick(),
         // onReorderItem already delivers the post-removal target index — MovePalette semantics.
         onReorderItem: (o, n) {
+          HapticFeedback.lightImpact();
           if (n != o) _mutate('MovePalette($o, $n)');
         },
         children: [for (var i = 0; i < _palettes.length; i++) _paletteCard(i, _palettes[i])],

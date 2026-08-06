@@ -78,6 +78,8 @@ extension _EditorEngine on _EditorPageState {
   // (2-row mode must NOT reinsert: there the pinned tool is itself draggable in the grid).
   void _commitToolDrag() {
     if (_dragTool == null) return;
+    // Slightly firmer than the per-reflow selectionClick tick: the drop is committed.
+    HapticFeedback.lightImpact();
     final display = _displayToolOrder();
     final order = _threeRowToolbar ? restoreHiddenTool(display, _toolOrder, _pinnedThirdTool) : display;
     setState(() {
