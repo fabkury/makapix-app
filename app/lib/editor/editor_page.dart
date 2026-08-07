@@ -27,6 +27,7 @@ import 'package:makapix_club/ui/layout.dart';
 
 import 'blend_modes.dart';
 import 'gallery/gallery_page.dart';
+import 'levels_math.dart';
 import 'palette_io.dart';
 import 'palette_page.dart';
 import 'persistence/autosave_controller.dart';
@@ -212,10 +213,13 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // Brightness/Contrast sliders: zero = no change too (the contrast slider is ±% around the 1.0×
   // factor, mapped to the engine's cf = 1 + v/100).
   double _bcBright = 0, _bcContrast = 0;
-  // Flip/Rotate/Invert/HSV/BC scope toggles: false = the active layer (or selection), true = every
-  // layer of the active frame (FlipFrame*/RotateFrame/InvertFrame/SetHsvScope/SetBcScope in the
-  // engine). Layer is the default.
-  bool _flipFrame = false, _rotateFrame = false, _resizeFrame = false, _invertFrame = false, _hsvFrame = false, _bcFrame = false;
+  // Levels thumbs (SetLevels(low, gamma‰, high)): the identity is NON-zero — (0, 1000, 255) —
+  // so "reset" means this triple, never zeros.
+  int _lvLow = 0, _lvGammaTh = 1000, _lvHigh = 255;
+  // Flip/Rotate/Invert/HSV/BC/Levels scope toggles: false = the active layer (or selection), true =
+  // every layer of the active frame (FlipFrame*/RotateFrame/InvertFrame/SetHsvScope/SetBcScope/
+  // SetLevelsScope in the engine). Layer is the default.
+  bool _flipFrame = false, _rotateFrame = false, _resizeFrame = false, _invertFrame = false, _hsvFrame = false, _bcFrame = false, _lvFrame = false;
   // Rotate tool cleanEdge resampling (SetCleanEdge/SetCleanEdgeWidth): free-angle rotations
   // sample the edge-aware cleanEdge reconstruction instead of nearest-neighbor. On by default
   // (must match the engine's ToolSettings default). Width 0–2 like the reference site's slider.
@@ -396,12 +400,15 @@ class _EditorPageState extends ConsumerState<EditorPage>
       (_tool == 'Rotate' && _hasRotateDraft) ||
       (_tool == 'Resize' && _hasResizeDraft) ||
       (_tool == 'HsvShift' && _hasHsvDraft) ||
-      (_tool == 'BrightnessContrast' && _hasBcDraft);
+      (_tool == 'BrightnessContrast' && _hasBcDraft) ||
+      (_tool == 'Levels' && _hasLevelsDraft);
 
-  // A non-identity pending HSV / Brightness-Contrast adjustment is that tool's draft: it exists as
-  // a display-only engine preview, and the commit-menu bakes (Commit = the old Apply) or zeroes it.
+  // A non-identity pending HSV / Brightness-Contrast / Levels adjustment is that tool's draft: it
+  // exists as a display-only engine preview, and the commit-menu bakes (Commit = the old Apply) or
+  // resets it to identity.
   bool get _hasHsvDraft => _hsvH != 0 || _hsvS != 0 || _hsvV != 0;
   bool get _hasBcDraft => _bcBright != 0 || _bcContrast != 0;
+  bool get _hasLevelsDraft => _lvLow != 0 || _lvGammaTh != 1000 || _lvHigh != 255;
 
   bool get _engineReady => _error == null;
 

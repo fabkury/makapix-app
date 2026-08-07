@@ -47,6 +47,11 @@ fn known_adversarial_scripts_never_panic() {
         "SetGradientStops(#000000FF@1e40,#FFFFFFFF@0.5,#102030FF@nan)",
         // F-1: non-finite scalar args elsewhere (HSV etc.).
         "ApplyHsvShift(NaN,inf,-inf)",
+        // Levels: hostile / degenerate parameters must sanitize, never panic.
+        "SetLevels(NaN,inf,-inf)",
+        "SetLevels(255,-99999,0)\nSelectTool(Levels)\nApplyLevels()",
+        "SelectTool(Levels)\nSetLevels(254,100,255)\nSetLevelsScope(Frame)\nApplyLevels()\nUndo()",
+        "SetLevels()\nSetLevelsScope()\nApplyLevels()",
         "SetGradientType(Linear)\nSetGradientStops(#000@0,#fff@1)\nSelectTool(Gradient)\nPointerDown(-5,-5)\nPointerUp()",
         // F-6: unbounded pointer coordinates → used to spin spaced_points / raster::line.
         "SelectTool(Pencil)\nPointerDown(2000000000,2000000000)\nPointerMove(-2000000000,-2000000000)\nPointerUp()",
@@ -82,7 +87,7 @@ fn random_dsl_never_panics() {
         "SetGradientStops", "PointerDown", "PointerMove", "PointerUp", "NewDocument", "SelectTool",
         "SetBrushSize", "AddLayer", "AddFrame", "RemoveFrame", "RemoveLayer", "SetActiveLayer",
         "SetActiveFrame", "ApplyHsvShift", "Bucket", "ResizeCanvas", "Crop", "Undo", "Redo",
-        "DuplicateFrame", "ReorderFrame", "Fill", "Invert",
+        "DuplicateFrame", "ReorderFrame", "Fill", "Invert", "SetLevels", "ApplyLevels",
     ];
     for _ in 0..6000 {
         let name = names[(rng.next() as usize) % names.len()];

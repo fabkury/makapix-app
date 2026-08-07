@@ -563,15 +563,16 @@ impl Session {
             // (not baked into canvas pixels), so the engine no longer renders it.
             cursor: None,
         };
-        // A move/rotate draft or a pending HSV / brightness-contrast adjustment renders as a
-        // display-only preview: composite a clone of the active frame with it applied (the
+        // A move/rotate draft or a pending HSV / brightness-contrast / levels adjustment renders
+        // as a display-only preview: composite a clone of the active frame with it applied (the
         // document is untouched until Commit).
         let preview = self
             .move_draft_preview_frame()
             .or_else(|| self.rotate_draft_preview_frame())
             .or_else(|| self.scale_draft_preview_frame())
             .or_else(|| self.hsv_preview_frame())
-            .or_else(|| self.bc_preview_frame());
+            .or_else(|| self.bc_preview_frame())
+            .or_else(|| self.levels_preview_frame());
         let frame = preview.as_ref().unwrap_or_else(|| self.doc.active_frame());
         // Render the whole storage area so the tool previews (which draw in storage coordinates) need
         // no offset; then crop to the canvas for the normal view, or emit the whole thing (gutter
@@ -2393,6 +2394,61 @@ impl Session {
         Some(frame)
     }
 
+    /// Bake the pending Levels adjustment (`settings.levels`) into the document — the active
+    /// layer (selection-clipped), or every layer of the active frame in "Frame" scope (ignoring
+    /// the selection, like `apply_hsv_shift`). One undo step. The (lo, γ‰, hi) triple is
+    /// sanitized by `color::levels_lut`; the table is built once and shared across layers.
+    pub fn apply_levels(&mut self) {
+        let (lo, g, hi) = self.settings.levels;
+        let lut = crate::color::levels_lut(lo, g, hi);
+        if self.settings.levels_frame {
+            self.edit_doc("levels_frame", |s| {
+                for l in &mut s.doc.active_frame_mut().layers {
+                    tool::map_region(&mut l.pixels, None, |c| crate::color::apply_levels_lut(c, &lut));
+                }
+            });
+            return;
+        }
+        if !self.active_editable() {
+            return;
+        }
+        let before = self.begin_edit();
+        let sel = self.selection_clone();
+        let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
+        tool::map_region(buf, sel.as_ref(), |c| crate::color::apply_levels_lut(c, &lut));
+        self.commit_edit(before);
+    }
+
+    /// Live Levels preview (the HSV/BC previews' triplet sibling): while the tool is active with
+    /// a non-identity adjustment pending, the display composites a clone of the active frame with
+    /// it applied per the scope. The document is untouched until `ApplyLevels` commits.
+    fn levels_preview_frame(&self) -> Option<Frame> {
+        if self.tool != ToolKind::Levels {
+            return None;
+        }
+        let (lo, g, hi) = self.settings.levels;
+        if lo == 0 && g == 1000 && hi == 255 {
+            return None;
+        }
+        let lut = crate::color::levels_lut(lo, g, hi);
+        let mut frame = self.doc.active_frame().clone();
+        if self.settings.levels_frame {
+            for l in &mut frame.layers {
+                tool::map_region(&mut l.pixels, None, |c| crate::color::apply_levels_lut(c, &lut));
+            }
+        } else {
+            if !self.active_editable() {
+                return None;
+            }
+            let li = frame.active_layer;
+            let sel = self.selection_clone();
+            tool::map_region(&mut frame.layers[li].pixels, sel.as_ref(), |c| {
+                crate::color::apply_levels_lut(c, &lut)
+            });
+        }
+        Some(frame)
+    }
+
     pub fn map_active(&mut self, f: impl Fn(Rgba8) -> Rgba8) {
         if !self.active_editable() {
             return;
@@ -4125,6 +4181,93 @@ mod tests {
         assert!(s.doc.undo()); // ONE step restores both layers
         assert_eq!(s.pixel(0, 0, 0, 0), c0);
         assert_eq!(s.pixel(0, 1, 1, 0), c1);
+    }
+
+    // ---- Levels tool (the third adjustment sibling; LUT oracle + goldens in color.rs) ----
+
+    #[test]
+    fn levels_preview_is_display_only_until_apply() {
+        let mut s = Session::new(8, 8);
+        let orig = Rgba8::new(100, 150, 200, 255);
+        s.settings.primary = orig;
+        s.tap(0, 0);
+        s.run_script("SelectTool(Levels)\nSetLevels(32, 2200, 224)").unwrap();
+        // The display previews the adjustment while the document still holds the original.
+        let lut = crate::color::levels_lut(32, 2200, 224);
+        let want = crate::color::apply_levels_lut(orig, &lut);
+        assert_ne!(want, orig);
+        let px = s.display_bytes(false, false, false);
+        assert_eq!(&px[0..4], &[want.r, want.g, want.b, want.a]);
+        assert_eq!(s.pixel(0, 0, 0, 0), orig);
+        // Apply commits it (one undo step); with the pending triple reset to identity the
+        // display matches the document.
+        s.run_script("ApplyLevels()\nSetLevels(0, 1000, 255)").unwrap();
+        assert_eq!(s.pixel(0, 0, 0, 0), want);
+        let px = s.display_bytes(false, false, false);
+        assert_eq!(&px[0..4], &[want.r, want.g, want.b, want.a]);
+        assert!(s.doc.undo());
+        assert_eq!(s.pixel(0, 0, 0, 0), orig);
+    }
+
+    #[test]
+    fn levels_identity_preview_is_inert() {
+        let mut s = Session::new(8, 8);
+        let orig = Rgba8::new(100, 150, 200, 255);
+        s.settings.primary = orig;
+        s.tap(0, 0);
+        // The identity triple is not a draft: the display shows the document as-is.
+        s.run_script("SelectTool(Levels)\nSetLevels(0, 1000, 255)").unwrap();
+        let px = s.display_bytes(false, false, false);
+        assert_eq!(&px[0..4], &[orig.r, orig.g, orig.b, orig.a]);
+    }
+
+    #[test]
+    fn levels_frame_scope_previews_and_applies_to_all_layers() {
+        let mut s = Session::new(8, 8);
+        let c0 = Rgba8::new(100, 150, 200, 255);
+        let c1 = Rgba8::new(30, 60, 90, 255);
+        s.settings.primary = c0;
+        s.tap(0, 0); // layer 0
+        s.add_layer();
+        s.settings.primary = c1;
+        s.tap(1, 0); // layer 1
+        s.run_script("SelectTool(Levels)\nSetLevels(16, 2500, 240)\nSetLevelsScope(Frame)").unwrap();
+        let lut = crate::color::levels_lut(16, 2500, 240);
+        let w0 = crate::color::apply_levels_lut(c0, &lut);
+        let w1 = crate::color::apply_levels_lut(c1, &lut);
+        assert_ne!(w0, c0);
+        // The display previews BOTH layers adjusted; the document still holds the originals.
+        let px = s.display_bytes(false, false, false);
+        assert_eq!(&px[0..4], &[w0.r, w0.g, w0.b, w0.a]);
+        assert_eq!(&px[4..8], &[w1.r, w1.g, w1.b, w1.a]);
+        assert_eq!(s.pixel(0, 0, 0, 0), c0);
+        s.run_script("ApplyLevels()").unwrap();
+        assert_eq!(s.pixel(0, 0, 0, 0), w0);
+        assert_eq!(s.pixel(0, 1, 1, 0), w1);
+        assert!(s.doc.undo()); // ONE step restores both layers
+        assert_eq!(s.pixel(0, 0, 0, 0), c0);
+        assert_eq!(s.pixel(0, 1, 1, 0), c1);
+    }
+
+    #[test]
+    fn levels_layer_scope_respects_selection() {
+        let mut s = Session::new(8, 8);
+        let orig = Rgba8::new(100, 150, 200, 255);
+        s.settings.primary = orig;
+        s.tap(0, 0);
+        s.tap(1, 0);
+        // Select just (0,0), then adjust: preview and apply must clip to the selection.
+        s.run_script("SelectTool(SelectRect)\nPointerDown(0,0)\nPointerUp()").unwrap();
+        s.run_script("SelectTool(Levels)\nSetLevels(32, 2200, 224)").unwrap();
+        let lut = crate::color::levels_lut(32, 2200, 224);
+        let want = crate::color::apply_levels_lut(orig, &lut);
+        assert_ne!(want, orig);
+        let px = s.display_bytes(false, false, false);
+        assert_eq!(&px[0..4], &[want.r, want.g, want.b, want.a]); // (0,0) previews adjusted
+        assert_eq!(&px[4..8], &[orig.r, orig.g, orig.b, orig.a]); // (1,0) untouched
+        s.run_script("ApplyLevels()").unwrap();
+        assert_eq!(s.pixel(0, 0, 0, 0), want);
+        assert_eq!(s.pixel(0, 0, 1, 0), orig);
     }
 
     // ---- Rotate tool: layer/selection-scoped rotation + free-angle draft (session/canvas.rs) ----

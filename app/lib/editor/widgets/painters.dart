@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../levels_math.dart';
+
 class CanvasPainter extends CustomPainter {
   final ui.Image? image;
   final double scale; // screen px per canvas px (view transform)
@@ -804,4 +806,155 @@ class _ShapeGlyphPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_ShapeGlyphPainter o) => o.kind != kind || o.filled != filled || o.color != color;
+}
+
+/// The Levels tool's row-1 control: one black→white track with three triangular thumbs —
+/// low input (black), gamma (gray, riding between the outer two at the GIMP mid-gray
+/// fraction 0.5^γ), and high input (white). Dragging low/high preserves gamma, so the mid
+/// thumb slides along with its span; dragging the mid thumb recomputes gamma from its span
+/// fraction. Pans move the nearest thumb from wherever they start; a plain tap never jumps
+/// a thumb (the house slider rule). All value math lives in levels_math.dart, unit-tested
+/// without this widget; the engine wire values are integers only.
+class LevelsSlider extends StatefulWidget {
+  final int low; // 0..254
+  final int gammaTh; // gamma in thousandths, 100..10000
+  final int high; // low+1..255
+  final void Function(int low, int gammaTh, int high) onChanged;
+  final VoidCallback? onChangeEnd;
+  final double width, height;
+  const LevelsSlider({
+    super.key,
+    required this.low,
+    required this.gammaTh,
+    required this.high,
+    required this.onChanged,
+    this.onChangeEnd,
+    this.width = 240,
+    this.height = 40,
+  });
+
+  /// Horizontal inset of the track: keeps the outer thumbs' triangles inside the box.
+  static const double pad = 8;
+
+  @override
+  State<LevelsSlider> createState() => _LevelsSliderState();
+}
+
+class _LevelsSliderState extends State<LevelsSlider> {
+  int _thumb = -1; // 0 = low, 1 = mid (gamma), 2 = high; -1 = idle
+  double _accX = 0; // unrounded track-x accumulator for the active thumb across one drag
+  bool _moved = false; // any onChanged fired this drag (a lone pan recognizer "starts" on taps)
+
+  double get _trackW => widget.width - 2 * LevelsSlider.pad;
+
+  void _panStart(DragStartDetails d) {
+    final x = d.localPosition.dx - LevelsSlider.pad;
+    final xLow = levelsThumbX(widget.low, _trackW);
+    final xHigh = levelsThumbX(widget.high, _trackW);
+    final xMid = xLow + (xHigh - xLow) * levelsMidFromGamma(widget.gammaTh / 1000);
+    _thumb = levelsNearestThumb(x, xLow, xMid, xHigh);
+    _accX = switch (_thumb) { 0 => xLow, 2 => xHigh, _ => xMid };
+    _moved = false;
+  }
+
+  void _panUpdate(DragUpdateDetails d) {
+    if (_thumb < 0) return;
+    _accX += d.delta.dx;
+    switch (_thumb) {
+      case 0:
+        final low = levelsClampLow(levelsValueFromX(_accX, _trackW), widget.high);
+        if (low != widget.low) {
+          _moved = true;
+          widget.onChanged(low, widget.gammaTh, widget.high);
+        }
+      case 2:
+        final high = levelsClampHigh(levelsValueFromX(_accX, _trackW), widget.low);
+        if (high != widget.high) {
+          _moved = true;
+          widget.onChanged(widget.low, widget.gammaTh, high);
+        }
+      default:
+        final xLow = levelsThumbX(widget.low, _trackW);
+        final xHigh = levelsThumbX(widget.high, _trackW);
+        final f = (_accX - xLow) / (xHigh - xLow);
+        final gammaTh = levelsGammaThFromMid(f);
+        if (gammaTh != widget.gammaTh) {
+          _moved = true;
+          widget.onChanged(widget.low, gammaTh, widget.high);
+        }
+    }
+  }
+
+  void _panEnd() {
+    if (_thumb < 0) return;
+    _thumb = -1;
+    final moved = _moved;
+    _moved = false;
+    if (moved) widget.onChangeEnd?.call();
+  }
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        onPanStart: _panStart,
+        onPanUpdate: _panUpdate,
+        onPanEnd: (_) => _panEnd(),
+        onPanCancel: _panEnd,
+        child: CustomPaint(
+          size: Size(widget.width, widget.height),
+          painter: _LevelsSliderPainter(widget.low, widget.gammaTh, widget.high),
+        ),
+      );
+}
+
+class _LevelsSliderPainter extends CustomPainter {
+  final int low, gammaTh, high;
+  const _LevelsSliderPainter(this.low, this.gammaTh, this.high);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final trackW = size.width - 2 * LevelsSlider.pad;
+    final bar = Rect.fromLTWH(LevelsSlider.pad, 8, trackW, 12);
+    // The tone ramp the thumbs cut into, plus a hairline so the black end reads on the
+    // dark row-1 background.
+    canvas.drawRect(
+      bar,
+      Paint()
+        ..shader = const LinearGradient(colors: [Colors.black, Colors.white]).createShader(bar),
+    );
+    canvas.drawRect(
+      bar,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = Colors.white24,
+    );
+    final xLow = LevelsSlider.pad + levelsThumbX(low, trackW);
+    final xHigh = LevelsSlider.pad + levelsThumbX(high, trackW);
+    final xMid = xLow + (xHigh - xLow) * levelsMidFromGamma(gammaTh / 1000);
+    _thumbAt(canvas, xMid, bar.bottom, const Color(0xFF808080));
+    _thumbAt(canvas, xLow, bar.bottom, Colors.black);
+    _thumbAt(canvas, xHigh, bar.bottom, Colors.white);
+  }
+
+  /// A GIMP-style upward triangle whose tip touches the bar at [x].
+  void _thumbAt(Canvas canvas, double x, double barBottom, Color fill) {
+    const w = 12.0, h = 10.0;
+    final tri = Path()
+      ..moveTo(x, barBottom + 1)
+      ..lineTo(x + w / 2, barBottom + 1 + h)
+      ..lineTo(x - w / 2, barBottom + 1 + h)
+      ..close();
+    canvas.drawPath(tri, Paint()..color = fill);
+    canvas.drawPath(
+      tri,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = Colors.white38,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_LevelsSliderPainter o) =>
+      o.low != low || o.gammaTh != gammaTh || o.high != high;
 }

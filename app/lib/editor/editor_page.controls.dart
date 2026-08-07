@@ -521,6 +521,37 @@ extension _EditorControls on _EditorPageState {
       _labeledSlider(children, 'B', _bcBright, -255, 255, (v) => syncBc(() => _bcBright = v));
       _labeledSlider(children, 'C', _bcContrast, -100, 100, (v) => syncBc(() => _bcContrast = v));
     }
+    if (_tool == 'Levels') {
+      // The HSV/BC blocks' triplet sibling: thumb changes sync the pending (low, γ‰, high) into
+      // the engine, whose display composites a live preview per the scope; a non-identity triple
+      // IS the tool's draft, resolved by the floating commit-menu (Commit bakes it, Cancel resets
+      // to identity). Thumb drags redraw cheaply (no outline refetch); the drag end settles with
+      // a full redraw — the Rotate cleanEdge pattern.
+      children.add(_toggle(const ['Layer', 'Frame'], _lvFrame ? 1 : 0, (i) {
+        setState(() => _lvFrame = i == 1);
+        _send('SetLevelsScope(${_lvFrame ? 'Frame' : 'Layer'})');
+        _redraw();
+      }));
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: LevelsSlider(
+          low: _lvLow,
+          gammaTh: _lvGammaTh,
+          high: _lvHigh,
+          onChanged: (lo, g, hi) {
+            setState(() {
+              _lvLow = lo;
+              _lvGammaTh = g;
+              _lvHigh = hi;
+            });
+            _send('SetLevels($_lvLow, $_lvGammaTh, $_lvHigh)');
+            _redraw(full: false, refetchSelection: false);
+          },
+          onChangeEnd: () => _redraw(),
+        ),
+      ));
+      label('$_lvLow · ${levelsGammaLabel(_lvGammaTh)} · $_lvHigh');
+    }
     if (_tool == 'Flip') {
       label(_flipFrame ? 'Flip frame' : (_outlineEdges.isNotEmpty ? 'Flip selection' : 'Flip layer'));
       children.add(_toggle(const ['Layer', 'Frame'], _flipFrame ? 1 : 0, (i) => setState(() => _flipFrame = i == 1)));

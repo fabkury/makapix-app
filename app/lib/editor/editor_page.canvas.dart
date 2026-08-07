@@ -136,6 +136,8 @@ extension _EditorCanvas on _EditorPageState {
       _commitHsvDraft();
     } else if (_tool == 'BrightnessContrast' && _hasBcDraft) {
       _commitBcDraft();
+    } else if (_tool == 'Levels' && _hasLevelsDraft) {
+      _commitLevelsDraft();
     }
   }
 
@@ -156,6 +158,8 @@ extension _EditorCanvas on _EditorPageState {
       _resetHsvDraft();
     } else if (_tool == 'BrightnessContrast' && _hasBcDraft) {
       _resetBcDraft();
+    } else if (_tool == 'Levels' && _hasLevelsDraft) {
+      _resetLevelsDraft();
     }
   }
 

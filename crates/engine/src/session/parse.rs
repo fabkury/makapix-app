@@ -57,6 +57,9 @@ pub enum Action {
     SetHsvScope(bool), // true = the whole active frame, false = the active layer / selection
     SetBrightnessContrast(i32, f32), // brightness delta [-255,255], contrast factor around 128
     SetBcScope(bool),                // scope flag, same semantics as SetHsvScope
+    SetLevels(u8, i32, u8), // low input, gamma in thousandths (the SetCleanEdgeWidth convention;
+    // 1000 = 1.0, clamped 100..=10000 at use), high input — (0, 1000, 255) = identity
+    SetLevelsScope(bool), // scope flag, same semantics as SetHsvScope
     SetSelectionMode(CombineMode),
     SetShapeFill(bool),
     SetLineWidth(u16),
@@ -117,6 +120,7 @@ pub enum Action {
     ClearSelection,
     ApplyHsvShift,
     ApplyBrightnessContrast,
+    ApplyLevels,
     FlipH,
     FlipV,
     FlipFrameH,
@@ -244,6 +248,8 @@ impl Session {
             SetHsvScope(frame) => self.settings.hsv_frame = frame,
             SetBrightnessContrast(db, cf) => self.settings.bc = (db, cf),
             SetBcScope(frame) => self.settings.bc_frame = frame,
+            SetLevels(lo, g, hi) => self.settings.levels = (lo, g, hi),
+            SetLevelsScope(frame) => self.settings.levels_frame = frame,
             SetSelectionMode(m) => self.selection_mode = m,
             SetShapeFill(b) => self.settings.shape_fill = b,
             SetLineWidth(w) => self.settings.line_width = w.max(1),
@@ -302,6 +308,7 @@ impl Session {
             ClearSelection => self.clear_selection_pixels(),
             ApplyHsvShift => self.apply_hsv_shift(),
             ApplyBrightnessContrast => self.apply_brightness_contrast(),
+            ApplyLevels => self.apply_levels(),
             FlipH => self.flip_horizontal(),
             FlipV => self.flip_vertical(),
             FlipFrameH => self.flip_frame(true),
@@ -421,6 +428,7 @@ fn parse_tool(s: &str) -> Result<ToolKind, String> {
         "SelectLayer" => SelectLayer,
         "HsvShift" => HsvShift,
         "BrightnessContrast" => BrightnessContrast,
+        "Levels" => Levels,
         "CopyPaste" => CopyPaste,
         other => return Err(format!("unknown tool '{}'", other)),
     })
@@ -600,6 +608,8 @@ fn parse_line(line: &str) -> Result<Action, String> {
         "SetHsvScope" => SetHsvScope(args.first().map(|s| s.eq_ignore_ascii_case("frame")).unwrap_or(false)),
         "SetBrightnessContrast" => SetBrightnessContrast(i32a(0)?, f32a(1)?),
         "SetBcScope" => SetBcScope(args.first().map(|s| s.eq_ignore_ascii_case("frame")).unwrap_or(false)),
+        "SetLevels" => SetLevels(u8a(0)?, i32a(1)?, u8a(2)?),
+        "SetLevelsScope" => SetLevelsScope(args.first().map(|s| s.eq_ignore_ascii_case("frame")).unwrap_or(false)),
         "SetSelectionMode" => SetSelectionMode(match args.first().copied().unwrap_or("") {
             "Replace" => CombineMode::Replace,
             "Add" => CombineMode::Add,
@@ -680,6 +690,7 @@ fn parse_line(line: &str) -> Result<Action, String> {
         "ClearSelection" => ClearSelection,
         "ApplyHsvShift" => ApplyHsvShift,
         "ApplyBrightnessContrast" => ApplyBrightnessContrast,
+        "ApplyLevels" => ApplyLevels,
         "FlipH" => FlipH,
         "FlipV" => FlipV,
         "FlipFrameH" => FlipFrameH,

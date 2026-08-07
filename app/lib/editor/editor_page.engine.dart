@@ -468,11 +468,12 @@ extension _EditorEngine on _EditorPageState {
       _resizeDragging = false;
       _redraw();
     }
-    // A pending HSV / Brightness-Contrast adjustment (a display-only preview, like the drafts
-    // above) is likewise canceled when leaving its tool, so returning starts clean instead of
-    // resuming a stale draft — same as the commit-menu's Cancel.
+    // A pending HSV / Brightness-Contrast / Levels adjustment (a display-only preview, like the
+    // drafts above) is likewise canceled when leaving its tool, so returning starts clean instead
+    // of resuming a stale draft — same as the commit-menu's Cancel.
     if (_tool == 'HsvShift' && t != 'HsvShift' && _hasHsvDraft) _resetHsvDraft();
     if (_tool == 'BrightnessContrast' && t != 'BrightnessContrast' && _hasBcDraft) _resetBcDraft();
+    if (_tool == 'Levels' && t != 'Levels' && _hasLevelsDraft) _resetLevelsDraft();
     // The Ruler keeps its measurement across tool switches (its full overlay hides while another
     // tool is active — unless pinned, when a simplified echo stays — and reappears on return);
     // clear it with the Ruler's row-1 "Clear" button.
@@ -572,6 +573,23 @@ extension _EditorEngine on _EditorPageState {
       _bcContrast = 0;
     });
     _send('SetBrightnessContrast(0, 1)');
+    _redraw();
+  }
+
+  void _commitLevelsDraft() {
+    _send('SetLevels($_lvLow, $_lvGammaTh, $_lvHigh)');
+    _act('ApplyLevels()');
+    _resetLevelsDraft();
+  }
+
+  void _resetLevelsDraft() {
+    // NB the Levels identity is (0, 1000, 255), not zeros.
+    setState(() {
+      _lvLow = 0;
+      _lvGammaTh = 1000;
+      _lvHigh = 255;
+    });
+    _send('SetLevels(0, 1000, 255)');
     _redraw();
   }
 

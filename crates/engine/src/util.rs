@@ -136,6 +136,70 @@ impl VirtualClock {
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Deterministic transcendentals (SPEC §5). Goldens must be byte-identical across Windows x86-64,
+// Android ARM64/ARM32, and iOS ARM64, but libm's `powf`/`exp`/`ln` are not correctly rounded —
+// their last-ulp behavior forks per platform (the same hazard the quarter-turn snap table in
+// session/canvas.rs routes around for `cos`/`sin`). These implementations use ONLY operations
+// IEEE 754 defines exactly (+ − × ÷, floor, comparisons, bit manipulation) in a fixed evaluation
+// order, and never `mul_add` — Rust/LLVM does not contract or reassociate float expressions, so
+// every platform computes bit-identical results.
+
+/// Deterministic log2 of a positive, finite, normal `x`.
+pub fn det_log2(x: f64) -> f64 {
+    debug_assert!(x >= f64::MIN_POSITIVE && x.is_finite());
+    let bits = x.to_bits();
+    let mut k = ((bits >> 52) & 0x7ff) as i64 - 1023;
+    // Mantissa in [1, 2); halving (exact) when above √2 narrows it to (√2/2, √2], which keeps
+    // the series argument t small: t = (m−1)/(m+1) ∈ (−0.1716, 0.1716].
+    let mut m = f64::from_bits((bits & 0x000f_ffff_ffff_ffff) | (1023u64 << 52));
+    if m > std::f64::consts::SQRT_2 {
+        m *= 0.5;
+        k += 1;
+    }
+    let t = (m - 1.0) / (m + 1.0);
+    let t2 = t * t;
+    // ln m = 2·atanh(t); atanh(t)/t = Σ t^(2i)/(2i+1), Horner-truncated after t^18/19 — the next
+    // term is < 3e-18 relative for |t| ≤ 0.1716.
+    const ODD: [f64; 9] = [17.0, 15.0, 13.0, 11.0, 9.0, 7.0, 5.0, 3.0, 1.0];
+    let mut s = 1.0 / 19.0;
+    for &d in &ODD {
+        s = s * t2 + 1.0 / d;
+    }
+    let ln_m = 2.0 * t * s;
+    k as f64 + ln_m * std::f64::consts::LOG2_E
+}
+
+/// Deterministic 2^y for y ∈ (−1000, 1000).
+pub fn det_exp2(y: f64) -> f64 {
+    debug_assert!(y > -1000.0 && y < 1000.0);
+    let i = (y.floor() as i64).clamp(-1022, 1023);
+    let f = y - i as f64; // exact: the fractional part's bits are a suffix of y's mantissa
+    let x = f * std::f64::consts::LN_2; // [0, ln 2)
+    // exp(x) = Σ x^k/k!, nested-Horner-truncated at k = 17 — the next term is < 3e-19 for
+    // x < ln 2.
+    let mut s = 1.0;
+    let mut k = 17.0;
+    while k >= 1.0 {
+        s = 1.0 + x * s / k;
+        k -= 1.0; // exact for these small integers
+    }
+    s * f64::from_bits(((1023 + i) as u64) << 52)
+}
+
+/// Deterministic x^e for x ∈ [0, 1], e ∈ (0, 64) — the Levels gamma curve. Out-of-domain x
+/// clamps to the endpoint values (0^e = 0, 1^e = 1).
+pub fn det_pow(x: f64, e: f64) -> f64 {
+    debug_assert!(e > 0.0 && e < 64.0);
+    if x <= 0.0 {
+        return 0.0;
+    }
+    if x >= 1.0 {
+        return 1.0;
+    }
+    det_exp2(e * det_log2(x))
+}
+
 /// Monotonic id generator for stable frame/layer ids that survive reordering.
 #[derive(Clone, Debug, Default)]
 pub struct IdGen {
@@ -197,6 +261,69 @@ mod tests {
         let mut r = SeededRng::new(1);
         for _ in 0..10_000 {
             assert!(r.below(10) < 10);
+        }
+    }
+
+    // ---- deterministic transcendentals (the Levels gamma curve, SPEC §5) ----
+
+    /// The std consts feed the deterministic pipeline; pin their exact bit patterns so a toolchain
+    /// or platform that disagreed would fail loudly instead of forking goldens silently.
+    #[test]
+    fn det_constants_bit_patterns() {
+        assert_eq!(std::f64::consts::LN_2.to_bits(), 0x3FE6_2E42_FEFA_39EF);
+        assert_eq!(std::f64::consts::LOG2_E.to_bits(), 0x3FF7_1547_652B_82FE);
+        assert_eq!(std::f64::consts::SQRT_2.to_bits(), 0x3FF6_A09E_667F_3BCD);
+    }
+
+    /// Correctness oracle: agree with libm's `powf` (accurate to ~1 ulp on the test machine) to
+    /// 1e-12 relative over a dense grid spanning the whole Levels domain. This proves the series
+    /// math is right; determinism is by construction (only IEEE-exact ops).
+    #[test]
+    fn det_pow_matches_std_powf_on_dense_grid() {
+        // Exponents 1/γ for the full clamped gamma range γ ∈ [0.1, 10], plus uneven values.
+        let exps = [
+            10.0, 8.0, 5.0, 3.3333, 2.1978, 2.0, 1.4286, 1.0, 0.7519, 0.4545, 0.4, 0.3077, 0.2,
+            0.1337, 0.1,
+        ];
+        for &e in &exps {
+            for xi in 1..4096u32 {
+                let x = xi as f64 / 4096.0;
+                let want = x.powf(e);
+                let got = det_pow(x, e);
+                let rel = ((got - want) / want).abs();
+                assert!(rel < 1e-12, "x={x} e={e}: det {got} vs powf {want} (rel {rel:e})");
+            }
+        }
+    }
+
+    #[test]
+    fn det_pow_exact_at_one_and_monotone() {
+        for &e in &[0.1, 0.5, 1.0, 2.0, 10.0] {
+            assert_eq!(det_pow(1.0, e), 1.0);
+            assert_eq!(det_pow(0.0, e), 0.0);
+            let mut prev = 0.0;
+            for xi in 1..=4096u32 {
+                let v = det_pow(xi as f64 / 4096.0, e);
+                assert!(v > 0.0 && v <= 1.0);
+                assert!(v >= prev, "not monotone at x={}/4096 e={e}", xi);
+                prev = v;
+            }
+        }
+    }
+
+    /// exp2 ∘ log2 must be the identity to ~1e-14 relative (each leg contributes ≤ a few ulps).
+    #[test]
+    fn det_exp2_log2_roundtrip() {
+        for xi in 1..=4096u32 {
+            let x = xi as f64 / 4096.0;
+            let back = det_exp2(det_log2(x));
+            let rel = ((back - x) / x).abs();
+            assert!(rel < 1e-13, "roundtrip x={x}: {back} (rel {rel:e})");
+        }
+        // And across magnitudes, incl. values above 1 (det_log2's full domain).
+        for &x in &[1.0, 1.5, 2.0, 3.0, 255.0, 1e6, 1e-6] {
+            let back = det_exp2(det_log2(x));
+            assert!(((back - x) / x).abs() < 1e-13);
         }
     }
 }

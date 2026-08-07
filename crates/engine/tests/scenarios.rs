@@ -549,3 +549,37 @@ fn blend_mode_roundtrips_through_mkpx_and_undo() {
     assert_eq!(s.doc.active_frame().layers[1].blend, BlendMode::Normal);
     assert_eq!(render::composite_active(&s.doc).get(2, 2), Rgba8::rgb(200, 200, 200));
 }
+
+#[test]
+fn levels_end_to_end() {
+    // A gray staircase through the DSL, a Levels bake, oracle'd pixels, one-step undo, and
+    // byte determinism (two identical runs hash identically).
+    const SCRIPT: &str = "NewDocument(8,8)\n\
+        SelectTool(Pencil)\n\
+        SetPrimaryColor(#000000FF); Stroke([(0,0)])\n\
+        SetPrimaryColor(#404040FF); Stroke([(1,0)])\n\
+        SetPrimaryColor(#808080FF); Stroke([(2,0)])\n\
+        SetPrimaryColor(#C0C0C0FF); Stroke([(3,0)])\n\
+        SetPrimaryColor(#FFFFFFFF); Stroke([(4,0)])\n\
+        SelectTool(Levels); SetLevels(32, 2200, 224); ApplyLevels()";
+    let mut s = run(SCRIPT);
+    let lut = makapix_engine::color::levels_lut(32, 2200, 224);
+    // Endpoints crushed/blown, midtones brightened per the γ = 2.2 curve.
+    assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::rgb(0, 0, 0));
+    assert_eq!(s.pixel(0, 0, 4, 0), Rgba8::rgb(255, 255, 255));
+    for (x, v) in [(1usize, 0x40u8), (2, 0x80), (3, 0xC0)] {
+        let want = lut[v as usize];
+        assert_eq!(s.pixel(0, 0, x as i32, 0), Rgba8::rgb(want, want, want), "x={x}");
+        assert!(want > v, "γ > 1 brightens the midtone at x={x}");
+    }
+    // Untouched pixels stay transparent (map_region skips a == 0).
+    assert_eq!(s.pixel(0, 0, 5, 0), Rgba8::TRANSPARENT);
+    // ONE undo reverts the whole bake.
+    let baked = s.doc.content_hash();
+    assert!(s.doc.undo());
+    assert_eq!(s.pixel(0, 0, 2, 0), Rgba8::rgb(0x80, 0x80, 0x80));
+    assert!(s.doc.redo());
+    assert_eq!(s.doc.content_hash(), baked);
+    // Determinism: an identical run produces the identical document.
+    assert_eq!(run(SCRIPT).doc.content_hash(), baked);
+}

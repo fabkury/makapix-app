@@ -41,6 +41,7 @@ const tools = <ToolDef>[
   ToolDef.custom('SelectLayer', MpxIcons.selLyr, 'Sel Lyr'),
   ToolDef('HsvShift', Icons.palette, 'HSV'),
   ToolDef('BrightnessContrast', Icons.brightness_6, 'Bright'),
+  ToolDef('Levels', Icons.tune, 'Levels'),
   // Transform actions: UI-only groups (no engine draw tool). Selecting one reveals its
   // action button(s) in row-1; the canvas is inert while one is selected.
   ToolDef.custom('Flip', MpxIcons.flip, 'Flip'),
@@ -113,6 +114,7 @@ const toolTips = <String, String>{
   'SelectLayer': 'Turn the layer\'s opaque pixels into a selection. Tap a mode to apply.',
   'HsvShift': 'Shift hue, saturation and value, then Commit.',
   'BrightnessContrast': 'Adjust brightness and contrast, then Commit.',
+  'Levels': 'Drag the black, gamma and white thumbs to remap tones, then Commit.',
   'Flip': 'Mirror the layer horizontally or vertically. Acts on the selection if any.',
   'Rotate': 'Rotate the layer or the whole frame 90°, 180°, or by a free Angle. cleanEdge keeps slanted edges clean. Acts on the selection if any. (Whole canvas: ☰ menu.)',
   'Resize': 'Scale the layer or frame: ½×, 2×, or drag a free Scale. cleanEdge keeps upscaled edges clean. Acts on the selection if any.',

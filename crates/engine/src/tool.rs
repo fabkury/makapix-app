@@ -37,6 +37,9 @@ pub enum ToolKind {
     /// Brightness/Contrast: like HsvShift, a pointer-inert adjustment tool — the pending
     /// (brightness, contrast) in `ToolSettings::bc` previews live and bakes on Apply.
     BrightnessContrast,
+    /// Levels: the third pointer-inert adjustment tool — the pending (low, gamma‰, high) in
+    /// `ToolSettings::levels` previews live and bakes on Apply (GIMP Colors > Levels, input side).
+    Levels,
     /// Copy & Paste: hosts the clipboard ops (Copy/Cut/Paste/Clear). Paste shows a movable, semi-
     /// transparent draft that is dragged into place then committed. No drawing of its own.
     CopyPaste,
@@ -166,6 +169,12 @@ pub struct ToolSettings {
     pub bc: (i32, f32),
     /// Brightness/Contrast "Frame" scope (same semantics as `hsv_frame`).
     pub bc_frame: bool,
+    /// Levels pending adjustment: (low input, gamma in thousandths, high input) — (0, 1000, 255)
+    /// = identity. Stored raw like the DSL sent it; `color::levels_lut` sanitizes. Previewed
+    /// live, baked by ApplyLevels.
+    pub levels: (u8, i32, u8),
+    /// Levels "Frame" scope (same semantics as `hsv_frame`).
+    pub levels_frame: bool,
     pub shape_fill: bool,
     pub line_width: u16,
     /// When true, a layer Move refuses to push any opaque pixel off-canvas (non-destructive).
@@ -221,6 +230,8 @@ impl Default for ToolSettings {
             hsv_frame: false,
             bc: (0, 1.0),
             bc_frame: false,
+            levels: (0, 1000, 255),
+            levels_frame: false,
             shape_fill: true,
             line_width: 1,
             protect_pixels: false,
