@@ -59,17 +59,40 @@ void main() {
     });
   });
 
-  group('nearest-thumb hit test', () {
-    test('outside the span the outer thumb wins', () {
-      expect(levelsNearestThumb(5, 40, 100, 180), 0);
-      expect(levelsNearestThumb(190, 40, 100, 180), 2);
+  group('thumb grab-zone hit test', () {
+    test('inside a +-16 band the nearest thumb wins, mid on ties', () {
+      expect(levelsHitThumb(50, 40, 100, 180, 16), 0);
+      expect(levelsHitThumb(95, 40, 100, 180, 16), 1);
+      expect(levelsHitThumb(170, 40, 100, 180, 16), 2);
+      expect(levelsHitThumb(70, 40, 100, 180, 30), 1); // exact tie low/mid -> mid
     });
 
-    test('inside the span the nearest wins, mid on ties', () {
-      expect(levelsNearestThumb(50, 40, 100, 180), 0);
-      expect(levelsNearestThumb(95, 40, 100, 180), 1);
-      expect(levelsNearestThumb(170, 40, 100, 180), 2);
-      expect(levelsNearestThumb(70, 40, 100, 180), 1); // exact tie low/mid -> mid
+    test('outside every band the gradient is inert (-1)', () {
+      expect(levelsHitThumb(70, 40, 100, 180, 16), -1); // mid-gradient gap
+      expect(levelsHitThumb(140, 40, 100, 180, 16), -1);
+      expect(levelsHitThumb(0, 40, 100, 180, 16), -1); // outside the span too
+      expect(levelsHitThumb(220, 40, 100, 180, 16), -1);
+    });
+
+    test('overlapping bands still resolve to the nearest thumb', () {
+      expect(levelsHitThumb(43, 40, 50, 180, 16), 0);
+      expect(levelsHitThumb(48, 40, 50, 180, 16), 1);
+    });
+  });
+
+  group('text entry pushes the other input point', () {
+    test('low entered past high pushes high up', () {
+      expect(levelsEnterLow(200, 150), (200, 201));
+      expect(levelsEnterLow(100, 150), (100, 150)); // no conflict, no push
+      expect(levelsEnterLow(300, 150), (254, 255)); // clamped to 254, still pushes
+      expect(levelsEnterLow(-5, 150), (0, 150));
+    });
+
+    test('high entered under low pushes low down', () {
+      expect(levelsEnterHigh(120, 180), (119, 120));
+      expect(levelsEnterHigh(200, 180), (180, 200)); // no conflict, no push
+      expect(levelsEnterHigh(0, 180), (0, 1)); // clamped to 1, low pushed to 0
+      expect(levelsEnterHigh(400, 180), (180, 255));
     });
   });
 

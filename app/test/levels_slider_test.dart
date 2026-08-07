@@ -1,4 +1,8 @@
 // LevelsSlider drag behavior — pumped standalone, no engine binary.
+//
+// Most tests use gearRatio 1 so drag offsets translate directly into thumb travel; the
+// gearing test compares 1x against the geared default explicitly. Drags start on a thumb
+// (inside its +-16 grab band) unless the test is about the inert gradient.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:makapix_club/editor/levels_math.dart';
@@ -6,7 +10,8 @@ import 'package:makapix_club/editor/widgets/painters.dart';
 
 void main() {
   // A stateful host so onChanged feeds back into the widget like the editor page does.
-  Widget host(ValueNotifier<(int, int, int)> v, {VoidCallback? onEnd}) => MaterialApp(
+  Widget host(ValueNotifier<(int, int, int)> v, {double gearRatio = 1, VoidCallback? onEnd}) =>
+      MaterialApp(
         home: Scaffold(
           body: Center(
             child: ValueListenableBuilder<(int, int, int)>(
@@ -15,6 +20,7 @@ void main() {
                 low: t.$1,
                 gammaTh: t.$2,
                 high: t.$3,
+                gearRatio: gearRatio,
                 onChanged: (lo, g, hi) => v.value = (lo, g, hi),
                 onChangeEnd: onEnd,
               ),
@@ -76,13 +82,42 @@ void main() {
     expect(v.value.$2, lessThan(1000));
   });
 
+  testWidgets('gearing divides pointer travel (house 6x default)', (tester) async {
+    final direct = ValueNotifier((0, 1000, 255));
+    await tester.pumpWidget(host(direct, gearRatio: 1));
+    await tester.dragFrom(Offset(xOf(tester, 0), yOf(tester)), const Offset(120, 0));
+    await tester.pump();
+    final ungeared = direct.value.$1;
+
+    final geared = ValueNotifier((0, 1000, 255));
+    await tester.pumpWidget(host(geared, gearRatio: 6));
+    await tester.dragFrom(Offset(xOf(tester, 0), yOf(tester)), const Offset(120, 0));
+    await tester.pump();
+    expect(geared.value.$1, greaterThan(0));
+    expect(geared.value.$1, lessThan(ungeared ~/ 3),
+        reason: 'the same travel moves the geared thumb ~6x less');
+  });
+
+  testWidgets('a pan starting on the bare gradient does nothing', (tester) async {
+    final v = ValueNotifier((0, 1000, 255));
+    var ends = 0;
+    await tester.pumpWidget(host(v, onEnd: () => ends++));
+    // Value 64 sits mid-gradient: ~56px from the low thumb, ~56px from the mid thumb —
+    // outside every +-16 grab band.
+    await tester.dragFrom(Offset(xOf(tester, 64), yOf(tester)), const Offset(60, 0));
+    await tester.pump();
+    expect(v.value, (0, 1000, 255));
+    expect(ends, 0);
+  });
+
   testWidgets('a plain tap never jumps a thumb, a drag end reports once', (tester) async {
     final v = ValueNotifier((0, 1000, 255));
     var ends = 0;
     await tester.pumpWidget(host(v, onEnd: () => ends++));
-    await tester.tapAt(Offset(xOf(tester, 64), yOf(tester)));
+    await tester.tapAt(Offset(xOf(tester, 0), yOf(tester))); // directly ON the low thumb
     await tester.pump();
     expect(v.value, (0, 1000, 255));
+    expect(ends, 0);
     await tester.dragFrom(Offset(xOf(tester, 0), yOf(tester)), const Offset(40, 0));
     await tester.pump();
     expect(ends, 1);

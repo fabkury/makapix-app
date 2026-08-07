@@ -812,9 +812,13 @@ class _ShapeGlyphPainter extends CustomPainter {
 /// low input (black), gamma (gray, riding between the outer two at the GIMP mid-gray
 /// fraction 0.5^γ), and high input (white). Dragging low/high preserves gamma, so the mid
 /// thumb slides along with its span; dragging the mid thumb recomputes gamma from its span
-/// fraction. Pans move the nearest thumb from wherever they start; a plain tap never jumps
-/// a thumb (the house slider rule). All value math lives in levels_math.dart, unit-tested
-/// without this widget; the engine wire values are integers only.
+/// fraction. Only a pan starting inside a thumb's ±[hitHalfZone] grab band (full widget
+/// height) moves that thumb — the bare gradient is inert — and the drag is anchored to the
+/// thumb's own position, never the finger's, so grabbing off-center can't jump the value.
+/// Pointer travel is geared down by [gearRatio] (the row-1 house gearing) so exact values
+/// are easy to land; a plain tap never jumps a thumb (the house slider rule). All value
+/// math lives in levels_math.dart, unit-tested without this widget; the engine wire values
+/// are integers only.
 class LevelsSlider extends StatefulWidget {
   final int low; // 0..254
   final int gammaTh; // gamma in thousandths, 100..10000
@@ -822,6 +826,10 @@ class LevelsSlider extends StatefulWidget {
   final void Function(int low, int gammaTh, int high) onChanged;
   final VoidCallback? onChangeEnd;
   final double width, height;
+  /// Pointer px per thumb px — keep in step with toolgrid's _kSliderGearRatio (6.0).
+  final double gearRatio;
+  /// Half-width of each thumb's grab band, in logical px.
+  final double hitHalfZone;
   const LevelsSlider({
     super.key,
     required this.low,
@@ -831,6 +839,8 @@ class LevelsSlider extends StatefulWidget {
     this.onChangeEnd,
     this.width = 240,
     this.height = 40,
+    this.gearRatio = 6.0,
+    this.hitHalfZone = 16,
   });
 
   /// Horizontal inset of the track: keeps the outer thumbs' triangles inside the box.
@@ -852,14 +862,26 @@ class _LevelsSliderState extends State<LevelsSlider> {
     final xLow = levelsThumbX(widget.low, _trackW);
     final xHigh = levelsThumbX(widget.high, _trackW);
     final xMid = xLow + (xHigh - xLow) * levelsMidFromGamma(widget.gammaTh / 1000);
-    _thumb = levelsNearestThumb(x, xLow, xMid, xHigh);
+    _thumb = levelsHitThumb(x, xLow, xMid, xHigh, widget.hitHalfZone);
+    if (_thumb < 0) return; // the bare gradient is inert
+    // Anchor the accumulator to the THUMB's position, not the finger's — the grab offset is
+    // preserved for the whole drag, so a fat off-center grab can't jump the value.
     _accX = switch (_thumb) { 0 => xLow, 2 => xHigh, _ => xMid };
     _moved = false;
   }
 
   void _panUpdate(DragUpdateDetails d) {
     if (_thumb < 0) return;
-    _accX += d.delta.dx;
+    _accX += d.delta.dx / widget.gearRatio;
+    // Clamp the accumulator to the thumb's own valid range (the _GearedSlider rule), so
+    // reversing after overshooting an end — or the neighboring thumb — responds immediately.
+    final lowX = levelsThumbX(widget.low, _trackW);
+    final highX = levelsThumbX(widget.high, _trackW);
+    _accX = switch (_thumb) {
+      0 => _accX.clamp(0.0, levelsThumbX(widget.high - 1, _trackW)),
+      2 => _accX.clamp(levelsThumbX(widget.low + 1, _trackW), _trackW),
+      _ => _accX.clamp(lowX, highX),
+    };
     switch (_thumb) {
       case 0:
         final low = levelsClampLow(levelsValueFromX(_accX, _trackW), widget.high);
@@ -874,9 +896,7 @@ class _LevelsSliderState extends State<LevelsSlider> {
           widget.onChanged(widget.low, widget.gammaTh, high);
         }
       default:
-        final xLow = levelsThumbX(widget.low, _trackW);
-        final xHigh = levelsThumbX(widget.high, _trackW);
-        final f = (_accX - xLow) / (xHigh - xLow);
+        final f = (_accX - lowX) / (highX - lowX);
         final gammaTh = levelsGammaThFromMid(f);
         if (gammaTh != widget.gammaTh) {
           _moved = true;

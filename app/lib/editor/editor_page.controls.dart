@@ -525,8 +525,37 @@ extension _EditorControls on _EditorPageState {
       // The HSV/BC blocks' triplet sibling: thumb changes sync the pending (low, γ‰, high) into
       // the engine, whose display composites a live preview per the scope; a non-identity triple
       // IS the tool's draft, resolved by the floating commit-menu (Commit bakes it, Cancel resets
-      // to identity). Thumb drags redraw cheaply (no outline refetch); the drag end settles with
-      // a full redraw — the Rotate cleanEdge pattern.
+      // to identity). Thumb drags redraw cheaply (no outline refetch); the drag end — and any
+      // typed exact value — settles with a full redraw (the Rotate cleanEdge pattern).
+      void syncLevels(int lo, int g, int hi, {required bool settle}) {
+        setState(() {
+          _lvLow = lo;
+          _lvGammaTh = g;
+          _lvHigh = hi;
+        });
+        _send('SetLevels($_lvLow, $_lvGammaTh, $_lvHigh)');
+        settle ? _redraw() : _redraw(full: false, refetchSelection: false);
+      }
+
+      // The tappable "Name value" label of _labeledSlider, for values whose slider is the
+      // shared three-thumb track: taps open the same numeric text-entry dialog. Unlike thumb
+      // drags (which clamp), a typed low/high PUSHES the other input point out of the way.
+      void valueLabel(String name, String shown, VoidCallback onTap) {
+        children.add(InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(4),
+          child: Padding(
+            padding: const EdgeInsets.only(left: 6, right: 4),
+            child: Text('$name $shown',
+                style: const TextStyle(
+                    fontSize: 11,
+                    color: Colors.white60,
+                    decoration: TextDecoration.underline,
+                    decorationColor: Colors.white24)),
+          ),
+        ));
+      }
+
       children.add(_toggle(const ['Layer', 'Frame'], _lvFrame ? 1 : 0, (i) {
         setState(() => _lvFrame = i == 1);
         _send('SetLevelsScope(${_lvFrame ? 'Frame' : 'Layer'})');
@@ -538,19 +567,28 @@ extension _EditorControls on _EditorPageState {
           low: _lvLow,
           gammaTh: _lvGammaTh,
           high: _lvHigh,
-          onChanged: (lo, g, hi) {
-            setState(() {
-              _lvLow = lo;
-              _lvGammaTh = g;
-              _lvHigh = hi;
-            });
-            _send('SetLevels($_lvLow, $_lvGammaTh, $_lvHigh)');
-            _redraw(full: false, refetchSelection: false);
-          },
+          gearRatio: _kSliderGearRatio,
+          onChanged: (lo, g, hi) => syncLevels(lo, g, hi, settle: false),
           onChangeEnd: () => _redraw(),
         ),
       ));
-      label('$_lvLow · ${levelsGammaLabel(_lvGammaTh)} · $_lvHigh');
+      valueLabel('L', '$_lvLow', () {
+        _editSliderValue('Low input', _lvLow.toDouble(), 0, 254, (v) {
+          final (lo, hi) = levelsEnterLow(v.round(), _lvHigh);
+          syncLevels(lo, _lvGammaTh, hi, settle: true);
+        }, integer: true);
+      });
+      valueLabel('γ', levelsGammaLabel(_lvGammaTh), () {
+        _editSliderValue('Gamma', _lvGammaTh / 1000, 0.1, 10, (v) {
+          syncLevels(_lvLow, (v * 1000).round().clamp(100, 10000), _lvHigh, settle: true);
+        }, integer: false, decimals: 2);
+      });
+      valueLabel('H', '$_lvHigh', () {
+        _editSliderValue('High input', _lvHigh.toDouble(), 1, 255, (v) {
+          final (lo, hi) = levelsEnterHigh(v.round(), _lvLow);
+          syncLevels(lo, _lvGammaTh, hi, settle: true);
+        }, integer: true);
+      });
     }
     if (_tool == 'Flip') {
       label(_flipFrame ? 'Flip frame' : (_outlineEdges.isNotEmpty ? 'Flip selection' : 'Flip layer'));

@@ -40,13 +40,25 @@ int levelsValueFromX(double x, double trackWidth) =>
 int levelsClampLow(int low, int high) => low.clamp(0, high - 1);
 int levelsClampHigh(int high, int low) => high.clamp(low + 1, 255);
 
-/// Which thumb a pan starting at track-x [x] grabs: 0 = low, 1 = mid (gamma), 2 = high.
-/// Outside the low..high span the outer thumb always wins; inside it the nearest wins, the
-/// mid thumb taking exact ties (it sits between the other two).
-int levelsNearestThumb(double x, double xLow, double xMid, double xHigh) {
-  if (x < xLow) return 0;
-  if (x > xHigh) return 2;
+/// Which thumb a pan starting at track-x [x] grabs: 0 = low, 1 = mid (gamma), 2 = high — or
+/// -1 when [x] lies outside every thumb's ±[halfZone] grab band (the bare gradient is inert).
+/// Where bands overlap the nearest thumb wins, the mid thumb taking exact ties (it sits
+/// between the other two).
+int levelsHitThumb(double x, double xLow, double xMid, double xHigh, double halfZone) {
   final dl = (x - xLow).abs(), dm = (x - xMid).abs(), dh = (x - xHigh).abs();
-  if (dm <= dl && dm <= dh) return 1;
-  return dl <= dh ? 0 : 2;
+  final best = (dm <= dl && dm <= dh) ? 1 : (dl <= dh ? 0 : 2);
+  final d = switch (best) { 0 => dl, 1 => dm, _ => dh };
+  return d <= halfZone ? best : -1;
+}
+
+/// Text-entry semantics (unlike thumb drags, which clamp): the typed value wins and pushes
+/// the other input point out of the way if they'd cross. Returns the new (low, high).
+(int, int) levelsEnterLow(int typed, int high) {
+  final low = typed.clamp(0, 254);
+  return (low, max(high, low + 1));
+}
+
+(int, int) levelsEnterHigh(int typed, int low) {
+  final high = typed.clamp(1, 255);
+  return (min(low, high - 1), high);
 }
