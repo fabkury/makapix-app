@@ -78,7 +78,9 @@ extension _EditorEngine on _EditorPageState {
   // (2-row mode must NOT reinsert: there the pinned tool is itself draggable in the grid).
   void _commitToolDrag() {
     if (_dragTool == null) return;
-    hapticDropConfirm();
+    // No release haptic by design: it proved unfeelable in device testing — Android can drop
+    // performHapticFeedback effects (all of HapticFeedback.*) once the touch has ended. The
+    // drag's haptic story is the pick-up tick plus the per-reflow ticks; don't re-add one here.
     final display = _displayToolOrder();
     final order = _threeRowToolbar ? restoreHiddenTool(display, _toolOrder, _pinnedThirdTool) : display;
     setState(() {

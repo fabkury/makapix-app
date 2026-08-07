@@ -17,7 +17,6 @@ import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter/services.dart' show AssetBundle, HapticFeedback, rootBundle;
 
 import '../engine_ffi.dart';
-import 'haptics.dart';
 import 'palette_io.dart';
 
 /// Palettes per document — mirrors the engine's MAX_PALETTES (the .mkpx loader bound). The
@@ -407,13 +406,12 @@ class _PalettePageState extends State<PalettePage> {
               style: TextStyle(color: Colors.white54, fontSize: 13)),
         ),
         footer: _presetsFooter(),
-        // Handle-started drags skip the framework's long-press haptic, so give pick-up and drop
-        // their own cues, mirroring the row-3 tool grid. (Stock ReorderableListView exposes no
-        // mid-drag shift moment, so there are no per-reflow ticks here.)
+        // Handle-started drags skip the framework's long-press haptic, so give pick-up its own
+        // cue, mirroring the row-3 tool grid. No release cue by design (Android can drop
+        // post-touch haptics), and stock ReorderableListView exposes no mid-drag shift moment.
         onReorderStart: (_) => HapticFeedback.selectionClick(),
         // onReorderItem already delivers the post-removal target index — MovePalette semantics.
         onReorderItem: (o, n) {
-          hapticDropConfirm();
           if (n != o) _mutate('MovePalette($o, $n)');
         },
         children: [for (var i = 0; i < _palettes.length; i++) _paletteCard(i, _palettes[i])],
