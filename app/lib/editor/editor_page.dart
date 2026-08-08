@@ -90,6 +90,12 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // The composited canvas image. A ValueNotifier so playback can repaint just the canvas (30fps)
   // without a full-tree setState — that churn made the row-3 drag tiles' taps (e.g. Pause) flaky.
   final ValueNotifier<ui.Image?> _imageVN = ValueNotifier<ui.Image?>(null);
+  // Staleness stamp for _imageVN: every publisher (_redraw, _advancePlayFrame) claims ++_imageGen
+  // when it fetches the engine bytes, and publishes only if still the newest when its async decode
+  // lands. Image decodes complete on the engine's concurrent workers — NOT necessarily in FIFO
+  // order — so without this stamp a slower older decode could overwrite a newer image. Seen in the
+  // wild: the Levels commit's transient fetch landing last showed the adjustment applied twice.
+  int _imageGen = 0;
   // Bumped to repaint ONLY the canvas overlays (selection ants, reticle, handles, ruler) during a
   // freehand stroke, instead of a full-tree setState that would also rebuild the film-roll and
   // layer strips (each doing per-tile FFI hash calls) on every pointer move. [audit F-9]

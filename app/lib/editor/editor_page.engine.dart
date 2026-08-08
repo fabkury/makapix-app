@@ -232,6 +232,7 @@ extension _EditorEngine on _EditorPageState {
       _rebuildOutlineEdges();
     }
     final frame = _playing ? engine.playFrame : engine.activeFrame;
+    final gen = ++_imageGen; // claim the fetch's slot before the async decode gap (see _imageGen)
     // Playback composites the canvas; editing uses the display, which is storage-sized (canvas +
     // gutter) under the overscan view. Size the decode to whichever we asked for.
     final bytes = _playing
@@ -248,9 +249,15 @@ extension _EditorEngine on _EditorPageState {
       img.dispose(); // we navigated away mid-decode; don't leak the GPU image [audit F-10]
       return;
     }
-    final old = _imageVN.value;
-    _imageVN.value = img;
-    old?.dispose(); // release the previous composited image (was leaked every redraw) [audit F-10]
+    if (gen == _imageGen) {
+      final old = _imageVN.value;
+      _imageVN.value = img;
+      old?.dispose(); // release the previous composited image (was leaked every redraw) [audit F-10]
+    } else {
+      // A newer fetch exists: this decode is stale — never let it regress the canvas. The tree
+      // rebuild below still runs; the newer fetch owns the image.
+      img.dispose();
+    }
     if (full) {
       setState(() {}); // rebuild the whole tree (overlays + strips + tool rows)
     } else {
@@ -263,13 +270,16 @@ extension _EditorEngine on _EditorPageState {
   Future<void> _advancePlayFrame() async {
     if (!_engineReady || !_playing) return;
     _send('AdvanceClock(33)');
+    final gen = ++_imageGen; // claim the fetch's slot before the async decode gap (see _imageGen)
     final img = await _decode(engine.compositeFrame(engine.playFrame), engine.width, engine.height);
-    if (mounted && _playing) {
+    if (mounted && _playing && gen == _imageGen) {
       final old = _imageVN.value;
       _imageVN.value = img;
       old?.dispose(); // [audit F-10] — was orphaning ~30 GPU images/sec during playback
     } else {
-      img.dispose(); // paused/unmounted during decode: dispose the unused frame [audit F-10]
+      // Paused/unmounted during decode, or a newer fetch (e.g. the pause's _redraw) superseded
+      // this frame: dispose the unused image [audit F-10]
+      img.dispose();
     }
   }
 
@@ -540,9 +550,12 @@ extension _EditorEngine on _EditorPageState {
     if (t != null) _send('SelectTool($t)');
   }
 
-  // ---- HSV / Brightness-Contrast drafts (a non-identity pending adjustment) --------------------
-  // Commit bakes the adjustment into the document (one undo step, the row-1 Apply of old); Reset
-  // zeroes it so the display-only preview reverts. Both are driven by the floating commit-menu,
+  // ---- HSV / Brightness-Contrast / Levels drafts (a non-identity pending adjustment) -----------
+  // Commit bakes the adjustment into the document (one undo step, the row-1 Apply of old). The
+  // engine consumes the pending settings inside Apply* — its display can never show the adjustment
+  // twice, even to a fetch landing before our reset — so on commit the reset's identity re-send is
+  // a harmless no-op that just zeroes the slider state. Reset alone is the cancel: it zeroes the
+  // settings so the display-only preview reverts. Both are driven by the floating commit-menu,
   // and Reset also fires on the implicit cancel when switching tools in row-3.
 
   void _commitHsvDraft() {
