@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
 import '../levels_math.dart';
@@ -812,7 +813,7 @@ class _ShapeGlyphPainter extends CustomPainter {
 /// low input (black), gamma (gray, riding between the outer two at the GIMP mid-gray
 /// fraction 0.5^γ), and high input (white). Dragging low/high preserves gamma, so the mid
 /// thumb slides along with its span; dragging the mid thumb recomputes gamma from its span
-/// fraction. Only a pan starting inside a thumb's ±[hitHalfZone] grab band (full widget
+/// fraction. Only a drag starting inside a thumb's ±[hitHalfZone] grab band (full widget
 /// height) moves that thumb — the bare gradient is inert — and the drag is anchored to the
 /// thumb's own position, never the finger's, so grabbing off-center can't jump the value.
 /// Pointer travel is geared down by [gearRatio] (the row-1 house gearing) so exact values
@@ -915,10 +916,23 @@ class _LevelsSliderState extends State<LevelsSlider> {
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onPanStart: _panStart,
-        onPanUpdate: _panUpdate,
-        onPanEnd: (_) => _panEnd(),
-        onPanCancel: _panEnd,
+        // HORIZONTAL drag, not pan, on purpose: row-1 is a horizontal SingleChildScrollView,
+        // and in the gesture arena a pan recognizer (kPanSlop ≈ 2× kTouchSlop) always loses to
+        // the scrollable's horizontal-drag recognizer once the row overflows — the thumbs would
+        // go dead and drags would scroll the row instead. Matching recognizers tie at the same
+        // slop and the innermost wins (the _GearedSlider precedent).
+        //
+        // DragStartBehavior.down, also on purpose: while the arena is contested, acceptance
+        // happens only after ~kTouchSlop of travel, and the default .start would report THAT
+        // position to the grab-band hit test — the finger would already be past the ±16 px zone
+        // it pressed on. .down anchors the hit test to the touch-down point (and replays the
+        // pre-acceptance travel as the first update, so no movement is lost).
+        behavior: HitTestBehavior.opaque,
+        dragStartBehavior: DragStartBehavior.down,
+        onHorizontalDragStart: _panStart,
+        onHorizontalDragUpdate: _panUpdate,
+        onHorizontalDragEnd: (_) => _panEnd(),
+        onHorizontalDragCancel: _panEnd,
         child: CustomPaint(
           size: Size(widget.width, widget.height),
           painter: _LevelsSliderPainter(widget.low, widget.gammaTh, widget.high),

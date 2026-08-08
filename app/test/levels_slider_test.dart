@@ -122,4 +122,43 @@ void main() {
     await tester.pump();
     expect(ends, 1);
   });
+
+  testWidgets('a thumb drag beats an overflowing horizontal scroll row (the row-1 arena)',
+      (tester) async {
+    // Regression: with pan callbacks the scrollable's horizontal-drag recognizer (smaller
+    // slop) always won the gesture arena once row-1 overflowed — thumbs went dead and drags
+    // scrolled the row. The slider must use a horizontal-drag recognizer so the innermost
+    // one wins. Reproduce row-1: a horizontally scrolling row wider than the screen.
+    final v = ValueNotifier((0, 1000, 255));
+    final scroll = ScrollController();
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          height: 48,
+          child: SingleChildScrollView(
+            controller: scroll,
+            scrollDirection: Axis.horizontal,
+            child: Row(children: [
+              ValueListenableBuilder<(int, int, int)>(
+                valueListenable: v,
+                builder: (_, t, _) => LevelsSlider(
+                  low: t.$1,
+                  gammaTh: t.$2,
+                  high: t.$3,
+                  gearRatio: 1,
+                  onChanged: (lo, g, hi) => v.value = (lo, g, hi),
+                ),
+              ),
+              const SizedBox(width: 2000), // force overflow so the scrollable arms
+            ]),
+          ),
+        ),
+      ),
+    ));
+    expect(scroll.position.maxScrollExtent, greaterThan(0), reason: 'the row must overflow');
+    await tester.dragFrom(Offset(xOf(tester, 0), yOf(tester)), const Offset(60, 0));
+    await tester.pump();
+    expect(v.value.$1, greaterThan(0), reason: 'the thumb moved');
+    expect(scroll.offset, 0, reason: 'the row did not scroll');
+  });
 }
