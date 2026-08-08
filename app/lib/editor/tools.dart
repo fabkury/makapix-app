@@ -91,30 +91,31 @@ String selectShapeEngineTool(String kind) => switch (kind) {
     };
 
 // Succinct, teach-as-you-go help shown in the gesture-safe band at the bottom. Keep each to two
-// short lines: brief, professional, the core of the tool (not its nuances), no em dashes.
+// short lines: brief, professional, the core of the tool (not its nuances), no em dashes. Assume
+// fluency with the draft/commit model: tips never teach or remind the user to Commit.
 const toolTips = <String, String>{
   'Pencil': 'Drag to draw hard pixels in the primary color.',
   'Brush': 'Drag to paint, blending onto existing pixels.',
   'Airbrush': 'Drag to spray the primary color. Set size and intensity.',
   'Eraser': 'Drag to erase pixels to transparent.',
   'Bucket': 'Tap an area to flood-fill. Threshold sets color tolerance.',
-  'Gradient': 'Drag to set a gradient, then Commit to fill.',
-  'Line': 'Drag to set a line, then Commit to draw.',
-  'Shape': 'Drag to set a shape (Ellipse / Triangle / Rectangle toggle), then Commit to draw.',
+  'Gradient': 'Drag to set the gradient fill.',
+  'Line': 'Drag to place a line.',
+  'Shape': 'Drag to place a shape (Ellipse / Triangle / Rectangle toggle).',
   'Ruler': 'Drag to measure a line. Angle mode shows the angle at the shared point.',
   'Dodge': 'Drag to lighten pixels. Set intensity.',
   'Burn': 'Drag to darken pixels. Set intensity.',
   'Eyedropper': 'Tap a pixel to pick its color as primary. Drag to keep picking as you move.',
   'Move': 'Drag to move the selected pixels, or the whole layer if nothing is selected.',
-  'CopyPaste': 'Clipboard for the selection: Copy, Cut, Paste, Clear. Paste drops a movable draft you position, then Commit.',
-  'SelectShape': 'Rect / Oval: drag to draft a selection, adjust the reticles, then Commit. Lasso: draw freely around pixels.',
+  'CopyPaste': 'Clipboard for the selection: Copy, Cut, Paste, Clear. Paste drops a movable draft you position.',
+  'SelectShape': 'Rect / Oval: drag to draft a selection and adjust the reticles. Lasso: draw freely around pixels.',
   'SelectCircle': 'Drag from the center to select a circle.',
   'SelectPoly': 'Trace an outline to select an area.',
   'SelectByColor': 'Tap to select similar colors. Threshold sets tolerance.',
   'SelectLayer': 'Turn the layer\'s opaque pixels into a selection. Tap a mode to apply.',
-  'HsvShift': 'Shift hue, saturation and value, then Commit.',
-  'BrightnessContrast': 'Adjust brightness and contrast, then Commit.',
-  'Levels': 'Drag the black, gamma and white thumbs to remap tones, then Commit.',
+  'HsvShift': 'Shift hue, saturation and value.',
+  'BrightnessContrast': 'Adjust brightness and contrast.',
+  'Levels': 'Drag the black, gamma and white thumbs to remap tones.',
   'Flip': 'Mirror the layer horizontally or vertically. Acts on the selection if any.',
   'Rotate': 'Rotate the layer or frame 90°, 180°, or by a free Angle. (Whole canvas: ☰ menu.)',
   'Resize': 'Scale the layer or frame: ½×, 2×, or drag a free Scale. (Whole canvas: ☰ menu.)',
