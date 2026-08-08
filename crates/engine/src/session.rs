@@ -2294,6 +2294,12 @@ impl Session {
 
     pub fn apply_hsv_shift(&mut self) {
         let (dh, ds, dv) = self.settings.hsv;
+        // Apply CONSUMES the pending adjustment: reset to identity before baking, on every path
+        // (including the locked-layer no-op — the shell drops its draft unconditionally on commit).
+        // The preview must die the instant the bake lands: with the setting left non-identity, a
+        // display read between Apply and the shell's own identity reset composited the preview
+        // over the already-baked pixels — the adjustment shown twice. The Levels/BC twins match.
+        self.settings.hsv = (0.0, 0.0, 0.0);
         // "Frame" scope: shift every layer of the active frame, ignoring the selection — frame
         // mode acts on everything, like flip_frame/rotate_frame/map_frame. One undo step.
         if self.settings.hsv_frame {
@@ -2347,6 +2353,8 @@ impl Session {
     /// (ignoring the selection, like `apply_hsv_shift`). One undo step.
     pub fn apply_brightness_contrast(&mut self) {
         let (db, cf) = self.settings.bc;
+        // Apply consumes the pending adjustment (see apply_hsv_shift for the doubled-display why).
+        self.settings.bc = (0, 1.0);
         if self.settings.bc_frame {
             self.edit_doc("bc_frame", |s| {
                 for l in &mut s.doc.active_frame_mut().layers {
@@ -2400,6 +2408,8 @@ impl Session {
     /// sanitized by `color::levels_lut`; the table is built once and shared across layers.
     pub fn apply_levels(&mut self) {
         let (lo, g, hi) = self.settings.levels;
+        // Apply consumes the pending adjustment (see apply_hsv_shift for the doubled-display why).
+        self.settings.levels = (0, 1000, 255);
         let lut = crate::color::levels_lut(lo, g, hi);
         if self.settings.levels_frame {
             self.edit_doc("levels_frame", |s| {
@@ -4268,6 +4278,46 @@ mod tests {
         s.run_script("ApplyLevels()").unwrap();
         assert_eq!(s.pixel(0, 0, 0, 0), want);
         assert_eq!(s.pixel(0, 0, 1, 0), orig);
+    }
+
+    #[test]
+    fn apply_resets_pending_settings_so_display_never_doubles() {
+        // Apply* consumes the pending adjustment: the settings reset to identity inside the bake,
+        // so a display read landing between Apply and the shell's own identity reset can never
+        // composite the preview over the already-baked pixels. Regression: the app fetched exactly
+        // such a doubled frame on every commit, and a decode race occasionally left it on screen.
+
+        // Levels
+        let mut s = Session::new(8, 8);
+        let orig = Rgba8::new(100, 150, 200, 255);
+        s.settings.primary = orig;
+        s.tap(0, 0);
+        s.run_script("SelectTool(Levels)\nSetLevels(32, 2200, 224)\nApplyLevels()").unwrap();
+        assert_eq!(s.settings.levels, (0, 1000, 255));
+        let lut = crate::color::levels_lut(32, 2200, 224);
+        let want = crate::color::apply_levels_lut(orig, &lut);
+        let px = s.display_bytes(false, false, false);
+        assert_eq!(&px[0..4], &[want.r, want.g, want.b, want.a]); // baked once, not previewed again
+
+        // HSV — a doubled +120° hue shift would be unmistakable (red → green → blue)
+        let mut s = Session::new(8, 8);
+        s.settings.primary = Rgba8::new(255, 0, 0, 255);
+        s.tap(0, 0);
+        s.run_script("SelectTool(HsvShift)\nSetHsvShift(120, 0, 0)\nApplyHsvShift()").unwrap();
+        assert_eq!(s.settings.hsv, (0.0, 0.0, 0.0));
+        let px = s.display_bytes(false, false, false);
+        assert_eq!(&px[0..4], &[0, 255, 0, 255]);
+
+        // Brightness/Contrast
+        let mut s = Session::new(8, 8);
+        s.settings.primary = orig;
+        s.tap(0, 0);
+        s.run_script("SelectTool(BrightnessContrast)\nSetBrightnessContrast(10, 1.5)\nApplyBrightnessContrast()")
+            .unwrap();
+        assert_eq!(s.settings.bc, (0, 1.0));
+        let want = crate::color::brightness_contrast(orig, 10, 1.5);
+        let px = s.display_bytes(false, false, false);
+        assert_eq!(&px[0..4], &[want.r, want.g, want.b, want.a]);
     }
 
     // ---- Rotate tool: layer/selection-scoped rotation + free-angle draft (session/canvas.rs) ----
