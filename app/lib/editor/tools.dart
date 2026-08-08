@@ -116,8 +116,8 @@ const toolTips = <String, String>{
   'BrightnessContrast': 'Adjust brightness and contrast, then Commit.',
   'Levels': 'Drag the black, gamma and white thumbs to remap tones, then Commit.',
   'Flip': 'Mirror the layer horizontally or vertically. Acts on the selection if any.',
-  'Rotate': 'Rotate the layer or the whole frame 90°, 180°, or by a free Angle. cleanEdge keeps slanted edges clean. Acts on the selection if any. (Whole canvas: ☰ menu.)',
-  'Resize': 'Scale the layer or frame: ½×, 2×, or drag a free Scale. cleanEdge keeps upscaled edges clean. Acts on the selection if any.',
+  'Rotate': 'Rotate the layer or frame 90°, 180°, or by a free Angle. (Whole canvas: ☰ menu.)',
+  'Resize': 'Scale the layer or frame: ½×, 2×, or drag a free Scale. (Whole canvas: ☰ menu.)',
   'Invert': 'Invert the image colors.',
   'PlayPause': 'Play or pause the animation. Step to the previous or next frame, or jump to one.',
 };
