@@ -31,6 +31,7 @@ CHROME = Path("C:/Program Files/Google/Chrome/Application/chrome.exe")
 FORMATS = {
     "play": (1080, 1920, "portrait"),
     "appstore": (1320, 2868, "portrait"),
+    "ipad": (2064, 2752, "square"),  # 13" iPad Pro portrait; square layouts + extra height
     "social": (1200, 630, "landscape"),
     "square": (1080, 1080, "square"),
 }

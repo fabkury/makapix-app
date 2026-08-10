@@ -16,6 +16,12 @@ for the one-time Play Console / GCP setup):
               the exact same versionCodes roll out on the destination track).
               e.g.  promote --from-track internal --to-track alpha
 
+  images      Replace store-listing screenshots for one language: for each given
+              --set imageType=file,file,... the existing images of that type are
+              deleted and the files uploaded in order. Types not named (e.g.
+              featureGraphic) are left untouched.
+              e.g.  images --set phoneScreenshots=a.png,b.png
+
 Normally invoked by release_android.ps1, not by hand.
 
 Deps (not in the repo; install once):  pip install google-api-python-client google-auth
@@ -173,6 +179,62 @@ def cmd_promote(args) -> None:
     print(f"Promoted versionCode(s) {codes} from '{args.from_track}' to '{args.to_track}' {how}.")
 
 
+IMAGE_TYPES = {
+    "phoneScreenshots", "sevenInchScreenshots", "tenInchScreenshots",
+    "tvScreenshots", "wearScreenshots", "featureGraphic", "icon", "tvBanner",
+}
+
+
+def cmd_images(args) -> None:
+    from googleapiclient.http import MediaFileUpload
+
+    sets: list[tuple[str, list[Path]]] = []
+    for spec in args.set:
+        image_type, _, file_list = spec.partition("=")
+        if image_type not in IMAGE_TYPES:
+            die(f"unknown imageType '{image_type}' (one of: {', '.join(sorted(IMAGE_TYPES))})")
+        files = [Path(f) for f in file_list.split(",") if f]
+        if not files:
+            die(f"--set {image_type}= names no files")
+        for f in files:
+            if not f.is_file():
+                die(f"file not found: {f}")
+        sets.append((image_type, files))
+
+    svc = service(args.key)
+    edit = svc.edits().insert(packageName=args.package, body={}).execute()
+    edit_id = edit["id"]
+
+    listings = svc.edits().listings().list(packageName=args.package, editId=edit_id).execute()
+    languages = [ls["language"] for ls in listings.get("listings", [])]
+    if args.language not in languages:
+        die(f"listing language '{args.language}' not found (has: {', '.join(languages)})")
+
+    for image_type, files in sets:
+        current = (
+            svc.edits().images()
+            .list(packageName=args.package, editId=edit_id,
+                  language=args.language, imageType=image_type)
+            .execute()
+        )
+        n_old = len(current.get("images", []) or [])
+        print(f"{image_type}: replacing {n_old} existing with {len(files)} new")
+        svc.edits().images().deleteall(
+            packageName=args.package, editId=edit_id,
+            language=args.language, imageType=image_type,
+        ).execute()
+        for f in files:
+            svc.edits().images().upload(
+                packageName=args.package, editId=edit_id,
+                language=args.language, imageType=image_type,
+                media_body=MediaFileUpload(str(f), mimetype="image/png"),
+            ).execute(num_retries=3)
+            print(f"  uploaded {f.name}")
+
+    svc.edits().commit(packageName=args.package, editId=edit_id).execute()
+    print(f"Committed listing images for '{args.language}'.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--package", default=PACKAGE)
@@ -195,11 +257,18 @@ def main() -> None:
     pro.add_argument("--notes-language", default="en-US")
     pro.add_argument("--draft", action="store_true", help="create as draft (required on a draft app)")
 
+    img = sub.add_parser("images", help="replace store-listing screenshots for a language")
+    img.add_argument("--language", default="en-US")
+    img.add_argument("--set", action="append", required=True, metavar="TYPE=FILE,FILE,...",
+                     help="imageType and its replacement files, in display order; repeatable")
+
     args = parser.parse_args()
     if args.command == "next-code":
         cmd_next_code(args)
     elif args.command == "promote":
         cmd_promote(args)
+    elif args.command == "images":
+        cmd_images(args)
     else:
         cmd_publish(args)
 
