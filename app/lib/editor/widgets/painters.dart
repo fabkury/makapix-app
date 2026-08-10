@@ -841,7 +841,7 @@ class LevelsSlider extends StatefulWidget {
     this.width = 240,
     this.height = 40,
     this.gearRatio = 6.0,
-    this.hitHalfZone = 16,
+    this.hitHalfZone = 22,
   });
 
   /// Horizontal inset of the track: keeps the outer thumbs' triangles inside the box.
@@ -924,7 +924,7 @@ class _LevelsSliderState extends State<LevelsSlider> {
         //
         // DragStartBehavior.down, also on purpose: while the arena is contested, acceptance
         // happens only after ~kTouchSlop of travel, and the default .start would report THAT
-        // position to the grab-band hit test — the finger would already be past the ±16 px zone
+        // position to the grab-band hit test — the finger would already be past the ±22 px zone
         // it pressed on. .down anchors the hit test to the touch-down point (and replays the
         // pre-acceptance travel as the first update, so no movement is lost).
         behavior: HitTestBehavior.opaque,
@@ -972,7 +972,7 @@ class _LevelsSliderPainter extends CustomPainter {
 
   /// A GIMP-style upward triangle whose tip touches the bar at [x].
   void _thumbAt(Canvas canvas, double x, double barBottom, Color fill) {
-    const w = 12.0, h = 10.0;
+    const w = 16.0, h = 12.0;
     final tri = Path()
       ..moveTo(x, barBottom + 1)
       ..lineTo(x + w / 2, barBottom + 1 + h)
