@@ -40,8 +40,8 @@ never locally.**
 ./build_android.ps1           # Android APK: engine .so (arm64+arm32) → jniLibs → release APK
                               #   -Install: adb install -r · -Bundle: build an .aab instead
 ./release_android.ps1         # Play release: gates → versionCode from the Play API → signed prod AAB →
-                              #   upload+rollout → commit/tag/push. -Track (default internal; production is
-                              #   the public track, alpha the testing track) · -DryRun · -VersionName X.Y.Z.
+                              #   upload+rollout → commit/tag/push. -Track (default production; alpha =
+                              #   closed testing, internal = review-free smoke test) · -DryRun · -VersionName X.Y.Z.
                               #   Setup: docs/play-release.md
 ```
 

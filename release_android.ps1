@@ -1,4 +1,4 @@
-# One-command Play Store release for the Makapix Club app (internal testing by default).
+# One-command Play Store release for the Makapix Club app (production track by default).
 #
 # Pipeline:  preflight (clean tree, on main, key present)
 #          → gates (cargo test, flutter analyze, flutter test)
@@ -10,12 +10,13 @@
 #
 # One-time setup (service account + key): docs/play-release.md.
 #
-# Usage:  ./release_android.ps1                      # full release to internal testing
+# Usage:  ./release_android.ps1                      # full release to production
+#         ./release_android.ps1 -Track internal      # instant, review-free smoke-test channel
 #         ./release_android.ps1 -DryRun              # preflight + gates + print the plan; no changes
 #         ./release_android.ps1 -VersionName 1.1.0   # bump the user-visible version too
 #         ./release_android.ps1 -SkipGates           # only when the gates just ran
 param(
-  [string]$Track = "internal",
+  [string]$Track = "production",
   [string]$VersionName,                                   # default: keep pubspec's current versionName
   [string]$NotesFile = "distribution/whatsnew/whatsnew-en-US",
   [switch]$SkipGates,

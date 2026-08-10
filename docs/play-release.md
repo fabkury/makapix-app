@@ -23,9 +23,9 @@ Update `distribution/whatsnew/whatsnew-en-US` before each release (≤500 chars;
 
 Notes on tracks:
 
-- `-Track` defaults to **internal**, but that track is historical (it was the pre-closed-testing
-  staging area). In practice releases go **direct to `production`**, or to **`alpha`** when a
-  build is meant for the closed-testing group first.
+- `-Track` defaults to **production** (since 2026-08-10; it was `internal` before). Use
+  **`alpha`** when a build is meant for the closed-testing group first, and **`internal`** for an
+  instant, review-free smoke-test upload (internal is the only track that skips Google review).
 - A build released to alpha can later be copied to production without a re-upload:
   `python tools/play_publish.py promote --from-track alpha --to-track production` (the exact
   same versionCodes roll out on the destination track). This is how the first production release
