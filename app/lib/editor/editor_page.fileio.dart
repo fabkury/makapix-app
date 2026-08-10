@@ -171,8 +171,8 @@ extension _EditorFileIo on _EditorPageState {
     // modal also keeps the document from changing under the import — a frame tap mid-decode
     // would retarget startFrame.
     final status = await _runWithImportSpinner(() async {
-      final img = await Engine.decodeImageInBackground(bytes);
-      if (img == null) return ImportStatus.failed;
+      final (img, decodeStatus) = await Engine.decodeImageInBackground(bytes);
+      if (img == null) return decodeStatus; // failed, or tooLarge for a valid-but-huge file
       try {
         if (!mounted) return ImportStatus.failed; // engine may be gone; skip the apply
         return engine.importDecoded(img,
@@ -195,6 +195,8 @@ extension _EditorFileIo on _EditorPageState {
         _toast('Imported ${res.files.single.name} (${engine.frameCount} frames)');
       case ImportStatus.refused:
         _toast('Import refused: it would not fit in the memory budget');
+      case ImportStatus.tooLarge:
+        _toast('Import failed: image is too large (max 4096×4096 pixels, 1024 frames)');
       case ImportStatus.failed:
         _toast('Import failed (unsupported or corrupt)');
     }
@@ -315,7 +317,9 @@ extension _EditorFileIo on _EditorPageState {
       // modal spinner as file import [audit #3], then stretch into the fresh document.
       _send('NewDocument(${req.width},${req.height})');
       ok = await _runWithImportSpinner(() async {
-        final img = await Engine.decodeImageInBackground(req.bytes);
+        // Club artworks are server-capped at 256×256, so a tooLarge decode can't legitimately
+        // happen here — the generic failure toast below covers it.
+        final (img, _) = await Engine.decodeImageInBackground(req.bytes);
         if (img == null) return false;
         try {
           if (!mounted) return false;

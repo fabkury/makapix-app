@@ -15,6 +15,11 @@ use std::io::Cursor;
 #[derive(Debug)]
 pub enum CodecError {
     Decode(String),
+    /// Valid input refused by the decode size gates (`MAX_DIM`, `MAX_DECODE_FRAMES`,
+    /// `MAX_DECODE_TOTAL_BYTES`, `limits()`) — a real file that is simply too big, kept
+    /// distinct from [`CodecError::Decode`] so callers can say "too large" instead of
+    /// "corrupt".
+    TooLarge(&'static str),
     Encode(String),
     /// The per-frame progress callback asked the encode to stop (user cancel).
     Canceled,
@@ -25,6 +30,7 @@ impl std::fmt::Display for CodecError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CodecError::Decode(s) => write!(f, "decode error: {}", s),
+            CodecError::TooLarge(s) => write!(f, "too large: {}", s),
             CodecError::Encode(s) => write!(f, "encode error: {}", s),
             CodecError::Canceled => write!(f, "canceled"),
             CodecError::Unsupported => write!(f, "unsupported format"),
@@ -93,7 +99,11 @@ pub fn decode(bytes: &[u8]) -> Result<Vec<DecodedFrame>, CodecError> {
 }
 
 fn de(e: image::ImageError) -> CodecError {
-    CodecError::Decode(e.to_string())
+    match e {
+        // The decoder tripped `limits()` (dimensions or allocation): oversize, not corrupt.
+        image::ImageError::Limits(_) => CodecError::TooLarge("decode limits exceeded"),
+        e => CodecError::Decode(e.to_string()),
+    }
 }
 
 fn decode_static(bytes: &[u8]) -> Result<Vec<DecodedFrame>, CodecError> {
@@ -107,7 +117,7 @@ fn decode_static(bytes: &[u8]) -> Result<Vec<DecodedFrame>, CodecError> {
     let rgba = img.to_rgba8();
     let (w, h) = (rgba.width(), rgba.height());
     if w > MAX_DIM || h > MAX_DIM {
-        return Err(CodecError::Decode("image too large".into()));
+        return Err(CodecError::TooLarge("image too large"));
     }
     Ok(vec![DecodedFrame { rgba: rgba.into_raw(), w, h, duration_us: 100_000 }])
 }
@@ -129,7 +139,7 @@ fn decode_animated_capped<'a>(
     let mut total_bytes = 0usize; // running sum of decoded RGBA, capped to stop bombs [P-3]
     for (i, frame) in decoder.into_frames().enumerate() {
         if i >= MAX_DECODE_FRAMES {
-            return Err(CodecError::Decode("too many frames".into()));
+            return Err(CodecError::TooLarge("too many frames"));
         }
         let fr = frame.map_err(de)?;
         let (num, den) = fr.delay().numer_denom_ms();
@@ -137,14 +147,14 @@ fn decode_animated_capped<'a>(
         let buf: RgbaImage = fr.into_buffer();
         let (w, h) = (buf.width(), buf.height());
         if w > MAX_DIM || h > MAX_DIM {
-            return Err(CodecError::Decode("frame too large".into()));
+            return Err(CodecError::TooLarge("frame too large"));
         }
         // Aggregate cap: bound the SUM across frames, not just each one. The per-frame check above
         // (≤4096²·4 = 64 MiB/frame) and `image`'s own per-frame `max_alloc` both reset each frame,
         // so only this running total stops an N-frame bomb. At most one frame of overshoot. [P-3]
         total_bytes = total_bytes.saturating_add((w as usize) * (h as usize) * 4);
         if total_bytes > total_cap {
-            return Err(CodecError::Decode("animation too large".into()));
+            return Err(CodecError::TooLarge("animation too large"));
         }
         out.push(DecodedFrame {
             rgba: buf.into_raw(),
@@ -614,7 +624,7 @@ mod tests {
         let dec = GifDecoder::new(Cursor::new(&gif)).unwrap();
         let tripped = decode_animated_capped(dec, 24 * 1024);
         assert!(
-            matches!(tripped, Err(CodecError::Decode(ref m)) if m == "animation too large"),
+            matches!(tripped, Err(CodecError::TooLarge("animation too large"))),
             "aggregate cap must trip on the second frame (got {})",
             match &tripped {
                 Ok(f) => format!("Ok with {} frames", f.len()),

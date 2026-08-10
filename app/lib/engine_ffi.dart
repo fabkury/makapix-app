@@ -66,8 +66,8 @@ typedef _FreeBytesC = Void Function(Pointer<Uint8>, Uint64);
 typedef _FreeBytesD = void Function(Pointer<Uint8>, int);
 typedef _ImportC = Int32 Function(Pointer<Void>, Pointer<Uint8>, IntPtr, Int32, Int32, Uint32, Int32, Int32, Int32, Int32);
 typedef _ImportD = int Function(Pointer<Void>, Pointer<Uint8>, int, int, int, int, int, int, int, int);
-typedef _DecodeImageC = Pointer<Uint8> Function(Pointer<Uint8>, IntPtr, Pointer<Uint64>);
-typedef _DecodeImageD = Pointer<Uint8> Function(Pointer<Uint8>, int, Pointer<Uint64>);
+typedef _DecodeImageC = Pointer<Uint8> Function(Pointer<Uint8>, IntPtr, Pointer<Uint64>, Pointer<Int32>);
+typedef _DecodeImageD = Pointer<Uint8> Function(Pointer<Uint8>, int, Pointer<Uint64>, Pointer<Int32>);
 typedef _ExportPngC = Pointer<Uint8> Function(Pointer<Void>, Uint32, Uint32, Pointer<Uint64>);
 typedef _ExportPngD = Pointer<Uint8> Function(Pointer<Void>, int, int, Pointer<Uint64>);
 typedef _ExportLayerPngC = Pointer<Uint8> Function(Pointer<Void>, Uint32, Uint32, Uint32, Pointer<Uint64>);
@@ -109,10 +109,12 @@ DynamicLibrary _open() {
   throw Exception('Could not locate makapix_ffi.dll. Build it with: cargo build -p makapix-ffi --release');
 }
 
-/// Outcome of applying an image import to the document. [failed] = undecodable or corrupt
-/// input; [refused] = the engine's memory-budget gate rolled the whole import back (the
-/// document is unchanged) — worth telling the user apart from a bad file.
-enum ImportStatus { ok, failed, refused }
+/// Outcome of an image import (decode or apply). [failed] = undecodable or corrupt input;
+/// [tooLarge] = valid input refused by the codec's decode size gates (4096×4096 per frame,
+/// 1024 frames, 384 MiB decoded — crates/codec); [refused] = the engine's memory-budget gate
+/// rolled the whole import back (the document is unchanged). All three are worth telling the
+/// user apart.
+enum ImportStatus { ok, failed, tooLarge, refused }
 
 /// Outcome of loading a `.mkpx` into the engine — mirrors mkpx_load's return codes
 /// (crates/ffi/src/lib.rs; keep the two in sync).
@@ -549,29 +551,37 @@ class Engine {
   /// native ADDRESS crosses back from the isolate: both isolates load the same engine library,
   /// so the buffer lives in shared process memory (the same property the export progress
   /// atomics rely on), and the opaque session pointer still never crosses [audit F-12]. Falls
-  /// back to a synchronous decode if the isolate can't run. Null when the input can't be
-  /// decoded. The caller owns the result — dispose it in a `finally`.
-  static Future<DecodedImage?> decodeImageInBackground(Uint8List bytes) async {
-    (int, int) r;
+  /// back to a synchronous decode if the isolate can't run. Returns the decoded image plus
+  /// [ImportStatus.ok], or a null image plus the failure kind: [ImportStatus.tooLarge] when
+  /// the file is valid but over the codec's decode size limits, [ImportStatus.failed]
+  /// otherwise. The caller owns the image — dispose it in a `finally`.
+  static Future<(DecodedImage?, ImportStatus)> decodeImageInBackground(Uint8List bytes) async {
+    (int, int, int) r;
     try {
       r = await Isolate.run(() => _decodeImageNative(bytes));
     } catch (_) {
       r = _decodeImageNative(bytes);
     }
-    return r.$1 == 0 ? null : DecodedImage._(r.$1, r.$2);
+    if (r.$1 == 0) {
+      return (null, r.$3 == -3 ? ImportStatus.tooLarge : ImportStatus.failed);
+    }
+    return (DecodedImage._(r.$1, r.$2), ImportStatus.ok);
   }
 
-  /// (address, length) of a malloc'd decoded-frames blob, or (0, 0) on decode failure.
-  static (int, int) _decodeImageNative(Uint8List bytes) {
+  /// (address, length, status) of a malloc'd decoded-frames blob; address 0 on failure with
+  /// mkpx_decode_image's status code (-1 undecodable, -3 too large).
+  static (int, int, int) _decodeImageNative(Uint8List bytes) {
     final p = malloc<Uint8>(bytes.length);
     final lenPtr = malloc<Uint64>();
+    final statusPtr = malloc<Int32>();
     try {
       p.asTypedList(bytes.length).setAll(0, bytes);
-      final out = _sDecodeImage(p, bytes.length, lenPtr);
-      return out == nullptr ? (0, 0) : (out.address, lenPtr.value);
+      final out = _sDecodeImage(p, bytes.length, lenPtr, statusPtr);
+      return out == nullptr ? (0, 0, statusPtr.value) : (out.address, lenPtr.value, 0);
     } finally {
       malloc.free(p);
       malloc.free(lenPtr);
+      malloc.free(statusPtr);
     }
   }
 

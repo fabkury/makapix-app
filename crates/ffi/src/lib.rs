@@ -439,7 +439,8 @@ fn import_frames_into(
 /// `mode`: 0=Fit, 1=Stretch, 2=Crop. `as_layer`: 0/1. A non-empty crop rect (`crop_w>0 && crop_h>0`,
 /// source pixels) places that region 1:1 centered on the canvas (downscaled to fit only when larger,
 /// never upscaled), overriding `mode`. Returns 0 on success, -1 on decode failure, -2 when the
-/// memory-budget gate refused the import (document unchanged).
+/// memory-budget gate refused the import (document unchanged), -3 when the input is valid but
+/// exceeds the codec's decode size limits (too large — worth telling apart from corrupt).
 #[no_mangle]
 #[allow(clippy::too_many_arguments)]
 pub extern "C" fn mkpx_import(
@@ -461,6 +462,7 @@ pub extern "C" fn mkpx_import(
     let bytes = unsafe { slice::from_raw_parts(data, len) };
     let frames = match makapix_codec::decode(bytes) {
         Ok(f) => f,
+        Err(makapix_codec::CodecError::TooLarge(_)) => return -3,
         Err(_) => return -1,
     };
     import_frames_into(s, &frames, mode, as_layer, start_frame, crop_x, crop_y, crop_w, crop_h)
@@ -480,17 +482,36 @@ pub extern "C" fn mkpx_import(
 /// Decode an image file (GIF/PNG/APNG/JPEG/BMP/WebP) into a flat decoded-frames blob, with no
 /// session involved. Blob layout (all integers little-endian u32):
 /// `[frame_count]` then per frame `[w][h][duration_us][w*h*4 straight-RGBA bytes]`.
-/// Returns a malloc'd buffer (free with `mkpx_free_bytes`) or null on decode failure.
+/// Returns a malloc'd buffer (free with `mkpx_free_bytes`) or null on decode failure. When
+/// `out_status` is non-null it receives 0 on success, -1 on decode failure (undecodable or
+/// corrupt input), or -3 when the input is valid but exceeds the codec's decode size limits —
+/// the same codes `mkpx_import` returns, so callers can tell "too large" apart from "corrupt".
 #[no_mangle]
-pub extern "C" fn mkpx_decode_image(data: *const u8, len: usize, out_len: *mut u64) -> *mut u8 {
+pub extern "C" fn mkpx_decode_image(
+    data: *const u8,
+    len: usize,
+    out_len: *mut u64,
+    out_status: *mut c_int,
+) -> *mut u8 {
+    let set_status = |s: c_int| {
+        if !out_status.is_null() {
+            unsafe { *out_status = s };
+        }
+    };
+    set_status(-1);
     if data.is_null() {
         return std::ptr::null_mut();
     }
     let bytes = unsafe { slice::from_raw_parts(data, len) };
     let frames = match makapix_codec::decode(bytes) {
         Ok(f) => f,
+        Err(makapix_codec::CodecError::TooLarge(_)) => {
+            set_status(-3);
+            return std::ptr::null_mut();
+        }
         Err(_) => return std::ptr::null_mut(),
     };
+    set_status(0);
     let total: usize = 4 + frames.iter().map(|f| 12 + f.rgba.len()).sum::<usize>();
     let mut v = Vec::with_capacity(total);
     v.extend_from_slice(&(frames.len() as u32).to_le_bytes());
@@ -952,7 +973,7 @@ mod tests {
         assert_eq!(mkpx_import(direct, gif.as_ptr(), gif.len(), 1, 0, 0, 0, 0, 0, 0), 0);
 
         let mut blob_len: u64 = 0;
-        let blob = mkpx_decode_image(gif.as_ptr(), gif.len(), &mut blob_len);
+        let blob = mkpx_decode_image(gif.as_ptr(), gif.len(), &mut blob_len, std::ptr::null_mut());
         assert!(!blob.is_null() && blob_len > 0);
         let split = mkpx_new(16, 16);
         assert_eq!(mkpx_import_decoded(split, blob, blob_len as usize, 1, 0, 0, 0, 0, 0, 0), 0);
@@ -976,14 +997,34 @@ mod tests {
     fn ffi_decode_image_rejects_garbage() {
         let junk = [0u8; 64];
         let mut len: u64 = 0;
-        assert!(mkpx_decode_image(junk.as_ptr(), junk.len(), &mut len).is_null());
+        let mut status: c_int = 0;
+        assert!(mkpx_decode_image(junk.as_ptr(), junk.len(), &mut len, &mut status).is_null());
+        assert_eq!(status, -1, "undecodable input reports a plain decode failure");
+    }
+
+    #[test]
+    fn ffi_decode_image_reports_too_large() {
+        // A 4097-wide single-frame GIF trips the codec's MAX_DIM gate: null blob, status -3 —
+        // a valid-but-oversized file must be distinguishable from garbage (-1 above) so the
+        // shell can say "too large" instead of "corrupt".
+        let w = 4097u32;
+        let gif =
+            makapix_codec::encode_gif(w, 1, &[(vec![0u8; (w * 4) as usize], 100_000)]).unwrap();
+        let mut len: u64 = 0;
+        let mut status: c_int = 0;
+        assert!(mkpx_decode_image(gif.as_ptr(), gif.len(), &mut len, &mut status).is_null());
+        assert_eq!(status, -3);
+        // The fused entry point reports the same condition as its own return code.
+        let p = mkpx_new(16, 16);
+        assert_eq!(mkpx_import(p, gif.as_ptr(), gif.len(), 1, 0, 0, 0, 0, 0, 0), -3);
+        mkpx_free(p);
     }
 
     #[test]
     fn ffi_import_decoded_rejects_malformed_blob() {
         let gif = three_frame_gif();
         let mut blob_len: u64 = 0;
-        let blob = mkpx_decode_image(gif.as_ptr(), gif.len(), &mut blob_len);
+        let blob = mkpx_decode_image(gif.as_ptr(), gif.len(), &mut blob_len, std::ptr::null_mut());
         assert!(!blob.is_null());
         let p = mkpx_new(16, 16);
         // Truncated blob (header intact, pixel data cut short) must fail cleanly, no import.
@@ -999,7 +1040,7 @@ mod tests {
     fn ffi_import_refused_over_budget_returns_minus_two() {
         let gif = three_frame_gif();
         let mut blob_len: u64 = 0;
-        let blob = mkpx_decode_image(gif.as_ptr(), gif.len(), &mut blob_len);
+        let blob = mkpx_decode_image(gif.as_ptr(), gif.len(), &mut blob_len, std::ptr::null_mut());
         assert!(!blob.is_null());
         let p = mkpx_new(16, 16);
         let script = b"SetMemBudget(1,1)";
