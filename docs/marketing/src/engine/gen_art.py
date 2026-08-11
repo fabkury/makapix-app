@@ -124,6 +124,49 @@ def mushroom_pixels():
     return px
 
 
+def key_pixels():
+    """A 32x32 skeleton key: ring bow, thin shaft, side teeth.
+
+    The cleanEdge demo sprite (chosen 2026-08-11 over the mushroom, whose
+    chunky silhouette survived nearest-neighbor rotation too well): the ring
+    goes lumpy, the 2px shaft ragged, and the teeth chip under nearest, while
+    cleanEdge holds all three."""
+    G, D, W = "#F0C050FF", "#C89030FF", "#F6EEDEFF"
+    px = {}
+    # bow: gold ring with a real hole
+    for y in range(32):
+        for x in range(32):
+            d2 = (x - 15.5) ** 2 + (y - 7.5) ** 2
+            if 3.1 ** 2 <= d2 <= 5.9 ** 2:
+                px[(x, y)] = D if (y > 9 and x > 15) else G
+    # collar under the bow
+    for y in (13, 14):
+        for x in range(14, 18):
+            px[(x, y)] = D if y == 14 else G
+    # shaft: 2px, right column shaded
+    for y in range(14, 28):
+        px[(15, y)] = G
+        px[(16, y)] = D
+    # teeth pointing right near the tip
+    for x in range(17, 21):
+        px[(x, 22)] = G
+        px[(x, 23)] = D
+    for x in range(17, 22):
+        px[(x, 26)] = G
+        px[(x, 27)] = D
+    # glint on the bow
+    px[(13, 4)] = px[(14, 4)] = px[(13, 5)] = W
+    # outside outline, same adjacency trick as the mushroom
+    outline = set()
+    for (x, y) in list(px):
+        for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if (nx, ny) not in px and 0 <= nx < 32 and 0 <= ny < 32:
+                outline.add((nx, ny))
+    for p in outline:
+        px[p] = "#241418FF"
+    return px
+
+
 def ghost_pixels():
     """A 32x32 ghost with a real per-pixel alpha falloff toward the tail."""
     px = {}
@@ -179,9 +222,9 @@ def build_ghost():
 
 
 def sprite_doc(canvas, offset):
-    """DSL that plots the mushroom centered on a larger transparent canvas."""
+    """DSL that plots the key centered on a larger transparent canvas."""
     ox, oy = offset
-    shifted = {(x + ox, y + oy): c for (x, y), c in mushroom_pixels().items()}
+    shifted = {(x + ox, y + oy): c for (x, y), c in key_pixels().items()}
     lines = [f"NewDocument({canvas}, {canvas})"]
     emit_pixels(lines, shifted)
     return lines
@@ -189,7 +232,7 @@ def sprite_doc(canvas, offset):
 
 def build_rotate():
     for name, clean in [("rot_nearest", "false"), ("rot_cleanedge", "true")]:
-        lines = sprite_doc(48, (10, 10))
+        lines = sprite_doc(48, (8, 8))
         lines += [
             f"SetCleanEdge({clean})",
             "RotateDraftBegin()",
@@ -197,13 +240,13 @@ def build_rotate():
             "RotateDraftCommit()",
         ]
         run_mkpx(f"{name}.txt", lines, [f"render:0:{ART}/{name}.png:8".replace("\\", "/")])
-    run_mkpx("rot_orig.txt", sprite_doc(48, (10, 10)),
+    run_mkpx("rot_orig.txt", sprite_doc(48, (8, 8)),
              [f"render:0:{ART}/rot_orig.png:8".replace("\\", "/")])
 
 
 def build_scale():
     for name, clean in [("scale_nearest", "false"), ("scale_cleanedge", "true")]:
-        lines = sprite_doc(96, (34, 34))
+        lines = sprite_doc(96, (32, 32))
         lines += [f"SetScaleCleanEdge({clean})", "ScaleLayer(3000, 3000)"]
         run_mkpx(f"{name}.txt", lines, [f"render:0:{ART}/{name}.png:4".replace("\\", "/")])
 

@@ -63,9 +63,9 @@ def crops():
     crop("palette_page.png", (0, 130, 1344, 1620), "palette_top.png")
     crop("frames_timeline.png", (0, 170, 1344, 420), "timeline_row.png")
     crop("blend_picker.png", (0, 1330, 1344, 2880), "blend_sheet.png")
-    # zoomed insets for the cleanEdge comparison (cap edge region, 3x)
+    # zoomed insets for the cleanEdge comparison (the key's ring bow, 2x)
     for n in ["rot_orig", "rot_nearest", "rot_cleanedge"]:
-        im = Image.open(ART / f"{n}.png").crop((96, 48, 288, 240))
+        im = Image.open(ART / f"{n}.png").crop((104, 40, 296, 232))
         im = im.resize((im.width * 2, im.height * 2), Image.NEAREST)
         im.save(CROPS / f"{n}_zoom.png")
 
