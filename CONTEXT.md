@@ -80,3 +80,26 @@ _Avoid_: animation (ambiguous), loop (reserve for Scene loop regions)
 One frame of a multi-frame Prop used as a held stance. An Actor in Posing mode shows the Pose
 chosen by hold Keys instead of playing its Cycle. Playing vs. Posing is a per-Actor mode.
 _Avoid_: state, variant
+
+### Replay vocabulary (Editor)
+
+**Journal**:
+The per-drawing, append-only stream of timestamped editor actions persisted beside the
+drawing's autosave. The raw material a Replay executes.
+_Avoid_: recording, log, tape, history (that word belongs to undo)
+
+**Chapter**:
+A segment of a Journal that replays from a fixed starting document: an empty canvas or a
+captured base (an import, a Club remix, a re-anchor). A Journal is a sequence of Chapters;
+their boundaries are invisible in a Replay.
+_Avoid_: session (that is the engine's stateful entry point), segment, part
+
+**Replay**:
+Deterministic re-execution of a Journal by the engine — the in-app, scrubbable "making-of"
+view of a drawing's creation.
+_Avoid_: playback (that is the Editor's frame-animation preview)
+
+**Timelapse**:
+The exported, shareable video rendition of a Replay — upscaled, resampled, and encoded for
+posting outside the app.
+_Avoid_: replay video, movie, GIF (a format it may use, not the artifact)
