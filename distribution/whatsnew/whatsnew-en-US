@@ -1,1 +1,1 @@
-The editor gains a Levels adjustment (shadows, gamma, highlights) and layer blend modes — 10 modes with live preview. Drag-to-reorder now gives haptic feedback, playback pauses while menus are open, image imports no longer stall the UI, and animated WebP exports are smaller.
+Notifications are now live: reactions, comments, and follows appear the moment they happen while the app is open — no more waiting on the next refresh.
