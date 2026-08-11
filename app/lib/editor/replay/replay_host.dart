@@ -43,6 +43,9 @@ abstract class ReplayHost {
   /// cycle math. Valid once [ready].
   List<int> get endFrameDurationsUs;
 
+  /// Canvas size of the FINISHED document (the timelapse letterbox math). Valid once [ready].
+  (int, int) get endSize;
+
   void dispose();
 }
 
@@ -61,6 +64,7 @@ class EngineReplayHost implements ReplayHost {
   final Map<int, String> _chapterBaseAt = {}; // action index -> base file to load first
   final List<(int pos, int id)> _checkpoints = []; // ascending by pos
   List<int> _endDurations = const [];
+  (int, int) _endSize = (64, 64);
   int _pos = 0;
   bool _ready = false;
   String? _error;
@@ -80,6 +84,8 @@ class EngineReplayHost implements ReplayHost {
   int get position => _pos;
   @override
   List<int> get endFrameDurationsUs => _endDurations;
+  @override
+  (int, int) get endSize => _endSize;
 
   @override
   Future<void> init() async {
@@ -89,20 +95,15 @@ class EngineReplayHost implements ReplayHost {
         _error = 'This drawing has no replayable history yet.';
         return;
       }
-      var idx = 0;
-      for (final c in parsed.chapters) {
-        if (c.base != null) {
-          if (!bases.containsKey(c.base)) {
-            _error = 'Part of this replay is missing (a chapter base file).';
-            return;
-          }
-          _chapterBaseAt[idx] = c.base!;
-        }
-        for (final a in c.actions) {
-          _actions.add(a.dsl);
-          idx++;
+      final flat = FlatJournal.from(parsed);
+      for (final base in flat.chapterBaseAt.values) {
+        if (!bases.containsKey(base)) {
+          _error = 'Part of this replay is missing (a chapter base file).';
+          return;
         }
       }
+      _actions.addAll(flat.actions);
+      _chapterBaseAt.addAll(flat.chapterBaseAt);
       if (_actions.isEmpty) {
         _error = 'This drawing has no replayable history yet.';
         return;
@@ -117,6 +118,7 @@ class EngineReplayHost implements ReplayHost {
       final stride = _strideFor(_actions.length);
       await _advance(_actions.length, checkpointStride: stride);
       _endDurations = _readDurations();
+      _endSize = (_engine!.width, _engine!.height);
       _ready = true;
     } catch (e) {
       _error = 'Could not prepare the replay: $e';

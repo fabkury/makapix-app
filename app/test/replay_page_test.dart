@@ -28,6 +28,8 @@ class FakeReplayHost implements ReplayHost {
   int get position => _pos;
   @override
   List<int> get endFrameDurationsUs => const [100000];
+  @override
+  (int, int) get endSize => (4, 4);
 
   @override
   Future<void> init() async {

@@ -141,6 +141,29 @@ ParsedJournal? parseJournal(String text) {
   return ParsedJournal(chapters);
 }
 
+/// A [ParsedJournal] flattened for sequential execution: the actions in journal order plus
+/// the chapter-base file to load BEFORE the action at each boundary index. Shared by the
+/// Replay viewer's host and the Timelapse export pipeline so the two can never disagree
+/// about what a position means.
+class FlatJournal {
+  FlatJournal._(this.actions, this.chapterBaseAt);
+
+  final List<String> actions; // verbatim DSL, prefix-stripped
+  final Map<int, String> chapterBaseAt; // action index -> base file name
+
+  static FlatJournal from(ParsedJournal parsed) {
+    final actions = <String>[];
+    final baseAt = <int, String>{};
+    for (final c in parsed.chapters) {
+      if (c.base != null) baseAt[actions.length] = c.base!;
+      for (final a in c.actions) {
+        actions.add(a.dsl);
+      }
+    }
+    return FlatJournal._(actions, baseAt);
+  }
+}
+
 /// One physical line of a journal file with its BYTE extent — the trim/repair unit.
 /// [end] is exclusive and includes the trailing newline byte(s).
 class ScannedLine {

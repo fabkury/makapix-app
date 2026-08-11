@@ -255,6 +255,26 @@ Future<void> shareImageBytes({
   await SharePlus.instance.share(params);
 }
 
+/// Share an already-encoded video FILE (the Timelapse export's MP4) through the system
+/// share sheet. Same per-share cache-subdir prune as [shareImageBytes]; the source file is
+/// MOVED into it (the export wrote a temp file we own).
+Future<void> shareVideoFile(String path, {required String filename, String? text}) async {
+  final dir = Directory('${(await getTemporaryDirectory()).path}/share');
+  if (dir.existsSync()) dir.deleteSync(recursive: true);
+  dir.createSync(recursive: true);
+  final dest = '${dir.path}/${sanitizeShareFilename(filename)}';
+  File shared;
+  try {
+    shared = await File(path).rename(dest);
+  } on FileSystemException {
+    shared = await File(path).copy(dest); // cross-volume rename fallback
+  }
+  final params = (text != null && text.trim().isNotEmpty)
+      ? ShareParams(files: [XFile(shared.path, mimeType: 'video/mp4')], text: text)
+      : ShareParams(files: [XFile(shared.path, mimeType: 'video/mp4')]);
+  await SharePlus.instance.share(params);
+}
+
 /// High-level share of a raster artwork's PIXELS (a downloaded render), re-encoded to a shareable
 /// GIF / lossless WebP (animations) or PNG (stills) at a user-chosen scale, with a "title — link"
 /// caption accompanying the file. This is what the Club's Share button calls; the editor reuses the

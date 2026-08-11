@@ -38,6 +38,8 @@ import 'replay/journal_format.dart';
 import 'replay/journal_recorder.dart';
 import 'replay/replay_host.dart';
 import 'replay/replay_page.dart';
+import 'replay/timelapse_export.dart';
+import 'replay/timelapse_plan.dart';
 import 'makapix_icon.dart';
 import 'tools.dart';
 import 'thumbnail.dart';

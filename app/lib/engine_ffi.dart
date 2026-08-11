@@ -85,6 +85,17 @@ typedef _CkptRestoreC = Int32 Function(Pointer<Void>, Uint32);
 typedef _CkptRestoreD = int Function(Pointer<Void>, int);
 typedef _CkptIdsC = Uint32 Function(Pointer<Void>, Pointer<Uint32>, Uint32);
 typedef _CkptIdsD = int Function(Pointer<Void>, Pointer<Uint32>, int);
+// Timelapse export — crates/ffi mkpx_timelapse_* / mkpx_tl_encode_*.
+typedef _TlFrameC = Pointer<Uint8> Function(Pointer<Void>, Uint32, Uint32, Uint32, Uint32, Uint32, Int32, Pointer<Uint64>);
+typedef _TlFrameD = Pointer<Uint8> Function(Pointer<Void>, int, int, int, int, int, int, Pointer<Uint64>);
+typedef _TlOverlayC = Int32 Function(Pointer<Uint8>, Uint32, Uint32, Int32, Int32);
+typedef _TlOverlayD = int Function(Pointer<Uint8>, int, int, int, int);
+typedef _TlBeginC = Int32 Function(Int32, Uint32, Uint32);
+typedef _TlBeginD = int Function(int, int, int);
+typedef _TlPushC = Int32 Function(Pointer<Uint8>, Uint64, Uint32);
+typedef _TlPushD = int Function(Pointer<Uint8>, int, int);
+typedef _TlEndC = Pointer<Uint8> Function(Pointer<Uint64>);
+typedef _TlEndD = Pointer<Uint8> Function(Pointer<Uint64>);
 
 DynamicLibrary _open() {
   // Android: the engine ships as libmakapix_ffi.so bundled in the APK (jniLibs).
@@ -247,6 +258,13 @@ class Engine {
   late final _CkptIdsD _ckptIds = _lib.lookupFunction<_CkptIdsC, _CkptIdsD>('mkpx_checkpoint_ids');
   late final _FreeD _ckptClear = _lib.lookupFunction<_FreeC, _FreeD>('mkpx_checkpoint_clear');
   late final _StateD _docHash = _lib.lookupFunction<_StateC, _StateD>('mkpx_doc_hash');
+  // Timelapse export (the frame pipeline + the push-mode WebP/GIF encoder).
+  late final _TlFrameD _tlFrame = _lib.lookupFunction<_TlFrameC, _TlFrameD>('mkpx_timelapse_frame');
+  late final _TlOverlayD _tlOverlay = _lib.lookupFunction<_TlOverlayC, _TlOverlayD>('mkpx_timelapse_set_overlay');
+  late final _TlBeginD _tlBegin = _lib.lookupFunction<_TlBeginC, _TlBeginD>('mkpx_tl_encode_begin');
+  late final _TlPushD _tlPush = _lib.lookupFunction<_TlPushC, _TlPushD>('mkpx_tl_encode_push');
+  late final _TlEndD _tlEnd = _lib.lookupFunction<_TlEndC, _TlEndD>('mkpx_tl_encode_end');
+  late final _ExportVoidD _tlAbort = _lib.lookupFunction<_ExportVoidC, _ExportVoidD>('mkpx_tl_encode_abort');
 
   Engine(int w, int h) : _lib = _open() {
     _s = _new(w, h);
@@ -385,6 +403,64 @@ class Engine {
     _freeStr(p);
     return s;
   }
+
+  // ---- timelapse export (editor/replay/timelapse_export.dart) ----
+
+  /// One timelapse output frame from the current session state: composite(frame) →
+  /// flatten over bg → integer upscale ×scale → center-pad to outW×outH → overlay blit →
+  /// RGBA8888 (format 0) or tightly-packed I420/BT.601 (format 1; even dims required).
+  /// Empty on failure. bgRgba is 0xRRGGBBAA (alpha ignored — padding is opaque).
+  Uint8List timelapseFrame(int frame, int scale, int outW, int outH, int bgRgba, int format) {
+    final lenPtr = malloc<Uint64>();
+    final ptr = _tlFrame(_s, frame, scale, outW, outH, bgRgba, format, lenPtr);
+    final len = lenPtr.value;
+    malloc.free(lenPtr);
+    if (ptr == nullptr) return Uint8List(0);
+    final bytes = Uint8List.fromList(ptr.asTypedList(len));
+    _freeBytes(ptr, len);
+    return bytes;
+  }
+
+  /// Register (or clear, with null) the process-wide finale overlay — the wordmark —
+  /// blitted onto every subsequent [timelapseFrame] at (x, y) in OUTPUT coordinates.
+  bool setTimelapseOverlay(Uint8List? rgba, int w, int h, int x, int y) {
+    if (rgba == null || rgba.isEmpty || w == 0 || h == 0) {
+      return _tlOverlay(nullptr, 0, 0, 0, 0) == 0;
+    }
+    final p = malloc<Uint8>(rgba.length);
+    p.asTypedList(rgba.length).setAll(0, rgba);
+    final rc = _tlOverlay(p, w, h, x, y); // the engine copies; free immediately
+    malloc.free(p);
+    return rc == 0;
+  }
+
+  /// Begin a push-mode timelapse encode (0 = GIF, 1 = animated lossless WebP) at output
+  /// resolution w×h. One at a time, process-wide.
+  bool tlEncodeBegin(int format, int w, int h) => _tlBegin(format, w, h) == 0;
+
+  /// Push one RGBA output frame with its display duration. False aborts the encode.
+  bool tlEncodePush(Uint8List rgba, int durationMs) {
+    final p = malloc<Uint8>(rgba.length);
+    p.asTypedList(rgba.length).setAll(0, rgba);
+    final rc = _tlPush(p, rgba.length, durationMs);
+    malloc.free(p);
+    return rc == 0;
+  }
+
+  /// Finish the push-mode encode; empty on failure/no encode in flight.
+  Uint8List tlEncodeEnd() {
+    final lenPtr = malloc<Uint64>();
+    final ptr = _tlEnd(lenPtr);
+    final len = lenPtr.value;
+    malloc.free(lenPtr);
+    if (ptr == nullptr) return Uint8List(0);
+    final bytes = Uint8List.fromList(ptr.asTypedList(len));
+    _freeBytes(ptr, len);
+    return bytes;
+  }
+
+  /// Drop an in-flight push-mode encode (cancel/cleanup). Idempotent.
+  void tlEncodeAbort() => _tlAbort();
 
   /// A `tw`×`th` nearest-downscaled thumbnail of a single layer's raw pixels (straight RGBA,
   /// transparent where empty).
