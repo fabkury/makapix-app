@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:makapix_club/editor/replay/replay_host.dart';
 import 'package:makapix_club/editor/replay/replay_page.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Engine-free host: 4×4 frames whose top-left pixel encodes the position, seeks recorded.
 class FakeReplayHost implements ReplayHost {
@@ -70,6 +71,10 @@ Future<void> pumpReplay(WidgetTester tester, FakeReplayHost host, {VoidCallback?
 }
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
   testWidgets('ready host: auto-play starts and sweeps toward the end', (tester) async {
     final host = FakeReplayHost(actions: 9000);
     await pumpReplay(tester, host);
@@ -132,6 +137,42 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: SizedBox()));
     await tester.pump();
     expect(host.disposed, isTrue);
+  });
+
+  testWidgets('duration chips: default 30s, switching retunes a RUNNING sweep + persists',
+      (tester) async {
+    final host = FakeReplayHost(actions: 9000);
+    await pumpReplay(tester, host);
+    expect(find.text('15s'), findsOneWidget);
+    expect(find.text('30s'), findsOneWidget);
+    expect(find.text('60s'), findsOneWidget);
+    // Default 30 s → 9000/(30·30) = 10 actions/tick.
+    await tester.pump(const Duration(milliseconds: 40));
+    expect(host.seeks.first, closeTo(10, 1));
+    // Switch to 15 s WITHOUT pausing: the very next tick doubles the rate.
+    host.seeks.clear();
+    await tester.tap(find.text('15s'));
+    await tester.pump(const Duration(milliseconds: 80));
+    expect(find.byIcon(Icons.pause), findsOneWidget, reason: 'switching never pauses');
+    final delta = host.seeks.last - host.seeks.first;
+    expect(delta / (host.seeks.length - 1), closeTo(20, 2), reason: '15 s → 20 actions/tick');
+    // The choice is persisted for future replays.
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getInt('replay.sweepSeconds_v1'), 15);
+    await tester.tap(find.byIcon(Icons.pause));
+    await tester.pump();
+  });
+
+  testWidgets('a remembered duration is applied on open', (tester) async {
+    SharedPreferences.setMockInitialValues({'replay.sweepSeconds_v1': 60});
+    final host = FakeReplayHost(actions: 9000);
+    await pumpReplay(tester, host);
+    await tester.pump(); // let the async pref load land
+    await tester.pump(const Duration(milliseconds: 40));
+    // 60 s → 9000/(60·30) = 5 actions/tick.
+    expect(host.seeks.last, lessThan(30), reason: 'sweep runs at the remembered slower rate');
+    await tester.tap(find.byIcon(Icons.pause));
+    await tester.pump();
   });
 
   testWidgets('canvas stretches to the available space, not the true pixel size', (tester) async {

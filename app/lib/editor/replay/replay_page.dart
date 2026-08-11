@@ -2,10 +2,18 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:makapix_club/engine_ffi.dart' show premultiplyRgbaInPlace;
 
 import 'replay_host.dart';
+
+/// The remembered sweep-duration choice (15/30/60 s), shared across replay sessions.
+const String _kSweepSecondsPref = 'replay.sweepSeconds_v1';
+
+/// The selectable sweep durations — the whole journal in this many seconds, mirroring the
+/// timelapse export's presets.
+const List<int> kSweepSecondsChoices = [15, 30, 60];
 
 /// The Replay viewer (CONTEXT.md "Replay"): a read-only, scrubbable "making-of" of one
 /// drawing, backed by its own engine via [ReplayHost] — the live editing session is never
@@ -46,7 +54,27 @@ class _ReplayPageState extends State<ReplayPage> {
   @override
   void initState() {
     super.initState();
+    _loadSweepPref();
     _start();
+  }
+
+  Future<void> _loadSweepPref() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getInt(_kSweepSecondsPref);
+      if (mounted && saved != null && kSweepSecondsChoices.contains(saved)) {
+        setState(() => _sweepSeconds = saved);
+      }
+    } catch (_) {/* prefs unavailable → keep the default */}
+  }
+
+  void _setSweepSeconds(int seconds) {
+    setState(() => _sweepSeconds = seconds);
+    // The sweep rate is recomputed every tick, so a mid-replay switch takes effect on the
+    // next tick without restarting; position is kept.
+    unawaited(SharedPreferences.getInstance()
+        .then((p) => p.setInt(_kSweepSecondsPref, seconds))
+        .catchError((_) => true));
   }
 
   Future<void> _start() async {
@@ -59,9 +87,9 @@ class _ReplayPageState extends State<ReplayPage> {
     }
   }
 
-  /// Sweep duration: the whole journal's VISIBLE changes in ~30–60 s (a fiddle-heavy
-  /// session earns no extra sweep time for invisible work).
-  double get _sweepSeconds => (_visibleCount / 2500).clamp(30, 60).toDouble();
+  /// The chosen sweep duration: the whole journal's VISIBLE changes in this many seconds
+  /// (the timelapse presets, live). Remembered across sessions.
+  int _sweepSeconds = 30;
 
   void _play() {
     if (!host.ready || _playing) return;
@@ -69,10 +97,11 @@ class _ReplayPageState extends State<ReplayPage> {
       _uiIdx = 0; // replay from the start when play is hit at the end
     }
     setState(() => _playing = true);
-    final perTick = _visibleCount / (_sweepSeconds * 30);
     _sweep = Timer.periodic(const Duration(milliseconds: 33), (_) {
       if (!_playing) return;
       if (_seekBusy) return; // coalesce: never queue ticks behind a slow seek
+      // Recomputed per tick so the duration chips retune a running sweep instantly.
+      final perTick = _visibleCount / (_sweepSeconds * 30);
       _uiIdx = (_uiIdx + perTick).clamp(0, _visibleCount.toDouble());
       final idx = _uiIdx.round();
       if (idx >= _visibleCount) {
@@ -198,6 +227,16 @@ class _ReplayPageState extends State<ReplayPage> {
                         tooltip: _playing ? 'Pause' : 'Play',
                         icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
                         onPressed: () => _playing ? _pause() : _play(),
+                      ),
+                      // The sweep-duration chips (the timelapse presets, live): one tap
+                      // retunes a running sweep from its current position.
+                      ToggleButtons(
+                        isSelected: [for (final s in kSweepSecondsChoices) s == _sweepSeconds],
+                        onPressed: (i) => _setSweepSeconds(kSweepSecondsChoices[i]),
+                        constraints: const BoxConstraints(minHeight: 30, minWidth: 36),
+                        borderRadius: BorderRadius.circular(6),
+                        textStyle: const TextStyle(fontSize: 11),
+                        children: [for (final s in kSweepSecondsChoices) Text('${s}s')],
                       ),
                       Expanded(
                         child: Slider(
