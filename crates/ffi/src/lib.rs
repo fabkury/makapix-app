@@ -763,6 +763,245 @@ pub extern "C" fn mkpx_export_webp(ptr: *mut Session, scale: u32, out_len: *mut 
     }
 }
 
+// ---- replay checkpoints (Journal scrubbing; session/checkpoint.rs) ----
+
+/// Take a replay checkpoint of the current state. Returns the checkpoint's STABLE id
+/// (>= 0), or -1 when the session is mid-gesture/draft (caller retries at the next journal
+/// line) or null. Ids are monotone in take order; older checkpoints may be evicted by the
+/// byte budget — resync with `mkpx_checkpoint_ids` after any take.
+#[no_mangle]
+pub extern "C" fn mkpx_checkpoint_take(ptr: *mut Session) -> i64 {
+    session(ptr).and_then(|s| s.take_checkpoint()).map(|id| id as i64).unwrap_or(-1)
+}
+
+/// Restore checkpoint `id`. 0 = restored; -1 = unknown id (evicted/cleared) or null session.
+/// The checkpoint is retained — restore is repeatable (the scrub loop).
+#[no_mangle]
+pub extern "C" fn mkpx_checkpoint_restore(ptr: *mut Session, id: u32) -> c_int {
+    match session(ptr) {
+        Some(s) => {
+            if s.restore_checkpoint(id) {
+                0
+            } else {
+                -1
+            }
+        }
+        None => -1,
+    }
+}
+
+/// Number of live checkpoints (0 on null session).
+#[no_mangle]
+pub extern "C" fn mkpx_checkpoint_count(ptr: *mut Session) -> u32 {
+    session(ptr).map(|s| s.checkpoint_count() as u32).unwrap_or(0)
+}
+
+/// Write up to `cap` live checkpoint ids (ascending) into `out`; returns the LIVE count
+/// (which may exceed what was written when `cap` is small — call with cap = 512, the
+/// engine's MAX_CHECKPOINTS, and it always suffices).
+#[no_mangle]
+pub extern "C" fn mkpx_checkpoint_ids(ptr: *mut Session, out: *mut u32, cap: u32) -> u32 {
+    let s = match session(ptr) {
+        Some(s) => s,
+        None => return 0,
+    };
+    let n = s.checkpoint_count() as u32;
+    if !out.is_null() && cap > 0 {
+        let dst = unsafe { slice::from_raw_parts_mut(out, cap as usize) };
+        for (i, id) in s.checkpoint_ids().take(cap as usize).enumerate() {
+            dst[i] = id;
+        }
+    }
+    n
+}
+
+/// Drop every checkpoint, freeing the retained tiles (e.g. when the Replay view closes).
+#[no_mangle]
+pub extern "C" fn mkpx_checkpoint_clear(ptr: *mut Session) {
+    if let Some(s) = session(ptr) {
+        s.clear_checkpoints();
+    }
+}
+
+/// The document content hash as a 32-lowercase-hex string. A validation aid for the replay
+/// driver (seek-vs-straight-run comparisons) — NOT a crash-sync marker: it deliberately
+/// excludes palettes/active_frame/selection (the shell's markers hash the saved bytes
+/// instead). Free with `mkpx_free_string`; null on null session.
+#[no_mangle]
+pub extern "C" fn mkpx_doc_hash(ptr: *mut Session) -> *mut c_char {
+    match session(ptr) {
+        Some(s) => cstring(&makapix_engine::util::hash_hex(s.doc.content_hash())),
+        None => std::ptr::null_mut(),
+    }
+}
+
+// ---- timelapse export (docs/replay/ANALYSIS.md §4; ADR 0004) ----
+
+struct TimelapseOverlay {
+    rgba: Vec<u8>,
+    w: u32,
+    h: u32,
+    x: i32,
+    y: i32,
+}
+
+/// The registered timelapse overlay (the finale wordmark). Process-wide by design, like
+/// EXPORT_PROGRESS/EXPORT_CANCEL: the shell runs at most one export at a time, and both
+/// assumptions break together if that ever changes.
+static TIMELAPSE_OVERLAY: std::sync::Mutex<Option<TimelapseOverlay>> = std::sync::Mutex::new(None);
+
+/// Register (or clear) the process-wide timelapse overlay, blitted straight-alpha onto every
+/// subsequent `mkpx_timelapse_frame` at (`x`,`y`) in OUTPUT coordinates, clipped. Pass a null
+/// `rgba` (or zero `w`/`h`) to clear. The pixels are copied — the caller may free
+/// immediately. Returns 0 ok, -1 on oversize (w or h > 2048) or a length mismatch.
+#[no_mangle]
+pub extern "C" fn mkpx_timelapse_set_overlay(rgba: *const u8, w: u32, h: u32, x: i32, y: i32) -> c_int {
+    let mut slot = TIMELAPSE_OVERLAY.lock().expect("overlay lock poisoned");
+    if rgba.is_null() || w == 0 || h == 0 {
+        *slot = None;
+        return 0;
+    }
+    if w > 2048 || h > 2048 {
+        return -1;
+    }
+    let len = (w as usize) * (h as usize) * 4;
+    let src = unsafe { slice::from_raw_parts(rgba, len) };
+    *slot = Some(TimelapseOverlay { rgba: src.to_vec(), w, h, x, y });
+    0
+}
+
+/// Produce ONE timelapse output frame from the CURRENT session state:
+/// composite(`frame`) → flatten over `bg` → integer NN upscale ×`scale` (clamped 1..=32) →
+/// center-pad onto an `out_w`×`out_h` bg-filled canvas → blit the registered overlay (if
+/// any) → return RGBA8888 (`format` 0) or tightly-packed I420/BT.601-limited (`format` 1;
+/// requires even `out_w`/`out_h`; the centering offset is floored to even for chroma
+/// alignment). `bg_rgba` is 0xRRGGBBAA; its alpha is ignored (padding is opaque).
+/// Returns a malloc'd buffer (free with `mkpx_free_bytes`); len via `out_len` (RGBA:
+/// `out_w*out_h*4`; I420: `out_w*out_h*3/2`). Null on: null session, the scaled size
+/// exceeding `out_w`/`out_h`, odd I420 dimensions, or an unknown format. Does NOT touch
+/// EXPORT_PROGRESS/EXPORT_CANCEL — the shell's replay-export loop owns pacing and cancel
+/// (it simply stops calling).
+#[no_mangle]
+pub extern "C" fn mkpx_timelapse_frame(
+    ptr: *mut Session,
+    frame: u32,
+    scale: u32,
+    out_w: u32,
+    out_h: u32,
+    bg_rgba: u32,
+    format: c_int,
+    out_len: *mut u64,
+) -> *mut u8 {
+    let s = match session(ptr) {
+        Some(s) => s,
+        None => return std::ptr::null_mut(),
+    };
+    if format != 0 && format != 1 {
+        return std::ptr::null_mut();
+    }
+    if format == 1 && (out_w % 2 != 0 || out_h % 2 != 0) {
+        return std::ptr::null_mut();
+    }
+    let scale = scale.clamp(1, 32);
+    let (w, h) = s.size();
+    let (sw, sh) = (w as u32 * scale, h as u32 * scale);
+    if sw > out_w || sh > out_h {
+        return std::ptr::null_mut();
+    }
+    let bg = [(bg_rgba >> 24) as u8, (bg_rgba >> 16) as u8, (bg_rgba >> 8) as u8];
+    let mut rgba = s.composite_frame_bytes(frame as usize);
+    makapix_codec::flatten_over_bg(&mut rgba, bg);
+    let scaled = makapix_codec::upscale_nearest(w as u32, h as u32, &rgba, scale);
+    let mut out = makapix_codec::center_pad_rgba(
+        sw,
+        sh,
+        &scaled,
+        out_w,
+        out_h,
+        [bg[0], bg[1], bg[2], 255],
+        format == 1,
+    );
+    if let Some(ov) = TIMELAPSE_OVERLAY.lock().expect("overlay lock poisoned").as_ref() {
+        makapix_codec::blit_rgba_over(out_w, out_h, &mut out, ov.w, ov.h, &ov.rgba, ov.x, ov.y);
+    }
+    match format {
+        0 => bytes_out(out, out_len),
+        _ => bytes_out(makapix_codec::rgba_to_i420(out_w, out_h, &out), out_len),
+    }
+}
+
+enum TlEncoder {
+    Gif(makapix_codec::GifStreamEncoder),
+    Webp(makapix_codec::WebpAnimEncoder),
+}
+
+/// The push-mode timelapse encoder in flight (Windows WebP/GIF sink). Process-wide slot,
+/// same one-export-at-a-time doctrine as the overlay and the progress atomics.
+static TL_ENCODER: std::sync::Mutex<Option<TlEncoder>> = std::sync::Mutex::new(None);
+
+/// Begin a push-mode timelapse encode at OUTPUT resolution `w`×`h` (frames arrive already
+/// upscaled/padded/branded from `mkpx_timelapse_frame` format 0). `format`: 0 = GIF,
+/// 1 = animated lossless WebP. Returns 0 ok, -1 on a bad format/failed init (any previous
+/// unfinished encode is dropped).
+#[no_mangle]
+pub extern "C" fn mkpx_tl_encode_begin(format: c_int, w: u32, h: u32) -> c_int {
+    let enc = match format {
+        0 => match makapix_codec::GifStreamEncoder::new(w, h) {
+            Ok(e) => TlEncoder::Gif(e),
+            Err(_) => return -1,
+        },
+        1 => TlEncoder::Webp(makapix_codec::WebpAnimEncoder::new(w, h)),
+        _ => return -1,
+    };
+    *TL_ENCODER.lock().expect("tl encoder lock poisoned") = Some(enc);
+    0
+}
+
+/// Push one RGBA frame (`len` = w*h*4 of the begun encode) with its display duration.
+/// Returns 0 ok, -1 on no encode in flight / length mismatch / encode error (the encode is
+/// aborted on error).
+#[no_mangle]
+pub extern "C" fn mkpx_tl_encode_push(rgba: *const u8, len: u64, duration_ms: u32) -> c_int {
+    if rgba.is_null() {
+        return -1;
+    }
+    let src = unsafe { slice::from_raw_parts(rgba, len as usize) };
+    let mut slot = TL_ENCODER.lock().expect("tl encoder lock poisoned");
+    let ok = match slot.as_mut() {
+        None => false,
+        Some(TlEncoder::Gif(e)) => e.push(src.to_vec(), duration_ms.saturating_mul(1000)).is_ok(),
+        Some(TlEncoder::Webp(e)) => e.push(src.to_vec(), duration_ms.saturating_mul(1000)).is_ok(),
+    };
+    if !ok {
+        *slot = None; // a failed push poisons the encode; the shell aborts and reports
+        return -1;
+    }
+    0
+}
+
+/// Finish the push-mode encode and return the container bytes (free with
+/// `mkpx_free_bytes`); len via `out_len`. Null when no encode is in flight or finalization
+/// fails. The slot is cleared either way.
+#[no_mangle]
+pub extern "C" fn mkpx_tl_encode_end(out_len: *mut u64) -> *mut u8 {
+    let enc = TL_ENCODER.lock().expect("tl encoder lock poisoned").take();
+    let bytes = match enc {
+        None => return std::ptr::null_mut(),
+        Some(TlEncoder::Gif(e)) => e.finish(),
+        Some(TlEncoder::Webp(e)) => e.finish(),
+    };
+    match bytes {
+        Ok(v) => bytes_out(v, out_len),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Drop an in-flight push-mode encode (cancel/cleanup). Idempotent.
+#[no_mangle]
+pub extern "C" fn mkpx_tl_encode_abort() {
+    *TL_ENCODER.lock().expect("tl encoder lock poisoned") = None;
+}
+
 fn bytes_out(v: Vec<u8>, out_len: *mut u64) -> *mut u8 {
     let boxed = v.into_boxed_slice();
     let len = boxed.len();
@@ -1165,5 +1404,150 @@ mod tests {
             "budget refusal must be distinguishable from corruption"
         );
         mkpx_free(p);
+    }
+
+    // ---- replay checkpoints + timelapse frame path ----
+
+    fn run_ok(p: *mut Session, script: &str) {
+        let err = mkpx_run(p, script.as_ptr(), script.len());
+        assert!(err.is_null(), "script failed");
+    }
+
+    fn doc_hash_string(p: *mut Session) -> String {
+        let c = mkpx_doc_hash(p);
+        assert!(!c.is_null());
+        let s = unsafe { CStr::from_ptr(c) }.to_str().unwrap().to_string();
+        mkpx_free_string(c);
+        s
+    }
+
+    #[test]
+    fn ffi_checkpoint_lifecycle() {
+        let p = mkpx_new(32, 32);
+        run_ok(p, "SelectTool(Pencil); SetPrimaryColor(#D04648FF)\nStroke([(2,2),(20,20)])");
+        let id = mkpx_checkpoint_take(p);
+        assert!(id >= 0);
+        run_ok(p, "Stroke([(4,18),(28,6)])\nAddLayer()\nStroke([(1,1),(5,5)])");
+        let after = doc_hash_string(p);
+        assert_eq!(mkpx_checkpoint_restore(p, id as u32), 0);
+        run_ok(p, "Stroke([(4,18),(28,6)])\nAddLayer()\nStroke([(1,1),(5,5)])");
+        assert_eq!(doc_hash_string(p), after, "restore + replay must equal straight run");
+        // ids roundtrip + bogus restore + mid-gesture refusal.
+        let mut ids = [0u32; 512];
+        let n = mkpx_checkpoint_ids(p, ids.as_mut_ptr(), 512);
+        assert_eq!(n, mkpx_checkpoint_count(p));
+        assert!(n >= 1 && ids[..n as usize].contains(&(id as u32)));
+        assert_eq!(mkpx_checkpoint_restore(p, 9999), -1);
+        run_ok(p, "PointerDown(3,3)");
+        assert_eq!(mkpx_checkpoint_take(p), -1, "mid-stroke take must refuse");
+        run_ok(p, "PointerUp()");
+        mkpx_checkpoint_clear(p);
+        assert_eq!(mkpx_checkpoint_count(p), 0);
+        assert_eq!(mkpx_checkpoint_restore(p, id as u32), -1);
+        mkpx_free(p);
+        // Null-session paths.
+        assert_eq!(mkpx_checkpoint_take(std::ptr::null_mut()), -1);
+        assert_eq!(mkpx_checkpoint_count(std::ptr::null_mut()), 0);
+        assert!(mkpx_doc_hash(std::ptr::null_mut()).is_null());
+    }
+
+    #[test]
+    fn ffi_timelapse_frame_rgba_exact() {
+        // 2×2 known pixels, scale 2, padded onto 8×8 over an opaque background.
+        let p = mkpx_new(2, 2);
+        run_ok(p, "SelectTool(Pencil); SetBrushSize(1); SetPrimaryColor(#FF0000FF)\nTap(0,0)");
+        let mut len = 0u64;
+        let buf = mkpx_timelapse_frame(p, 0, 2, 8, 8, 0x102030FF, 0, &mut len);
+        assert!(!buf.is_null());
+        assert_eq!(len, 8 * 8 * 4);
+        let px = unsafe { slice::from_raw_parts(buf, len as usize) };
+        // Content (4×4) centered at (2,2): the red pixel's 2×2 block at (2,2)..(3,3).
+        let at = |x: usize, y: usize| &px[(y * 8 + x) * 4..(y * 8 + x) * 4 + 4];
+        assert_eq!(at(2, 2), &[255, 0, 0, 255]);
+        assert_eq!(at(3, 3), &[255, 0, 0, 255]);
+        // Transparent canvas pixels flatten to the background; padding is the background.
+        assert_eq!(at(4, 4), &[0x10, 0x20, 0x30, 255], "transparent canvas → bg");
+        assert_eq!(at(0, 0), &[0x10, 0x20, 0x30, 255], "padding → bg");
+        mkpx_free_bytes(buf, len);
+        // Guards: scaled size exceeding the canvas, odd I420 dims, unknown format.
+        assert!(mkpx_timelapse_frame(p, 0, 8, 8, 8, 0, 0, &mut len).is_null());
+        assert!(mkpx_timelapse_frame(p, 0, 1, 7, 8, 0, 1, &mut len).is_null());
+        assert!(mkpx_timelapse_frame(p, 0, 1, 8, 8, 0, 2, &mut len).is_null());
+        mkpx_free(p);
+    }
+
+    #[test]
+    fn ffi_timelapse_frame_i420_shape() {
+        let p = mkpx_new(2, 2);
+        // All-black canvas (fill with an opaque black stroke covering both tiles' pixels).
+        run_ok(p, "SelectTool(Pencil); SetBrushSize(4); SetPrimaryColor(#000000FF)\nStroke([(0,0),(1,1)])");
+        let mut len = 0u64;
+        let buf = mkpx_timelapse_frame(p, 0, 1, 8, 8, 0x000000FF, 1, &mut len);
+        assert!(!buf.is_null());
+        assert_eq!(len, 8 * 8 * 3 / 2, "I420 = w*h*3/2");
+        let px = unsafe { slice::from_raw_parts(buf, len as usize) };
+        assert!(px[..64].iter().all(|&y| y == 16), "black frame → Y=16 everywhere");
+        assert!(px[64..].iter().all(|&c| c == 128), "black frame → neutral chroma");
+        mkpx_free_bytes(buf, len);
+        mkpx_free(p);
+    }
+
+    #[test]
+    fn ffi_timelapse_overlay_blits_and_clears() {
+        let p = mkpx_new(2, 2);
+        let mut len = 0u64;
+        // A 1×1 opaque white overlay at (0,0).
+        let ov = [255u8, 255, 255, 255];
+        assert_eq!(mkpx_timelapse_set_overlay(ov.as_ptr(), 1, 1, 0, 0), 0);
+        let buf = mkpx_timelapse_frame(p, 0, 1, 4, 4, 0x000000FF, 0, &mut len);
+        let px = unsafe { slice::from_raw_parts(buf, len as usize) };
+        assert_eq!(&px[0..4], &[255, 255, 255, 255], "overlay blitted at (0,0)");
+        mkpx_free_bytes(buf, len);
+        // Clear → gone.
+        assert_eq!(mkpx_timelapse_set_overlay(std::ptr::null(), 0, 0, 0, 0), 0);
+        let buf = mkpx_timelapse_frame(p, 0, 1, 4, 4, 0x000000FF, 0, &mut len);
+        let px = unsafe { slice::from_raw_parts(buf, len as usize) };
+        assert_eq!(&px[0..4], &[0, 0, 0, 255], "cleared overlay no longer draws");
+        mkpx_free_bytes(buf, len);
+        // Oversize refused.
+        assert_eq!(mkpx_timelapse_set_overlay(ov.as_ptr(), 4096, 1, 0, 0), -1);
+        mkpx_free(p);
+    }
+
+    #[test]
+    fn ffi_tl_encode_push_mode_roundtrip() {
+        let _guard = EXPORT_TEST_LOCK.lock().unwrap(); // shares the process-wide encoder slot
+        let f0 = vec![255u8, 0, 0, 255].repeat(16); // 4×4 red
+        let mut f1 = f0.clone();
+        f1[0..4].copy_from_slice(&[0, 255, 0, 255]);
+        // GIF.
+        assert_eq!(mkpx_tl_encode_begin(0, 4, 4), 0);
+        assert_eq!(mkpx_tl_encode_push(f0.as_ptr(), f0.len() as u64, 100), 0);
+        assert_eq!(mkpx_tl_encode_push(f1.as_ptr(), f1.len() as u64, 50), 0);
+        let mut len = 0u64;
+        let buf = mkpx_tl_encode_end(&mut len);
+        assert!(!buf.is_null() && len > 0);
+        let gif = unsafe { slice::from_raw_parts(buf, len as usize) }.to_vec();
+        assert_eq!(&gif[0..3], b"GIF");
+        mkpx_free_bytes(buf, len);
+        // WebP.
+        assert_eq!(mkpx_tl_encode_begin(1, 4, 4), 0);
+        assert_eq!(mkpx_tl_encode_push(f0.as_ptr(), f0.len() as u64, 100), 0);
+        assert_eq!(mkpx_tl_encode_push(f1.as_ptr(), f1.len() as u64, 50), 0);
+        let buf = mkpx_tl_encode_end(&mut len);
+        assert!(!buf.is_null());
+        let webp = unsafe { slice::from_raw_parts(buf, len as usize) };
+        assert_eq!(&webp[0..4], b"RIFF");
+        assert_eq!(&webp[8..12], b"WEBP");
+        mkpx_free_bytes(buf, len);
+        // End with nothing in flight → null; abort is idempotent; bad begin format refused.
+        assert!(mkpx_tl_encode_end(&mut len).is_null());
+        mkpx_tl_encode_abort();
+        mkpx_tl_encode_abort();
+        assert_eq!(mkpx_tl_encode_begin(7, 4, 4), -1);
+        // A wrong-length push aborts the encode.
+        assert_eq!(mkpx_tl_encode_begin(1, 4, 4), 0);
+        assert_eq!(mkpx_tl_encode_push(f0.as_ptr(), 5, 100), -1);
+        assert!(mkpx_tl_encode_end(&mut len).is_null(), "failed push poisons the encode");
     }
 }

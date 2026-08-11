@@ -77,7 +77,10 @@ pub struct Record {
     pub sel_after: Option<Arc<Mask>>,
 }
 
-#[derive(Default)]
+// Clone: required by replay checkpoints (session/checkpoint.rs) — a replayed `Undo()` after
+// a checkpoint restore needs history exactly as-of the checkpoint (an empty history would
+// silently no-op the Undo and diverge). The clone is shallow-cheap: records share tile Arcs.
+#[derive(Clone, Default)]
 pub struct History {
     pub undo: Vec<Record>,
     pub redo: Vec<Record>,

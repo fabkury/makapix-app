@@ -212,6 +212,7 @@ extension _EditorEngine on _EditorPageState {
 
   void _send(String dsl) {
     if (!_engineReady) return;
+    _journal?.record(dsl); // the Journal tap: verbatim, before run (record what was SENT)
     final err = engine.run(dsl);
     if (err != null) debugPrint('DSL error: $err  <- $dsl');
     _autosave?.markActivity(); // every document mutation funnels through here (gates the autosave)
@@ -514,6 +515,19 @@ extension _EditorEngine on _EditorPageState {
       _setCursor(engine.width ~/ 2, engine.height ~/ 2);
       _redraw();
     }
+    _pushToolSettings();
+    if (t == 'Gradient') {
+      _send('SetGradientType(${_radial ? 'Radial' : 'Linear'})');
+      _send('SetGradientSmoothstep($_gradSmooth)');
+      _send(_gradStopsDsl());
+    }
+    // Show Select Layer's overlay immediately on entry; clear it (redraw) when leaving it.
+    if (t == 'SelectLayer' || leavingSelectLayer) _redraw();
+  }
+
+  // Re-push every shell-side tool setting to the engine. One block shared by _selectTool and
+  // the Journal's replay baseline (_emitReplayBaseline) so the two can never drift. [replay]
+  void _pushToolSettings() {
     _send('SetBrushSize($_brushSize); SetBrushShape(${_round ? 'Round' : 'Square'})');
     _send('SetThreshold($_threshold); SetContiguous($_contiguous); SetAlphaCutoff($_alphaCutoff)');
     _send('SetIntensity($_intensity); SetShapeFill($_shapeFill); SetLineWidth($_lineWidth)');
@@ -524,13 +538,6 @@ extension _EditorEngine on _EditorPageState {
     _send('SetSelectColorSource(${_selColorLayer ? 'Layer' : 'Frame'})');
     _send('SetCleanEdge($_cleanEdge); SetCleanEdgeWidth(${(_cleanEdgeWidth * 1000).round()})');
     _send('SetScaleCleanEdge($_resizeCleanEdge); SetScaleCleanEdgeWidth(${(_resizeCleanEdgeWidth * 1000).round()})');
-    if (t == 'Gradient') {
-      _send('SetGradientType(${_radial ? 'Radial' : 'Linear'})');
-      _send('SetGradientSmoothstep($_gradSmooth)');
-      _send(_gradStopsDsl());
-    }
-    // Show Select Layer's overlay immediately on entry; clear it (redraw) when leaving it.
-    if (t == 'SelectLayer' || leavingSelectLayer) _redraw();
   }
 
   // The engine ToolKind name for the current shell tool, or null for UI-only tools (the transform

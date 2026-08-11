@@ -107,4 +107,64 @@ void main() {
     expect(lastError, isA<FileSystemException>());
     expect(store.docWrites, 0);
   });
+
+  group('preWrite (the Journal write-ahead hook)', () {
+    test('receives the fnv of the exact bytes, BEFORE writeDoc', () async {
+      final events = <String>[];
+      final hooked = AutosaveController(
+        id: 'd1',
+        store: _OrderStore(base, events),
+        serialize: () => current,
+        buildMeta: () => metaFor('d1'),
+        preWrite: (fnv) async {
+          events.add('preWrite:${fnv.toRadixString(16)}');
+        },
+      );
+      current = bytesOf('v1');
+      hooked.markActivity();
+      await hooked.debugCycle();
+      await hooked.stop();
+      final expected = AutosaveController.fnv1a64(bytesOf('v1')).toRadixString(16);
+      expect(events, ['preWrite:$expected', 'writeDoc', 'writeMeta'],
+          reason: 'journal marker must be durably ahead of the doc write');
+    });
+
+    test('a throwing preWrite never blocks the doc write', () async {
+      final hooked = AutosaveController(
+        id: 'd1',
+        store: store,
+        serialize: () => current,
+        buildMeta: () => metaFor('d1'),
+        preWrite: (_) async => throw StateError('journal broke'),
+      );
+      hooked.markActivity();
+      await hooked.debugCycle();
+      await hooked.stop();
+      expect(store.docWrites, 1, reason: 'the document is authoritative');
+    });
+
+    test('fnv1a64 golden vector', () {
+      // Standard FNV-1a-64 of "a" is 0xaf63dc4c8601ec8c; the controller masks to 63 bits.
+      expect(AutosaveController.fnv1a64(Uint8List.fromList('a'.codeUnits)),
+          0xaf63dc4c8601ec8c & 0x7FFFFFFFFFFFFFFF);
+    });
+  });
+}
+
+/// Records the relative order of preWrite/writeDoc/writeMeta for the ordering test.
+class _OrderStore extends DrawingStore {
+  _OrderStore(super.base, this.events);
+  final List<String> events;
+
+  @override
+  Future<void> writeDoc(String id, Uint8List bytes) async {
+    events.add('writeDoc');
+    await super.writeDoc(id, bytes);
+  }
+
+  @override
+  Future<void> writeMeta(DrawingMeta meta) async {
+    events.add('writeMeta');
+    await super.writeMeta(meta);
+  }
 }

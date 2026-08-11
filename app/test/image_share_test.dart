@@ -85,4 +85,18 @@ void main() {
       expect(smartDefaultExportScale(width: 256, height: 256, frames: 1024), 1);
     });
   });
+
+  group('videoShareFileName', () {
+    test('sanitizes the stem but PRESERVES the extension', () {
+      // Regression: sanitizing the whole name once shipped an extensionless MP4 that
+      // WhatsApp filed as a document, Reddit rejected, and Discord choked on.
+      expect(videoShareFileName('My Drawing!-timelapse.mp4'), 'My_Drawing_-timelapse.mp4');
+      expect(videoShareFileName('plain-timelapse.mp4'), 'plain-timelapse.mp4');
+      expect(videoShareFileName('a.b-c.webp'), 'a_b-c.webp');
+    });
+
+    test('defaults to .mp4 when no extension was given', () {
+      expect(videoShareFileName('nameless'), 'nameless.mp4');
+    });
+  });
 }

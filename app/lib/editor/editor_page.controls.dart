@@ -873,7 +873,9 @@ extension _EditorControls on _EditorPageState {
     if (_playing) _pause();
     await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => PalettePage(
-        host: EnginePaletteHost(engine, onMutated: () => _autosave?.markActivity()),
+        host: EnginePaletteHost(engine,
+            onMutated: () => _autosave?.markActivity(),
+            onDsl: (dsl) => _journal?.record(dsl)), // palette DSL reaches the Journal [replay]
       ),
     ));
     if (!mounted) return;

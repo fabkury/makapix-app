@@ -5,6 +5,8 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
+    private val timelapse = TimelapseEncoder()
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         // Memory stress lab (tools/memlab): the lab flow is reachable ONLY through a launch-intent
@@ -17,5 +19,9 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+        // Timelapse MP4 encoder (ADR 0004): I420 frames + explicit PTS from the Dart export
+        // isolate, hardware H.264 via MediaCodec, muxed to MP4. See TimelapseEncoder.kt.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "club.makapix.app/timelapse")
+            .setMethodCallHandler(timelapse::handle)
     }
 }

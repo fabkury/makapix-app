@@ -200,7 +200,12 @@ impl Session {
         use Action::*;
         match a {
             NewDocument(w, h) => {
-                *self = Session::new(w.clamp(MIN_DIM, MAX_DIM), h.clamp(MIN_DIM, MAX_DIM))
+                // A replayed Journal can contain NewDocument mid-stream; checkpoints taken
+                // before it must survive so backward scrubs restore across the reset. Carry
+                // the store across the whole-session replacement. [replay]
+                let cps = std::mem::take(&mut self.checkpoints);
+                *self = Session::new(w.clamp(MIN_DIM, MAX_DIM), h.clamp(MIN_DIM, MAX_DIM));
+                self.checkpoints = cps;
             }
             AddFrame => self.add_frame(),
             AddFrameAt(i) => self.add_frame_at(i),

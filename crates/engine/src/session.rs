@@ -15,11 +15,18 @@ use crate::util::{hash_hex, Hash, SeededRng, VirtualClock};
 use std::sync::Arc;
 
 mod canvas; // flip/rotate/resize/crop — extracted impl Session block [audit F-17]
+mod checkpoint; // replay checkpoints (Journal scrubbing) — same private-state seam as canvas
 mod parse;
+pub use checkpoint::{CHECKPOINT_BYTE_BUDGET, MAX_CHECKPOINTS};
 pub use parse::Action;
 
 /// A captured pre-edit pixel snapshot of one layer's tiles.
 type TileSnapshot = std::sync::Arc<crate::buffer::TileTable>;
+
+/// The last applied gradient, kept for the `assert.gradient` test oracle:
+/// (kind, stops, p0, p1, smoothstep, frame id, layer id). Shared with the replay
+/// checkpoint capture (`session/checkpoint.rs`).
+pub(crate) type LastGradient = Option<(GradientKind, Vec<Stop>, Point, Point, bool, u32, u32)>;
 
 /// A pre-edit snapshot pinned to the exact (frame id, layer id) it was taken from. The matching
 /// commit/cancel resolves that target *by id* rather than acting on "whatever is active now", so a
@@ -293,7 +300,7 @@ pub struct Session {
     /// centered isosceles triangle; ±1 = apex over a base corner = a right triangle). Triangle-only;
     /// reset on commit/cancel.
     triangle_tip: f32,
-    last_gradient: Option<(GradientKind, Vec<Stop>, Point, Point, bool, u32, u32)>,
+    last_gradient: LastGradient,
     /// Move-layer drag state: pre-drag pixel snapshots of each moved layer, plus the pre-drag
     /// frame (and its id) for a single grouped undo. Set on pointer_down, cleared on pointer_up.
     move_layers: Vec<(usize, RgbaBuffer)>,
@@ -329,6 +336,11 @@ pub struct Session {
     mem_refusals: u32,
     /// Human-readable label of the last budget refusal.
     mem_last_refusal: Option<String>,
+    /// Replay checkpoints (Journal scrubbing). Lives on Session so the FFI stays a plain
+    /// method call, but is explicitly carried across the `NewDocument` whole-session reset
+    /// (the `NewDocument` arm in parse.rs) — any future whole-`*self` replacement must
+    /// repeat that carry. See `session/checkpoint.rs`.
+    checkpoints: checkpoint::CheckpointStore,
 }
 
 impl Session {
@@ -366,6 +378,7 @@ impl Session {
             mem_slack: 0,
             mem_refusals: 0,
             mem_last_refusal: None,
+            checkpoints: checkpoint::CheckpointStore::default(),
         }
     }
 
@@ -2250,7 +2263,17 @@ impl Session {
         if let Some((b, _)) = &self.paste_draft {
             extras.push(b);
         }
-        crate::probe::mem_report(&self.doc, &extras).to_json()
+        let mut s = crate::probe::mem_report(&self.doc, &extras).to_json();
+        // Append the replay-checkpoint store's footprint (approximate rolling weights; the
+        // pointer-deduped census above stays the precise audit of live document memory).
+        debug_assert!(s.ends_with('}'));
+        s.pop();
+        s.push_str(&format!(
+            ",\"checkpoints\":{{\"count\":{},\"approx_bytes\":{}}}}}",
+            self.checkpoint_count(),
+            self.checkpoint_retained_bytes()
+        ));
+        s
     }
 
     /// Unique colors used by the artwork — see [`probe::used_colors`](crate::probe::used_colors).

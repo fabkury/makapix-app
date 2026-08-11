@@ -216,12 +216,25 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
                   SizedBox(
                     width: sq,
                     height: sq,
+                    // Per-AXIS drag recognizers, NOT pan: inside the SingleChildScrollView,
+                    // a pan recognizer loses vertical drags to the scrollable's own
+                    // vertical-drag recognizer — and iOS's bouncing physics accepts drags
+                    // even when the content fits (rubber-band), which made the picker
+                    // nearly ungrabbable on iPhones while Android's clamping physics
+                    // (refusing drags at zero extent) masked the bug. An innermost
+                    // same-axis recognizer wins the arena (the nested-scrollable rule).
+                    // Every update handler reads the full 2-D localPosition, so whichever
+                    // axis claims the gesture, the color still tracks both axes.
                     child: GestureDetector(
-                      onPanDown: (d) =>
+                      behavior: HitTestBehavior.opaque,
+                      onVerticalDragDown: (d) =>
                           _onSv(d.localPosition, const Size(sq, sq)),
-                      onPanUpdate: (d) =>
+                      onVerticalDragUpdate: (d) =>
+                          _onSv(d.localPosition, const Size(sq, sq)),
+                      onHorizontalDragUpdate: (d) =>
                           _onSv(d.localPosition, const Size(sq, sq)),
                       child: CustomPaint(
+                        key: const Key('pickerSvSquare'),
                         painter: _SvPainter(h, s, v),
                         size: const Size(sq, sq),
                       ),
@@ -232,9 +245,11 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
                     width: hueW,
                     height: sq,
                     child: GestureDetector(
-                      onPanDown: (d) => _onHue(d.localPosition, sq),
-                      onPanUpdate: (d) => _onHue(d.localPosition, sq),
+                      behavior: HitTestBehavior.opaque,
+                      onVerticalDragDown: (d) => _onHue(d.localPosition, sq),
+                      onVerticalDragUpdate: (d) => _onHue(d.localPosition, sq),
                       child: CustomPaint(
+                        key: const Key('pickerHueRamp'),
                         painter: _HuePainter(h),
                         size: const Size(hueW, sq),
                       ),

@@ -235,6 +235,123 @@ fn crop_rgba(w: u32, rgba: &[u8], x: u32, y: u32, rw: u32, rh: u32) -> Vec<u8> {
     out
 }
 
+/// Fill a `dw`×`dh` RGBA canvas with `bg` and copy the `sw`×`sh` `src` centered onto it
+/// (row memcpys). Offsets are `floor((d − s) / 2)`, additionally floored to EVEN values when
+/// `even_align` (I420 chroma blocks are 2×2, so video frames keep the content on the chroma
+/// grid). Preconditions (a caller bug otherwise): `dw >= sw`, `dh >= sh`,
+/// `src.len() == sw*sh*4`.
+pub fn center_pad_rgba(sw: u32, sh: u32, src: &[u8], dw: u32, dh: u32, bg: [u8; 4], even_align: bool) -> Vec<u8> {
+    assert!(dw >= sw && dh >= sh);
+    assert_eq!(src.len(), (sw as usize) * (sh as usize) * 4);
+    let (sw, sh, dw, dh) = (sw as usize, sh as usize, dw as usize, dh as usize);
+    let mut ox = (dw - sw) / 2;
+    let mut oy = (dh - sh) / 2;
+    if even_align {
+        ox &= !1;
+        oy &= !1;
+    }
+    let mut out = Vec::with_capacity(dw * dh * 4);
+    for _ in 0..dw * dh {
+        out.extend_from_slice(&bg);
+    }
+    for row in 0..sh {
+        let d = ((oy + row) * dw + ox) * 4;
+        let s = row * sw * 4;
+        out[d..d + sw * 4].copy_from_slice(&src[s..s + sw * 4]);
+    }
+    out
+}
+
+/// Straight-alpha "source over" blit of an `sw`×`sh` RGBA `src` onto the `dw`×`dh` `dst` at
+/// (`x`,`y`), CLIPPED to the destination (negative/overhanging positions draw the visible
+/// part). Deterministic integer math: `out = src + dst·(255−sa)/255` per channel with +127
+/// rounding; output alpha composes the same way.
+pub fn blit_rgba_over(dw: u32, dh: u32, dst: &mut [u8], sw: u32, sh: u32, src: &[u8], x: i32, y: i32) {
+    debug_assert_eq!(dst.len(), (dw as usize) * (dh as usize) * 4);
+    debug_assert_eq!(src.len(), (sw as usize) * (sh as usize) * 4);
+    let (dw, dh) = (dw as i64, dh as i64);
+    for sy in 0..sh as i64 {
+        let dy = y as i64 + sy;
+        if dy < 0 || dy >= dh {
+            continue;
+        }
+        for sx in 0..sw as i64 {
+            let dx = x as i64 + sx;
+            if dx < 0 || dx >= dw {
+                continue;
+            }
+            let si = ((sy * sw as i64 + sx) * 4) as usize;
+            let di = ((dy * dw + dx) * 4) as usize;
+            let sa = src[si + 3] as u32;
+            if sa == 0 {
+                continue;
+            }
+            let inv = 255 - sa;
+            for c in 0..4 {
+                let s = src[si + c] as u32;
+                let d = dst[di + c] as u32;
+                dst[di + c] = (s + (d * inv + 127) / 255).min(255) as u8;
+            }
+        }
+    }
+}
+
+/// Composite RGBA in place over an OPAQUE background color; output alpha becomes 255
+/// everywhere. Used to flatten canvas transparency before video encode (video has no alpha).
+/// Straight-alpha integer over with +127 rounding — deterministic.
+pub fn flatten_over_bg(rgba: &mut [u8], bg: [u8; 3]) {
+    for px in rgba.chunks_exact_mut(4) {
+        let a = px[3] as u32;
+        if a == 255 {
+            continue;
+        }
+        let inv = 255 - a;
+        for c in 0..3 {
+            px[c] = ((px[c] as u32 * a + bg[c] as u32 * inv + 127) / 255) as u8;
+        }
+        px[3] = 255;
+    }
+}
+
+/// RGBA → I420 (yuv420p), BT.601 limited range ("studio swing") — the universal safe default
+/// for MediaCodec / VideoToolbox H.264 at these resolutions. REQUIRES even `w` and `h` (the
+/// FFI validates before calling; asserted here). Layout: Y plane (`w*h` bytes) ++ U plane ++
+/// V plane (each `(w/2)*(h/2)`), stride == width, planes tightly packed. Deterministic
+/// integer fixed point:
+///   Y = (( 66R + 129G +  25B + 128) >> 8) + 16
+///   U = ((−38R − 74G + 112B + 128) >> 8) + 128
+///   V = ((112R − 94G − 18B + 128) >> 8) + 128
+/// Chroma per 2×2 block = (sum of the four per-pixel values + 2) >> 2. Alpha is ignored —
+/// callers flatten first ([`flatten_over_bg`]).
+pub fn rgba_to_i420(w: u32, h: u32, rgba: &[u8]) -> Vec<u8> {
+    assert!(w % 2 == 0 && h % 2 == 0, "I420 requires even dimensions");
+    assert_eq!(rgba.len(), (w as usize) * (h as usize) * 4);
+    let (w, h) = (w as usize, h as usize);
+    let (cw, ch) = (w / 2, h / 2);
+    let mut out = vec![0u8; w * h + 2 * cw * ch];
+    let (y_plane, uv) = out.split_at_mut(w * h);
+    let (u_plane, v_plane) = uv.split_at_mut(cw * ch);
+    for by in 0..ch {
+        for bx in 0..cw {
+            let mut u_sum = 0i32;
+            let mut v_sum = 0i32;
+            for dy in 0..2 {
+                for dx in 0..2 {
+                    let px = (by * 2 + dy) * w + bx * 2 + dx;
+                    let i = px * 4;
+                    let (r, g, b) = (rgba[i] as i32, rgba[i + 1] as i32, rgba[i + 2] as i32);
+                    y_plane[px] = (((66 * r + 129 * g + 25 * b + 128) >> 8) + 16) as u8;
+                    u_sum += ((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128;
+                    v_sum += ((112 * r - 94 * g - 18 * b + 128) >> 8) + 128;
+                }
+            }
+            u_plane[by * cw + bx] = ((u_sum + 2) >> 2) as u8;
+            v_plane[by * cw + bx] = ((v_sum + 2) >> 2) as u8;
+        }
+    }
+    out
+}
+
 /// Encode a single frame's RGBA to PNG.
 pub fn encode_png(w: u32, h: u32, rgba: &[u8]) -> Result<Vec<u8>, CodecError> {
     let img = RgbaImage::from_raw(w, h, rgba.to_vec()).ok_or(CodecError::Unsupported)?;
@@ -309,19 +426,8 @@ pub fn encode_animated_webp_streaming(
         }
         return Ok(out);
     }
-    // 1. Lossless-encode each frame's changed sub-rect and pull out its VP8L bitstream chunk.
-    //    Frame 0 is the full canvas; every later frame encodes only the bounding rect of the
-    //    pixels that differ from the previous frame (a 1×1 rewrite when identical) — the diff
-    //    runs at SOURCE resolution so only the changed area is ever upscaled.
-    struct AnmfFrame {
-        vp8l: Vec<u8>,
-        dur_ms: u32,
-        // Output-space rect; x/y kept even because ANMF stores them halved.
-        x: u32,
-        y: u32,
-        w: u32,
-        h: u32,
-    }
+    // Lossless-encode each frame's changed sub-rect and collect its ANMF entry; the per-frame
+    // body is shared with the push-mode [`WebpAnimEncoder`] via [`encode_anmf`].
     let src_len = (sw as usize) * (sh as usize) * 4;
     let mut frames_out: Vec<AnmfFrame> = Vec::with_capacity(count);
     let mut prev: Option<Vec<u8>> = None;
@@ -330,69 +436,84 @@ pub fn encode_animated_webp_streaming(
         if rgba.len() != src_len {
             return Err(CodecError::Unsupported);
         }
-        let (mut sx, mut sy, mut rw, mut rh) = match &prev {
-            None => (0, 0, sw, sh),
-            Some(p) => match diff_rect(sw, sh, p, &rgba) {
-                Some(r) => r,
-                None => {
-                    // Identical frame: a 1×1 OUTPUT-space rect rewriting pixel (0,0) with its own
-                    // value — the smallest legal ANMF payload (the format cannot express an empty
-                    // frame, and its rect need not align to upscaled source blocks). Kept out of
-                    // the generic path because upscaling it to scale×scale would cross image-webp's
-                    // single-pixel→full-Huffman-trees cliff (~40 B vs ~160 B).
-                    let webp = encode_webp(1, 1, &rgba[0..4])?;
-                    let chunk = extract_vp8l(&webp)
-                        .ok_or_else(|| CodecError::Encode("missing VP8L chunk".into()))?;
-                    frames_out.push(AnmfFrame {
-                        vp8l: chunk,
-                        dur_ms: (dur_us / 1000).max(1),
-                        x: 0,
-                        y: 0,
-                        w: 1,
-                        h: 1,
-                    });
-                    prev = Some(rgba);
-                    i += 1;
-                    if !progress(i, count) {
-                        return Err(CodecError::Canceled);
-                    }
-                    continue;
-                }
-            },
-        };
-        // ANMF stores x/2 and y/2, so the output-space origin must be even. `sx*scale` is odd
-        // only when both factors are odd, so `sx-1 >= 0` and the snapped origin lands even; the
-        // right/bottom edge is unchanged, keeping the rect inside the canvas.
-        if (sx * scale) % 2 == 1 {
-            sx -= 1;
-            rw += 1;
-        }
-        if (sy * scale) % 2 == 1 {
-            sy -= 1;
-            rh += 1;
-        }
-        let sub = if (rw, rh) == (sw, sh) {
-            upscale_nearest(sw, sh, &rgba, scale)
-        } else {
-            upscale_nearest(rw, rh, &crop_rgba(sw, &rgba, sx, sy, rw, rh), scale)
-        };
-        let webp = encode_webp(rw * scale, rh * scale, &sub)?;
-        let chunk = extract_vp8l(&webp).ok_or_else(|| CodecError::Encode("missing VP8L chunk".into()))?;
-        frames_out.push(AnmfFrame {
-            vp8l: chunk,
-            dur_ms: (dur_us / 1000).max(1),
-            x: sx * scale,
-            y: sy * scale,
-            w: rw * scale,
-            h: rh * scale,
-        });
+        frames_out.push(encode_anmf(sw, sh, scale, prev.as_deref(), &rgba, dur_us)?);
         prev = Some(rgba);
         i += 1;
         if !progress(i, count) {
             return Err(CodecError::Canceled);
         }
     }
-    // 2. Assemble the container body: VP8X, ANIM, then one ANMF per frame.
+    Ok(assemble_webp_container(w, h, &frames_out))
+}
+
+/// One encoded ANMF entry: the VP8L bitstream of the changed sub-rect plus its output-space
+/// placement (x/y kept even because ANMF stores them halved).
+struct AnmfFrame {
+    vp8l: Vec<u8>,
+    dur_ms: u32,
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+}
+
+/// Encode one animation frame as an ANMF entry. `prev` = the previous frame's SOURCE-space
+/// RGBA (`None` for frame 0 → full canvas). The diff runs at SOURCE resolution so only the
+/// changed area is ever upscaled; an identical frame becomes a 1×1 rewrite of pixel (0,0) —
+/// the smallest legal ANMF payload (the format cannot express an empty frame; upscaling the
+/// 1×1 would cross image-webp's single-pixel→full-Huffman-trees cliff, ~40 B vs ~160 B).
+fn encode_anmf(sw: u32, sh: u32, scale: u32, prev: Option<&[u8]>, rgba: &[u8], dur_us: u32) -> Result<AnmfFrame, CodecError> {
+    let (mut sx, mut sy, mut rw, mut rh) = match prev {
+        None => (0, 0, sw, sh),
+        Some(p) => match diff_rect(sw, sh, p, rgba) {
+            Some(r) => r,
+            None => {
+                let webp = encode_webp(1, 1, &rgba[0..4])?;
+                let chunk = extract_vp8l(&webp)
+                    .ok_or_else(|| CodecError::Encode("missing VP8L chunk".into()))?;
+                return Ok(AnmfFrame {
+                    vp8l: chunk,
+                    dur_ms: (dur_us / 1000).max(1),
+                    x: 0,
+                    y: 0,
+                    w: 1,
+                    h: 1,
+                });
+            }
+        },
+    };
+    // ANMF stores x/2 and y/2, so the output-space origin must be even. `sx*scale` is odd
+    // only when both factors are odd, so `sx-1 >= 0` and the snapped origin lands even; the
+    // right/bottom edge is unchanged, keeping the rect inside the canvas.
+    if (sx * scale) % 2 == 1 {
+        sx -= 1;
+        rw += 1;
+    }
+    if (sy * scale) % 2 == 1 {
+        sy -= 1;
+        rh += 1;
+    }
+    let sub = if (rw, rh) == (sw, sh) {
+        upscale_nearest(sw, sh, rgba, scale)
+    } else {
+        upscale_nearest(rw, rh, &crop_rgba(sw, rgba, sx, sy, rw, rh), scale)
+    };
+    let webp = encode_webp(rw * scale, rh * scale, &sub)?;
+    let chunk = extract_vp8l(&webp).ok_or_else(|| CodecError::Encode("missing VP8L chunk".into()))?;
+    Ok(AnmfFrame {
+        vp8l: chunk,
+        dur_ms: (dur_us / 1000).max(1),
+        x: sx * scale,
+        y: sy * scale,
+        w: rw * scale,
+        h: rh * scale,
+    })
+}
+
+/// Assemble the animated-WebP container (VP8X + ANIM + one ANMF per frame, RIFF-wrapped).
+/// Frame placement semantics: overwrite (no blend), no dispose — the untouched canvas
+/// carries over between frames.
+fn assemble_webp_container(w: u32, h: u32, frames: &[AnmfFrame]) -> Vec<u8> {
     let mut body = Vec::new();
     // VP8X: feature flags (Animation + Alpha) + reserved + canvas (w-1, h-1) as 24-bit LE.
     let mut vp8x = Vec::with_capacity(10);
@@ -406,10 +527,7 @@ pub fn encode_animated_webp_streaming(
     anim.extend_from_slice(&[0, 0, 0, 0]);
     anim.extend_from_slice(&0u16.to_le_bytes()); // 0 = loop forever
     push_chunk(&mut body, b"ANIM", &anim);
-    // ANMF per frame: frame 0 covers the full canvas; later frames only their changed bounding
-    // rect (1×1 when identical), overwrite (no blend), no dispose — the untouched canvas carries
-    // over. X/Y are stored halved; the encode loop keeps them even.
-    for f in &frames_out {
+    for f in frames {
         debug_assert!(f.x % 2 == 0 && f.y % 2 == 0);
         let mut anmf = Vec::new();
         anmf.extend_from_slice(&(f.x / 2).to_le_bytes()[0..3]);
@@ -421,13 +539,60 @@ pub fn encode_animated_webp_streaming(
         push_chunk(&mut anmf, b"VP8L", &f.vp8l);
         push_chunk(&mut body, b"ANMF", &anmf);
     }
-    // 3. RIFF wrapper.
     let mut out = Vec::with_capacity(body.len() + 12);
     out.extend_from_slice(b"RIFF");
     out.extend_from_slice(&((body.len() + 4) as u32).to_le_bytes()); // "WEBP" + body
     out.extend_from_slice(b"WEBP");
     out.extend_from_slice(&body);
-    Ok(out)
+    out
+}
+
+/// Push-mode animated-WebP encoder for the timelapse export: frames arrive one at a time
+/// (already at OUTPUT resolution — the timelapse frame pipeline upscales/pads/brands before
+/// encoding, so there is no scale here) and only the compressed chunks accumulate. A single
+/// pushed frame finishes as a plain static WebP; zero frames is an error — mirroring
+/// [`encode_animated_webp_streaming`]'s `count` special cases, which cannot be known up
+/// front in push mode. The first frame's raw RGBA is therefore held back until a second
+/// push proves the file animated.
+pub struct WebpAnimEncoder {
+    w: u32,
+    h: u32,
+    first: Option<(Vec<u8>, u32)>, // deferred frame 0 (static-file special case)
+    frames: Vec<AnmfFrame>,
+    prev: Option<Vec<u8>>,
+}
+
+impl WebpAnimEncoder {
+    pub fn new(w: u32, h: u32) -> WebpAnimEncoder {
+        WebpAnimEncoder { w, h, first: None, frames: Vec::new(), prev: None }
+    }
+
+    pub fn push(&mut self, rgba: Vec<u8>, dur_us: u32) -> Result<(), CodecError> {
+        if rgba.len() != (self.w as usize) * (self.h as usize) * 4 {
+            return Err(CodecError::Unsupported);
+        }
+        if self.prev.is_none() && self.frames.is_empty() && self.first.is_none() {
+            self.first = Some((rgba, dur_us));
+            return Ok(());
+        }
+        if let Some((f, d)) = self.first.take() {
+            self.frames.push(encode_anmf(self.w, self.h, 1, None, &f, d)?);
+            self.prev = Some(f);
+        }
+        self.frames.push(encode_anmf(self.w, self.h, 1, self.prev.as_deref(), &rgba, dur_us)?);
+        self.prev = Some(rgba);
+        Ok(())
+    }
+
+    pub fn finish(self) -> Result<Vec<u8>, CodecError> {
+        if let Some((f, _)) = self.first {
+            return encode_webp(self.w, self.h, &f); // one frame → a static WebP
+        }
+        if self.frames.is_empty() {
+            return Err(CodecError::Unsupported);
+        }
+        Ok(assemble_webp_container(self.w, self.h, &self.frames))
+    }
 }
 
 /// Pull the raw VP8L (lossless) chunk payload out of a simple WebP file.
@@ -516,6 +681,59 @@ pub fn encode_gif_streaming(
         }
     }
     Ok(out)
+}
+
+/// A `Write` sink shared between a [`GifStreamEncoder`] and its owner, so the encoder can
+/// own its writer (the `image` GIF encoder has no `into_inner`) while the finished bytes
+/// remain reachable after the encoder is dropped. `Arc<Mutex<…>>` (not `Rc<RefCell<…>>`)
+/// so the whole encoder is `Send` — the FFI parks one in a process-wide slot.
+struct SharedBuf(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl std::io::Write for SharedBuf {
+    fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().expect("gif buffer poisoned").extend_from_slice(b);
+        Ok(b.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// Push-mode GIF encoder for the timelapse export — the [`WebpAnimEncoder`] twin. Frames
+/// arrive at OUTPUT resolution, one at a time; each is quantized and LZW-written straight
+/// into the shared buffer, so nothing accumulates but the compressed output.
+pub struct GifStreamEncoder {
+    buf: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+    enc: Option<GifEncoder<SharedBuf>>,
+    w: u32,
+    h: u32,
+}
+
+impl GifStreamEncoder {
+    pub fn new(w: u32, h: u32) -> Result<GifStreamEncoder, CodecError> {
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut enc = GifEncoder::new(SharedBuf(buf.clone()));
+        enc.set_repeat(image::codecs::gif::Repeat::Infinite)
+            .map_err(|e| CodecError::Encode(e.to_string()))?;
+        Ok(GifStreamEncoder { buf, enc: Some(enc), w, h })
+    }
+
+    pub fn push(&mut self, rgba: Vec<u8>, dur_us: u32) -> Result<(), CodecError> {
+        let img = RgbaImage::from_raw(self.w, self.h, rgba).ok_or(CodecError::Unsupported)?;
+        let delay = Delay::from_numer_denom_ms((dur_us / 1000).max(1), 1);
+        self.enc
+            .as_mut()
+            .ok_or(CodecError::Unsupported)?
+            .encode_frame(ImgFrame::from_parts(img, 0, 0, delay))
+            .map_err(|e| CodecError::Encode(e.to_string()))
+    }
+
+    pub fn finish(mut self) -> Result<Vec<u8>, CodecError> {
+        drop(self.enc.take()); // finalize the stream (the encoder writes its trailer on drop)
+        std::sync::Arc::try_unwrap(self.buf)
+            .map(|m| m.into_inner().expect("gif buffer poisoned"))
+            .map_err(|_| CodecError::Encode("gif buffer still shared".into()))
+    }
 }
 
 /// Encode frames to a horizontal PNG sprite sheet (`cols` per row).
@@ -801,5 +1019,135 @@ mod tests {
         let frames = decode(&webp).unwrap();
         assert_eq!(frames[0].rgba, red);
         assert_eq!(frames[1].rgba, blue);
+    }
+
+    // ---- timelapse frame helpers ----
+
+    #[test]
+    fn center_pad_places_and_fills() {
+        // 3×2 source of distinct bytes into 8×8: offsets floor((8-3)/2)=2, floor((8-2)/2)=3.
+        let src: Vec<u8> = (0..3 * 2 * 4).map(|i| i as u8).collect();
+        let bg = [9, 8, 7, 255];
+        let out = center_pad_rgba(3, 2, &src, 8, 8, bg, false);
+        assert_eq!(out.len(), 8 * 8 * 4);
+        for y in 0..8usize {
+            for x in 0..8usize {
+                let px = &out[(y * 8 + x) * 4..(y * 8 + x) * 4 + 4];
+                if (2..5).contains(&x) && (3..5).contains(&y) {
+                    let s = ((y - 3) * 3 + (x - 2)) * 4;
+                    assert_eq!(px, &src[s..s + 4], "content at ({x},{y})");
+                } else {
+                    assert_eq!(px, &bg, "padding at ({x},{y})");
+                }
+            }
+        }
+        // even_align floors odd offsets: 3×3 into 8×8 → raw offsets (2,2) stay; 3×2 into
+        // 8×9 → oy = floor(7/2) = 3 → floored to 2.
+        let out = center_pad_rgba(3, 2, &src, 8, 10, bg, true);
+        let px = &out[(4 * 8 + 2) * 4..(4 * 8 + 2) * 4 + 4]; // oy = floor(8/2)=4, already even
+        assert_eq!(px, &src[0..4]);
+        let out = center_pad_rgba(3, 3, &vec![1u8; 3 * 3 * 4], 8, 8, bg, true);
+        // oy = floor(5/2) = 2 (even already); ox likewise — content top-left at (2,2).
+        assert_eq!(&out[(2 * 8 + 2) * 4..(2 * 8 + 2) * 4 + 4], &[1, 1, 1, 1]);
+    }
+
+    #[test]
+    fn i420_known_colors_and_chroma_average() {
+        // Solid black / white / red on a 2×2 (one chroma block).
+        let solid = |r: u8, g: u8, b: u8| -> Vec<u8> { vec![r, g, b, 255].repeat(4) };
+        let black = rgba_to_i420(2, 2, &solid(0, 0, 0));
+        assert_eq!(&black[0..4], &[16, 16, 16, 16]);
+        assert_eq!(black[4], 128);
+        assert_eq!(black[5], 128);
+        let white = rgba_to_i420(2, 2, &solid(255, 255, 255));
+        assert_eq!(white[0], ((66 * 255 + 129 * 255 + 25 * 255 + 128) >> 8) as u8 + 16); // 235
+        let red = rgba_to_i420(2, 2, &solid(255, 0, 0));
+        assert_eq!(red[0], (((66 * 255 + 128) >> 8) + 16) as u8);
+        assert_eq!(red[4], ((((-38 * 255 + 128) >> 8) + 128) as i32) as u8);
+        assert_eq!(red[5], ((((112 * 255 + 128) >> 8) + 128) as i32) as u8);
+        // Chroma of a mixed 2×2 block is the rounded average of the per-pixel values.
+        let mut mixed = solid(255, 0, 0);
+        mixed[4..8].copy_from_slice(&[0, 0, 255, 255]); // one blue pixel
+        let out = rgba_to_i420(2, 2, &mixed);
+        let u_r = ((-38 * 255 + 128) >> 8) + 128;
+        let u_b = ((112 * 255 + 128) >> 8) + 128;
+        let expect_u = ((3 * u_r + u_b + 2) >> 2) as u8;
+        assert_eq!(out[4], expect_u);
+        // Plane sizes: Y=w*h, U=V=(w/2)*(h/2).
+        assert_eq!(out.len(), 4 + 1 + 1);
+    }
+
+    #[test]
+    fn blit_over_semantics_and_clipping() {
+        let mut dst = vec![0u8, 0, 0, 255].repeat(16); // 4×4 opaque black
+        let src = vec![255u8, 255, 255, 255, 255, 255, 255, 0]; // 2×1: opaque white + fully transparent
+        blit_rgba_over(4, 4, &mut dst, 2, 1, &src, 1, 1);
+        assert_eq!(&dst[(1 * 4 + 1) * 4..(1 * 4 + 1) * 4 + 4], &[255, 255, 255, 255]);
+        assert_eq!(&dst[(1 * 4 + 2) * 4..(1 * 4 + 2) * 4 + 4], &[0, 0, 0, 255], "alpha-0 source leaves dst");
+        // Mid alpha: 128 over black = 128 + 0*(127)/255 = 128.
+        let mut dst2 = vec![0u8, 0, 0, 255].repeat(1);
+        blit_rgba_over(1, 1, &mut dst2, 1, 1, &[200, 100, 50, 128], 0, 0);
+        assert_eq!(&dst2[0..3], &[200, 100, 50]);
+        // Clipping: all four edges + fully off-canvas are safe no-ops for the outside part.
+        let mut dst3 = vec![7u8; 4 * 4 * 4];
+        let big = vec![255u8; 3 * 3 * 4]; // opaque white
+        blit_rgba_over(4, 4, &mut dst3, 3, 3, &big, -2, -2); // top-left overhang
+        blit_rgba_over(4, 4, &mut dst3, 3, 3, &big, 3, 3); // bottom-right overhang
+        blit_rgba_over(4, 4, &mut dst3, 3, 3, &big, 10, 10); // fully off
+        assert_eq!(dst3[0], 255, "clipped top-left overhang still wrote (0,0)");
+        assert_eq!(dst3[(3 * 4 + 3) * 4], 255, "clipped bottom-right overhang wrote (3,3)");
+        assert_eq!(dst3[(0 * 4 + 3) * 4], 7, "(3,0) untouched by either overhang");
+    }
+
+    #[test]
+    fn flatten_over_bg_composites_and_opacifies() {
+        let mut px = vec![255u8, 0, 0, 128, 10, 20, 30, 255, 0, 0, 0, 0];
+        flatten_over_bg(&mut px, [100, 100, 100]);
+        // 128-alpha red over gray-100: (255*128 + 100*127 + 127)/255 = 178 (integer).
+        let r = (255u32 * 128 + 100 * 127 + 127) / 255;
+        assert_eq!(px[0], r as u8);
+        assert_eq!(px[3], 255);
+        assert_eq!(&px[4..8], &[10, 20, 30, 255], "opaque pixels untouched");
+        assert_eq!(&px[8..12], &[100, 100, 100, 255], "transparent becomes bg");
+    }
+
+    #[test]
+    fn gif_stream_encoder_matches_batch() {
+        // Push-mode output must decode to the same frames the batch encoder produces.
+        let (w, h) = (8u32, 8u32);
+        let f0 = vec![255u8, 0, 0, 255].repeat((w * h) as usize);
+        let mut f1 = f0.clone();
+        f1[0..4].copy_from_slice(&[0, 255, 0, 255]);
+        let mut enc = GifStreamEncoder::new(w, h).unwrap();
+        enc.push(f0.clone(), 100_000).unwrap();
+        enc.push(f1.clone(), 50_000).unwrap();
+        let pushed = enc.finish().unwrap();
+        let batch = encode_gif(w, h, &[(f0, 100_000), (f1, 50_000)]).unwrap();
+        assert_eq!(pushed, batch, "push-mode GIF must be byte-identical to the batch path");
+    }
+
+    #[test]
+    fn webp_anim_encoder_single_and_multi() {
+        let (w, h) = (6u32, 6u32);
+        let f0 = vec![10u8, 20, 30, 255].repeat((w * h) as usize);
+        // Single frame → a static WebP, same as the streaming count==1 special case.
+        let mut enc = WebpAnimEncoder::new(w, h);
+        enc.push(f0.clone(), 100_000).unwrap();
+        let single = enc.finish().unwrap();
+        assert_eq!(single, encode_webp(w, h, &f0).unwrap());
+        // Multi-frame → byte-identical to the pull-streaming path at scale 1.
+        let mut f1 = f0.clone();
+        f1[40..44].copy_from_slice(&[200, 0, 0, 255]);
+        let f2 = f1.clone(); // identical → 1×1 ANMF
+        let mut enc = WebpAnimEncoder::new(w, h);
+        for (f, d) in [(&f0, 90_000u32), (&f1, 90_000), (&f2, 90_000)] {
+            enc.push(f.clone(), d).unwrap();
+        }
+        let pushed = enc.finish().unwrap();
+        let batch =
+            encode_animated_webp(w, h, &[(f0, 90_000), (f1, 90_000), (f2, 90_000)]).unwrap();
+        assert_eq!(pushed, batch, "push-mode WebP must be byte-identical to the batch path");
+        // Zero frames is an error.
+        assert!(WebpAnimEncoder::new(w, h).finish().is_err());
     }
 }

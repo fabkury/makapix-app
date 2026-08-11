@@ -6,7 +6,7 @@
 //!   mkpx run <script.txt | -> [PROBE ...]
 //!   mkpx new <w> <h> -- <inline; actions; ...> [PROBE ...]
 //!   mkpx gen <w> <h> <frames> <layers> <seed> <out.mkpx> [PROBE ...]
-//!   mkpx load <file.mkpx> [PROBE ...]
+//!   mkpx load <file.mkpx> [--run <script|->] [PROBE ...]
 //!   mkpx import <w> <h> <image> [--pre <script>] [--as-layer] [--mode fit|stretch|crop]
 //!               [--start N] [--times N] [PROBE ...]
 //!
@@ -27,7 +27,10 @@
 //!   stats:F:L            pixel:F:L:X:Y         ramp:x0:y0:x1:y1:N
 //!   thumb:F:L:W:H        render:F:OUT.png[:S]  composite:F:OUT.png[:S]
 //!   assert.undo          assert.gradient:TOL   assert.roundtrip
-//!   mem                  mem.os                usedcolors
+//!   mem                  mem.os                usedcolors            hash.doc
+//!
+//! `load --run <script|->` replays a script onto the loaded document — the replay-Journal
+//! validation path (chapter base + prefix-stripped action tail; `#` lines pass through).
 //!
 //! `mem` prints the engine-accounted memory census (tile-deduped; see `probe::mem_report`);
 //! `mem.os` prints the process's OS-level resident/peak bytes. Probes run in order, so placing
@@ -118,7 +121,46 @@ fn main() {
             let n = bytes.len();
             drop(bytes); // free the file buffer before probes so `mem.os` resident is doc-only
             println!("# load bytes={} ms={:.1}", n, t0.elapsed().as_secs_f64() * 1000.0);
-            probe_start = 3;
+            // Optional `--run <script|->`: replay a script onto the loaded document — the
+            // replay-Journal validation path (a chapter base + its action tail; timestamps
+            // must be stripped by the caller, `#` directive lines pass through). A flag, not
+            // a probe: probe specs split on ':' and Windows paths carry drive colons.
+            probe_start = if args.get(3).map(String::as_str) == Some("--run") {
+                let path = match args.get(4) {
+                    Some(p) => p,
+                    None => {
+                        eprintln!("--run needs a script path or '-'");
+                        exit(2);
+                    }
+                };
+                let src = if path == "-" {
+                    use std::io::Read;
+                    let mut s = String::new();
+                    std::io::stdin().read_to_string(&mut s).ok();
+                    s
+                } else {
+                    match std::fs::read_to_string(path) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            eprintln!("cannot read {}: {}", path, e);
+                            exit(2);
+                        }
+                    }
+                };
+                let t1 = std::time::Instant::now();
+                if let Err(e) = session.run_script(&src) {
+                    eprintln!("script error: {}", e);
+                    exit(2);
+                }
+                println!(
+                    "# run lines={} ms={:.1}",
+                    src.lines().count(),
+                    t1.elapsed().as_secs_f64() * 1000.0
+                );
+                5
+            } else {
+                3
+            };
         }
         "import" => {
             // Memory-audit lab tool: the same codec::decode → import_decoded path as mkpx_import.
@@ -254,6 +296,11 @@ fn main() {
             "hash" => {
                 let (f, l) = (idx(&parts, 1), idx(&parts, 2));
                 println!("# hash frame={} layer={} {}", f, l, makapix_engine::util::hash_hex(session.layer_hash(f, l)));
+            }
+            "hash.doc" => {
+                // Whole-document content hash — the replay-validation oracle (NB it excludes
+                // palettes/active_frame/selection by design; see document.rs content_hash).
+                println!("# hash.doc {}", makapix_engine::util::hash_hex(session.doc.content_hash()));
             }
             "stats" => {
                 let (f, l) = (idx(&parts, 1), idx(&parts, 2));

@@ -255,6 +255,39 @@ Future<void> shareImageBytes({
   await SharePlus.instance.share(params);
 }
 
+/// The on-disk name a shared video gets: sanitized STEM + preserved extension (defaulting
+/// to .mp4 when none was given). [sanitizeShareFilename] eats dots, and receivers type
+/// files by extension — sanitizing the whole name once shipped an extensionless video that
+/// WhatsApp filed as a document and Reddit rejected outright.
+String videoShareFileName(String filename) {
+  final dot = filename.lastIndexOf('.');
+  final stem = dot <= 0 ? filename : filename.substring(0, dot);
+  final ext = dot <= 0 ? '.mp4' : filename.substring(dot);
+  return '${sanitizeShareFilename(stem)}$ext';
+}
+
+/// Share an already-encoded video FILE (the Timelapse export's MP4) through the system
+/// share sheet. Same per-share cache-subdir prune as [shareImageBytes]; the source file is
+/// MOVED into it (the export wrote a temp file we own). Only the STEM is sanitized — the
+/// sanitizer eats dots, and receivers type files by extension (an extensionless share made
+/// WhatsApp file the video as a document and Reddit reject it outright).
+Future<void> shareVideoFile(String path, {required String filename, String? text}) async {
+  final dir = Directory('${(await getTemporaryDirectory()).path}/share');
+  if (dir.existsSync()) dir.deleteSync(recursive: true);
+  dir.createSync(recursive: true);
+  final dest = '${dir.path}/${videoShareFileName(filename)}';
+  File shared;
+  try {
+    shared = await File(path).rename(dest);
+  } on FileSystemException {
+    shared = await File(path).copy(dest); // cross-volume rename fallback
+  }
+  final params = (text != null && text.trim().isNotEmpty)
+      ? ShareParams(files: [XFile(shared.path, mimeType: 'video/mp4')], text: text)
+      : ShareParams(files: [XFile(shared.path, mimeType: 'video/mp4')]);
+  await SharePlus.instance.share(params);
+}
+
 /// High-level share of a raster artwork's PIXELS (a downloaded render), re-encoded to a shareable
 /// GIF / lossless WebP (animations) or PNG (stills) at a user-chosen scale, with a "title — link"
 /// caption accompanying the file. This is what the Club's Share button calls; the editor reuses the

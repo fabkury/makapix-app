@@ -278,6 +278,28 @@ impl Document {
         }
     }
 
+    /// Deep-enough clone for replay checkpoints (`session/checkpoint.rs`). `Document`
+    /// deliberately does not derive `Clone` — this named method keeps accidental deep
+    /// copies out of ordinary code paths. Frames and the selection are COW `Arc` bumps;
+    /// palettes are deep (bounded 256×256); history clones shallowly (records share tile
+    /// `Arc`s). `frame_ids`/`layer_ids` are LOAD-BEARING: history records resolve targets
+    /// by id, so the generators must travel with the snapshot or ids allocated after a
+    /// restore could collide with ids surviving inside cloned history records.
+    pub(crate) fn checkpoint_clone(&self) -> Document {
+        Document {
+            size: self.size,
+            frames: self.frames.clone(),
+            active_frame: self.active_frame,
+            palettes: self.palettes.clone(),
+            active_palette: self.active_palette,
+            anim: self.anim,
+            history: self.history.clone(),
+            frame_ids: self.frame_ids.clone(),
+            layer_ids: self.layer_ids.clone(),
+            selection: self.selection.clone(),
+        }
+    }
+
     // ---- canvas ↔ storage geometry (SPEC §8) ----
 
     /// The gutter kept on each side of a canvas of the given size: a **full canvas** on every side,
