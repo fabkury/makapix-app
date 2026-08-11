@@ -119,16 +119,14 @@ extension _EditorReplay on _EditorPageState {
     }
     if (!mounted) return;
     final host = EngineReplayHost(journalText: journalText, bases: bases);
-    // Timelapse platforms: desktop exports WebP/GIF via the shipped encoders; Android's
-    // MediaCodec channel enables MP4 (iOS's VideoToolbox channel ships unverified until
-    // the next Codemagic build). Platforms without a route hide the button.
-    final canExport = !Platform.isIOS;
+    // Every platform has a timelapse route now: desktop exports WebP/GIF via the shipped
+    // encoders; Android (MediaCodec) and iOS (VideoToolbox) produce MP4 over the
+    // club.makapix.app/timelapse channel.
     await Navigator.of(context).push(MaterialPageRoute(
       builder: (pageCtx) => ReplayPage(
         host: host,
         title: _drawingTitle,
-        onShareTimelapse:
-            canExport ? () => _shareTimelapse(pageCtx, host, journalText, bases) : null,
+        onShareTimelapse: () => _shareTimelapse(pageCtx, host, journalText, bases),
       ),
     ));
   }
