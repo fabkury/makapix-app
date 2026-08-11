@@ -33,6 +33,7 @@ import 'palette_page.dart';
 import 'persistence/autosave_controller.dart';
 import 'persistence/drawing_meta.dart';
 import 'persistence/drawing_store.dart';
+import 'replay/journal_recorder.dart';
 import 'makapix_icon.dart';
 import 'tools.dart';
 import 'thumbnail.dart';
@@ -51,6 +52,7 @@ part 'editor_page.sheets.dart';
 part 'editor_page.controls.dart';
 part 'editor_page.toolgrid.dart';
 part 'editor_page.persistence.dart';
+part 'editor_page.replay.dart';
 
 const double _kMinZoom = 0.25, _kMaxZoom = 32.0;
 const _prefsKey = 'tool_order_v1';
@@ -87,6 +89,14 @@ class _EditorPageState extends ConsumerState<EditorPage>
   String _drawingTitle = 'Untitled';
   DateTime _drawingCreatedAt = DateTime.now();
   DateTime? _lastAutosaveWarn; // throttles the "couldn't autosave" toast
+  // ---- The always-on Journal (CONTEXT.md "Replay vocabulary"; see editor_page.replay.dart):
+  // the per-drawing action recorder, attached at every identity transition. `_journalAttaching`
+  // is awaited by the autosave's preWrite so the first marker never races the attach;
+  // `_resumeDocBytes` stashes the bytes _loadDrawingIntoEngine actually loaded (their FNV is
+  // what attachResume reconciles against).
+  JournalRecorder? _journal;
+  Future<void>? _journalAttaching;
+  Uint8List? _resumeDocBytes;
   // The composited canvas image. A ValueNotifier so playback can repaint just the canvas (30fps)
   // without a full-tree setState — that churn made the row-3 drag tiles' taps (e.g. Pause) flaky.
   final ValueNotifier<ui.Image?> _imageVN = ValueNotifier<ui.Image?>(null);
@@ -484,6 +494,11 @@ class _EditorPageState extends ConsumerState<EditorPage>
     // that write complete. Replaces the old in-memory EditorSession snapshot.
     if (_engineReady) _autosave?.flushNow();
     _autosave?.stop();
+    // The journal's lines were captured synchronously as strings at record() time, so this
+    // fire-and-forget drain never touches the engine. The flushNow above already routed the
+    // final marker through preWrite; this catches lines recorded since the last autosave delta.
+    _journal?.detachSoon();
+    _journal = null;
     _antCtrl.dispose();
     _resetThumbCaches();
     _imageVN.value?.dispose(); // release the composited canvas image before the notifier [F-10]

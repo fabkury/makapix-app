@@ -78,10 +78,19 @@ extension _EditorFileIo on _EditorPageState {
         debugPrint('open: "$name" loaded with a content-hash warning');
       }
       _clubSource = null;
-      await _createFreshDrawing(title: name.replaceAll(RegExp(r'\.mkpx$', caseSensitive: false), ''));
+      await _createFreshDrawing(
+          title: name.replaceAll(RegExp(r'\.mkpx$', caseSensitive: false), ''),
+          contentFromBytes: true,
+          reason: 'open');
       if (mounted) _toast('Opened $name');
     } else {
-      _startAutosave(); // load failed; resume autosaving the still-current drawing
+      // Load failed; resume autosaving (and journaling) the still-current drawing. The
+      // release above detached the journal; re-attach in resume mode — the keep-branch's
+      // flushNow wrote a fresh marker, and the discard branch deleted the folder, in which
+      // case attachResume re-anchors on the engine's untouched document. [replay]
+      final id = _drawingId;
+      if (id != null) _journalAttaching = _attachJournal(id, _JournalMode.resume);
+      _startAutosave();
       if (mounted) _toast(_loadFailureMessage(status));
     }
     if (mounted) {
@@ -190,6 +199,9 @@ extension _EditorFileIo on _EditorPageState {
     if (!mounted) return;
     switch (status) {
       case ImportStatus.ok:
+        // A successful import is a non-DSL document mutation: close the Journal chapter and
+        // anchor the next one on the post-import content (ADR 0003). [replay]
+        await _journalCutAndBaseline('import');
         _refreshState();
         _redraw();
         _toast('Imported ${res.files.single.name} (${engine.frameCount} frames)');
@@ -332,7 +344,7 @@ extension _EditorFileIo on _EditorPageState {
       if (!mounted) return;
     }
     _resendEngineTool();
-    await _createFreshDrawing(title: req.sourceTitle);
+    await _createFreshDrawing(title: req.sourceTitle, contentFromBytes: true, reason: 'club');
     if (!mounted) return;
     if (!ok) {
       // A layers file from a newer app is the one cause the user can actually fix — name it.

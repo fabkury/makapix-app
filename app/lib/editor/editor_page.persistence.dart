@@ -80,6 +80,13 @@ extension _EditorPersistence on _EditorPageState {
       serialize: () => _engineReady ? engine.save() : Uint8List(0),
       buildMeta: _buildMeta,
       onError: _onAutosaveError,
+      // Journal write-ahead: flush the recorder and append a marker for the exact bytes
+      // about to be written, awaiting a still-in-flight attach first so the first marker
+      // can never race it. [replay]
+      preWrite: (fnv) async {
+        await _journalAttaching;
+        await _journal?.markerBeforeSave(fnv);
+      },
     )..start();
   }
 
@@ -108,19 +115,32 @@ extension _EditorPersistence on _EditorPageState {
   // This is the universal document-switch funnel (open / new / gallery / Club edit / startup), so
   // it drops thumbnails cached against the previous document — they are keyed by frame/layer index
   // and would otherwise flash stale for one frame and leak the old ui.Images. [audit]
-  void _adopt(String id, String title, DateTime createdAt) {
+  void _adopt(String id, String title, DateTime createdAt,
+      {_JournalMode journalMode = _JournalMode.resume, String journalReason = 'fresh'}) {
     _resetThumbCaches();
     _drawingId = id;
     _drawingTitle = title;
     _drawingCreatedAt = createdAt;
     _prefs?.setString(_kCurrentDrawing, id);
+    // Attach the Journal BEFORE the autosave starts: its preWrite awaits this future, so
+    // the first marker lands after the attach settles. [replay]
+    _journal = null;
+    _journalAttaching = _attachJournal(id, journalMode, reason: journalReason);
     _startAutosave();
   }
 
   // Begin tracking a brand-new library drawing for whatever the engine currently holds, writing it
   // to disk immediately so it exists in the gallery and is crash-safe from the first moment.
-  Future<void> _createFreshDrawing({required String title}) async {
-    _adopt(DrawingStore.newId(), title, DateTime.now());
+  // [contentFromBytes] marks content that arrived as bytes (external open / Club edit): the
+  // Journal then anchors chapter 1 on the engine's current document instead of starting empty.
+  Future<void> _createFreshDrawing({
+    required String title,
+    bool contentFromBytes = false,
+    String reason = 'fresh',
+  }) async {
+    _adopt(DrawingStore.newId(), title, DateTime.now(),
+        journalMode: contentFromBytes ? _JournalMode.freshFromBytes : _JournalMode.freshBlank,
+        journalReason: reason);
     await _autosave?.flushNow();
   }
 
@@ -138,6 +158,10 @@ extension _EditorPersistence on _EditorPageState {
       }
       return s.loaded;
     });
+    // Stash the WINNING bytes (primary or .bak — whatever readDoc returned) for the
+    // Journal's resume reconciliation; never hook inside the validator, which can run
+    // twice. [replay]
+    _resumeDocBytes = bytes;
     return bytes != null;
   }
 
@@ -147,6 +171,12 @@ extension _EditorPersistence on _EditorPageState {
     if (!discard) await _autosave?.flushNow();
     await _autosave?.stop(); // waits for any in-flight write before a delete pulls the folder
     _autosave = null;
+    // Detach the Journal before any delete pulls the folder (Windows file locks); the
+    // keep-branch flushNow above already routed the final marker through preWrite. [replay]
+    final j = _journal;
+    _journal = null;
+    _journalAttaching = null;
+    if (j != null) await j.detach();
     final id = _drawingId;
     if (discard && id != null) {
       try {

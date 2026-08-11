@@ -31,6 +31,13 @@ class AutosaveController {
   /// Called (non-fatally) when a write fails — e.g. to show a throttled "couldn't autosave" toast.
   final void Function(Object error)? onError;
 
+  /// Invoked from the drain immediately BEFORE each physical `writeDoc`, with the FNV-1a-64
+  /// of the exact bytes about to be written. The Journal's write-ahead hook: the recorder
+  /// flushes its buffer and appends a marker for these bytes, so the journal is durably on
+  /// disk before the document that supersedes it. Failures are swallowed — the document is
+  /// authoritative; a missed marker merely re-anchors the journal on the next attach.
+  final Future<void> Function(int fnv64)? preWrite;
+
   final Duration interval;
 
   AutosaveController({
@@ -39,6 +46,7 @@ class AutosaveController {
     required this.serialize,
     required this.buildMeta,
     this.onError,
+    this.preWrite,
     this.interval = const Duration(seconds: 5),
   });
 
@@ -46,7 +54,7 @@ class AutosaveController {
   bool _activity = false; // coarse "something happened" gate for the cheap serialize
   int _lastHash = 0;
   bool _hasSaved = false;
-  ({Uint8List bytes, DrawingMeta meta})? _pending; // latest write waiting (latest-wins)
+  ({Uint8List bytes, DrawingMeta meta, int fnv})? _pending; // latest write waiting (latest-wins)
   bool _draining = false;
   bool _stopped = false;
 
@@ -63,11 +71,11 @@ class AutosaveController {
     _activity = false;
     final bytes = serialize();
     if (bytes.isEmpty) return;
-    final h = _fnv1a(bytes);
+    final h = fnv1a64(bytes);
     if (_hasSaved && h == _lastHash) return; // nothing changed since last save
     _lastHash = h;
     _hasSaved = true;
-    await _enqueue(bytes, buildMeta());
+    await _enqueue(bytes, buildMeta(), h);
   }
 
   /// Force the latest state to disk immediately (background / leave / switch / create). Serializes
@@ -78,13 +86,13 @@ class AutosaveController {
     final bytes = serialize(); // sync: captured before the first await / engine free
     if (bytes.isEmpty) return Future<void>.value();
     final meta = buildMeta(); // sync: also captured before any engine free
-    _lastHash = _fnv1a(bytes);
+    _lastHash = fnv1a64(bytes);
     _hasSaved = true;
-    return _enqueue(bytes, meta);
+    return _enqueue(bytes, meta, _lastHash);
   }
 
-  Future<void> _enqueue(Uint8List bytes, DrawingMeta meta) {
-    _pending = (bytes: bytes, meta: meta);
+  Future<void> _enqueue(Uint8List bytes, DrawingMeta meta, int fnv) {
+    _pending = (bytes: bytes, meta: meta, fnv: fnv);
     return _drain();
   }
 
@@ -97,6 +105,11 @@ class AutosaveController {
       while (_pending != null) {
         final job = _pending!;
         _pending = null;
+        if (preWrite != null) {
+          try {
+            await preWrite!(job.fnv); // journal write-ahead; never blocks the doc write
+          } catch (_) {}
+        }
         try {
           await store.writeDoc(id, job.bytes);
           await store.writeMeta(job.meta);
@@ -122,8 +135,9 @@ class AutosaveController {
 
   // 64-bit FNV-1a over the bytes (native Dart ints wrap at 64-bit). Change-detection only — not a
   // cryptographic hash; collisions are irrelevant beyond an astronomically-unlikely missed save
-  // that the next real change would catch anyway.
-  static int _fnv1a(Uint8List b) {
+  // that the next real change would catch anyway. Public: the Journal hashes loaded doc bytes
+  // with the IDENTICAL function (mask included) to match its crash-sync markers.
+  static int fnv1a64(Uint8List b) {
     var h = 0xcbf29ce484222325;
     const prime = 0x100000001b3;
     for (var i = 0; i < b.length; i++) {

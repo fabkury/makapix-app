@@ -137,5 +137,16 @@ void main() {
       expect(await store.thumbFile('d1').readAsBytes(), bytesOf('PNG2'));
       expect(await store.readMeta('d1'), isNull); // none written yet
     });
+
+    test('delete removes journal + chapter bases along with the folder', () async {
+      // The Journal's GC-for-free property (ADR 0003): its sidecar files live in the
+      // drawing's folder, so store.delete needs no knowledge of them.
+      await store.writeDoc('d1', bytesOf('v1'));
+      final dir = store.dirFor('d1');
+      await File('${dir.path}/journal.mkpxj').writeAsString('#mkpxj 1\n');
+      await File('${dir.path}/chapter-0001.mkpx').writeAsBytes(bytesOf('base'));
+      await store.delete('d1');
+      expect(await dir.exists(), isFalse);
+    });
   });
 }

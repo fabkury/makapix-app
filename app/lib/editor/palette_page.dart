@@ -61,11 +61,16 @@ abstract class PaletteHost {
 }
 
 class EnginePaletteHost implements PaletteHost {
-  EnginePaletteHost(this.engine, {this.onMutated});
+  EnginePaletteHost(this.engine, {this.onMutated, this.onDsl});
   final Engine engine;
 
   /// Fired after every mutation so the editor's autosave sees the activity (what `_send` does).
   final VoidCallback? onMutated;
+
+  /// The Journal tap: invoked with each DSL script BEFORE it runs (record what was sent),
+  /// mirroring `_send`. Palette edits mutate the document off the editor's `_send` seam, so
+  /// without this they would be silently missing from replays. [replay]
+  final void Function(String dsl)? onDsl;
 
   @override
   ({List<PaletteInfo> palettes, int active}) readPalettes() {
@@ -79,6 +84,7 @@ class EnginePaletteHost implements PaletteHost {
 
   @override
   String? run(String dsl) {
+    onDsl?.call(dsl);
     final err = engine.run(dsl);
     onMutated?.call();
     return err;

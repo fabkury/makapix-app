@@ -276,7 +276,9 @@ extension _EditorTimeline on _EditorPageState {
           _overscan ? 'Overscan: on' : 'Overscan: off',
           () {
             setState(() => _overscan = !_overscan);
-            engine.run('SetOverscanView(${_overscan ? 1 : 0})');
+            // Through _send (not engine.run) so the toggle reaches the Journal and the
+            // autosave activity gate like every other engine mutation. [replay]
+            _send('SetOverscanView(${_overscan ? 1 : 0})');
             _redraw();
           },
         ),
