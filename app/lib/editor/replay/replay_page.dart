@@ -161,15 +161,21 @@ class _ReplayPageState extends State<ReplayPage> {
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.all(12),
-                      child: Center(
-                        child: ValueListenableBuilder<ui.Image?>(
+                      // Like the editor canvas: stretch to the largest fit, never the true
+                      // pixel size. RawImage sizes itself to the image's intrinsic pixels
+                      // unless given explicit dimensions, so hand it the whole box and let
+                      // BoxFit.contain center the upscale (nearest-neighbor = crisp).
+                      child: LayoutBuilder(
+                        builder: (_, box) => ValueListenableBuilder<ui.Image?>(
                           valueListenable: _image,
                           builder: (_, img, _) => img == null
                               ? const SizedBox.shrink()
                               : RawImage(
                                   image: img,
+                                  width: box.maxWidth,
+                                  height: box.maxHeight,
                                   fit: BoxFit.contain,
-                                  filterQuality: FilterQuality.none, // crisp pixels at any zoom
+                                  filterQuality: FilterQuality.none,
                                 ),
                         ),
                       ),

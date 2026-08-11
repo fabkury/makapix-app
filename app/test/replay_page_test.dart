@@ -131,4 +131,26 @@ void main() {
     await tester.pump();
     expect(host.disposed, isTrue);
   });
+
+  testWidgets('canvas stretches to the available space, not the true pixel size', (tester) async {
+    // Regression: RawImage sizes itself to the image's intrinsic pixels (4×4 from the fake
+    // host) unless given explicit dimensions — the replay must fill the box like the
+    // editor canvas does.
+    final host = FakeReplayHost(actions: 100);
+    // decodeImageFromPixels completes on the real engine — the whole flow needs real async.
+    await tester.runAsync(() async {
+      await tester.pumpWidget(MaterialApp(home: ReplayPage(host: host, title: 't')));
+      await tester.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+    });
+    await tester.pump();
+    final raw = tester.widgetList<RawImage>(find.byType(RawImage));
+    expect(raw, isNotEmpty, reason: 'a frame should be showing');
+    final img = raw.first;
+    expect(img.width, greaterThan(100), reason: 'must span the layout box, not 4px');
+    expect(img.fit, BoxFit.contain);
+    expect(img.filterQuality, FilterQuality.none);
+    await tester.tap(find.byIcon(Icons.pause));
+    await tester.pump();
+  });
 }
