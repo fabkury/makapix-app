@@ -2,9 +2,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:makapix_club/editor/replay/timelapse_plan.dart';
 
 void main() {
-  group('samplePositions', () {
-    test('count, monotonic, last == actionCount', () {
-      final s = samplePositions(150000, 450);
+  List<int> allPositions(int n) => List<int>.generate(n, (i) => i + 1);
+
+  group('samplePositions (over the visible-change pool)', () {
+    test('count, monotonic, last == pool.last', () {
+      final s = samplePositions(allPositions(150000), 450);
       expect(s.length, 450);
       expect(s.last, 150000);
       for (var i = 1; i < s.length; i++) {
@@ -12,15 +14,26 @@ void main() {
       }
     });
 
-    test('short journals repeat positions (legal duplicates)', () {
-      final s = samplePositions(10, 30);
+    test('short pools repeat positions (legal duplicates)', () {
+      final s = samplePositions(allPositions(10), 30);
       expect(s.length, 30);
       expect(s.last, 10);
-      expect(s.toSet().length, lessThanOrEqualTo(11));
+      expect(s.toSet().length, lessThanOrEqualTo(10));
     });
 
-    test('zero samples → empty', () {
-      expect(samplePositions(100, 0), isEmpty);
+    test('a sparse pool samples only its members — no dead in-between frames', () {
+      // The whole point of visible-change sampling: positions inside fiddle stretches
+      // (6..3999 here) never become video frames.
+      final pool = [5, 100, 4000];
+      final s = samplePositions(pool, 6);
+      expect(s.toSet().difference(pool.toSet()), isEmpty);
+      expect(s.last, 4000);
+      expect(s.length, 6);
+    });
+
+    test('zero samples or an empty pool → empty', () {
+      expect(samplePositions(allPositions(100), 0), isEmpty);
+      expect(samplePositions(const [], 30), isEmpty);
     });
   });
 
@@ -93,7 +106,7 @@ void main() {
     test('progress at 30fps + appended finale; total duration adds up', () {
       final durations = [100000, 100000]; // C=0.2s → 5 loops of 2 frames
       final plan = planTimelapse(
-          actionCount: 9000, seconds: 15, frameDurationsUs: durations);
+          visiblePositions: allPositions(9000), seconds: 15, frameDurationsUs: durations);
       final progress = plan.where((e) => !e.isFinale).toList();
       final finale = plan.where((e) => e.isFinale).toList();
       expect(progress.length, 450);

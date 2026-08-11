@@ -19,6 +19,8 @@ class FakeReplayHost implements ReplayHost {
   @override
   int get actionCount => actions;
   @override
+  List<int> get visiblePositions => List<int>.generate(actions, (i) => i + 1);
+  @override
   bool get ready => _ready;
   @override
   String? get initError => failWith;

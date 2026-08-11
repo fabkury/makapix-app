@@ -6,12 +6,18 @@ import 'package:flutter/foundation.dart';
 import 'package:makapix_club/engine_ffi.dart';
 
 import 'journal_format.dart';
+import 'visible_index.dart' as vi;
 
 /// What the Replay viewer needs from a replayable Journal — abstract so the page is
 /// widget-testable without the engine DLL (the PaletteHost pattern).
 abstract class ReplayHost {
-  /// Total action lines across all chapters (the scrub axis: positions 0..actionCount).
+  /// Total action lines across all chapters (positions 0..actionCount).
   int get actionCount;
+
+  /// The positions whose transition visibly changes the canvas (ascending, ends at
+  /// [actionCount]) — the tick axis the sweep and slider step through, so draft fiddling
+  /// and settings churn never consume playback time. See visible_index.dart.
+  List<int> get visiblePositions;
 
   /// True once [init] finished and seeking works.
   bool get ready;
@@ -62,6 +68,7 @@ class EngineReplayHost implements ReplayHost {
   Engine? _engine;
   final List<String> _actions = []; // flat, prefix-stripped DSL in journal order
   final Map<int, String> _chapterBaseAt = {}; // action index -> base file to load first
+  List<int> _visible = const [];
   final List<(int pos, int id)> _checkpoints = []; // ascending by pos
   List<int> _endDurations = const [];
   (int, int) _endSize = (64, 64);
@@ -74,6 +81,8 @@ class EngineReplayHost implements ReplayHost {
 
   @override
   int get actionCount => _actions.length;
+  @override
+  List<int> get visiblePositions => _visible;
   @override
   bool get ready => _ready;
   @override
@@ -108,6 +117,7 @@ class EngineReplayHost implements ReplayHost {
         _error = 'This drawing has no replayable history yet.';
         return;
       }
+      _visible = vi.visiblePositions(flat);
       _engine = Engine(64, 64);
       // One forward pass to the end, checkpointing on a fixed stride plus at every chapter
       // start (so a seek never straddles a chapter boundary). ≤300 checkpoints ≈ the
@@ -183,6 +193,16 @@ class EngineReplayHost implements ReplayHost {
         }
         _progress.value = (_pos / _actions.length).clamp(0.0, 1.0);
         await Future<void>.delayed(Duration.zero); // yield to input during init
+      }
+    }
+    // Stopping EXACTLY on a chapter boundary: the base load is part of this position's
+    // canonical state (checkpoints taken here during init are post-load), so apply it —
+    // idempotent if the loop later re-loads when advancing onward.
+    final atBoundary = _chapterBaseAt[_pos];
+    if (atBoundary != null) {
+      final status = engine.load(bases[atBoundary]!);
+      if (!status.loaded) {
+        throw StateError('chapter base $atBoundary failed to load ($status)');
       }
     }
   }

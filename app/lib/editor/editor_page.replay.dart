@@ -222,7 +222,7 @@ extension _EditorReplay on _EditorPageState {
     }
 
     final entries = planTimelapse(
-      actionCount: host.actionCount,
+      visiblePositions: host.visiblePositions,
       seconds: seconds,
       frameDurationsUs: durations,
       fullCycleFinale: fullCycle,

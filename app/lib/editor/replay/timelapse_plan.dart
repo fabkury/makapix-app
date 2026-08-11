@@ -39,12 +39,16 @@ enum TimelapseShape {
   final String label;
 }
 
-/// Uniform action sampling: [samples] positions over [actionCount] actions, monotonic
-/// non-decreasing, last == actionCount. Duplicates (a short journal) are legal — repeated
-/// frames delta-encode to almost nothing.
-List<int> samplePositions(int actionCount, int samples) {
-  if (samples <= 0) return const [];
-  return [for (var k = 0; k < samples; k++) ((k + 1) * actionCount / samples).round()];
+/// Uniform sampling over a POOL of journal positions — the visible-change index, so the
+/// video never freezes through draft fiddling or settings churn. [samples] entries,
+/// monotonic non-decreasing, last == pool.last. Duplicates (a short pool) are legal —
+/// repeated frames delta-encode to almost nothing.
+List<int> samplePositions(List<int> pool, int samples) {
+  if (samples <= 0 || pool.isEmpty) return const [];
+  return [
+    for (var k = 0; k < samples; k++)
+      pool[(((k + 1) * pool.length / samples).ceil() - 1).clamp(0, pool.length - 1)],
+  ];
 }
 
 /// The authored full-cycle length of the finished animation, µs.
@@ -88,15 +92,16 @@ List<TimelapseEntry> planFinale(List<int> frameDurationsUs, {bool fullCycle = tr
   ];
 }
 
-/// The whole timelapse: progress samples for [seconds] at 30 fps, then the finale.
+/// The whole timelapse: progress samples for [seconds] at 30 fps drawn uniformly from
+/// [visiblePositions] (the visible-change index), then the finale.
 List<TimelapseEntry> planTimelapse({
-  required int actionCount,
+  required List<int> visiblePositions,
   required int seconds,
   required List<int> frameDurationsUs,
   bool fullCycleFinale = true,
 }) {
   return [
-    for (final p in samplePositions(actionCount, seconds * 30))
+    for (final p in samplePositions(visiblePositions, seconds * 30))
       TimelapseEntry.progress(p, kProgressFrameUs),
     ...planFinale(frameDurationsUs, fullCycle: fullCycleFinale),
   ];

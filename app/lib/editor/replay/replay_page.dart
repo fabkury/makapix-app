@@ -28,12 +28,20 @@ class ReplayPage extends StatefulWidget {
 class _ReplayPageState extends State<ReplayPage> {
   final ValueNotifier<ui.Image?> _image = ValueNotifier(null);
   int _imageGen = 0; // staleness stamp: decodes can land out of order (the editor's idiom)
-  double _uiPos = 0; // the slider thumb (actions), advanced fractionally by the sweep
+  // The slider thumb in VISIBLE-CHANGE index space (0..visibleCount) — every tick of the
+  // sweep and every pixel of the slider is a change you can see; draft fiddling and
+  // settings churn never consume playback time. Advanced fractionally by the sweep.
+  double _uiIdx = 0;
   bool _playing = false;
   Timer? _sweep;
   bool _seekBusy = false;
 
   ReplayHost get host => widget.host;
+
+  int get _visibleCount => host.visiblePositions.length;
+
+  /// The journal position a visible-index thumb value maps to (0 = the starting state).
+  int _positionOf(int idx) => idx <= 0 ? 0 : host.visiblePositions[idx.clamp(1, _visibleCount) - 1];
 
   @override
   void initState() {
@@ -51,25 +59,26 @@ class _ReplayPageState extends State<ReplayPage> {
     }
   }
 
-  /// Sweep duration: the whole journal in ~30–60 s regardless of length.
-  double get _sweepSeconds => (host.actionCount / 2500).clamp(30, 60).toDouble();
+  /// Sweep duration: the whole journal's VISIBLE changes in ~30–60 s (a fiddle-heavy
+  /// session earns no extra sweep time for invisible work).
+  double get _sweepSeconds => (_visibleCount / 2500).clamp(30, 60).toDouble();
 
   void _play() {
     if (!host.ready || _playing) return;
     if (host.position >= host.actionCount) {
-      _uiPos = 0; // replay from the start when play is hit at the end
+      _uiIdx = 0; // replay from the start when play is hit at the end
     }
     setState(() => _playing = true);
-    final perTick = host.actionCount / (_sweepSeconds * 30);
+    final perTick = _visibleCount / (_sweepSeconds * 30);
     _sweep = Timer.periodic(const Duration(milliseconds: 33), (_) {
       if (!_playing) return;
       if (_seekBusy) return; // coalesce: never queue ticks behind a slow seek
-      _uiPos = (_uiPos + perTick).clamp(0, host.actionCount.toDouble());
-      final target = _uiPos.round();
-      if (target >= host.actionCount) {
+      _uiIdx = (_uiIdx + perTick).clamp(0, _visibleCount.toDouble());
+      final idx = _uiIdx.round();
+      if (idx >= _visibleCount) {
         _pause(); // stop ON the final state
       }
-      unawaited(_seekAndShow(target));
+      unawaited(_seekAndShow(_positionOf(idx)));
       setState(() {});
     });
   }
@@ -192,12 +201,12 @@ class _ReplayPageState extends State<ReplayPage> {
                       ),
                       Expanded(
                         child: Slider(
-                          value: _uiPos.clamp(0, host.actionCount.toDouble()),
-                          max: host.actionCount.toDouble(),
+                          value: _uiIdx.clamp(0, _visibleCount.toDouble()),
+                          max: _visibleCount.toDouble(),
                           onChanged: (v) {
                             _pause(); // dragging takes over from the sweep
-                            _uiPos = v;
-                            unawaited(_seekAndShow(v.round()));
+                            _uiIdx = v;
+                            unawaited(_seekAndShow(_positionOf(v.round())));
                             setState(() {});
                           },
                         ),
