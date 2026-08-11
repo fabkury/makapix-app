@@ -1,0 +1,17 @@
+[package]
+name = "replaybench"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+makapix-codec = { path = "../../../crates/codec" }
+makapix-engine = { path = "../../../crates/engine" }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+# Standalone on purpose: a lab tool, not a workspace member (mirrors the doctrine that
+# non-shipping measurement code is unconstrained but stays out of the product build).
+[workspace]
