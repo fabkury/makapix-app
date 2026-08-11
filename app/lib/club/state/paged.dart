@@ -80,6 +80,16 @@ class PagedNotifier<T> extends StateNotifier<PagedState<T>> {
     await _load(reset: false);
   }
 
+  /// Insert [item] at the top unless [same] matches an existing item (live
+  /// inserts from the SSE stream, deduped by id). Before the initial load
+  /// completes this is a no-op: the fetch replaces the whole list anyway and
+  /// will already contain the item.
+  void prepend(T item, {required bool Function(T a, T b) same}) {
+    if (!state.initialized) return;
+    if (state.items.any((e) => same(e, item))) return;
+    state = state.copyWith(items: [item, ...state.items]);
+  }
+
   Future<void> _load({required bool reset}) async {
     try {
       final page = await fetch(reset ? null : state.cursor);

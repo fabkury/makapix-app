@@ -41,12 +41,6 @@ class ClubConfig {
   /// with hardware/web-infra surfaces as a separate, unversioned contract.
   String get apiRoot => '$baseUrl/api';
 
-  /// MQTT-over-WebSocket endpoint (used by a later phase for live notifications).
-  String get realtimeUrl => switch (env) {
-        ClubEnvironment.dev => 'wss://development.makapix.club/mqtt',
-        ClubEnvironment.prod => 'wss://makapix.club/mqtt',
-      };
-
   // ---- GitHub OAuth (server-brokered) — return leg differs per environment ----
 
   // App id migrated club.makapix.editor → club.makapix.app (2026-06-30); the scheme,

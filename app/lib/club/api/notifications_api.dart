@@ -2,7 +2,9 @@ import '../models/club_notification.dart';
 import '../models/page.dart';
 import 'club_api_client.dart';
 
-/// Social notifications (polling in C1; real-time MQTT arrives in C5).
+/// Social notifications over REST — the inbox and offline catch-up. The live
+/// channel is the SSE stream (`state/notifications_sse.dart`), which shares
+/// this item shape (dedupe by `id`).
 class NotificationsApi {
   final ClubApiClient client;
   NotificationsApi(this.client);

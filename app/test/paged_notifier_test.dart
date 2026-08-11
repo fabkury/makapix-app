@@ -44,4 +44,24 @@ void main() {
     expect(n.state.items, isEmpty);
     expect(n.state.initialized, isTrue);
   });
+
+  test('prepend inserts at the top and dedupes', () async {
+    Future<Page<int>> fetch(String? cursor) async =>
+        const Page(items: [2, 3], nextCursor: null);
+    final n = PagedNotifier<int>(fetch);
+    await n.loadInitial();
+
+    n.prepend(1, same: (a, b) => a == b);
+    expect(n.state.items, [1, 2, 3]);
+
+    n.prepend(2, same: (a, b) => a == b); // already present — no duplicate
+    expect(n.state.items, [1, 2, 3]);
+  });
+
+  test('prepend is a no-op before the initial load', () {
+    final n = PagedNotifier<int>((_) async => const Page(items: [], nextCursor: null));
+    n.prepend(1, same: (a, b) => a == b);
+    expect(n.state.items, isEmpty);
+    expect(n.state.initialized, isFalse);
+  });
 }

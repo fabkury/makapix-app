@@ -10,7 +10,10 @@ artist dashboard, settings (monitored hashtags), post management + ZIP data expo
 remain, and **playlists are fully deferred** (2026-07-07: don't develop until further notice — the
 server feature itself is mostly planned-but-deferred). Of **C5**, **player control + send-to-player**
 (the Player Bar, 2026-06-29) and **player registration & management** (My Players, 2026-07-17) have
-shipped; live MQTT notifications and the soft-player kiosk are **not yet** started.
+shipped, and **live notifications shipped 2026-08-11 over the server's SSE stream** (the C5 MQTT
+plan is obsolete — the server's notification plane separation removed the browser/app MQTT
+notification topics; message 0001 in `reference/makapix-club/docs/notification-architecture/`); the
+soft-player kiosk is **not yet** started.
 Of **C6** (moderation & extras), **mod-hashtags shipped 2026-07-05**, and **in-app moderation shipped
 2026-08-06**: moderator post actions on the artwork kebab (hide/unhide · promote/demote · approve ·
 permanent delete), comment mod actions (delete/undelete · hide · purge), the User Management page
@@ -113,7 +116,7 @@ Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending)
 | **C1** Search (posts / hashtags / users) | ✅ | `ui/search_page.dart`, `ui/hashtag_feed_page.dart`; Search is a swipeable home page since 2026-07-26. Since 2026-07-29: all three tabs infinite-scroll (cursor paging), Users sort A–Z/Newest/Reputation, Hashtags sort Popular/A–Z/Recent, and Users/Hashtags double as browse-all directories on an empty query |
 | **C1** Profiles + follow/unfollow | ✅ | `ui/profile_page.dart`; **redesigned 2026-07-11**: art-backdrop header with a compact info block, app bar collapsing into a pinned mini-bar, highlights showcase strip, richer meta/share/zoom quick wins. Since 2026-07-29: bios render the website's mini-markdown (`widgets/markdown_bio.dart`) and tapping the badge chips opens the badges sheet (`widgets/badges_sheet.dart`, `GET /badge`) |
 | **C1** Reactions + comments | ✅ | `ui/widgets/reactions_bar.dart`, `comments_section.dart`; comment authors tap through to their profile (`author_public_sqid`, 2026-07-11); moderator take-downs render as tombstones (`deleted_by_mod`); long-press a comment's like button → who-liked sheet (2026-07-29) |
-| **C1** Notifications + unread badge | ✅ | `ui/notifications_page.dart`; badge in the hub; tappable actor avatar → profile (`actor_public_sqid`, prod-live 2026-07-20); infinite-scroll load-more (2026-07-29) |
+| **C1** Notifications + unread badge | ✅ | `ui/notifications_page.dart`; badge in the hub; tappable actor avatar → profile (`actor_public_sqid`, prod-live 2026-07-20); infinite-scroll load-more (2026-07-29); **live SSE stream** while foregrounded (`state/notifications_sse.dart` on `GET /realtime/notifications`: badge reconciles to the `connected` greeting, new items prepend into the list, immediate reconnect on the ~300 s bounded close, backoff on errors; the 60 s poll stays as background/fallback — 2026-08-11) |
 | Artwork disk cache | ✅ | `cached_network_image` keyed by the immutable `art_url` (art: 1000 entries / 90 d; avatars: 7 d) + feed-page precache (`club/cache/artwork_cache.dart`); in releases since 1.0.7+10 |
 | **Super posts** — 2×2 home-feed tiles | ✅ | one random post per home feed renders as a 2×2 tile (`SuperPostGridLayout` + `superPostIdProvider`, re-rolls on refresh); shipped 2026-07-16 |
 | **Trending-hashtag bar** | ✅ | horizontal strip of top hashtags under the home top bar (`GET /api/hashtags/top` via `dioRoot`; server-driven rotation, no client timer); feeds-only, refetch on load + pull-to-refresh; shipped 1.0.14+19 |
@@ -136,7 +139,7 @@ Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending)
 | **Playlists** | — | **fully deferred (2026-07-07): don't develop until further notice** — server-side, playlists are mostly a planned-but-deferred feature. The app only *recognizes* playlist posts (badge on feed tiles; excluded from mkpx/mod/report menus) |
 | **C4** Profile tabs: Private 🔒 · Gallery · Reacted ⚡ (+ Highlights 💎 strip) | ✅ | collapsing-header TabBar; own profiles get a **Private** tab (local My Drawings, left of Gallery — Gallery stays default; full Rename/Delete/New parity, tap opens the editor; 1.0.14+19) · **Reacted** = posts the user reacted to (`GET /user/u/{sqid}/reacted-posts`, signed-in viewers, cursor-tolerant paging; the pagination-500 and overscroll-crash follow-ups closed 2026-07-12/16) · **Highlights** became a display-only header **showcase strip** in the 2026-07-11 redesign (management still pending). Silent profile reload keeps tabs/scroll across refresh + edit-return |
 | **C4 (rest)** highlights management (pin/unpin) · categories | ○ | not yet started |
-| **C5 (rest)** MQTT live notifications · soft-player kiosk · **C6** | ○ | not yet started (notifications poll; MQTT auth is open question SPEC-CLUB §31.1) |
+| **C5 (rest)** soft-player kiosk · **C6** | ○ | not yet started. (The planned MQTT live notifications became the **SSE stream, shipped 2026-08-11** — the server's plane separation removed the notification MQTT topics, dissolving SPEC-CLUB §31.1's MQTT-auth question) |
 
 ## App shell
 | Feature | Status | Notes |
@@ -182,9 +185,9 @@ through C3 plus most of C4. Verified against the code 2026-07-26:
 
 **Club:**
 11. **C4 remainder** — highlights *management* (pin/unpin) and categories. **Playlists are fully deferred**
-    (2026-07-07; don't develop until further notice). **C5** — player control + send-to-player (2026-06-29)
-    and player registration & management (2026-07-17) shipped; MQTT live notifications and the soft-player
-    kiosk remain. **C6** moderation & extras — mod-hashtags shipped 2026-07-05; in-app moderation
+    (2026-07-07; don't develop until further notice). **C5** — player control + send-to-player (2026-06-29),
+    player registration & management (2026-07-17), and live notifications via SSE (2026-08-11, replacing
+    the obsolete MQTT plan) shipped; the soft-player kiosk remains. **C6** moderation & extras — mod-hashtags shipped 2026-07-05; in-app moderation
     shipped 2026-08-06 (post kebab actions, comment mod menu, User Management incl. reputation +
     email reveal, Moderation hub + pending-approval queue); still website-only: reports queue,
     violations/badges panels, cross-user bulk PMD, recent-posts feed, pulse, audit log, metrics (see
