@@ -89,6 +89,43 @@ extension _EditorReplay on _EditorPageState {
     _emitReplayBaseline();
   }
 
+  /// ☰ → "Watch replay": open the read-only Replay viewer over this drawing's Journal.
+  /// The viewer gets its OWN engine (EngineReplayHost); the live editing session idles
+  /// untouched underneath, so there is nothing to restore on pop.
+  Future<void> _watchReplay() async {
+    final store = _store, id = _drawingId;
+    if (store == null || id == null || !_engineReady) {
+      _toast('The replay is still being prepared…');
+      return;
+    }
+    if (_playing) _pause();
+    // Flush doc + journal (the drain's preWrite appends the final marker), so the viewer
+    // reads a journal that includes everything up to this moment.
+    await _autosave?.flushNow();
+    await _journal?.flush();
+    final dir = store.dirFor(id);
+    String journalText;
+    final bases = <String, Uint8List>{};
+    try {
+      journalText = await File(p.join(dir.path, kJournalFileName)).readAsString();
+      await for (final f in dir.list()) {
+        if (f is File && RegExp(r'chapter-\d+\.mkpx$').hasMatch(p.basename(f.path))) {
+          bases[p.basename(f.path)] = await f.readAsBytes();
+        }
+      }
+    } catch (_) {
+      _toast('This drawing has no replay yet — draw something first!');
+      return;
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ReplayPage(
+        host: EngineReplayHost(journalText: journalText, bases: bases),
+        title: _drawingTitle,
+      ),
+    ));
+  }
+
   /// The replay baseline burst, emitted THROUGH `_send` after every attach and every
   /// chapter cut: re-point the engine at the current tool, re-push every tool setting,
   /// the primary color and gradient stops, and a fresh `SetSeed`. Both the live session

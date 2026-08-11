@@ -175,6 +175,7 @@ extension _EditorTimeline on _EditorPageState {
         _menuRow('post', Icons.cloud_upload_outlined, 'Post to Club'),
         // The system share sheet is a mobile concept; desktop users export to a file instead.
         if (Platform.isAndroid || Platform.isIOS) _menuRow('shareTo', Icons.share, 'Share…'),
+        _menuRow('watchReplay', Icons.replay, 'Watch replay'),
         const PopupMenuDivider(),
         _menuRow('file', Icons.folder_outlined, 'File', submenu: true),
         _menuRow('share', Icons.import_export, 'Import & export', submenu: true),
@@ -194,6 +195,9 @@ extension _EditorTimeline on _EditorPageState {
         break;
       case 'shareTo':
         _share();
+        break;
+      case 'watchReplay':
+        _watchReplay();
         break;
       case 'file':
         _fileMenu();

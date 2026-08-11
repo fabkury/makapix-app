@@ -78,6 +78,13 @@ typedef _ExportProgressC = Uint64 Function();
 typedef _ExportProgressD = int Function();
 typedef _ExportVoidC = Void Function();
 typedef _ExportVoidD = void Function();
+// Replay checkpoints (Journal scrubbing) — crates/ffi mkpx_checkpoint_*.
+typedef _CkptTakeC = Int64 Function(Pointer<Void>);
+typedef _CkptTakeD = int Function(Pointer<Void>);
+typedef _CkptRestoreC = Int32 Function(Pointer<Void>, Uint32);
+typedef _CkptRestoreD = int Function(Pointer<Void>, int);
+typedef _CkptIdsC = Uint32 Function(Pointer<Void>, Pointer<Uint32>, Uint32);
+typedef _CkptIdsD = int Function(Pointer<Void>, Pointer<Uint32>, int);
 
 DynamicLibrary _open() {
   // Android: the engine ships as libmakapix_ffi.so bundled in the APK (jniLibs).
@@ -233,6 +240,13 @@ class Engine {
   late final _ExportProgressD _exportProgress = _lib.lookupFunction<_ExportProgressC, _ExportProgressD>('mkpx_export_progress');
   late final _ExportVoidD _exportProgressReset = _lib.lookupFunction<_ExportVoidC, _ExportVoidD>('mkpx_export_progress_reset');
   late final _ExportVoidD _exportCancel = _lib.lookupFunction<_ExportVoidC, _ExportVoidD>('mkpx_export_cancel');
+  // Replay checkpoints (Journal scrubbing).
+  late final _CkptTakeD _ckptTake = _lib.lookupFunction<_CkptTakeC, _CkptTakeD>('mkpx_checkpoint_take');
+  late final _CkptRestoreD _ckptRestore = _lib.lookupFunction<_CkptRestoreC, _CkptRestoreD>('mkpx_checkpoint_restore');
+  late final _U32D _ckptCount = _lib.lookupFunction<_U32C, _U32D>('mkpx_checkpoint_count');
+  late final _CkptIdsD _ckptIds = _lib.lookupFunction<_CkptIdsC, _CkptIdsD>('mkpx_checkpoint_ids');
+  late final _FreeD _ckptClear = _lib.lookupFunction<_FreeC, _FreeD>('mkpx_checkpoint_clear');
+  late final _StateD _docHash = _lib.lookupFunction<_StateC, _StateD>('mkpx_doc_hash');
 
   Engine(int w, int h) : _lib = _open() {
     _s = _new(w, h);
@@ -336,6 +350,41 @@ class Engine {
 
   /// Low-64-bit content hash of one layer (within `frame`) — for layer thumbnail cache invalidation.
   int layerHash(int frame, int layer) => _layerHash(_s, frame, layer);
+
+  // ---- replay checkpoints (Journal scrubbing; see editor/replay/replay_host.dart) ----
+
+  /// Take a replay checkpoint. Returns its STABLE id (>= 0), or -1 while a gesture/draft is
+  /// open (retry at the next journal line). Older ids may be evicted by the engine's byte
+  /// budget — resync with [checkpointIds] after takes.
+  int checkpointTake() => _ckptTake(_s);
+
+  /// Restore checkpoint [id]; false when the id is unknown (evicted/cleared).
+  bool checkpointRestore(int id) => _ckptRestore(_s, id) == 0;
+
+  int checkpointCount() => _ckptCount(_s);
+
+  /// Live checkpoint ids, ascending. The engine caps live checkpoints at 512.
+  List<int> checkpointIds() {
+    const cap = 512;
+    final out = malloc<Uint32>(cap);
+    final n = _ckptIds(_s, out, cap);
+    final ids = List<int>.generate(n < cap ? n : cap, (i) => out[i]);
+    malloc.free(out);
+    return ids;
+  }
+
+  /// Drop every checkpoint, freeing the retained tiles (call when the Replay view closes).
+  void checkpointClear() => _ckptClear(_s);
+
+  /// The document content hash as 32 hex digits — a replay-validation oracle (it excludes
+  /// palettes/active_frame/selection by design; crash-sync markers use the byte-level FNV).
+  String docHash() {
+    final p = _docHash(_s);
+    if (p == nullptr) return '';
+    final s = p.toDartString();
+    _freeStr(p);
+    return s;
+  }
 
   /// A `tw`×`th` nearest-downscaled thumbnail of a single layer's raw pixels (straight RGBA,
   /// transparent where empty).

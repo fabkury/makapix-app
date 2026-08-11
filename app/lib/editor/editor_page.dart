@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -33,7 +34,10 @@ import 'palette_page.dart';
 import 'persistence/autosave_controller.dart';
 import 'persistence/drawing_meta.dart';
 import 'persistence/drawing_store.dart';
+import 'replay/journal_format.dart';
 import 'replay/journal_recorder.dart';
+import 'replay/replay_host.dart';
+import 'replay/replay_page.dart';
 import 'makapix_icon.dart';
 import 'tools.dart';
 import 'thumbnail.dart';
