@@ -1,6 +1,61 @@
 # Makapix Editor — Battery Discipline: Recommendations
 
-**Date:** 2026-08-12 · **Status:** plan only — nothing implemented.
+## Status ledger (close-out 2026-08-12, merged to main)
+
+The program ran Phases 0–2 plus Gate A in one push and then **stopped by decision** —
+the wins were collected and the branch (`battery`) merged and retired. Everything below
+this ledger is the original plan, kept verbatim; measured results live in `BASELINE.md`.
+
+**DONE (all measured on a Pixel 10 Pro XL, docs/battery/BASELINE.md):**
+
+- **Phase 0** — `[battery]` debug counters (debug/profile builds) + `tools/battery/`
+  session harness (fuel-gauge deltas over Wi-Fi adb).
+- **Phase 1** — F1, F2, F4, F5, F7, F8, F9, F11-lite, F12, F13, F14, F20.
+  Idle-with-selection **2 083 → 938 mW** (ants 120 → 5.7 fps); editor-session HTTP
+  **42 → 2** requests/10 min; background polling stopped.
+- **Phase 2 (R1)** — the redraw scheduler (absorbed F3, F16; retired `_imageGen`;
+  `_redraw` is now void/fire-and-forget). Power-neutral on small documents by design;
+  the payoff scales with document cost (see Gate B below).
+- **Gate A (R3 + F15)** — hybrid ticker/timer playback clock + O(log n)
+  `mkpx_play_status`. 2 fps playback **1 835 → 979 mW** (frame production 120 → 2 fps);
+  60 fps content stays vsync-exact.
+
+**NOT DONE — properly parked, pick up from here:**
+
+- **Phase 3 (R2)**: engine-side memoized frame/layer content hashes + a document
+  revision counter over FFI. Unlocks: full F11 (autosave skips serialize entirely via
+  revision check), F6 (bbox/tile-skip the HSV/BC/Levels preview walks — engine,
+  golden-verified), F17 (persist gallery thumbnails via the dead `writeThumb`).
+  Design + risk notes in §Phase 3 below; the invalidation doctrine is
+  "over-invalidate, always safe" (the F15 play-cache in `session/parse.rs::exec` is a
+  working miniature of exactly this pattern).
+- **Phase 4 (R6)**: the radio-discipline layer generalizing F8's
+  `activePillarProvider` gate to all periodic network; plus F10 (SSE reconnect
+  jitter/rate-limit), F18 (cancel feed prefetch on pillar switch), F19 (trim the
+  96 MiB frame cache + a `didHaveMemoryPressure` handler). All small; F8/F9 already
+  banked most of the radio win.
+- **Gate B (R4)**: engine composite cache / dirty rects. **Decision criterion:** run
+  the scenario-C stroke loop on a 256²/64-layer stress document — R1 makes per-frame
+  full composites the bottleneck there (tens of ms each); proceed only if that run
+  measures hot. A week-scale change; determinism gates non-negotiable.
+- **Server-side asks** (website/server repo): lengthen the SSE keepalive comment
+  interval (15 s → 45-60 s) and stream lifetime (300 s → 15-30 min). These cap the
+  radio floor while editing; the app cannot fix them from its side.
+- **R5 (texture presentation): rejected** — see §4; re-open only if measurement shows
+  GPU upload dominating after R1/R4 or canvases outgrow 256².
+- **Re-measure when the Flutter pin carries flutter/flutter#187586**: re-enable
+  Impeller (AndroidManifest stopgap) and re-run scenarios A/B/D.
+
+**Open loose ends:** Windows visual pass over Phases 1+2+R3 (ants look, slider feel,
+playback) — Android was device-passed by the user; the test Pixel still runs the local
+profile build (reinstall from Play when done); `ffi_timelapse_frame_rgba_exact` is
+flaky under PARALLEL `cargo test` only (pre-existing, unrelated — passes alone and on
+re-runs).
+
+---
+
+**Date:** 2026-08-12 · **Status of the text below:** the plan as originally approved,
+kept verbatim — the ledger above records what actually happened.
 **Companion:** `ASSESSMENT.md` (same folder) holds all evidence, file:line references, and
 magnitude reasoning. This document is only the decisions: what to do, what not to do, and in
 what order. Item numbers (F1-F20, R1-R6, §4.x) refer to the assessment.
