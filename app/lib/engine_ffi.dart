@@ -302,7 +302,7 @@ class Engine {
   /// Dart-heap copy (the two per-pointer-move costs the fromList version paid). [audit C-1/#5]
   ///
   /// CONTRACT: the returned list is valid only until the next [display]/[compositeFrame] call, which
-  /// overwrites the same buffer. Both callers (`_redraw`, `_advancePlayFrame`) consume it
+  /// overwrites the same buffer. Both callers (`_redraw`, `_decodePlayFrame`) consume it
   /// synchronously — `premultiplyRgbaInPlace` then `ui.decodeImageFromPixels`, which copies its input
   /// synchronously (via `ImmutableBuffer.fromUint8List` → native `_init`) before returning, so the
   /// buffer is free to reuse the moment `_decode` is invoked, even under overlapping redraws. Do NOT

@@ -200,12 +200,23 @@ class JournalRecorder {
   /// Verbatim tap for one DSL line as sent to the engine. Synchronous, non-throwing,
   /// no-op while detached. A defensive embedded `\n` splits into continuation lines
   /// (`+0`-prefixed) so one record is always whole physical lines.
+  ///
+  /// Playback preview verbs (Play/Pause/AdvanceClock — vsync clock chatter, up to
+  /// 120/s) are excluded HERE, centrally, so every tap stays verbatim and the policy
+  /// has one tested home. A dropped record advances neither [_lastEventWallMs] nor
+  /// [_actionCount]: the NEXT real action's delta then spans the playback period, so
+  /// Σ-deltas == wall clock still holds for [_restoreStateFromScan]. The parse side
+  /// keeps understanding these verbs (old journals contain them; visible_index already
+  /// marks them invisible). The AdvanceClock match is a prefix test: a multi-statement
+  /// line BEGINNING with it would be dropped whole — acceptable, playback verbs are
+  /// only ever sent standalone (editor_page.engine.dart is the sole sender).
   void record(String dsl) {
     if (!_attached) return;
+    final parts = dsl.split('\n').where((s) => !_isPlaybackVerb(s)).toList();
+    if (parts.isEmpty) return; // wall clock deliberately NOT advanced (see above)
     final now = _clock().millisecondsSinceEpoch;
     final delta = (now - _lastEventWallMs).clamp(0, 0x7FFFFFFFFFFF);
     _lastEventWallMs = now;
-    final parts = dsl.split('\n');
     final sb = StringBuffer(actionLine(delta, parts.first))..write('\n');
     for (final cont in parts.skip(1)) {
       sb
@@ -215,6 +226,11 @@ class JournalRecorder {
     _actionCount += parts.length;
     _append(sb.toString());
     if (_pendingBytes > 64 * 1024) unawaited(flush()); // preview-heavy safety valve
+  }
+
+  static bool _isPlaybackVerb(String s) {
+    final t = s.trim();
+    return t == 'Play()' || t == 'Pause()' || t.startsWith('AdvanceClock(');
   }
 
   /// Close the current chapter and open the next, anchored on [baseBytes]. The header is

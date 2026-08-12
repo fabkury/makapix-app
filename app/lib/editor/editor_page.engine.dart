@@ -210,12 +210,16 @@ extension _EditorEngine on _EditorPageState {
     return Color.fromARGB(v & 0xFF, (v >> 24) & 0xFF, (v >> 16) & 0xFF, (v >> 8) & 0xFF);
   }
 
-  void _send(String dsl) {
+  void _send(String dsl, {bool activity = true}) {
     if (!_engineReady) return;
+    _sendSeq++; // playback decode-on-change stamp (see _onPlayTick)
     _journal?.record(dsl); // the Journal tap: verbatim, before run (record what was SENT)
     final err = engine.run(dsl);
     if (err != null) debugPrint('DSL error: $err  <- $dsl');
-    _autosave?.markActivity(); // every document mutation funnels through here (gates the autosave)
+    // Playback verbs pass activity:false — AdvanceClock at vsync rate must not re-arm the
+    // autosave 60-120×/s (docs/memory-audit/REPORT.md hotspot). Every document mutation
+    // still funnels through here with the default (gates the autosave).
+    if (activity) _autosave?.markActivity();
   }
 
   // Recomposite the canvas and refresh overlays.
@@ -266,11 +270,11 @@ extension _EditorEngine on _EditorPageState {
     }
   }
 
-  // Playback frame advance: repaints ONLY the canvas (via the image notifier), with no full-tree
+  // Playback frame decode: repaints ONLY the canvas (via the image notifier), with no full-tree
   // setState — so the row-3 tiles stay stable and tappable (e.g. to Pause) during playback.
-  Future<void> _advancePlayFrame() async {
+  // Clock advancement lives in _onPlayTick; this just composites what the engine says is current.
+  Future<void> _decodePlayFrame() async {
     if (!_engineReady || !_playing) return;
-    _send('AdvanceClock(33)');
     final gen = ++_imageGen; // claim the fetch's slot before the async decode gap (see _imageGen)
     final img = await _decode(engine.compositeFrame(engine.playFrame), engine.width, engine.height);
     if (mounted && _playing && gen == _imageGen) {
@@ -839,18 +843,50 @@ extension _EditorEngine on _EditorPageState {
     });
   }
 
+  // One vsync tick of the playback preview: send the MEASURED elapsed ms to the engine's
+  // virtual clock (real time never enters the engine — the shell picks the deltas), then
+  // decode only when there is something new to show. Frames shorter than a vsync period
+  // are skipped, never stretched: the preview is a refresh-rate sampling of the animation's
+  // true timeline, so pacing stays wall-clock accurate up to the engine's 60 fps content
+  // ceiling. While an opaque route covers the editor the ticker is muted (no sends, no
+  // decodes) but its clock keeps elapsing — PlaybackClock clamps the tick after popping
+  // back to maxTickUs, so playback resumes near where it left off instead of teleporting
+  // (app backgrounding doesn't rely on the clamp: it auto-pauses, see
+  // didChangeAppLifecycleState).
+  void _onPlayTick(Duration elapsed) {
+    if (!_engineReady || !_playing) return;
+    // TEMPORARY: edits are still legal during playback, so any _send since our previous
+    // tick (stamp mismatch) must refresh the composite even when the play frame index
+    // didn't move. Snapshot BEFORE our own AdvanceClock send below (which also bumps
+    // _sendSeq). Remove once edit-during-playback is made illegal.
+    final editsSeen = _sendSeq != _playSeenSendSeq;
+    final ms = _playClock.advance(elapsed.inMicroseconds);
+    if (ms > 0) _send('AdvanceClock($ms)', activity: false);
+    _playSeenSendSeq = _sendSeq;
+    final frame = engine.playFrame; // cheap scalar FFI — safe to poll every vsync
+    if (frame != _playShownFrame || editsSeen) {
+      _playShownFrame = frame;
+      unawaited(_decodePlayFrame());
+    }
+  }
+
   void _play() {
     if (engine.frameCount <= 1) return;
     setState(() => _playing = true);
-    _send('Play()');
-    _playTimer?.cancel();
-    _playTimer = Timer.periodic(const Duration(milliseconds: 33), (_) => _advancePlayFrame());
+    _send('Play()', activity: false);
+    _playClock.reset(); // Ticker elapsed restarts near zero after stop()
+    _playShownFrame = -1; // force the first tick to decode the starting frame's composite
+    _playSeenSendSeq = _sendSeq; // the Play() send itself is not an "edit"
+    _playTicker ??= createTicker(_onPlayTick);
+    _playTicker!
+      ..stop() // defensive restart guard (start() asserts if active), mirrors the old cancel()
+      ..start();
   }
 
   void _pause() {
-    _playTimer?.cancel();
+    _playTicker?.stop();
     setState(() => _playing = false);
-    _send('Pause()');
+    _send('Pause()', activity: false);
     _redraw();
   }
 

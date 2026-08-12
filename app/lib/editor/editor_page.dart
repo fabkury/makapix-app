@@ -9,6 +9,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -34,6 +35,7 @@ import 'palette_page.dart';
 import 'persistence/autosave_controller.dart';
 import 'persistence/drawing_meta.dart';
 import 'persistence/drawing_store.dart';
+import 'playback_clock.dart';
 import 'replay/journal_format.dart';
 import 'replay/journal_recorder.dart';
 import 'replay/replay_host.dart';
@@ -85,7 +87,7 @@ class EditorPage extends ConsumerStatefulWidget {
 }
 
 class _EditorPageState extends ConsumerState<EditorPage>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   late Engine engine;
   // ---- Local persistence: the current library drawing + its autosave (see editor_page.persistence)
   DrawingStore? _store;
@@ -103,10 +105,10 @@ class _EditorPageState extends ConsumerState<EditorPage>
   JournalRecorder? _journal;
   Future<void>? _journalAttaching;
   Uint8List? _resumeDocBytes;
-  // The composited canvas image. A ValueNotifier so playback can repaint just the canvas (30fps)
+  // The composited canvas image. A ValueNotifier so playback can repaint just the canvas
   // without a full-tree setState — that churn made the row-3 drag tiles' taps (e.g. Pause) flaky.
   final ValueNotifier<ui.Image?> _imageVN = ValueNotifier<ui.Image?>(null);
-  // Staleness stamp for _imageVN: every publisher (_redraw, _advancePlayFrame) claims ++_imageGen
+  // Staleness stamp for _imageVN: every publisher (_redraw, _decodePlayFrame) claims ++_imageGen
   // when it fetches the engine bytes, and publishes only if still the newest when its async decode
   // lands. Image decodes complete on the engine's concurrent workers — NOT necessarily in FIFO
   // order — so without this stamp a slower older decode could overwrite a newer image. Seen in the
@@ -262,7 +264,15 @@ class _EditorPageState extends ConsumerState<EditorPage>
   bool _grid = false;
   bool _overscan = false; // show the off-canvas gutter (dimmed) around the canvas
   bool _playing = false;
-  Timer? _playTimer;
+  // Vsync-driven playback preview (replaced the old Timer.periodic(33): late or lost timer
+  // callbacks lost virtual time so playback ran slow under load, and 30 Hz sampling aliased
+  // 60 fps content). Created lazily in _play(); each tick sends the MEASURED elapsed ms to
+  // the engine clock and decodes only when there is something new to show (_onPlayTick).
+  Ticker? _playTicker;
+  final PlaybackClock _playClock = PlaybackClock();
+  int _playShownFrame = -1; // playFrame at the last decode; -1 forces the first-tick decode
+  int _sendSeq = 0; // bumped by every _send — the tick handler's "did anything change" stamp
+  int _playSeenSendSeq = 0; // _sendSeq snapshot taken after the tick's own AdvanceClock send
   Map<String, dynamic> _state = {};
   String? _error;
   final Set<int> _selLayers = {}; // layers grouped to move together with the Move tool (no selection)
@@ -492,7 +502,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
 
   @override
   void dispose() {
-    _playTimer?.cancel();
+    _playTicker?.dispose(); // legal while active; must precede super.dispose (mixin asserts)
     WidgetsBinding.instance.removeObserver(this);
     // Flush the in-progress drawing to disk before the engine is freed so it survives this unmount
     // (Club switch) AND any later crash. flushNow() serializes + builds metadata SYNCHRONOUSLY (so
@@ -516,6 +526,14 @@ class _EditorPageState extends ConsumerState<EditorPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // A backgrounded app stops producing frames but the play Ticker's clock keeps elapsing,
+    // so resuming would leap the animation forward by the whole background span: auto-pause
+    // instead. `inactive` (permission prompts, the notification shade) deliberately does NOT
+    // pause; the _playing guard makes Android's hidden→paused walk idempotent.
+    if (_playing &&
+        (state == AppLifecycleState.paused || state == AppLifecycleState.hidden)) {
+      _pause();
+    }
     // Android can kill a backgrounded app with no further callback, so flush the moment we lose
     // foreground. flushNow() serializes synchronously; the write finishes in the background.
     if (state == AppLifecycleState.inactive ||

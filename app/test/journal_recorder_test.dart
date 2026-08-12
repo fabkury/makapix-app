@@ -90,6 +90,102 @@ void main() {
     });
   });
 
+  group('playback verb filtering', () {
+    test('Play/Pause/AdvanceClock leave no lines and no action count', () async {
+      final j = recorder();
+      await j.attachFresh();
+      final before = await journalText();
+      j.record('Play()');
+      j.record('AdvanceClock(16)');
+      j.record('AdvanceClock(17)');
+      j.record('Pause()');
+      await j.flush();
+      expect(await journalText(), before);
+      expect(j.actionCount, 0);
+    });
+
+    test('the next real action\'s delta spans the dropped playback period', () async {
+      final j = recorder();
+      await j.attachFresh();
+      now = now.add(const Duration(seconds: 1));
+      j.record('Tap(1,1)');
+      now = now.add(const Duration(seconds: 5));
+      j.record('AdvanceClock(33)'); // dropped: wall clock must NOT advance
+      now = now.add(const Duration(seconds: 5));
+      j.record('Pause()'); // dropped
+      now = now.add(const Duration(seconds: 2));
+      j.record('Tap(2,2)');
+      await j.flush();
+      final actions = parseJournal(await journalText())!.chapters.single.actions;
+      expect(actions.map((a) => a.deltaMs).toList(), [1000, 12000]);
+      expect(j.actionCount, 2);
+    });
+
+    test('embedded newline: the delta lands on the first SURVIVING part', () async {
+      final j = recorder();
+      await j.attachFresh();
+      now = now.add(const Duration(seconds: 3));
+      j.record('AdvanceClock(33)\nTap(1,1)');
+      await j.flush();
+      final actions = parseJournal(await journalText())!.chapters.single.actions;
+      expect(actions.map((a) => a.dsl).toList(), ['Tap(1,1)']);
+      expect(actions.single.deltaMs, 3000, reason: 'not +0: the span must not be lost');
+      expect(j.actionCount, 1);
+    });
+
+    test('a record whose every part is a playback verb appends nothing', () async {
+      final j = recorder();
+      await j.attachFresh();
+      final before = await journalText();
+      j.record('Play()\nAdvanceClock(16)');
+      await j.flush();
+      expect(await journalText(), before);
+      expect(j.actionCount, 0);
+    });
+
+    test('multi-statement lines stay verbatim (never filtered mid-line)', () async {
+      final j = recorder();
+      await j.attachFresh();
+      j.record('Tap(1,1); AdvanceClock(5)');
+      await j.flush();
+      final actions = parseJournal(await journalText())!.chapters.single.actions;
+      expect(actions.single.dsl, 'Tap(1,1); AdvanceClock(5)');
+    });
+
+    test('near-misses are kept; surrounding whitespace still drops', () async {
+      final j = recorder();
+      await j.attachFresh();
+      j.record('Play(1)'); // an argument: not the playback verb
+      j.record('AdvanceClockwise(3)'); // prefix of the NAME only, not the verb
+      j.record(' Pause() '); // whitespace-padded playback verb: dropped
+      await j.flush();
+      final actions = parseJournal(await journalText())!.chapters.single.actions;
+      expect(actions.map((a) => a.dsl).toList(), ['Play(1)', 'AdvanceClockwise(3)']);
+      expect(j.actionCount, 2);
+    });
+
+    test('resume after drops: disk deltas and memory wall clock agree', () async {
+      final j = recorder();
+      await j.attachFresh();
+      now = now.add(const Duration(seconds: 1));
+      j.record('Tap(1,1)');
+      await j.markerBeforeSave(0xAAA);
+      now = now.add(const Duration(seconds: 10));
+      j.record('AdvanceClock(9999)'); // a playback stretch after the last save
+      await j.detach();
+      now = now.add(const Duration(hours: 3)); // a new sitting
+      final j2 = recorder();
+      expect(await j2.attachResume(docFnv: 0xAAA), JournalAttachOutcome.continued);
+      j2.record('Tap(4,4)');
+      await j2.flush();
+      final actions = parseJournal(await journalText())!.chapters.single.actions;
+      // Σ-deltas on disk equals the in-memory wall clock at detach, so the resumed
+      // delta spans BOTH the dropped playback stretch and the 3 h gap.
+      expect(actions.last.deltaMs,
+          const Duration(hours: 3, seconds: 10).inMilliseconds);
+    });
+  });
+
   group('markerBeforeSave ordering', () {
     test('buffered lines are on disk before the marker line', () async {
       final j = recorder();
