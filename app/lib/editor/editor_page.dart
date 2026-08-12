@@ -296,6 +296,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // several screen-pixel moves land in one cell; repeats would re-run the full engine
   // roundtrip + composite + GPU upload for zero visual change. [battery F4]
   int? _paintLastCx, _paintLastCy;
+  int _lastLifecycleFlushMs = 0; // debounces the background-walk autosave flush [battery F11]
   // Canvas view transform: _zoom is relative to fit-to-screen (1.0 = fit), _pan is an extra
   // screen-pixel offset. Two fingers pan/zoom; the app-bar Fit button resets both.
   double _zoom = 1.0;
@@ -557,10 +558,22 @@ class _EditorPageState extends ConsumerState<EditorPage>
     }
     // Android can kill a backgrounded app with no further callback, so flush the moment we lose
     // foreground. flushNow() serializes synchronously; the write finishes in the background.
+    // Android walks resumed→inactive→hidden→paused on a single backgrounding — the debounce
+    // keeps that walk from serializing the whole document three times back-to-back (flushNow
+    // itself already skips the WRITE when nothing changed). [battery F11]
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
-      _autosave?.flushNow();
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (now - _lastLifecycleFlushMs > 2000) {
+        _lastLifecycleFlushMs = now;
+        _autosave?.flushNow();
+      }
+      // The 5 s autosave timer buys nothing while backgrounded (the flush above captured the
+      // state); `inactive` keeps it — the app is still visible. [battery F12]
+      if (state != AppLifecycleState.inactive) _autosave?.pause();
+    } else if (state == AppLifecycleState.resumed) {
+      _autosave?.resume();
     }
   }
 

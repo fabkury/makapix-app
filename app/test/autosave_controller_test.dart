@@ -84,12 +84,37 @@ void main() {
     expect(await store.readDoc('d1'), bytesOf('v2'));
   });
 
-  test('flushNow writes even when unchanged', () async {
+  test('flushNow skips the write when nothing changed since the last save', () async {
+    // [battery F11] Android's resumed→inactive→hidden→paused walk triggers several
+    // flushNow calls per backgrounding; identical bytes are already on disk.
     c.markActivity();
     await c.debugCycle();
     expect(store.docWrites, 1);
-    await c.flushNow(); // same bytes, but a leave/background must persist regardless
+    await c.flushNow(); // same bytes → same hash → no rewrite, no fsync
+    expect(store.docWrites, 1);
+  });
+
+  test('flushNow still writes changed bytes, and the first save of a document', () async {
+    await c.flushNow(); // nothing saved yet → must write
+    expect(store.docWrites, 1);
+    current = bytesOf('v2');
+    await c.flushNow();
     expect(store.docWrites, 2);
+    expect(await store.readDoc('d1'), bytesOf('v2'));
+  });
+
+  test('pause cancels the timer; resume re-arms it; stop wins over resume', () async {
+    // [battery F12] Backgrounding pauses the 5 s wakeups; foregrounding resumes them.
+    c.start();
+    expect(c.timerActive, isTrue);
+    c.pause();
+    expect(c.timerActive, isFalse);
+    c.resume();
+    expect(c.timerActive, isTrue);
+    await c.stop();
+    expect(c.timerActive, isFalse);
+    c.resume(); // after stop() the controller is done — resume must not revive it
+    expect(c.timerActive, isFalse);
   });
 
   test('empty serialize never writes', () async {
