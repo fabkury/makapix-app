@@ -212,8 +212,19 @@ class JournalRecorder {
   /// only ever sent standalone (editor_page.engine.dart is the sole sender).
   void record(String dsl) {
     if (!_attached) return;
-    final parts = dsl.split('\n').where((s) => !_isPlaybackVerb(s)).toList();
-    if (parts.isEmpty) return; // wall clock deliberately NOT advanced (see above)
+    // Fast path for the overwhelmingly common single-line record: no split/where/toList
+    // allocations — during playback the filtered AdvanceClock chatter (up to 120/s) used
+    // to allocate three temporaries per tick just to be discarded. Semantics identical to
+    // the general path below; the drop still happens before the wall clock or the action
+    // count are touched. [battery F14]
+    final List<String> parts;
+    if (!dsl.contains('\n')) {
+      if (_isPlaybackVerb(dsl)) return; // wall clock deliberately NOT advanced (see above)
+      parts = [dsl];
+    } else {
+      parts = dsl.split('\n').where((s) => !_isPlaybackVerb(s)).toList();
+      if (parts.isEmpty) return; // wall clock deliberately NOT advanced (see above)
+    }
     final now = _clock().millisecondsSinceEpoch;
     final delta = (now - _lastEventWallMs).clamp(0, 0x7FFFFFFFFFFF);
     _lastEventWallMs = now;

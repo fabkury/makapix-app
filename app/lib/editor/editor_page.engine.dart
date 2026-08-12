@@ -100,8 +100,8 @@ extension _EditorEngine on _EditorPageState {
     if (!_engineReady) return;
     // Trace in display coordinates (storage-sized under overscan); the outline overlay is drawn at
     // the same image offset as the display, so gutter marquees line up with the shown pixels.
-    final w = engine.displayWidth, h = engine.displayHeight;
-    final mask = engine.outlineMask();
+    final w = _dispW, h = _dispH; // cached in _refreshState [battery F20]
+    final mask = engine.outlineMask(); // presence-gated: empty is free [battery F13]
     final edges = <List<int>>[];
     if (mask.isNotEmpty && mask.length >= w * h) {
       bool sel(int x, int y) => x >= 0 && y >= 0 && x < w && y < h && mask[y * w + x] != 0;
@@ -248,7 +248,7 @@ extension _EditorEngine on _EditorPageState {
         // space at a fixed cell size, so it does not zoom with the artwork (which is what lets
         // painted gray checkers be distinguished from true transparency).
         : engine.display(onion: _onion, grid: false, checker: false);
-    final (w, h) = _playing ? (engine.width, engine.height) : (engine.displayWidth, engine.displayHeight);
+    final (w, h) = _playing ? (_canvasW, _canvasH) : (_dispW, _dispH); // cached [battery F20]
     final img = await _decode(bytes, w, h);
     if (!mounted) {
       img.dispose(); // we navigated away mid-decode; don't leak the GPU image [audit F-10]
@@ -341,6 +341,8 @@ extension _EditorEngine on _EditorPageState {
       }
       _canvasW = w;
       _canvasH = h;
+      _dispW = engine.displayWidth; // cached for the per-event hot paths [battery F20]
+      _dispH = engine.displayHeight;
       _hasPasteDraft = _state['paste'] != null; // [x,y,w,h] when a paste draft is floating, else null
       _hasMoveDraft = _state['move_draft'] != null; // [x,y,w,h] when a move draft is pending, else null
       _syncMemBudgetUi();
@@ -772,15 +774,16 @@ extension _EditorEngine on _EditorPageState {
 
   // ---- canvas view transform (fit + two-finger pan/zoom) ----
 
-  // Screen pixels per canvas pixel when fit-to-screen (zoom == 1).
+  // Screen pixels per canvas pixel when fit-to-screen (zoom == 1). Uses the cached canvas
+  // size — _toCanvas runs per pointer event and used to make 3 FFI crossings each. [battery F20]
   double _fitScale(Size box) {
-    final sx = box.width / engine.width, sy = box.height / engine.height;
+    final sx = box.width / _canvasW, sy = box.height / _canvasH;
     return sx < sy ? sx : sy;
   }
 
   // Top-left of the canvas, in screen pixels, if it were centered at scale [s].
   Offset _centeredOffset(Size box, double s) =>
-      Offset((box.width - engine.width * s) / 2, (box.height - engine.height * s) / 2);
+      Offset((box.width - _canvasW * s) / 2, (box.height - _canvasH * s) / 2);
 
   // The effective view: (scale = screen px per canvas px, topLeft = canvas origin in screen px),
   // for a given zoom/pan. Defaults to the current _zoom/_pan.
@@ -794,8 +797,8 @@ extension _EditorEngine on _EditorPageState {
   // keeps the *canvas* fixed; the image's origin sits `gutter` canvas-pixels up-and-left of the
   // canvas so the canvas lands at the same place either way. Equals `off` in the normal view.
   Offset _imageOffset(double scale, Offset off) {
-    final gx = (engine.displayWidth - engine.width) / 2.0;
-    final gy = (engine.displayHeight - engine.height) / 2.0;
+    final gx = (_dispW - _canvasW) / 2.0;
+    final gy = (_dispH - _canvasH) / 2.0;
     return off - Offset(gx * scale, gy * scale);
   }
 

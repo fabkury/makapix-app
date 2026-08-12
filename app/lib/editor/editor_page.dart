@@ -218,6 +218,10 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // so the move is a rigid translation clamped on-canvas.
   Offset? _rulerMoveAnchor, _rulerMoveOrigA, _rulerMoveOrigB, _rulerMoveOrigC;
   int _canvasW = 0, _canvasH = 0; // last-seen canvas size; a change auto-clears the stale ruler
+  // Cached display (storage under overscan) size. Every size/overscan change funnels through
+  // _act → _refreshState, so these are always current — the view-transform helpers and the
+  // redraw path read them instead of making scalar FFI crossings per pointer event. [battery F20]
+  int _dispW = 0, _dispH = 0;
   bool _radial = false;
   bool _gradSmooth = false; // Gradient: ease each color transition with the smoothstep curve
   // Airbrush spray density vs Dodge/Burn strength want different starting points: a 50 spray reads
