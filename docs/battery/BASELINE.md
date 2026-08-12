@@ -1,4 +1,4 @@
-# Phase 0 baseline — measured 2026-08-12
+# Phase 0 baseline + Phase 1 "after" — measured 2026-08-12
 
 **Device:** Pixel 10 Pro XL (mustang), Android, 120 Hz panel, 1344×2992.
 **Build:** profile APK at commit `e2f9eb4` (Phase 0 counters, pre-fix), signed-in session,
@@ -39,6 +39,29 @@ Counter-line detail (per 5 s window):
   values, are the comparison currency.
 - The player poll fires all through an editor session (F8's target: 0 of those ~40
   requests).
+
+## After Phase 1 (same device, document, brightness; commit `f76eed4`)
+
+Session dirs `20260812-150517/151610/152702-*-after`.
+
+| Scenario | avg `fps=` before → after | Power before → after | Δ overhead vs same-day A |
+|---|---|---|---|
+| **A** idle, no selection | 0.0 → 0.0 | 899 → **823 mW** | — (the floor) |
+| **B** idle, committed selection | 119.8 → **5.7** | 2 083 → **938 mW** | +1 184 → **+115 mW** (−90 %) |
+| **D** playback, 2 fps | 119.9 → 119.9 | 1 835 → **1 576 mW** | +936 → **+753 mW** |
+| HTTP during a 10-min editor session | 42 → **2** requests | | (F8 pillar gate) |
+
+**Checkpoint 1 verdict:**
+
+- **Ants (F1+F2): fixed.** B runs at exactly the 5.7 Hz content rate; the selection's cost
+  fell from +1.18 W to +0.12 W. B sits within ~14 % of the A floor (target was ~10 %; the
+  remainder IS the ants' real content — 6 small repaints/s — not waste).
+- **Radio (F8): fixed.** 42 → 2 requests per editor session; the player poll is silent
+  while the bar is unmounted and resumes with an immediate refresh on return.
+- **Playback: ~260 mW cheaper** (journal fast path + poll silence + FFI trims) but still
+  ~750 mW over the floor because the vsync Ticker still forces 120 fps frame production —
+  by design out of Phase 1's scope. **This is Gate A's decision data: R3 (demand-driven
+  playback clock) has a measured ~700 mW prize on 120 Hz devices.**
 
 ## Caveats
 
