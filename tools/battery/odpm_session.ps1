@@ -1,8 +1,12 @@
 # Battery measurement session (docs/battery/RECOMMENDATIONS.md, Phase 0).
 #
-# Snapshots the Pixel's ODPM power-rail accumulators (dumpsys android.hardware.power.stats)
-# before and after a timed window, and captures the app's [battery] counter lines from
-# logcat. Run one session per scenario (see README.md), phone UNPLUGGED, over Wi-Fi adb.
+# Whole-phone energy per scenario window via the fuel gauge's charge counter
+# (/sys/class/power_supply/battery/charge_counter, uAh) plus a batterystats reset/dump for
+# per-app attribution, plus the app's [battery] counter lines from logcat. (The Pixel's raw
+# ODPM rail accumulators are not readable via dumpsys on this build - powerstats dumps only
+# the channel catalog - so the fuel gauge is the ground truth here; Perfetto's android.power
+# datasource is the upgrade path if per-rail numbers are ever needed.)
+# Run one session per scenario (see README.md), phone UNPLUGGED, over Wi-Fi adb.
 #
 #   ./odpm_session.ps1 -Label idle-no-selection -Minutes 10 [-Device 192.168.0.42:5555]
 #
@@ -47,7 +51,12 @@ New-Item -ItemType Directory -Force $outDir | Out-Null
 
 Write-Host "Session '$Label': $Minutes min -> $outDir"
 Invoke-Adb @('logcat', '-c') | Out-Null
-Invoke-Adb @('shell', 'dumpsys', 'android.hardware.power.stats') |
+Invoke-Adb @('shell', 'dumpsys', 'batterystats', '--reset') | Out-Null
+$chargeBefore = (Invoke-Adb @('shell', 'cat', '/sys/class/power_supply/battery/charge_counter') |
+    Out-String).Trim()
+$voltBefore = (Invoke-Adb @('shell', 'cat', '/sys/class/power_supply/battery/voltage_now') |
+    Out-String).Trim()
+"charge_counter_uAh: $chargeBefore`nvoltage_now_uV: $voltBefore" |
     Set-Content (Join-Path $outDir 'power_before.txt')
 $batt | Set-Content (Join-Path $outDir 'battery_before.txt')
 $started = Get-Date
@@ -58,11 +67,25 @@ for ($m = 1; $m -le $Minutes; $m++) {
     Write-Host "  $m/$Minutes min"
 }
 
-Invoke-Adb @('shell', 'dumpsys', 'android.hardware.power.stats') |
+$chargeAfter = (Invoke-Adb @('shell', 'cat', '/sys/class/power_supply/battery/charge_counter') |
+    Out-String).Trim()
+$voltAfter = (Invoke-Adb @('shell', 'cat', '/sys/class/power_supply/battery/voltage_now') |
+    Out-String).Trim()
+"charge_counter_uAh: $chargeAfter`nvoltage_now_uV: $voltAfter" |
     Set-Content (Join-Path $outDir 'power_after.txt')
 Invoke-Adb @('shell', 'dumpsys', 'battery') | Set-Content (Join-Path $outDir 'battery_after.txt')
+Invoke-Adb @('shell', 'dumpsys', 'batterystats') | Set-Content (Join-Path $outDir 'batterystats.txt')
 Invoke-Adb @('logcat', '-d', '-v', 'time') | Select-String -SimpleMatch '[battery]' |
     ForEach-Object { $_.Line } | Set-Content (Join-Path $outDir 'counters.txt')
+
+if ($chargeBefore -match '^\d+$' -and $chargeAfter -match '^\d+$') {
+    $deltaUah = [long]$chargeBefore - [long]$chargeAfter
+    $hours = $Minutes / 60.0
+    $avgV = (([long]$voltBefore + [long]$voltAfter) / 2.0) / 1e6
+    $avgMw = [math]::Round(($deltaUah / 1000.0) / $hours * $avgV, 0)
+    Write-Host ("Drain: {0} uAh over {1} min at ~{2:N2} V  =>  ~{3} mW average" -f
+        $deltaUah, $Minutes, $avgV, $avgMw)
+}
 
 @"
 label:   $Label
