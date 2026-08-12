@@ -40,4 +40,18 @@ class PlaybackClock {
     _carryUs -= ms * 1000;
     return ms;
   }
+
+  /// Like [advance], WITHOUT the stall clamp: for the timer-driven playback mode
+  /// (battery R3), where a long delta is a PLANNED wait to the next frame boundary,
+  /// not a stall — clamping it would slow slow-fps content. Shares the µs carry with
+  /// [advance], so hybrid ticker↔timer switches lose no time. (Unplanned long gaps
+  /// don't reach here: backgrounding auto-pauses, and menus/routes pause playback.)
+  int advanceUnclamped(int elapsedUs) {
+    final dt = elapsedUs - _lastElapsedUs;
+    _lastElapsedUs = elapsedUs;
+    _carryUs += dt;
+    final ms = _carryUs ~/ 1000;
+    _carryUs -= ms * 1000;
+    return ms;
+  }
 }

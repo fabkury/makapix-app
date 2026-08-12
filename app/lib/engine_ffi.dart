@@ -228,6 +228,7 @@ class Engine {
   late final _U64D _saveEstimate = _lib.lookupFunction<_U64C, _U64D>('mkpx_save_estimate');
   late final _OutlineD _outline = _lib.lookupFunction<_OutlineC, _OutlineD>('mkpx_outline_mask');
   late final _U32D _outlinePresent = _lib.lookupFunction<_U32C, _U32D>('mkpx_outline_present');
+  late final _U64D _playStatusRaw = _lib.lookupFunction<_U64C, _U64D>('mkpx_play_status');
   late final _FrameHashD _frameHash = _lib.lookupFunction<_FrameHashC, _FrameHashD>('mkpx_frame_hash');
   late final _FrameThumbD _frameThumb = _lib.lookupFunction<_FrameThumbC, _FrameThumbD>('mkpx_frame_thumb');
   late final _LayerThumbD _layerThumb = _lib.lookupFunction<_LayerThumbC, _LayerThumbD>('mkpx_layer_thumb');
@@ -284,6 +285,15 @@ class Engine {
   int get frameCount => _frameCount(_s);
   int get activeFrame => _activeFrame(_s);
   int get playFrame => _playFrame(_s);
+
+  /// Playback status in one O(log frames) scalar call: (current play frame, µs until the
+  /// visible frame can next change). The wait is a LOWER bound (never an overestimate),
+  /// so a timer armed with it cannot show a frame late — see Session::play_status.
+  /// Powers the hybrid ticker/timer playback clock. [battery F15/R3]
+  (int, int) get playStatus {
+    final v = _playStatusRaw(_s);
+    return (v >>> 32, v & 0xFFFFFFFF);
+  }
   int get primaryColor => _primary(_s); // 0xRRGGBBAA
 
   /// Run a DSL script; returns null on success or an error message.

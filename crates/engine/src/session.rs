@@ -284,6 +284,14 @@ pub struct Session {
     rng: SeededRng,
     clock: VirtualClock,
     playing: bool,
+    /// Playback timeline cache: `play_prefix[i]` = Σ durations[0..=i] (µs), plus the total.
+    /// Rebuilt lazily when dirty; every exec'd action except `AdvanceClock` dirties it
+    /// (over-invalidation is safe — the rebuild is one O(frames) pass), as do the non-DSL
+    /// document swaps (load, checkpoint restore). Powers the O(log n) [`Session::play_status`]
+    /// polled every vsync during playback. [battery F15/R3]
+    play_prefix: Vec<u64>,
+    play_total: u64,
+    play_cache_dirty: bool,
     stroke: Option<Stroke>,
     /// Distance (canvas px) traveled since the last spaced Brush/Airbrush/Dodge/Burn stamp in the current
     /// stroke. Carried across pointer/reticle moves so stamps stay evenly spaced regardless of how
@@ -360,6 +368,9 @@ impl Session {
             rng: SeededRng::default(),
             clock: VirtualClock::default(),
             playing: false,
+            play_prefix: Vec::new(),
+            play_total: 0,
+            play_cache_dirty: true,
             stroke: None,
             paint_acc: 0.0,
             shape_draft: None,
@@ -1062,6 +1073,59 @@ impl Session {
             }
         }
         self.doc.frames.len() - 1
+    }
+
+    fn rebuild_play_cache(&mut self) {
+        self.play_prefix.clear();
+        let mut acc = 0u64;
+        for f in &self.doc.frames {
+            acc += f.duration_us as u64;
+            self.play_prefix.push(acc);
+        }
+        self.play_total = acc;
+        self.play_cache_dirty = false;
+    }
+
+    /// `(current play frame, µs until the visible frame can next change)` in one call —
+    /// the per-vsync playback poll, O(log frames) against the cached timeline (the old
+    /// per-call double scan was O(frames), measured at ~180k iterations/s at 120 Hz on a
+    /// 1024-frame doc). The wait is a LOWER bound — PingPong apex reflections may not
+    /// change the visible frame, and then the caller merely wakes once more — never an
+    /// overestimate, so a timer armed with it cannot show a frame late. Static content
+    /// (≤1 frame or zero total) reports a huge capped wait; any edit dirties the cache
+    /// and the next poll recomputes. Frame indices match [`Session::current_play_frame`]
+    /// exactly (tested). [battery F15/R3]
+    pub fn play_status(&mut self) -> (usize, u64) {
+        const IDLE_WAIT_US: u64 = 3_600_000_000; // 1 h: "nothing will change on its own"
+        const MIN_WAIT_US: u64 = 1_000; // floor — never report 0 (avoids a hot re-poll)
+        if self.play_cache_dirty {
+            self.rebuild_play_cache();
+        }
+        let n = self.doc.frames.len();
+        if n <= 1 || self.play_total == 0 {
+            let f = if self.play_total == 0 { self.doc.active_frame } else { 0 };
+            return (f.min(n.saturating_sub(1)), IDLE_WAIT_US);
+        }
+        let total = self.play_total;
+        if self.doc.anim.loop_mode != LoopMode::PingPong {
+            let t = self.clock.now_us % total;
+            let i = self.play_prefix.partition_point(|&p| p <= t).min(n - 1);
+            return (i, (self.play_prefix[i] - t).max(MIN_WAIT_US));
+        }
+        let cycle = total * 2;
+        let t2 = self.clock.now_us % cycle;
+        if t2 < total {
+            // Forward half; the wait is additionally capped by the apex (where the visible
+            // frame merely reflects — conservative, at worst one extra wake).
+            let i = self.play_prefix.partition_point(|&p| p <= t2).min(n - 1);
+            (i, (self.play_prefix[i] - t2).min(total - t2).max(MIN_WAIT_US))
+        } else {
+            // Reverse half: position walks DOWN from total as the clock grows.
+            let t_rev = cycle - t2; // in (0, total]
+            let i = self.play_prefix.partition_point(|&p| p <= t_rev).min(n - 1);
+            let prev = if i == 0 { 0 } else { self.play_prefix[i - 1] };
+            (i, (t_rev - prev).max(MIN_WAIT_US))
+        }
     }
 
     // ---- memory budget (SPEC §8.2b) ----
@@ -3379,6 +3443,7 @@ impl Session {
         // genuine session state and are reset.
         self.doc = doc;
         self.mem_recalibrate();
+        self.play_cache_dirty = true; // new frames/durations [battery F15]
         self.clipboard = None;
         self.paste_draft = None;
         self.move_draft = None; // a stale draft would reference the previous document's frame [F-29]
@@ -5356,6 +5421,45 @@ mod tests {
         let total: u64 = s.doc.frames.iter().map(|f| f.duration_us as u64).sum();
         s.advance_clock_ms(total / 1000); // one full loop forward
         assert_eq!(s.current_play_frame(), 2, "a full loop returns to the start frame");
+    }
+
+    // [battery F15/R3] The cached play_status must agree with the scan-based
+    // current_play_frame at every position, survive duration edits (cache invalidation),
+    // and report a usable (≥1 ms, lower-bound) wait — in Loop and PingPong modes.
+    #[test]
+    fn play_status_matches_scan_and_invalidates() {
+        let mut s = Session::new(8, 8);
+        s.run_script("AddFrame()\nAddFrame()\nAddFrame()").unwrap();
+        s.run_script("SetFrameDuration(0, 100)\nSetFrameDuration(1, 250)").unwrap();
+        s.run_script("SetFrameDuration(2, 40)\nSetFrameDuration(3, 500)\nPlay()").unwrap();
+        for mode in ["Loop", "PingPong"] {
+            s.run_script(&format!("SetLoopMode({mode})")).unwrap();
+            for _ in 0..300 {
+                s.run_script("AdvanceClock(37)").unwrap();
+                let expect = s.current_play_frame();
+                let (frame, wait_us) = s.play_status();
+                assert_eq!(frame, expect, "cached frame diverged ({mode})");
+                assert!(wait_us >= 1_000, "wait floor violated ({mode})");
+                // Lower bound: advancing by strictly less than the reported wait must
+                // not change the visible frame.
+                let safe_ms = wait_us / 1_000;
+                if safe_ms > 1 {
+                    s.run_script(&format!("AdvanceClock({})", safe_ms - 1)).unwrap();
+                    assert_eq!(
+                        s.current_play_frame(),
+                        expect,
+                        "frame changed inside the reported wait ({mode})"
+                    );
+                }
+            }
+            // Invalidation: a duration edit mid-playback must be reflected immediately.
+            s.run_script("SetFrameDuration(1, 60)").unwrap();
+            for _ in 0..100 {
+                s.run_script("AdvanceClock(23)").unwrap();
+                assert_eq!(s.play_status().0, s.current_play_frame(), "post-edit ({mode})");
+            }
+            s.run_script("SetFrameDuration(1, 250)").unwrap();
+        }
     }
 
     #[test]

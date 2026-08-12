@@ -877,17 +877,57 @@ extension _EditorEngine on _EditorPageState {
     // TEMPORARY: edits are still legal during playback, so any _send since our previous
     // tick (stamp mismatch) must refresh the composite even when the play frame index
     // didn't move. Snapshot BEFORE our own AdvanceClock send below (which also bumps
-    // _sendSeq). Remove once edit-during-playback is made illegal.
+    // _sendSeq). Remove once edit-during-playback is made illegal. (Ticker mode only —
+    // in timer mode an edit's own _redraw refreshes the composite through the R1
+    // presenter, which composites the play frame while playing.)
     final editsSeen = _sendSeq != _playSeenSendSeq;
-    final ms = _playClock.advance(elapsed.inMicroseconds);
+    // The shared stopwatch — not the Ticker's own elapsed — is the time source, so
+    // ticker↔timer mode switches keep one continuous timeline. [battery R3]
+    final ms = _playClock.advance(_playStopwatch.elapsedMicroseconds);
     if (ms > 0) _send('AdvanceClock($ms)', activity: false);
     _playSeenSendSeq = _sendSeq;
-    final frame = engine.playFrame; // cheap scalar FFI — safe to poll every vsync
+    final (frame, nextUs) = engine.playStatus; // one O(log n) scalar [battery F15]
     if (frame != _playShownFrame || editsSeen) {
       _playShownFrame = frame;
       // Route through the presenter (single _imageVN publisher; no full-tree setState, so
       // the row-3 tiles stay stable and tappable during playback). [battery R1]
       _redraw(full: false, refetchSelection: false);
+    }
+    _maybeParkOnTimer(nextUs);
+  }
+
+  // [battery R3] The hybrid clock's slow half: when the next visible frame change is
+  // further away than ~2 display frames, vsync frame production buys nothing — stop the
+  // ticker and arm a one-shot timer to the boundary (the always-on ticker measured
+  // ~750 mW for a 2 fps animation on the 120 Hz Pixel, docs/battery/BASELINE.md). Fast
+  // content stays on the ticker with its device-verified wall-clock pacing untouched.
+  // The engine's reported wait is a lower bound, so a frame can never show late; at
+  // worst the timer fires just before the boundary and re-arms once.
+  static const int _kPlayTimerModeUs = 34000; // ≈2×60 Hz frames; >~29 fps content stays vsync
+
+  void _maybeParkOnTimer(int nextUs) {
+    if (nextUs <= _kPlayTimerModeUs) return;
+    _playTicker?.stop();
+    _playTimer?.cancel();
+    _playTimer = Timer(Duration(microseconds: nextUs), _onPlayTimerFire);
+  }
+
+  void _onPlayTimerFire() {
+    if (!_engineReady || !_playing) return;
+    // A planned wait to a frame boundary, not a stall — unclamped, or slow content
+    // would be paced at maxTickUs and drift off the wall clock. [battery R3]
+    final ms = _playClock.advanceUnclamped(_playStopwatch.elapsedMicroseconds);
+    if (ms > 0) _send('AdvanceClock($ms)', activity: false);
+    _playSeenSendSeq = _sendSeq;
+    final (frame, nextUs) = engine.playStatus;
+    if (frame != _playShownFrame) {
+      _playShownFrame = frame;
+      _redraw(full: false, refetchSelection: false);
+    }
+    if (nextUs > _kPlayTimerModeUs) {
+      _playTimer = Timer(Duration(microseconds: nextUs), _onPlayTimerFire);
+    } else if (!(_playTicker?.isActive ?? true)) {
+      _playTicker?.start(); // content sped up — back to vsync pacing
     }
   }
 
@@ -895,7 +935,10 @@ extension _EditorEngine on _EditorPageState {
     if (engine.frameCount <= 1) return;
     setState(() => _playing = true);
     _send('Play()', activity: false);
-    _playClock.reset(); // Ticker elapsed restarts near zero after stop()
+    _playClock.reset();
+    _playStopwatch
+      ..reset()
+      ..start(); // the run's single time source, across ticker AND timer modes [battery R3]
     _playShownFrame = -1; // force the first tick to decode the starting frame's composite
     _playSeenSendSeq = _sendSeq; // the Play() send itself is not an "edit"
     _playTicker ??= createTicker(_onPlayTick);
@@ -906,6 +949,9 @@ extension _EditorEngine on _EditorPageState {
 
   void _pause() {
     _playTicker?.stop();
+    _playTimer?.cancel(); // the hybrid clock's timer half [battery R3]
+    _playTimer = null;
+    _playStopwatch.stop();
     setState(() => _playing = false);
     _send('Pause()', activity: false);
     _redraw();

@@ -273,6 +273,7 @@ impl Session {
         };
         let cp = &self.checkpoints.entries[idx].cp;
         self.doc = cp.doc.checkpoint_clone(); // Arc-bump re-clone; the snapshot stays restorable
+        self.play_cache_dirty = true; // restored frames/durations [battery F15]
         self.tool = cp.tool;
         self.settings = cp.settings.clone();
         self.selection_mode = cp.selection_mode;

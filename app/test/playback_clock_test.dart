@@ -67,5 +67,33 @@ void main() {
         expect(sum, elapsed ~/ 1000);
       }
     });
+
+    // [battery R3] The timer-driven playback mode's planned long waits must pass through
+    // whole, and hybrid ticker↔timer switches must lose no time to the shared carry.
+    group('advanceUnclamped (timer mode)', () {
+      test('a planned wait far beyond maxTickUs advances in full', () {
+        final c = PlaybackClock();
+        expect(c.advanceUnclamped(2000000), 2000); // a 2 s frame wait: no clamp
+      });
+
+      test('mixed clamped/unclamped advances share one carry with zero drift', () {
+        final c = PlaybackClock();
+        var sum = 0;
+        var elapsed = 0;
+        // ticker ticks → park on a 500 ms frame (timer fires, slightly late) → ticker again
+        for (final (dt, planned) in [
+          (16667, false),
+          (16667, false),
+          (500250, true), // timer fire, 250 µs late
+          (499500, true),
+          (16667, false),
+          (16667, false),
+        ]) {
+          elapsed += dt;
+          sum += planned ? c.advanceUnclamped(elapsed) : c.advance(elapsed);
+          expect(sum, elapsed ~/ 1000);
+        }
+      });
+    });
   });
 }

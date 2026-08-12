@@ -284,6 +284,11 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // 60 fps content). Created lazily in _play(); each tick sends the MEASURED elapsed ms to
   // the engine clock and decodes only when there is something new to show (_onPlayTick).
   Ticker? _playTicker;
+  // R3 hybrid playback clock: the vsync ticker paces fast content; slow content parks on a
+  // one-shot timer to the next frame boundary (zero frame production between changes). The
+  // shared stopwatch is the single time source across both modes. [battery R3]
+  Timer? _playTimer;
+  final Stopwatch _playStopwatch = Stopwatch();
   final PlaybackClock _playClock = PlaybackClock();
   int _playShownFrame = -1; // playFrame at the last decode; -1 forces the first-tick decode
   int _sendSeq = 0; // bumped by every _send — the tick handler's "did anything change" stamp
@@ -525,6 +530,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   @override
   void dispose() {
     _playTicker?.dispose(); // legal while active; must precede super.dispose (mixin asserts)
+    _playTimer?.cancel(); // the timer half of the hybrid playback clock [battery R3]
     WidgetsBinding.instance.removeObserver(this);
     // Flush the in-progress drawing to disk before the engine is freed so it survives this unmount
     // (Club switch) AND any later crash. flushNow() serializes + builds metadata SYNCHRONOUSLY (so

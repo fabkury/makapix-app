@@ -198,6 +198,12 @@ impl Session {
 
     pub fn exec(&mut self, a: Action) {
         use Action::*;
+        // Any action may change frame count/durations (undo/redo included) — dirty the
+        // playback timeline cache, except for the per-vsync AdvanceClock chatter it serves.
+        // Over-invalidation is safe: the rebuild is one O(frames) pass. [battery F15]
+        if !matches!(a, AdvanceClock(_)) {
+            self.play_cache_dirty = true;
+        }
         match a {
             NewDocument(w, h) => {
                 // A replayed Journal can contain NewDocument mid-stream; checkpoints taken
