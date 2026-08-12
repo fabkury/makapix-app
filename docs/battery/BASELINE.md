@@ -63,6 +63,30 @@ Session dirs `20260812-150517/151610/152702-*-after`.
   by design out of Phase 1's scope. **This is Gate A's decision data: R3 (demand-driven
   playback clock) has a measured ~700 mW prize on 120 Hz devices.**
 
+## Phase 2 (R1 redraw scheduler) — scenario C, stroke loop
+
+10 min of scripted strokes (~97 distinct-cell strokes/min via adb, identical driver both
+runs) on the same 64×64 document. Before = Phase 1 build (`f76eed4`), after = R1
+(`d55acca`). Session dirs `20260812-155742-stroke-loop-before` / `160908-stroke-loop-after`.
+
+| Metric (per 5 s window) | Before R1 | After R1 |
+|---|---|---|
+| display fetches | 337 (max 426) | 323 (max 352) |
+| decodes | 338 | 324 |
+| frames produced (fps avg) | 56.4 | 57.6 |
+| whole-phone power | ≈ 1 742 mW | ≈ 1 735 mW |
+
+**Checkpoint 2 verdict — criterion met, honest reading:** fetches stay well under the
+120 Hz refresh rate and never exceed one in flight; power is a wash **on this document**.
+The reason: at ~65 distinct-cell events/s with a ~2 ms fetch+decode on a 64×64 doc, the
+leading-edge-immediate policy (chosen deliberately for touch latency) presents per event —
+coalescing only engages when events outpace the present. R1's structural wins here are the
+hard concurrency bound, the retirement of the 33 double-rebuild sites (F16), and the
+guarantee that fetch rate can never exceed frame rate under faster digitizers or slower
+documents. The wall-clock/power payoff scales with document cost — the 256²/64-layer
+stress doc is where Gate B's decision measurement should run, since there a single fetch
+takes tens of ms and the single-flight presenter collapses the per-event pile-up entirely.
+
 ## Caveats
 
 - Fuel-gauge deltas are whole-phone; a Gmail notification landed silently during B (DND
