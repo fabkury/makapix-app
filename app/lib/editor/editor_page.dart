@@ -119,7 +119,12 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // freehand stroke, instead of a full-tree setState that would also rebuild the film-roll and
   // layer strips (each doing per-tile FFI hash calls) on every pointer move. [audit F-9]
   final ValueNotifier<int> _overlayVN = ValueNotifier<int>(0);
-  late AnimationController _antCtrl; // marching-ants animation phase
+  // Marching-ants phase (0..3). Driven by a 175 ms Timer — NOT an AnimationController: an
+  // active controller forces full-refresh-rate frame production (measured 120 fps / +1.2 W
+  // on an idle canvas, docs/battery/BASELINE.md), while the ants have only 4 visual states
+  // per 700 ms period. The timer repaints the overlay layer ~5.7×/s instead. [battery F2]
+  final ValueNotifier<int> _antPhase = ValueNotifier<int>(0);
+  Timer? _antTimer;
   List<List<int>> _outlineEdges = const []; // each: [x1,y1,x2,y2,t] in canvas-corner coords
   // Cached selection-marquee boundary segments, refreshed only when the selection may have changed
   // (a selection tool acted) — NOT on every paint move; the live eraser footprint is recombined on
@@ -287,6 +292,10 @@ class _EditorPageState extends ConsumerState<EditorPage>
   double _accX = 0, _accY = 0;
   int _cursorX = 0, _cursorY = 0; // reticle position (canvas px), mirrored from the engine
   int? _eraserX, _eraserY; // eraser footprint center (canvas px) during an active erase drag
+  // Last canvas cell sent on the freehand paint path — the same-cell dedupe stamp. At zoom > 1
+  // several screen-pixel moves land in one cell; repeats would re-run the full engine
+  // roundtrip + composite + GPU upload for zero visual change. [battery F4]
+  int? _paintLastCx, _paintLastCy;
   // Canvas view transform: _zoom is relative to fit-to-screen (1.0 = fit), _pan is an extra
   // screen-pixel offset. Two fingers pan/zoom; the app-bar Fit button resets both.
   double _zoom = 1.0;
@@ -448,11 +457,9 @@ class _EditorPageState extends ConsumerState<EditorPage>
   @override
   void initState() {
     super.initState();
-    // Starts stopped; _syncAntsAnimation() runs it only while marching ants are actually on screen
-    // (a selection/eraser outline, the cursor footprint, or a selection draft). Previously it
-    // repeated forever from initState, scheduling 60 Hz compositor work even on an idle canvas with
-    // nothing to animate. [audit]
-    _antCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 700));
+    // The ants timer starts stopped; _syncAntsAnimation() runs it only while marching ants
+    // are actually on screen (a selection/eraser outline, the cursor footprint, or a
+    // selection draft). [audit][battery F2]
     _loadToolOrder();
     try {
       engine = Engine(64, 64);
@@ -471,15 +478,19 @@ class _EditorPageState extends ConsumerState<EditorPage>
 
   // Run the marching-ants clock only while something animated is on screen: the committed selection
   // / eraser outline (`_outlineEdges`), the precision cursor footprint (`_isCursorTool`), or a
-  // selection draft. Guarded by `isAnimating` so a repeated call never resets the phase (which would
-  // freeze the ants). Idempotent — safe to call from build() and from per-move edge updates. [audit]
+  // selection draft. The `??=` keeps a repeated call from resetting the period mid-tick, and the
+  // phase value itself is never reset (a reset would freeze the ants). Idempotent — safe to call
+  // from build() and from per-move edge updates. [audit][battery F2]
   void _syncAntsAnimation() {
     final antsOnScreen =
         _outlineEdges.isNotEmpty || _isCursorTool || (_isSelDraftTool && _hasSelDraft);
     if (antsOnScreen) {
-      if (!_antCtrl.isAnimating) _antCtrl.repeat();
-    } else if (_antCtrl.isAnimating) {
-      _antCtrl.stop();
+      _antTimer ??= Timer.periodic(const Duration(milliseconds: 175), (_) {
+        _antPhase.value = (_antPhase.value + 1) & 3; // 700 ms period / 4 phases
+      });
+    } else {
+      _antTimer?.cancel();
+      _antTimer = null;
     }
   }
 
@@ -516,7 +527,8 @@ class _EditorPageState extends ConsumerState<EditorPage>
     // final marker through preWrite; this catches lines recorded since the last autosave delta.
     _journal?.detachSoon();
     _journal = null;
-    _antCtrl.dispose();
+    _antTimer?.cancel();
+    _antPhase.dispose();
     _resetThumbCaches();
     _imageVN.value?.dispose(); // release the composited canvas image before the notifier [F-10]
     _imageVN.dispose();
@@ -534,6 +546,14 @@ class _EditorPageState extends ConsumerState<EditorPage>
     if (_playing &&
         (state == AppLifecycleState.paused || state == AppLifecycleState.hidden)) {
       _pause();
+    }
+    // The ants Timer, unlike a muted Ticker, keeps firing while backgrounded — stop it and
+    // let the resume path re-arm it to whatever is on screen. [battery F2]
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      _antTimer?.cancel();
+      _antTimer = null;
+    } else if (state == AppLifecycleState.resumed) {
+      _syncAntsAnimation();
     }
     // Android can kill a backgrounded app with no further callback, so flush the moment we lose
     // foreground. flushNow() serializes synchronously; the write finishes in the background.

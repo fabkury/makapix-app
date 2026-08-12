@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
@@ -59,18 +60,23 @@ class CanvasPainter extends CustomPainter {
 
 // Thin, animated marching-ants selection outline drawn in SCREEN space (so it stays a
 // hairline regardless of how large the canvas pixels are scaled).
+//
+// The three ants painters take the editor's shared phase notifier (0..3, bumped ~5.7×/s by
+// a Timer) as `repaint:` — NOT an Animation. A vsync-driven Animation forced a repaint per
+// display frame for a 4-state effect; the notifier repaints only when the phase actually
+// changes. [battery F2]
 class OutlinePainter extends CustomPainter {
   final List<List<int>> edges; // [x1,y1,x2,y2,t] in canvas-corner coords
   final double scale; // screen px per canvas px (view transform)
   final Offset off; // canvas top-left in screen px
-  final Animation<double> anim;
-  OutlinePainter(this.edges, this.scale, this.off, this.anim) : super(repaint: anim);
+  final ValueListenable<int> phaseVN; // marching phase, 0..3
+  OutlinePainter(this.edges, this.scale, this.off, this.phaseVN) : super(repaint: phaseVN);
 
   @override
   void paint(Canvas canvas, Size size) {
     if (edges.isEmpty || scale <= 0) return;
     final ox = off.dx, oy = off.dy;
-    final phase = (anim.value * 4).floor(); // 4-unit marching period
+    final phase = phaseVN.value; // 4-unit marching period
     final dark = <Offset>[];
     final light = <Offset>[];
     for (final e in edges) {
@@ -95,7 +101,8 @@ class OutlinePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(OutlinePainter old) => true; // driven by the animation
+  bool shouldRepaint(OutlinePainter old) =>
+      old.edges != edges || old.scale != scale || old.off != off; // phase repaints via the notifier
 }
 
 /// The PRECISION-mode reticle footprint outline — deliberately distinct from the selection's
@@ -105,8 +112,9 @@ class CursorOutlinePainter extends CustomPainter {
   final List<List<int>> edges; // [x1,y1,x2,y2,t] in canvas-corner coords
   final double scale;
   final Offset off;
-  final Animation<double> anim;
-  CursorOutlinePainter(this.edges, this.scale, this.off, this.anim) : super(repaint: anim);
+  final ValueListenable<int> phaseVN; // marching phase, 0..3 (see OutlinePainter)
+  CursorOutlinePainter(this.edges, this.scale, this.off, this.phaseVN)
+      : super(repaint: phaseVN);
 
   static const _amber = Color(0xFFFFC400);
 
@@ -114,7 +122,7 @@ class CursorOutlinePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (edges.isEmpty || scale <= 0) return;
     final ox = off.dx, oy = off.dy;
-    final phase = (anim.value * 4).floor(); // 4-unit marching period
+    final phase = phaseVN.value; // 4-unit marching period
     final back = <Offset>[]; // full dark backing (continuous outline, for contrast)
     final dash = <Offset>[]; // amber dashes (the marching "on" segments)
     for (final e in edges) {
@@ -130,7 +138,8 @@ class CursorOutlinePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(CursorOutlinePainter old) => true; // driven by the animation
+  bool shouldRepaint(CursorOutlinePainter old) =>
+      old.edges != edges || old.scale != scale || old.off != off; // phase repaints via the notifier
 }
 
 /// Marching ants for an UNCOMMITTED selection draft (the Select Shape tool's draw → adjust → commit
@@ -142,8 +151,9 @@ class SelectionDraftPainter extends CustomPainter {
   final List<List<int>> edges; // [x1,y1,x2,y2,t] in canvas-corner coords
   final double scale;
   final Offset off;
-  final Animation<double> anim;
-  SelectionDraftPainter(this.edges, this.scale, this.off, this.anim) : super(repaint: anim);
+  final ValueListenable<int> phaseVN; // marching phase, 0..3 (see OutlinePainter)
+  SelectionDraftPainter(this.edges, this.scale, this.off, this.phaseVN)
+      : super(repaint: phaseVN);
 
   static const _cyan = Color(0xFF00E5FF);
 
@@ -151,7 +161,7 @@ class SelectionDraftPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (edges.isEmpty || scale <= 0) return;
     final ox = off.dx, oy = off.dy;
-    final phase = (anim.value * 4).floor(); // 4-unit marching period (matches the selection ants)
+    final phase = phaseVN.value; // 4-unit marching period (matches the selection ants)
     final back = <Offset>[]; // continuous dark backing for contrast against any pixels
     final dash = <Offset>[]; // cyan dashes (the marching "on" segments)
     for (final e in edges) {
@@ -167,7 +177,8 @@ class SelectionDraftPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(SelectionDraftPainter old) => true; // driven by the animation
+  bool shouldRepaint(SelectionDraftPainter old) =>
+      old.edges != edges || old.scale != scale || old.off != off; // phase repaints via the notifier
 }
 
 /// Draggable endpoint markers for an uncommitted figure (Line/Rect/Ellipse). Drawn in SCREEN
