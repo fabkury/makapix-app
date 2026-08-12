@@ -6,6 +6,8 @@ import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
+import 'dev/battery_stats.dart';
+
 /// Premultiply straight-RGBA bytes in place, for handing to `ui.decodeImageFromPixels`.
 ///
 /// The engine's FFI buffers are STRAIGHT alpha (`RgbaBuffer::to_rgba_bytes`), but Flutter's
@@ -285,6 +287,7 @@ class Engine {
 
   /// Run a DSL script; returns null on success or an error message.
   String? run(String script) {
+    BatteryStats.dslRun();
     final units = utf8Encode(script);
     final p = malloc<Uint8>(units.length);
     p.asTypedList(units.length).setAll(0, units);
@@ -309,6 +312,7 @@ class Engine {
   /// store the result, hand it to an isolate, or await before decoding. This safety is coupled to
   /// the engine's synchronous-copy behavior — RE-VERIFY on any Flutter/engine upgrade.
   Uint8List display({bool onion = false, bool grid = false, bool checker = true}) {
+    BatteryStats.display();
     final cap = displayWidth * displayHeight * 4; // storage-sized under the overscan view
     final out = _ensureScratch(cap);
     final n = _display(_s, onion ? 1 : 0, grid ? 1 : 0, checker ? 1 : 0, out, cap);
@@ -317,6 +321,7 @@ class Engine {
 
   /// One frame's composited RGBA. Same reused-scratch-buffer contract as [display] — see its doc.
   Uint8List compositeFrame(int frame) {
+    BatteryStats.composite();
     final cap = width * height * 4;
     final out = _ensureScratch(cap);
     final n = _composite(_s, frame, out, cap);
@@ -475,6 +480,7 @@ class Engine {
 
   /// 1-byte-per-pixel selection coverage (1=selected) for drawing the outline; empty if none.
   Uint8List outlineMask() {
+    BatteryStats.outlineMask();
     final cap = displayWidth * displayHeight; // storage-sized under the overscan view
     if (cap <= 0) return Uint8List(0);
     final out = malloc<Uint8>(cap);

@@ -23,6 +23,7 @@ import 'package:makapix_club/club/publish/conformance.dart';
 import 'package:makapix_club/club/publish/publish_draft.dart';
 import 'package:makapix_club/club/state/edit_bridge.dart';
 import 'package:makapix_club/club/ui/publish_page.dart';
+import 'package:makapix_club/dev/battery_stats.dart';
 import 'package:makapix_club/engine_ffi.dart';
 import 'package:makapix_club/share/image_share.dart';
 import 'package:makapix_club/ui/layout.dart';

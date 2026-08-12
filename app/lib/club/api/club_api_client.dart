@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kReleaseMode;
 
+import '../../dev/battery_stats.dart';
 import '../auth/club_session.dart';
 import '../config/club_config.dart';
 import '../models/account.dart';
@@ -30,6 +32,13 @@ class ClubApiClient {
       receiveTimeout: ClubConfig.ioTimeout,
       sendTimeout: ClubConfig.ioTimeout,
     ));
+    if (!kReleaseMode) {
+      // Battery debug counter (docs/battery/, Phase 0): one tick per outgoing request.
+      client.interceptors.add(InterceptorsWrapper(onRequest: (options, handler) {
+        BatteryStats.httpRequest();
+        handler.next(options);
+      }));
+    }
     client.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) {
         final tok = session.accessToken;

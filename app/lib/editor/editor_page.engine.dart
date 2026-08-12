@@ -415,6 +415,7 @@ extension _EditorEngine on _EditorPageState {
   }
 
   Future<ui.Image> _decode(Uint8List bytes, int w, int h) {
+    BatteryStats.decode();
     final c = Completer<ui.Image>();
     // The engine emits straight alpha; the raw decode expects premultiplied. Matters now that
     // the display buffer carries real transparency (the checker is no longer baked into it).
