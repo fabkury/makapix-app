@@ -566,7 +566,6 @@ extension _EditorCanvas on _EditorPageState {
     _send('PointerUp()');
     _refreshState();
     _redraw();
-    setState(() {});
   }
 
   // Abort an in-progress draw, discarding its marks without an undo step (used when a second finger
@@ -616,7 +615,6 @@ extension _EditorCanvas on _EditorPageState {
       _newShapeStart = null;
       _shapeMoveAnchor = _shapeMoveOrigA = _shapeMoveOrigB = null;
       _redraw();
-      setState(() {});
       return;
     }
     if (_isSelDraftTool) {
@@ -644,7 +642,6 @@ extension _EditorCanvas on _EditorPageState {
     }
     _refreshState();
     _redraw();
-    setState(() {});
   }
 
   // ---- figure draft gestures (Line/Rect/Ellipse: drag → adjust handles → commit) ----
@@ -666,7 +663,6 @@ extension _EditorCanvas on _EditorPageState {
         _rotOrigB = _shapeB;
         _rotOrigAngle = _shapeRot;
         _redraw();
-        setState(() {});
         return;
       }
       // Triangle apex-skew handle wins next (it rides the top edge; default top-center is clear of
@@ -675,7 +671,6 @@ extension _EditorCanvas on _EditorPageState {
       if (_hasTipHandle && (pos - screenOf(_triApex())).distance <= 28.0) {
         _shapeDrag = 6;
         _redraw();
-        setState(() {});
         return;
       }
       // A bit larger than the drawn reticle so the ends are easy to grab.
@@ -708,7 +703,6 @@ extension _EditorCanvas on _EditorPageState {
       _pushShape();
     }
     _redraw();
-    setState(() {});
   }
 
   void _continueShape(Offset pos, Size box) {
@@ -726,7 +720,6 @@ extension _EditorCanvas on _EditorPageState {
       _shapeRot = theta;
       _pushShape();
       _redraw();
-      setState(() {});
       return;
     }
     if (_shapeDrag == 6) {
@@ -740,7 +733,6 @@ extension _EditorCanvas on _EditorPageState {
       _triTip = hw <= 0 ? 0 : (lx / hw).clamp(-1.0, 1.0);
       _pushShape();
       _redraw();
-      setState(() {});
       return;
     }
     final p = _toCanvas(pos, box);
@@ -760,7 +752,6 @@ extension _EditorCanvas on _EditorPageState {
     }
     _pushShape();
     _redraw();
-    setState(() {});
   }
 
   // Translate both endpoints by the drag delta from the press point (a rigid move — both ends shift
@@ -774,7 +765,6 @@ extension _EditorCanvas on _EditorPageState {
     _shapeB = origB + Offset(dx, dy);
     _pushShape();
     _redraw();
-    setState(() {});
   }
 
   // Clamp a rigid translation `raw` so both endpoints stay within the generous off-canvas margin
@@ -818,7 +808,6 @@ extension _EditorCanvas on _EditorPageState {
     _shapeB = _ratioed(_shapeA!, _shapeB!);
     _pushShape();
     _redraw();
-    setState(() {});
   }
 
   // ---- Select Shape draft gestures (drag → adjust reticles → Commit, like the figure draft, but
@@ -1100,7 +1089,6 @@ extension _EditorCanvas on _EditorPageState {
     _send(_rotateFrame ? 'RotateDraftBeginFrame()' : 'RotateDraftBegin()');
     _refreshState();
     _redraw();
-    setState(() {});
   }
 
   void _commitRotateDraft() {
@@ -1108,7 +1096,6 @@ extension _EditorCanvas on _EditorPageState {
     _rotateDragging = false;
     _refreshState();
     _redraw();
-    setState(() {});
   }
 
   void _cancelRotateDraft() {
@@ -1116,7 +1103,6 @@ extension _EditorCanvas on _EditorPageState {
     _rotateDragging = false;
     _refreshState();
     _redraw();
-    setState(() {});
   }
 
   // The Rotate handle's arm length (screen px): half the bbox width, so at angle 0 the reticle
@@ -1186,7 +1172,6 @@ extension _EditorCanvas on _EditorPageState {
     _send(_resizeFrame ? 'ScaleDraftBeginFrame()' : 'ScaleDraftBegin()');
     _refreshState();
     _redraw();
-    setState(() {});
   }
 
   void _commitResizeDraft() {
@@ -1194,7 +1179,6 @@ extension _EditorCanvas on _EditorPageState {
     _resizeDragging = false;
     _refreshState();
     _redraw();
-    setState(() {});
   }
 
   void _cancelResizeDraft() {
@@ -1202,7 +1186,6 @@ extension _EditorCanvas on _EditorPageState {
     _resizeDragging = false;
     _refreshState();
     _redraw();
-    setState(() {});
   }
 
   // The Resize knob's screen position: the bottom-right corner of the SCALED rect (center +

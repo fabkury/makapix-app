@@ -468,7 +468,6 @@ extension _EditorToolgrid on _EditorPageState {
       if (mounted) {
         _refreshState();
         _redraw();
-        setState(() {});
       }
     }
   }

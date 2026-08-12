@@ -50,7 +50,7 @@ extension _EditorControls on _EditorPageState {
           padding: const EdgeInsets.symmetric(horizontal: 3),
           child: ElevatedButton.icon(
             style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
-            onPressed: () { _send('EyedropCursor()'); _refreshState(); _redraw(); setState(() {}); },
+            onPressed: () { _send('EyedropCursor()'); _refreshState(); _redraw(); },
             icon: const MakapixIcon(MpxIcons.pick, size: 16),
             label: const Text('Pick'),
           ),
@@ -63,7 +63,7 @@ extension _EditorControls on _EditorPageState {
           padding: const EdgeInsets.symmetric(horizontal: 3),
           child: ElevatedButton.icon(
             style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
-            onPressed: () { _send('SelectColorCursor()'); _refreshState(); _redraw(); setState(() {}); },
+            onPressed: () { _send('SelectColorCursor()'); _refreshState(); _redraw(); },
             icon: const MakapixIcon(MpxIcons.selColor, size: 16),
             label: const Text('Select'),
           ),
@@ -76,7 +76,7 @@ extension _EditorControls on _EditorPageState {
           padding: const EdgeInsets.symmetric(horizontal: 3),
           child: ElevatedButton.icon(
             style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
-            onPressed: () { _send('FillCursor()'); _refreshState(); _redraw(); setState(() {}); },
+            onPressed: () { _send('FillCursor()'); _refreshState(); _redraw(); },
             icon: const MakapixIcon(MpxIcons.fill, size: 16),
             label: const Text('Fill'),
           ),
@@ -88,7 +88,7 @@ extension _EditorControls on _EditorPageState {
             padding: const EdgeInsets.symmetric(horizontal: 3),
             child: ElevatedButton.icon(
               style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
-              onPressed: () { _send('AirbrushCursor()'); _refreshState(); _redraw(); setState(() {}); },
+              onPressed: () { _send('AirbrushCursor()'); _refreshState(); _redraw(); },
               icon: const MakapixIcon(MpxIcons.airbrush, size: 16),
               label: const Text('Spray'),
             ),
@@ -99,7 +99,7 @@ extension _EditorControls on _EditorPageState {
             padding: const EdgeInsets.symmetric(horizontal: 3),
             child: ElevatedButton.icon(
               style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
-              onPressed: () { _send('PlotCursor()'); _refreshState(); _redraw(); setState(() {}); },
+              onPressed: () { _send('PlotCursor()'); _refreshState(); _redraw(); },
               icon: const Icon(Icons.brush, size: 16),
               label: const Text('Draw'),
             ),
@@ -891,7 +891,6 @@ extension _EditorControls on _EditorPageState {
     if (!mounted) return;
     _refreshState();
     _redraw();
-    setState(() {});
   }
 
   void _paletteSwatchMenu(int i, Color c, {required bool vertical}) {

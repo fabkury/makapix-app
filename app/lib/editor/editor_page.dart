@@ -109,12 +109,17 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // The composited canvas image. A ValueNotifier so playback can repaint just the canvas
   // without a full-tree setState — that churn made the row-3 drag tiles' taps (e.g. Pause) flaky.
   final ValueNotifier<ui.Image?> _imageVN = ValueNotifier<ui.Image?>(null);
-  // Staleness stamp for _imageVN: every publisher (_redraw, _decodePlayFrame) claims ++_imageGen
-  // when it fetches the engine bytes, and publishes only if still the newest when its async decode
-  // lands. Image decodes complete on the engine's concurrent workers — NOT necessarily in FIFO
-  // order — so without this stamp a slower older decode could overwrite a newer image. Seen in the
-  // wild: the Levels commit's transient fetch landing last showed the adjustment applied twice.
-  int _imageGen = 0;
+  // The redraw scheduler ("one frame, one fetch" — battery R1). _redraw() only marks these
+  // dirty flags; _present() is the single worker that fetches + decodes + publishes, so at
+  // most one engine display fetch and one GPU upload are in flight at any moment, and
+  // sustained request bursts (120-240 Hz digitizers) coalesce to at most one presentation
+  // per display frame. The old per-publisher _imageGen staleness stamp is gone: with a
+  // single-flight presenter, decodes can no longer land out of order by construction.
+  bool _presentInFlight = false; // _present() is running (leading edge taken)
+  bool _presentBooked = false; // a trailing present is booked on the next frame
+  bool _dirtyImage = false; // any presentation request pending
+  bool _dirtyFull = false; // pending request wants a full-tree rebuild
+  bool _dirtySelection = false; // pending request wants the selection mask re-pulled
   // Bumped to repaint ONLY the canvas overlays (selection ants, reticle, handles, ruler) during a
   // freehand stroke, instead of a full-tree setState that would also rebuild the film-roll and
   // layer strips (each doing per-tile FFI hash calls) on every pointer move. [audit F-9]

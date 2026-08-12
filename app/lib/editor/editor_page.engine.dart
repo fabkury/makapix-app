@@ -222,69 +222,87 @@ extension _EditorEngine on _EditorPageState {
     if (activity) _autosave?.markActivity();
   }
 
-  // Recomposite the canvas and refresh overlays.
+  // Request a canvas recomposite + overlay refresh. [battery R1: the redraw scheduler]
   //   full            — true: setState (rebuild the whole tree incl. film-roll/layer strips);
   //                      false: bump _overlayVN only (repaint canvas + overlays, leave the strips).
   //                      Freehand strokes use false so the per-tile-FFI strips don't rebuild on
   //                      every pointer move; the strips refresh once on stroke end. [audit F-9]
   //   refetchSelection — true: re-pull the selection mask (FFI + O(w·h) scan); false: just recombine
   //                      the cached marquee with the live eraser footprint (cheap). [audit F-11]
-  Future<void> _redraw({bool full = true, bool refetchSelection = true}) async {
+  //
+  // This only marks dirty flags; _present() does the work. An idle canvas presents
+  // IMMEDIATELY (leading edge — first-touch latency unchanged); requests arriving while a
+  // present is in flight or booked coalesce into one trailing present aligned to the next
+  // frame. Net: ≤1 engine fetch + premultiply + decode + GPU upload per display frame, no
+  // matter the input rate (before R1: one full chain per raw pointer event, 2-4× per frame
+  // on fast digitizers, the surplus decoded then discarded). The presenter also setStates
+  // when a full request was pending, so call sites no longer follow _redraw() with their own
+  // setState(() {}) — that double rebuild re-ran the per-tile FFI hashes twice per
+  // action. [battery F16] Playback frame changes route through here too (was
+  // _decodePlayFrame): one publisher means decodes can't land out of order by construction,
+  // which is what retired the _imageGen staleness stamp.
+  void _redraw({bool full = true, bool refetchSelection = true}) {
     if (!_engineReady) return;
-    if (refetchSelection) {
-      _updateOutline();
-    } else {
-      _rebuildOutlineEdges();
-    }
-    final frame = _playing ? engine.playFrame : engine.activeFrame;
-    final gen = ++_imageGen; // claim the fetch's slot before the async decode gap (see _imageGen)
-    // Playback composites the canvas; editing uses the display, which is storage-sized (canvas +
-    // gutter) under the overscan view. Size the decode to whichever we asked for.
-    final bytes = _playing
-        ? engine.compositeFrame(frame)
-        // grid:false — the pixel grid is drawn as a thin screen-space overlay (GridPainter), not
-        // baked into the upscaled canvas where it would render as thick lines.
-        // checker:false — likewise the transparency checker: CanvasPainter draws it in screen
-        // space at a fixed cell size, so it does not zoom with the artwork (which is what lets
-        // painted gray checkers be distinguished from true transparency).
-        : engine.display(onion: _onion, grid: false, checker: false);
-    final (w, h) = _playing ? (_canvasW, _canvasH) : (_dispW, _dispH); // cached [battery F20]
-    final img = await _decode(bytes, w, h);
-    if (!mounted) {
-      img.dispose(); // we navigated away mid-decode; don't leak the GPU image [audit F-10]
-      return;
-    }
-    if (gen == _imageGen) {
+    _dirtyImage = true;
+    _dirtyFull |= full;
+    _dirtySelection |= refetchSelection;
+    if (_presentInFlight || _presentBooked) return; // coalesce into the pending present
+    unawaited(_present()); // leading edge: idle → present now
+  }
+
+  // The single presentation worker (see _redraw). Consumes the dirty flags at start, so
+  // requests landing during the async decode gap accumulate for exactly one trailing
+  // present, aligned to the next frame via scheduleFrameCallback — that alignment is what
+  // bounds presents to the display rate under sustained input.
+  Future<void> _present() async {
+    _presentInFlight = true;
+    try {
+      final full = _dirtyFull;
+      final refetch = _dirtySelection;
+      _dirtyImage = false;
+      _dirtyFull = false;
+      _dirtySelection = false;
+      if (refetch) {
+        _updateOutline();
+      } else {
+        _rebuildOutlineEdges();
+      }
+      // Playback composites the canvas; editing uses the display, which is storage-sized (canvas +
+      // gutter) under the overscan view. Size the decode to whichever we asked for.
+      final playing = _playing;
+      final bytes = playing
+          ? engine.compositeFrame(engine.playFrame)
+          // grid:false — the pixel grid is drawn as a thin screen-space overlay (GridPainter), not
+          // baked into the upscaled canvas where it would render as thick lines.
+          // checker:false — likewise the transparency checker: CanvasPainter draws it in screen
+          // space at a fixed cell size, so it does not zoom with the artwork (which is what lets
+          // painted gray checkers be distinguished from true transparency).
+          : engine.display(onion: _onion, grid: false, checker: false);
+      final (w, h) = playing ? (_canvasW, _canvasH) : (_dispW, _dispH); // cached [battery F20]
+      final img = await _decode(bytes, w, h);
+      if (!mounted) {
+        img.dispose(); // we navigated away mid-decode; don't leak the GPU image [audit F-10]
+        return;
+      }
       final old = _imageVN.value;
       _imageVN.value = img;
       old?.dispose(); // release the previous composited image (was leaked every redraw) [audit F-10]
-    } else {
-      // A newer fetch exists: this decode is stale — never let it regress the canvas. The tree
-      // rebuild below still runs; the newer fetch owns the image.
-      img.dispose();
-    }
-    if (full) {
-      setState(() {}); // rebuild the whole tree (overlays + strips + tool rows)
-    } else {
-      _overlayVN.value++; // repaint just the canvas overlays; leave the strips/rows alone [F-9]
-    }
-  }
-
-  // Playback frame decode: repaints ONLY the canvas (via the image notifier), with no full-tree
-  // setState — so the row-3 tiles stay stable and tappable (e.g. to Pause) during playback.
-  // Clock advancement lives in _onPlayTick; this just composites what the engine says is current.
-  Future<void> _decodePlayFrame() async {
-    if (!_engineReady || !_playing) return;
-    final gen = ++_imageGen; // claim the fetch's slot before the async decode gap (see _imageGen)
-    final img = await _decode(engine.compositeFrame(engine.playFrame), engine.width, engine.height);
-    if (mounted && _playing && gen == _imageGen) {
-      final old = _imageVN.value;
-      _imageVN.value = img;
-      old?.dispose(); // [audit F-10] — was orphaning ~30 GPU images/sec during playback
-    } else {
-      // Paused/unmounted during decode, or a newer fetch (e.g. the pause's _redraw) superseded
-      // this frame: dispose the unused image [audit F-10]
-      img.dispose();
+      if (full) {
+        setState(() {}); // rebuild the whole tree (overlays + strips + tool rows)
+      } else {
+        _overlayVN.value++; // repaint just the canvas overlays; leave the strips/rows alone [F-9]
+      }
+    } finally {
+      _presentInFlight = false;
+      if (_dirtyImage && mounted) {
+        // Trailing edge: requests arrived while this present was in flight. Book exactly one
+        // follow-up on the next frame; its flag snapshot sees the very latest engine state.
+        _presentBooked = true;
+        SchedulerBinding.instance.scheduleFrameCallback((_) {
+          _presentBooked = false;
+          if (_dirtyImage && !_presentInFlight && mounted) unawaited(_present());
+        });
+      }
     }
   }
 
@@ -440,7 +458,6 @@ extension _EditorEngine on _EditorPageState {
     _send(dsl);
     _refreshState();
     _redraw();
-    setState(() {});
   }
 
   void _selectTool(String t) {
@@ -684,7 +701,6 @@ extension _EditorEngine on _EditorPageState {
     _moveDraftStarted = false;
     _refreshState(); // clears _hasMoveDraft (move_draft → null)
     _redraw();
-    setState(() {});
   }
 
   // Discard the pending move draft, restoring the pixels (and marquee) to where they were.
@@ -694,7 +710,6 @@ extension _EditorEngine on _EditorPageState {
     _moveDraftStarted = false;
     _refreshState();
     _redraw();
-    setState(() {});
   }
 
   // Toggle the active paint tool's precision (off-finger reticle) mode. Remembered per tool.
@@ -870,7 +885,9 @@ extension _EditorEngine on _EditorPageState {
     final frame = engine.playFrame; // cheap scalar FFI — safe to poll every vsync
     if (frame != _playShownFrame || editsSeen) {
       _playShownFrame = frame;
-      unawaited(_decodePlayFrame());
+      // Route through the presenter (single _imageVN publisher; no full-tree setState, so
+      // the row-3 tiles stay stable and tappable during playback). [battery R1]
+      _redraw(full: false, refetchSelection: false);
     }
   }
 
