@@ -1,4 +1,7 @@
+import 'dart:io' show HttpClient;
+
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart' show IOHttpClientAdapter;
 import 'package:flutter/foundation.dart' show kReleaseMode;
 
 import '../../dev/battery_stats.dart';
@@ -32,6 +35,15 @@ class ClubApiClient {
       receiveTimeout: ClubConfig.ioTimeout,
       sendTimeout: ClubConfig.ioTimeout,
     ));
+    // Keep pooled connections alive past the app's periodic-request cadences: dart:io's
+    // default idleTimeout is exactly 15 s — the player poll's period — so recurring
+    // requests kept paying a fresh TCP+TLS handshake instead of reusing the socket.
+    // (Tests that swap in a fake adapter skip this via the type check.) [battery F8]
+    final adapter = client.httpClientAdapter;
+    if (adapter is IOHttpClientAdapter) {
+      adapter.createHttpClient =
+          () => HttpClient()..idleTimeout = const Duration(seconds: 65);
+    }
     if (!kReleaseMode) {
       // Battery debug counter (docs/battery/, Phase 0): one tick per outgoing request.
       client.interceptors.add(InterceptorsWrapper(onRequest: (options, handler) {
