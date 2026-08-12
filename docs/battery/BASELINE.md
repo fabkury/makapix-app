@@ -87,6 +87,25 @@ documents. The wall-clock/power payoff scales with document cost — the 256²/6
 stress doc is where Gate B's decision measurement should run, since there a single fetch
 takes tens of ms and the single-flight presenter collapses the per-event pile-up entirely.
 
+## Gate A cashed — R3 hybrid playback clock (commit `b362e1e`)
+
+Scenario D, same document/brightness, session `20260812-170456-playback-2fps-r3`:
+
+| 2 fps playback | Baseline | Phase 1 | **R3** |
+|---|---|---|---|
+| frames produced | 120 fps | 120 fps | **2.0 fps** |
+| composites + decodes /s | 2 | 2 | 2 |
+| `AdvanceClock` sends /s | 120 | 120 | **2** |
+| whole-phone power | 1 835 mW | 1 576 mW | **≈ 979 mW** |
+| overhead vs idle floor | +936 mW | +753 mW | **≈ +156 mW** |
+
+Fast-content check (same build, 60 fps content): ticker mode engages — fps 120,
+**composites exactly 60/s = the content rate**, no aliasing; the hybrid's threshold
+(~34 ms → content faster than ~29 fps stays vsync) behaves as designed. Engine-side the
+timeline poll is now one O(log n) `mkpx_play_status` scalar (F15), with the wait proven a
+lower bound in a Loop+PingPong sweep test. Playback of slow content is now within ~156 mW
+of an idle editor — Gate A's measured ~750 mW prize collected (−856 mW total vs baseline).
+
 ## Caveats
 
 - Fuel-gauge deltas are whole-phone; a Gmail notification landed silently during B (DND
