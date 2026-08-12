@@ -176,6 +176,15 @@ pub extern "C" fn mkpx_outline_mask(ptr: *mut Session, out: *mut u8, cap: usize)
     s.outline_mask_bytes(slice) as c_int
 }
 
+/// 1 when `mkpx_outline_mask` could return a non-empty mask, else 0 — a cheap presence
+/// check (no mask is built) so the shell can skip the whole fetch on the plain-drawing
+/// hot path. Conservative: may report 1 for a draft that resolves empty, never 0 for a
+/// non-empty outline. [battery F13]
+#[no_mangle]
+pub extern "C" fn mkpx_outline_present(ptr: *mut Session) -> u32 {
+    session(ptr).map(|s| s.outline_present() as u32).unwrap_or(0)
+}
+
 /// Content hash (low 64 bits) of a frame — for caching film-roll thumbnails.
 #[no_mangle]
 pub extern "C" fn mkpx_frame_hash(ptr: *mut Session, frame: u32) -> u64 {

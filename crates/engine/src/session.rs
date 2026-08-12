@@ -862,6 +862,42 @@ impl Session {
         self.selection_clone()
     }
 
+    /// Cheap presence check for [`outline_mask_bytes`]: false only when NOTHING could
+    /// produce an outline — no selection rotate/scale/move draft, no selection-tool stroke,
+    /// and an empty/absent committed selection. Deliberately conservative (a draft whose
+    /// mask resolves empty still reports true; the shell then just performs the fetch it
+    /// would have performed anyway): it must never report false when [`outline_mask`]
+    /// would be non-empty. Lets the shell's plain-drawing hot path skip the storage-sized
+    /// mask fill + copy + scan entirely. [battery F13]
+    pub fn outline_present(&self) -> bool {
+        if self.rotate_draft.as_ref().is_some_and(|d| d.is_selection) {
+            return true;
+        }
+        if self.scale_draft.as_ref().is_some_and(|d| d.is_selection) {
+            return true;
+        }
+        if self
+            .move_draft
+            .as_ref()
+            .is_some_and(|d| d.is_selection && d.sel_before.is_some())
+        {
+            return true;
+        }
+        if self.stroke.is_some()
+            && matches!(
+                self.tool,
+                ToolKind::SelectRect
+                    | ToolKind::SelectEllipse
+                    | ToolKind::SelectCircle
+                    | ToolKind::SelectPoly
+                    | ToolKind::SelectFree
+            )
+        {
+            return true;
+        }
+        self.doc.selection.as_deref().is_some_and(|m| !m.is_empty())
+    }
+
     /// Fill `out` with 1-byte-per-pixel selection coverage (1=selected). Returns the number
     /// of bytes written, or 0 when there is nothing to outline.
     pub fn outline_mask_bytes(&self, out: &mut [u8]) -> usize {

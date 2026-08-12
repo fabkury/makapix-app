@@ -227,6 +227,7 @@ class Engine {
   late final _StateD _usedColors = _lib.lookupFunction<_StateC, _StateD>('mkpx_used_colors_json');
   late final _U64D _saveEstimate = _lib.lookupFunction<_U64C, _U64D>('mkpx_save_estimate');
   late final _OutlineD _outline = _lib.lookupFunction<_OutlineC, _OutlineD>('mkpx_outline_mask');
+  late final _U32D _outlinePresent = _lib.lookupFunction<_U32C, _U32D>('mkpx_outline_present');
   late final _FrameHashD _frameHash = _lib.lookupFunction<_FrameHashC, _FrameHashD>('mkpx_frame_hash');
   late final _FrameThumbD _frameThumb = _lib.lookupFunction<_FrameThumbC, _FrameThumbD>('mkpx_frame_thumb');
   late final _LayerThumbD _layerThumb = _lib.lookupFunction<_LayerThumbC, _LayerThumbD>('mkpx_layer_thumb');
@@ -479,7 +480,12 @@ class Engine {
   }
 
   /// 1-byte-per-pixel selection coverage (1=selected) for drawing the outline; empty if none.
+  ///
+  /// Checks [outlinePresent] first: when nothing could be outlined (the plain-drawing hot
+  /// path) this returns empty without the storage-sized malloc + FFI fill + Dart-heap copy
+  /// that used to run per pointer event regardless. [battery F13]
   Uint8List outlineMask() {
+    if (!outlinePresent) return Uint8List(0);
     BatteryStats.outlineMask();
     final cap = displayWidth * displayHeight; // storage-sized under the overscan view
     if (cap <= 0) return Uint8List(0);
@@ -489,6 +495,10 @@ class Engine {
     malloc.free(out);
     return bytes;
   }
+
+  /// Whether [outlineMask] could be non-empty — a cheap scalar (no mask is built).
+  /// Conservative: true may still yield an empty mask; false never hides one.
+  bool get outlinePresent => _outlinePresent(_s) != 0;
 
   Uint8List save() {
     // calloc (not malloc) so a null/failed return can't leave `len` reading uninitialized memory;
