@@ -28,6 +28,20 @@ given motion via keyframes. Its timeline holds instructions, not drawings. A co-
 pillar (decided 2026-07-30), not an Editor sub-mode and not a content-launched flow.
 _Avoid_: "animation mode", "the animation editor", Stage, Studio, Motion (as pillar names)
 
+### Editor vocabulary
+
+**Open**:
+Bringing a whole file into the Editor as a new drawing, faithfully: layers, blend modes,
+opacity, palette, and timing survive the trip. A file either Opens true to the source or is
+refused; only representational details the Editor lacks may degrade, and the artist is told
+when the look changes. Applies to .mkpx and Aseprite files.
+_Avoid_: import (that is a different gesture), load (reserve for engine internals)
+
+**Import**:
+Bringing outside pixels into the current drawing — flattened, scaled or cropped to the
+canvas, placed as new frames or as a new layer. Import converts; Open preserves.
+_Avoid_: open (when pixels join an existing drawing)
+
 ### Animator vocabulary
 
 **Scene**:
