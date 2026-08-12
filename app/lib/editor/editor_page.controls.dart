@@ -50,7 +50,7 @@ extension _EditorControls on _EditorPageState {
           padding: const EdgeInsets.symmetric(horizontal: 3),
           child: ElevatedButton.icon(
             style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
-            onPressed: () { _send('EyedropCursor()'); _refreshState(); _redraw(); setState(() {}); },
+            onPressed: () { _send('EyedropCursor()'); _refreshState(); _redraw(); },
             icon: const MakapixIcon(MpxIcons.pick, size: 16),
             label: const Text('Pick'),
           ),
@@ -63,7 +63,7 @@ extension _EditorControls on _EditorPageState {
           padding: const EdgeInsets.symmetric(horizontal: 3),
           child: ElevatedButton.icon(
             style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
-            onPressed: () { _send('SelectColorCursor()'); _refreshState(); _redraw(); setState(() {}); },
+            onPressed: () { _send('SelectColorCursor()'); _refreshState(); _redraw(); },
             icon: const MakapixIcon(MpxIcons.selColor, size: 16),
             label: const Text('Select'),
           ),
@@ -76,7 +76,7 @@ extension _EditorControls on _EditorPageState {
           padding: const EdgeInsets.symmetric(horizontal: 3),
           child: ElevatedButton.icon(
             style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
-            onPressed: () { _send('FillCursor()'); _refreshState(); _redraw(); setState(() {}); },
+            onPressed: () { _send('FillCursor()'); _refreshState(); _redraw(); },
             icon: const MakapixIcon(MpxIcons.fill, size: 16),
             label: const Text('Fill'),
           ),
@@ -88,7 +88,7 @@ extension _EditorControls on _EditorPageState {
             padding: const EdgeInsets.symmetric(horizontal: 3),
             child: ElevatedButton.icon(
               style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
-              onPressed: () { _send('AirbrushCursor()'); _refreshState(); _redraw(); setState(() {}); },
+              onPressed: () { _send('AirbrushCursor()'); _refreshState(); _redraw(); },
               icon: const MakapixIcon(MpxIcons.airbrush, size: 16),
               label: const Text('Spray'),
             ),
@@ -99,7 +99,7 @@ extension _EditorControls on _EditorPageState {
             padding: const EdgeInsets.symmetric(horizontal: 3),
             child: ElevatedButton.icon(
               style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
-              onPressed: () { _send('PlotCursor()'); _refreshState(); _redraw(); setState(() {}); },
+              onPressed: () { _send('PlotCursor()'); _refreshState(); _redraw(); },
               icon: const Icon(Icons.brush, size: 16),
               label: const Text('Draw'),
             ),
@@ -486,10 +486,13 @@ extension _EditorControls on _EditorPageState {
       // with no selection); the document is untouched while the draft is pending. A non-zero
       // shift IS the tool's draft: the floating commit-menu appears (like the shape/move/rotate
       // drafts) and its Commit bakes the shift, Cancel zeroes it.
+      // Thumb ticks redraw cheaply (no outline refetch, no per-tile-FFI strip rebuilds);
+      // the drag end — and any typed exact value — settles with a full redraw via
+      // onChangeEnd. The Levels `settle` pattern. [battery F5]
       void syncHsv(void Function() set) {
         setState(set);
         _send('SetHsvShift($_hsvH, $_hsvS, $_hsvV)');
-        _redraw();
+        _redraw(full: false, refetchSelection: false);
       }
 
       // The scope lives in the engine too (SetHsvScope) so the live preview honors it.
@@ -498,19 +501,24 @@ extension _EditorControls on _EditorPageState {
         _send('SetHsvScope(${_hsvFrame ? 'Frame' : 'Layer'})');
         _redraw();
       }));
-      _labeledSlider(children, 'H', _hsvH, -180, 180, (v) => syncHsv(() => _hsvH = v));
-      _labeledSlider(children, 'S', _hsvS, -1, 1, (v) => syncHsv(() => _hsvS = v), integer: false);
-      _labeledSlider(children, 'V', _hsvV, -1, 1, (v) => syncHsv(() => _hsvV = v), integer: false);
+      _labeledSlider(children, 'H', _hsvH, -180, 180, (v) => syncHsv(() => _hsvH = v),
+          onChangeEnd: () => _redraw());
+      _labeledSlider(children, 'S', _hsvS, -1, 1, (v) => syncHsv(() => _hsvS = v),
+          integer: false, onChangeEnd: () => _redraw());
+      _labeledSlider(children, 'V', _hsvV, -1, 1, (v) => syncHsv(() => _hsvV = v),
+          integer: false, onChangeEnd: () => _redraw());
     }
     if (_tool == 'BrightnessContrast') {
       // The HSV block's twin: slider changes sync the pending adjustment into the engine, whose
       // display composites a live preview per the scope; a non-identity adjustment IS the tool's
       // draft, resolved by the floating commit-menu (Commit bakes it, Cancel zeroes it).
       // Contrast is a ±100% slider around the engine's 1.0× factor.
+      // Same settle pattern as HSV/Levels: cheap per-tick redraw, full redraw on release
+      // or typed entry. [battery F5]
       void syncBc(void Function() set) {
         setState(set);
         _send('SetBrightnessContrast(${_bcBright.round()}, ${1.0 + _bcContrast / 100})');
-        _redraw();
+        _redraw(full: false, refetchSelection: false);
       }
 
       children.add(_toggle(const ['Layer', 'Frame'], _bcFrame ? 1 : 0, (i) {
@@ -518,8 +526,10 @@ extension _EditorControls on _EditorPageState {
         _send('SetBcScope(${_bcFrame ? 'Frame' : 'Layer'})');
         _redraw();
       }));
-      _labeledSlider(children, 'B', _bcBright, -255, 255, (v) => syncBc(() => _bcBright = v));
-      _labeledSlider(children, 'C', _bcContrast, -100, 100, (v) => syncBc(() => _bcContrast = v));
+      _labeledSlider(children, 'B', _bcBright, -255, 255, (v) => syncBc(() => _bcBright = v),
+          onChangeEnd: () => _redraw());
+      _labeledSlider(children, 'C', _bcContrast, -100, 100, (v) => syncBc(() => _bcContrast = v),
+          onChangeEnd: () => _redraw());
     }
     if (_tool == 'Levels') {
       // The HSV/BC blocks' triplet sibling: thumb changes sync the pending (low, γ‰, high) into
@@ -881,7 +891,6 @@ extension _EditorControls on _EditorPageState {
     if (!mounted) return;
     _refreshState();
     _redraw();
-    setState(() {});
   }
 
   void _paletteSwatchMenu(int i, Color c, {required bool vertical}) {

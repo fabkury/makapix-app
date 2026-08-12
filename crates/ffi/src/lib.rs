@@ -176,6 +176,31 @@ pub extern "C" fn mkpx_outline_mask(ptr: *mut Session, out: *mut u8, cap: usize)
     s.outline_mask_bytes(slice) as c_int
 }
 
+/// 1 when `mkpx_outline_mask` could return a non-empty mask, else 0 — a cheap presence
+/// check (no mask is built) so the shell can skip the whole fetch on the plain-drawing
+/// hot path. Conservative: may report 1 for a draft that resolves empty, never 0 for a
+/// non-empty outline. [battery F13]
+#[no_mangle]
+pub extern "C" fn mkpx_outline_present(ptr: *mut Session) -> u32 {
+    session(ptr).map(|s| s.outline_present() as u32).unwrap_or(0)
+}
+
+/// Packed playback status: high 32 bits = the current play frame, low 32 = µs until the
+/// visible frame can next change (capped at u32::MAX; a lower bound — see
+/// `Session::play_status`). One O(log frames) scalar call replaces the per-vsync
+/// `mkpx_play_frame` poll and powers the shell's hybrid ticker/timer playback clock.
+/// [battery F15/R3]
+#[no_mangle]
+pub extern "C" fn mkpx_play_status(ptr: *mut Session) -> u64 {
+    match session(ptr) {
+        Some(s) => {
+            let (frame, us) = s.play_status();
+            ((frame as u64) << 32) | us.min(u32::MAX as u64)
+        }
+        None => 0,
+    }
+}
+
 /// Content hash (low 64 bits) of a frame — for caching film-roll thumbnails.
 #[no_mangle]
 pub extern "C" fn mkpx_frame_hash(ptr: *mut Session, frame: u32) -> u64 {

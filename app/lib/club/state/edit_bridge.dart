@@ -35,3 +35,11 @@ class NewLocalDrawing extends LocalLibraryRequest {
 }
 
 final pendingLocalLibraryProvider = StateProvider<LocalLibraryRequest?>((ref) => null);
+
+/// Which pillar the shell currently has MOUNTED. Written by AppShell on every switch;
+/// consumed by providers that should idle while their surface is unmounted (the player
+/// poll — battery F8). Read-only signal: to switch pillars, bump [openEditorProvider] /
+/// [openClubProvider] instead.
+enum AppPillar { club, editor }
+
+final activePillarProvider = StateProvider<AppPillar>((ref) => AppPillar.club);

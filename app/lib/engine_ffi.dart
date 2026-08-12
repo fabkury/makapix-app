@@ -6,6 +6,8 @@ import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
+import 'dev/battery_stats.dart';
+
 /// Premultiply straight-RGBA bytes in place, for handing to `ui.decodeImageFromPixels`.
 ///
 /// The engine's FFI buffers are STRAIGHT alpha (`RgbaBuffer::to_rgba_bytes`), but Flutter's
@@ -225,6 +227,8 @@ class Engine {
   late final _StateD _usedColors = _lib.lookupFunction<_StateC, _StateD>('mkpx_used_colors_json');
   late final _U64D _saveEstimate = _lib.lookupFunction<_U64C, _U64D>('mkpx_save_estimate');
   late final _OutlineD _outline = _lib.lookupFunction<_OutlineC, _OutlineD>('mkpx_outline_mask');
+  late final _U32D _outlinePresent = _lib.lookupFunction<_U32C, _U32D>('mkpx_outline_present');
+  late final _U64D _playStatusRaw = _lib.lookupFunction<_U64C, _U64D>('mkpx_play_status');
   late final _FrameHashD _frameHash = _lib.lookupFunction<_FrameHashC, _FrameHashD>('mkpx_frame_hash');
   late final _FrameThumbD _frameThumb = _lib.lookupFunction<_FrameThumbC, _FrameThumbD>('mkpx_frame_thumb');
   late final _LayerThumbD _layerThumb = _lib.lookupFunction<_LayerThumbC, _LayerThumbD>('mkpx_layer_thumb');
@@ -281,10 +285,20 @@ class Engine {
   int get frameCount => _frameCount(_s);
   int get activeFrame => _activeFrame(_s);
   int get playFrame => _playFrame(_s);
+
+  /// Playback status in one O(log frames) scalar call: (current play frame, µs until the
+  /// visible frame can next change). The wait is a LOWER bound (never an overestimate),
+  /// so a timer armed with it cannot show a frame late — see Session::play_status.
+  /// Powers the hybrid ticker/timer playback clock. [battery F15/R3]
+  (int, int) get playStatus {
+    final v = _playStatusRaw(_s);
+    return (v >>> 32, v & 0xFFFFFFFF);
+  }
   int get primaryColor => _primary(_s); // 0xRRGGBBAA
 
   /// Run a DSL script; returns null on success or an error message.
   String? run(String script) {
+    BatteryStats.dslRun();
     final units = utf8Encode(script);
     final p = malloc<Uint8>(units.length);
     p.asTypedList(units.length).setAll(0, units);
@@ -309,6 +323,7 @@ class Engine {
   /// store the result, hand it to an isolate, or await before decoding. This safety is coupled to
   /// the engine's synchronous-copy behavior — RE-VERIFY on any Flutter/engine upgrade.
   Uint8List display({bool onion = false, bool grid = false, bool checker = true}) {
+    BatteryStats.display();
     final cap = displayWidth * displayHeight * 4; // storage-sized under the overscan view
     final out = _ensureScratch(cap);
     final n = _display(_s, onion ? 1 : 0, grid ? 1 : 0, checker ? 1 : 0, out, cap);
@@ -317,6 +332,7 @@ class Engine {
 
   /// One frame's composited RGBA. Same reused-scratch-buffer contract as [display] — see its doc.
   Uint8List compositeFrame(int frame) {
+    BatteryStats.composite();
     final cap = width * height * 4;
     final out = _ensureScratch(cap);
     final n = _composite(_s, frame, out, cap);
@@ -474,7 +490,13 @@ class Engine {
   }
 
   /// 1-byte-per-pixel selection coverage (1=selected) for drawing the outline; empty if none.
+  ///
+  /// Checks [outlinePresent] first: when nothing could be outlined (the plain-drawing hot
+  /// path) this returns empty without the storage-sized malloc + FFI fill + Dart-heap copy
+  /// that used to run per pointer event regardless. [battery F13]
   Uint8List outlineMask() {
+    if (!outlinePresent) return Uint8List(0);
+    BatteryStats.outlineMask();
     final cap = displayWidth * displayHeight; // storage-sized under the overscan view
     if (cap <= 0) return Uint8List(0);
     final out = malloc<Uint8>(cap);
@@ -483,6 +505,10 @@ class Engine {
     malloc.free(out);
     return bytes;
   }
+
+  /// Whether [outlineMask] could be non-empty — a cheap scalar (no mask is built).
+  /// Conservative: true may still yield an empty mask; false never hides one.
+  bool get outlinePresent => _outlinePresent(_s) != 0;
 
   Uint8List save() {
     // calloc (not malloc) so a null/failed return can't leave `len` reading uninitialized memory;

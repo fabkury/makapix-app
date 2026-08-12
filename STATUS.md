@@ -34,6 +34,15 @@ export gate; Sign in with Apple live end-to-end. **Windows** — developer build
 (`build.ps1`).
 Legend: **✅ done & tested** · **◑ partial** (engine done, UI/edges pending) · **○ stubbed / not yet**.
 
+**Battery discipline (2026-08-12):** a measured editor battery program shipped in one day
+(docs/battery/ — ASSESSMENT · RECOMMENDATIONS incl. the close-out ledger · BASELINE with all
+numbers): idle-with-selection dropped **2 083 → 938 mW** (marching ants now repaint at their
+5.7 Hz content rate inside a RepaintBoundary instead of driving 120 fps full-page frames),
+editor-session network fell **42 → 2 requests/10 min** (pillar+lifecycle-gated player poll),
+2 fps playback dropped **1 835 → 979 mW** (hybrid ticker/timer playback clock, R3), plus a
+single-flight redraw scheduler (R1) and an O(log n) playback poll (F15). Phases 3–4 and
+Gate B are deliberately parked with pickup notes in the RECOMMENDATIONS ledger.
+
 ## Build artifacts
 - `crates/engine` — pure deterministic core (dependency-free). **228 lib + 23 scenario + 4 fuzz + 1 perf tests.**
 - `crates/codec` — image import/export (`image` crate). **12 tests.**

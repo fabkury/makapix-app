@@ -356,7 +356,6 @@ extension _EditorTimeline on _EditorPageState {
       _send('MoveDraftMove($dx,$dy)');
       _refreshState();
       _redraw();
-      setState(() {});
       return;
     }
     _syncLayerSel();

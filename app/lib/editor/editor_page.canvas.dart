@@ -216,19 +216,26 @@ extension _EditorCanvas on _EditorPageState {
             ),
             // The pixel grid is a SCREEN-space overlay (thin hairlines on the pixel boundaries), not
             // baked into the upscaled canvas — so it stays 1px thin at any zoom. Rebuilds with the
-            // outer build on zoom/pan.
+            // outer build on zoom/pan; its own RepaintBoundary keeps the ~1000-point line list from
+            // being re-recorded when a sibling layer (ants, image) repaints. [battery F1]
             if (_grid)
-              CustomPaint(
-                painter: GridPainter(engine.width, engine.height, vScale, vOff),
-                size: Size.infinite,
+              RepaintBoundary(
+                child: CustomPaint(
+                  painter: GridPainter(engine.width, engine.height, vScale, vOff),
+                  size: Size.infinite,
+                ),
               ),
             // Overlays repaint off _overlayVN so a freehand stroke can update them without a
             // full-tree setState (which would rebuild the per-tile-FFI film-roll/layer strips on
             // every pointer move). vScale/vOff are captured from the enclosing LayoutBuilder and are
             // stable during a stroke (a pinch goes through setState). [audit F-9]
+            // The RepaintBoundary confines ants-phase and per-move overlay repaints to THIS layer;
+            // without it every tick re-recorded the whole route (measured +1.2 W idle,
+            // docs/battery/BASELINE.md). [battery F1]
             ValueListenableBuilder<int>(
               valueListenable: _overlayVN,
-              builder: (_, _, _) => Stack(fit: StackFit.expand, children: [
+              builder: (_, _, _) => RepaintBoundary(
+                  child: Stack(fit: StackFit.expand, children: [
                 if (!_isRuler && _rulerPinned && _hasRuler)
                   // Pinned ruler: a simplified, semitransparent echo of the measurement lines
                   // while another tool is active. Drawn FIRST so the active tool's overlays and
@@ -238,7 +245,7 @@ extension _EditorCanvas on _EditorPageState {
                         c: _rulerAngle ? _rulerC : null),
                     size: Size.infinite,
                   ),
-                CustomPaint(painter: OutlinePainter(_outlineEdges, vScale, vImgOff, _antCtrl), size: Size.infinite),
+                CustomPaint(painter: OutlinePainter(_outlineEdges, vScale, vImgOff, _antPhase), size: Size.infinite),
                 if (_isCursorTool)
                   // Amber marching outline around the EXACT pixels the actuate button would draw —
                   // a distinct visual from the selection's black/white ants (the airbrush shows its
@@ -248,7 +255,7 @@ extension _EditorCanvas on _EditorPageState {
                       _footprintEdges(_cursorX, _cursorY, airbrush: _tool == 'Airbrush'),
                       vScale,
                       vOff,
-                      _antCtrl,
+                      _antPhase,
                     ),
                     size: Size.infinite,
                   ),
@@ -292,7 +299,7 @@ extension _EditorCanvas on _EditorPageState {
                   // The uncommitted selection draft: distinct cyan marching ants (vs the committed
                   // selection's black/white ants, still shown behind it) + draggable endpoint reticles.
                   CustomPaint(
-                    painter: SelectionDraftPainter(_selDraftEdges, vScale, vOff, _antCtrl),
+                    painter: SelectionDraftPainter(_selDraftEdges, vScale, vOff, _antPhase),
                     size: Size.infinite,
                   ),
                   CustomPaint(
@@ -308,7 +315,7 @@ extension _EditorCanvas on _EditorPageState {
                         c: _rulerAngle ? _rulerC : null),
                     size: Size.infinite,
                   ),
-              ]),
+              ])),
             ),
           ]),
         ),
@@ -386,6 +393,8 @@ extension _EditorCanvas on _EditorPageState {
       return; // off-finger: drag moves the reticle, acting is via buttons
     }
     final p = _toCanvas(pos, box);
+    _paintLastCx = p.dx.toInt(); // seed the same-cell dedupe stamp [battery F4]
+    _paintLastCy = p.dy.toInt();
     if (_tool == 'Eraser') {
       _eraserX = p.dx.toInt();
       _eraserY = p.dy.toInt();
@@ -478,11 +487,19 @@ extension _EditorCanvas on _EditorPageState {
       return;
     }
     final p = _toCanvas(pos, box);
+    final cx = p.dx.toInt(), cy = p.dy.toInt();
+    // Same-cell dedupe: a repeat of the last cell adds nothing for the stroke tools (the
+    // engine interpolates between DISTINCT cells; an Eyedropper re-pick of the same cell is
+    // the same color). The Airbrush is excluded — it sprays per EVENT (airbrush_active in
+    // session.rs), so dropping repeats would thin its density. [battery F4]
+    if (_tool != 'Airbrush' && cx == _paintLastCx && cy == _paintLastCy) return;
+    _paintLastCx = cx;
+    _paintLastCy = cy;
     if (_tool == 'Eraser') {
-      _eraserX = p.dx.toInt();
-      _eraserY = p.dy.toInt();
+      _eraserX = cx;
+      _eraserY = cy;
     }
-    _send('PointerMove(${p.dx.toInt()},${p.dy.toInt()})');
+    _send('PointerMove($cx,$cy)');
     // Eyedropper drags keep picking (the engine re-samples per move) so the user can slide to
     // "find" a color after an imprecise first touch — mirror each pick into the swatch.
     if (_tool == 'Eyedropper') _syncPickedPrimary();
@@ -545,10 +562,10 @@ extension _EditorCanvas on _EditorPageState {
       _eraserX = null;
       _eraserY = null;
     }
+    _paintLastCx = _paintLastCy = null; // stroke over — drop the dedupe stamp [battery F4]
     _send('PointerUp()');
     _refreshState();
     _redraw();
-    setState(() {});
   }
 
   // Abort an in-progress draw, discarding its marks without an undo step (used when a second finger
@@ -598,7 +615,6 @@ extension _EditorCanvas on _EditorPageState {
       _newShapeStart = null;
       _shapeMoveAnchor = _shapeMoveOrigA = _shapeMoveOrigB = null;
       _redraw();
-      setState(() {});
       return;
     }
     if (_isSelDraftTool) {
@@ -621,11 +637,11 @@ extension _EditorCanvas on _EditorPageState {
     } else {
       _eraserX = null;
       _eraserY = null;
+      _paintLastCx = _paintLastCy = null; // stroke aborted — drop the dedupe stamp [battery F4]
       _send('CancelStroke()');
     }
     _refreshState();
     _redraw();
-    setState(() {});
   }
 
   // ---- figure draft gestures (Line/Rect/Ellipse: drag → adjust handles → commit) ----
@@ -647,7 +663,6 @@ extension _EditorCanvas on _EditorPageState {
         _rotOrigB = _shapeB;
         _rotOrigAngle = _shapeRot;
         _redraw();
-        setState(() {});
         return;
       }
       // Triangle apex-skew handle wins next (it rides the top edge; default top-center is clear of
@@ -656,7 +671,6 @@ extension _EditorCanvas on _EditorPageState {
       if (_hasTipHandle && (pos - screenOf(_triApex())).distance <= 28.0) {
         _shapeDrag = 6;
         _redraw();
-        setState(() {});
         return;
       }
       // A bit larger than the drawn reticle so the ends are easy to grab.
@@ -689,7 +703,6 @@ extension _EditorCanvas on _EditorPageState {
       _pushShape();
     }
     _redraw();
-    setState(() {});
   }
 
   void _continueShape(Offset pos, Size box) {
@@ -707,7 +720,6 @@ extension _EditorCanvas on _EditorPageState {
       _shapeRot = theta;
       _pushShape();
       _redraw();
-      setState(() {});
       return;
     }
     if (_shapeDrag == 6) {
@@ -721,7 +733,6 @@ extension _EditorCanvas on _EditorPageState {
       _triTip = hw <= 0 ? 0 : (lx / hw).clamp(-1.0, 1.0);
       _pushShape();
       _redraw();
-      setState(() {});
       return;
     }
     final p = _toCanvas(pos, box);
@@ -741,7 +752,6 @@ extension _EditorCanvas on _EditorPageState {
     }
     _pushShape();
     _redraw();
-    setState(() {});
   }
 
   // Translate both endpoints by the drag delta from the press point (a rigid move — both ends shift
@@ -755,7 +765,6 @@ extension _EditorCanvas on _EditorPageState {
     _shapeB = origB + Offset(dx, dy);
     _pushShape();
     _redraw();
-    setState(() {});
   }
 
   // Clamp a rigid translation `raw` so both endpoints stay within the generous off-canvas margin
@@ -799,7 +808,6 @@ extension _EditorCanvas on _EditorPageState {
     _shapeB = _ratioed(_shapeA!, _shapeB!);
     _pushShape();
     _redraw();
-    setState(() {});
   }
 
   // ---- Select Shape draft gestures (drag → adjust reticles → Commit, like the figure draft, but
@@ -1081,7 +1089,6 @@ extension _EditorCanvas on _EditorPageState {
     _send(_rotateFrame ? 'RotateDraftBeginFrame()' : 'RotateDraftBegin()');
     _refreshState();
     _redraw();
-    setState(() {});
   }
 
   void _commitRotateDraft() {
@@ -1089,7 +1096,6 @@ extension _EditorCanvas on _EditorPageState {
     _rotateDragging = false;
     _refreshState();
     _redraw();
-    setState(() {});
   }
 
   void _cancelRotateDraft() {
@@ -1097,7 +1103,6 @@ extension _EditorCanvas on _EditorPageState {
     _rotateDragging = false;
     _refreshState();
     _redraw();
-    setState(() {});
   }
 
   // The Rotate handle's arm length (screen px): half the bbox width, so at angle 0 the reticle
@@ -1167,7 +1172,6 @@ extension _EditorCanvas on _EditorPageState {
     _send(_resizeFrame ? 'ScaleDraftBeginFrame()' : 'ScaleDraftBegin()');
     _refreshState();
     _redraw();
-    setState(() {});
   }
 
   void _commitResizeDraft() {
@@ -1175,7 +1179,6 @@ extension _EditorCanvas on _EditorPageState {
     _resizeDragging = false;
     _refreshState();
     _redraw();
-    setState(() {});
   }
 
   void _cancelResizeDraft() {
@@ -1183,7 +1186,6 @@ extension _EditorCanvas on _EditorPageState {
     _resizeDragging = false;
     _refreshState();
     _redraw();
-    setState(() {});
   }
 
   // The Resize knob's screen position: the bottom-right corner of the SCALED rect (center +

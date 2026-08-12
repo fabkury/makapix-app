@@ -5,9 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app.dart';
+import 'dev/battery_stats.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  BatteryStats.start(); // battery debug counters — compiled out of release builds
   // ProviderScope hosts the Riverpod state (Club social layer + the editor↔Club bridge).
   runApp(const ProviderScope(child: MakapixApp()));
 }

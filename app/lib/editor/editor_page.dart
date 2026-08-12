@@ -23,6 +23,7 @@ import 'package:makapix_club/club/publish/conformance.dart';
 import 'package:makapix_club/club/publish/publish_draft.dart';
 import 'package:makapix_club/club/state/edit_bridge.dart';
 import 'package:makapix_club/club/ui/publish_page.dart';
+import 'package:makapix_club/dev/battery_stats.dart';
 import 'package:makapix_club/engine_ffi.dart';
 import 'package:makapix_club/share/image_share.dart';
 import 'package:makapix_club/ui/layout.dart';
@@ -108,17 +109,27 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // The composited canvas image. A ValueNotifier so playback can repaint just the canvas
   // without a full-tree setState — that churn made the row-3 drag tiles' taps (e.g. Pause) flaky.
   final ValueNotifier<ui.Image?> _imageVN = ValueNotifier<ui.Image?>(null);
-  // Staleness stamp for _imageVN: every publisher (_redraw, _decodePlayFrame) claims ++_imageGen
-  // when it fetches the engine bytes, and publishes only if still the newest when its async decode
-  // lands. Image decodes complete on the engine's concurrent workers — NOT necessarily in FIFO
-  // order — so without this stamp a slower older decode could overwrite a newer image. Seen in the
-  // wild: the Levels commit's transient fetch landing last showed the adjustment applied twice.
-  int _imageGen = 0;
+  // The redraw scheduler ("one frame, one fetch" — battery R1). _redraw() only marks these
+  // dirty flags; _present() is the single worker that fetches + decodes + publishes, so at
+  // most one engine display fetch and one GPU upload are in flight at any moment, and
+  // sustained request bursts (120-240 Hz digitizers) coalesce to at most one presentation
+  // per display frame. The old per-publisher _imageGen staleness stamp is gone: with a
+  // single-flight presenter, decodes can no longer land out of order by construction.
+  bool _presentInFlight = false; // _present() is running (leading edge taken)
+  bool _presentBooked = false; // a trailing present is booked on the next frame
+  bool _dirtyImage = false; // any presentation request pending
+  bool _dirtyFull = false; // pending request wants a full-tree rebuild
+  bool _dirtySelection = false; // pending request wants the selection mask re-pulled
   // Bumped to repaint ONLY the canvas overlays (selection ants, reticle, handles, ruler) during a
   // freehand stroke, instead of a full-tree setState that would also rebuild the film-roll and
   // layer strips (each doing per-tile FFI hash calls) on every pointer move. [audit F-9]
   final ValueNotifier<int> _overlayVN = ValueNotifier<int>(0);
-  late AnimationController _antCtrl; // marching-ants animation phase
+  // Marching-ants phase (0..3). Driven by a 175 ms Timer — NOT an AnimationController: an
+  // active controller forces full-refresh-rate frame production (measured 120 fps / +1.2 W
+  // on an idle canvas, docs/battery/BASELINE.md), while the ants have only 4 visual states
+  // per 700 ms period. The timer repaints the overlay layer ~5.7×/s instead. [battery F2]
+  final ValueNotifier<int> _antPhase = ValueNotifier<int>(0);
+  Timer? _antTimer;
   List<List<int>> _outlineEdges = const []; // each: [x1,y1,x2,y2,t] in canvas-corner coords
   // Cached selection-marquee boundary segments, refreshed only when the selection may have changed
   // (a selection tool acted) — NOT on every paint move; the live eraser footprint is recombined on
@@ -212,6 +223,10 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // so the move is a rigid translation clamped on-canvas.
   Offset? _rulerMoveAnchor, _rulerMoveOrigA, _rulerMoveOrigB, _rulerMoveOrigC;
   int _canvasW = 0, _canvasH = 0; // last-seen canvas size; a change auto-clears the stale ruler
+  // Cached display (storage under overscan) size. Every size/overscan change funnels through
+  // _act → _refreshState, so these are always current — the view-transform helpers and the
+  // redraw path read them instead of making scalar FFI crossings per pointer event. [battery F20]
+  int _dispW = 0, _dispH = 0;
   bool _radial = false;
   bool _gradSmooth = false; // Gradient: ease each color transition with the smoothstep curve
   // Airbrush spray density vs Dodge/Burn strength want different starting points: a 50 spray reads
@@ -269,6 +284,11 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // 60 fps content). Created lazily in _play(); each tick sends the MEASURED elapsed ms to
   // the engine clock and decodes only when there is something new to show (_onPlayTick).
   Ticker? _playTicker;
+  // R3 hybrid playback clock: the vsync ticker paces fast content; slow content parks on a
+  // one-shot timer to the next frame boundary (zero frame production between changes). The
+  // shared stopwatch is the single time source across both modes. [battery R3]
+  Timer? _playTimer;
+  final Stopwatch _playStopwatch = Stopwatch();
   final PlaybackClock _playClock = PlaybackClock();
   int _playShownFrame = -1; // playFrame at the last decode; -1 forces the first-tick decode
   int _sendSeq = 0; // bumped by every _send — the tick handler's "did anything change" stamp
@@ -286,6 +306,11 @@ class _EditorPageState extends ConsumerState<EditorPage>
   double _accX = 0, _accY = 0;
   int _cursorX = 0, _cursorY = 0; // reticle position (canvas px), mirrored from the engine
   int? _eraserX, _eraserY; // eraser footprint center (canvas px) during an active erase drag
+  // Last canvas cell sent on the freehand paint path — the same-cell dedupe stamp. At zoom > 1
+  // several screen-pixel moves land in one cell; repeats would re-run the full engine
+  // roundtrip + composite + GPU upload for zero visual change. [battery F4]
+  int? _paintLastCx, _paintLastCy;
+  int _lastLifecycleFlushMs = 0; // debounces the background-walk autosave flush [battery F11]
   // Canvas view transform: _zoom is relative to fit-to-screen (1.0 = fit), _pan is an extra
   // screen-pixel offset. Two fingers pan/zoom; the app-bar Fit button resets both.
   double _zoom = 1.0;
@@ -447,11 +472,9 @@ class _EditorPageState extends ConsumerState<EditorPage>
   @override
   void initState() {
     super.initState();
-    // Starts stopped; _syncAntsAnimation() runs it only while marching ants are actually on screen
-    // (a selection/eraser outline, the cursor footprint, or a selection draft). Previously it
-    // repeated forever from initState, scheduling 60 Hz compositor work even on an idle canvas with
-    // nothing to animate. [audit]
-    _antCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 700));
+    // The ants timer starts stopped; _syncAntsAnimation() runs it only while marching ants
+    // are actually on screen (a selection/eraser outline, the cursor footprint, or a
+    // selection draft). [audit][battery F2]
     _loadToolOrder();
     try {
       engine = Engine(64, 64);
@@ -470,15 +493,19 @@ class _EditorPageState extends ConsumerState<EditorPage>
 
   // Run the marching-ants clock only while something animated is on screen: the committed selection
   // / eraser outline (`_outlineEdges`), the precision cursor footprint (`_isCursorTool`), or a
-  // selection draft. Guarded by `isAnimating` so a repeated call never resets the phase (which would
-  // freeze the ants). Idempotent — safe to call from build() and from per-move edge updates. [audit]
+  // selection draft. The `??=` keeps a repeated call from resetting the period mid-tick, and the
+  // phase value itself is never reset (a reset would freeze the ants). Idempotent — safe to call
+  // from build() and from per-move edge updates. [audit][battery F2]
   void _syncAntsAnimation() {
     final antsOnScreen =
         _outlineEdges.isNotEmpty || _isCursorTool || (_isSelDraftTool && _hasSelDraft);
     if (antsOnScreen) {
-      if (!_antCtrl.isAnimating) _antCtrl.repeat();
-    } else if (_antCtrl.isAnimating) {
-      _antCtrl.stop();
+      _antTimer ??= Timer.periodic(const Duration(milliseconds: 175), (_) {
+        _antPhase.value = (_antPhase.value + 1) & 3; // 700 ms period / 4 phases
+      });
+    } else {
+      _antTimer?.cancel();
+      _antTimer = null;
     }
   }
 
@@ -503,6 +530,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   @override
   void dispose() {
     _playTicker?.dispose(); // legal while active; must precede super.dispose (mixin asserts)
+    _playTimer?.cancel(); // the timer half of the hybrid playback clock [battery R3]
     WidgetsBinding.instance.removeObserver(this);
     // Flush the in-progress drawing to disk before the engine is freed so it survives this unmount
     // (Club switch) AND any later crash. flushNow() serializes + builds metadata SYNCHRONOUSLY (so
@@ -515,7 +543,8 @@ class _EditorPageState extends ConsumerState<EditorPage>
     // final marker through preWrite; this catches lines recorded since the last autosave delta.
     _journal?.detachSoon();
     _journal = null;
-    _antCtrl.dispose();
+    _antTimer?.cancel();
+    _antPhase.dispose();
     _resetThumbCaches();
     _imageVN.value?.dispose(); // release the composited canvas image before the notifier [F-10]
     _imageVN.dispose();
@@ -534,12 +563,32 @@ class _EditorPageState extends ConsumerState<EditorPage>
         (state == AppLifecycleState.paused || state == AppLifecycleState.hidden)) {
       _pause();
     }
+    // The ants Timer, unlike a muted Ticker, keeps firing while backgrounded — stop it and
+    // let the resume path re-arm it to whatever is on screen. [battery F2]
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      _antTimer?.cancel();
+      _antTimer = null;
+    } else if (state == AppLifecycleState.resumed) {
+      _syncAntsAnimation();
+    }
     // Android can kill a backgrounded app with no further callback, so flush the moment we lose
     // foreground. flushNow() serializes synchronously; the write finishes in the background.
+    // Android walks resumed→inactive→hidden→paused on a single backgrounding — the debounce
+    // keeps that walk from serializing the whole document three times back-to-back (flushNow
+    // itself already skips the WRITE when nothing changed). [battery F11]
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
-      _autosave?.flushNow();
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (now - _lastLifecycleFlushMs > 2000) {
+        _lastLifecycleFlushMs = now;
+        _autosave?.flushNow();
+      }
+      // The 5 s autosave timer buys nothing while backgrounded (the flush above captured the
+      // state); `inactive` keeps it — the app is still visible. [battery F12]
+      if (state != AppLifecycleState.inactive) _autosave?.pause();
+    } else if (state == AppLifecycleState.resumed) {
+      _autosave?.resume();
     }
   }
 

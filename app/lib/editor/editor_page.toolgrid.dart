@@ -263,10 +263,12 @@ extension _EditorToolgrid on _EditorPageState {
     );
   }
 
-  Widget _slider(double v, double min, double max, ValueChanged<double> onChanged) {
+  Widget _slider(double v, double min, double max, ValueChanged<double> onChanged,
+      {VoidCallback? onChangeEnd}) {
     return SizedBox(
       width: 120,
-      child: _GearedSlider(value: v, min: min, max: max, onChanged: onChanged),
+      child: _GearedSlider(
+          value: v, min: min, max: max, onChanged: onChanged, onChangeEnd: onChangeEnd),
     );
   }
 
@@ -274,10 +276,12 @@ extension _EditorToolgrid on _EditorPageState {
   // text-entry dialog so the exact value can be typed instead of dragged. The text path and
   // the drag path share the same [onChanged], keeping behavior identical.
   void _labeledSlider(List<Widget> children, String name, double value, double min, double max,
-      ValueChanged<double> onChanged, {bool integer = true, int decimals = 1}) {
+      ValueChanged<double> onChanged,
+      {bool integer = true, int decimals = 1, VoidCallback? onChangeEnd}) {
     final shown = integer ? value.round().toString() : value.toStringAsFixed(decimals);
     children.add(InkWell(
-      onTap: () => _editSliderValue(name, value, min, max, onChanged, integer: integer, decimals: decimals),
+      onTap: () => _editSliderValue(name, value, min, max, onChanged,
+          integer: integer, decimals: decimals, onChangeEnd: onChangeEnd),
       borderRadius: BorderRadius.circular(4),
       child: Padding(
         padding: const EdgeInsets.only(left: 8, right: 4),
@@ -289,7 +293,7 @@ extension _EditorToolgrid on _EditorPageState {
                 decorationColor: Colors.white24)),
       ),
     ));
-    children.add(_slider(value, min, max, onChanged));
+    children.add(_slider(value, min, max, onChanged, onChangeEnd: onChangeEnd));
   }
 
   // Like _labeledSlider, but the slider position is LOGARITHMIC across [min,max], so the geometric
@@ -344,7 +348,8 @@ extension _EditorToolgrid on _EditorPageState {
   }
 
   Future<void> _editSliderValue(String name, double value, double min, double max,
-      ValueChanged<double> onChanged, {required bool integer, int decimals = 1}) async {
+      ValueChanged<double> onChanged,
+      {required bool integer, int decimals = 1, VoidCallback? onChangeEnd}) async {
     String fmt(double d) => integer ? d.round().toString() : d.toStringAsFixed(decimals);
     final ctrl = TextEditingController(text: integer ? value.round().toString() : value.toStringAsFixed(2));
     ctrl.selection = TextSelection(baseOffset: 0, extentOffset: ctrl.text.length);
@@ -367,6 +372,7 @@ extension _EditorToolgrid on _EditorPageState {
     );
     if (entered != null && entered.isFinite) {
       onChanged(entered.clamp(min, max).toDouble());
+      onChangeEnd?.call(); // a typed exact value settles like a drag end [battery F5]
     }
   }
 
@@ -462,7 +468,6 @@ extension _EditorToolgrid on _EditorPageState {
       if (mounted) {
         _refreshState();
         _redraw();
-        setState(() {});
       }
     }
   }
@@ -569,7 +574,10 @@ const double _kPowSliderGamma = 2.0;
 class _GearedSlider extends StatefulWidget {
   final double value, min, max;
   final ValueChanged<double> onChanged;
-  const _GearedSlider({required this.value, required this.min, required this.max, required this.onChanged});
+  final VoidCallback? onChangeEnd; // fired once when the drag ends/cancels [battery F5]
+  const _GearedSlider(
+      {required this.value, required this.min, required this.max, required this.onChanged,
+      this.onChangeEnd});
 
   @override
   State<_GearedSlider> createState() => _GearedSliderState();
@@ -595,8 +603,14 @@ class _GearedSliderState extends State<_GearedSlider> {
         setState(() => _dragValue = ((_dragValue ?? v) + dv).clamp(widget.min, widget.max));
         widget.onChanged(_dragValue!);
       },
-      onHorizontalDragEnd: (_) => setState(() => _dragValue = null),
-      onHorizontalDragCancel: () => setState(() => _dragValue = null),
+      onHorizontalDragEnd: (_) {
+        setState(() => _dragValue = null);
+        widget.onChangeEnd?.call();
+      },
+      onHorizontalDragCancel: () {
+        setState(() => _dragValue = null);
+        widget.onChangeEnd?.call();
+      },
       // The Slider is display-only (the GestureDetector owns all input); the no-op onChanged
       // keeps it in the enabled visual state.
       child: AbsorbPointer(

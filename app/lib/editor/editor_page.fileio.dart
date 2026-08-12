@@ -96,7 +96,6 @@ extension _EditorFileIo on _EditorPageState {
     if (mounted) {
       _refreshState();
       _redraw();
-      setState(() {});
     }
   }
 

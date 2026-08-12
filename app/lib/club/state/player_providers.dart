@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/widgets.dart'
+    show AppLifecycleState, WidgetsBinding, WidgetsBindingObserver, visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -8,6 +10,7 @@ import '../models/club_error.dart';
 import '../models/player_device.dart';
 import 'api_providers.dart';
 import 'auth_controller.dart';
+import 'edit_bridge.dart';
 
 /// One of the four optimistically-controllable fields.
 enum PlayerField { isPaused, brightness, rotation, mirror }
@@ -144,17 +147,60 @@ class PlayerState {
       );
 }
 
-/// Polls the player list (~every 15 s while signed in) and owns command + optimistic-overlay
-/// logic. Modeled on `UnreadCountNotifier` (a `Timer.periodic` gated on `isSignedIn`).
-class PlayerController extends StateNotifier<PlayerState> {
+/// Polls the player list (~every 15 s) and owns command + optimistic-overlay logic.
+///
+/// The poll runs only while it can matter: app foreground AND the Club pillar mounted
+/// (the bar lives there). It previously ran unconditionally for the whole session —
+/// ~40 requests per 10-minute editor session, most paying a fresh TLS handshake
+/// (docs/battery/BASELINE.md) — and kept polling while backgrounded. Returning to the
+/// Club pillar or the foreground refreshes immediately, so the bar still reappears
+/// with fresh data. Lifecycle handling mirrors `NotificationsSse`; the gate mirrors
+/// `SyncFrameClock`. [battery F8]
+class PlayerController extends StateNotifier<PlayerState> with WidgetsBindingObserver {
   final Ref ref;
   Timer? _timer;
   String? _sqid;
+  bool _foreground = true;
   final Map<String, int> _pendingTokens = {};
 
   PlayerController(this.ref) : super(const PlayerState(loading: true)) {
+    WidgetsBinding.instance.addObserver(this);
+    final ls = WidgetsBinding.instance.lifecycleState;
+    // Same foreground semantics as SyncFrameClock/NotificationsSse: `inactive` is mere
+    // focus loss on desktop — keep going; stop only when actually hidden.
+    _foreground = ls == null ||
+        ls == AppLifecycleState.resumed ||
+        ls == AppLifecycleState.inactive;
+    ref.listen<AppPillar>(activePillarProvider, (_, pillar) {
+      _updatePolling();
+      if (pillar == AppPillar.club) refresh(); // instant data on pillar return
+    });
     refresh();
-    _timer = Timer.periodic(const Duration(seconds: 15), (_) => refresh());
+    _updatePolling();
+  }
+
+  bool get _shouldPoll => _foreground && ref.read(activePillarProvider) == AppPillar.club;
+
+  @visibleForTesting
+  bool get pollingActive => _timer != null;
+
+  void _updatePolling() {
+    if (_shouldPoll) {
+      _timer ??= Timer.periodic(const Duration(seconds: 15), (_) => refresh());
+    } else {
+      _timer?.cancel();
+      _timer = null;
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final fg =
+        state == AppLifecycleState.resumed || state == AppLifecycleState.inactive;
+    if (fg == _foreground) return;
+    _foreground = fg;
+    if (fg && ref.read(activePillarProvider) == AppPillar.club) refresh();
+    _updatePolling();
   }
 
   PlayerApi get _api => ref.read(playerApiProvider);
@@ -395,6 +441,7 @@ class PlayerController extends StateNotifier<PlayerState> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
     super.dispose();
   }

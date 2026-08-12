@@ -81,15 +81,36 @@ class AutosaveController {
   /// Force the latest state to disk immediately (background / leave / switch / create). Serializes
   /// AND builds metadata synchronously (before any `await`), so it is safe to call right before
   /// `engine.dispose()` without awaiting. Returns once the write completes (callers that can await
-  /// — e.g. switching drawings — should).
+  /// — e.g. switching drawings — should). Byte-identical state skips the write — the same hash
+  /// short-circuit as the periodic cycle, so lifecycle-transition bursts don't rewrite (and
+  /// re-fsync) an unchanged document. [battery F11]
   Future<void> flushNow() {
     final bytes = serialize(); // sync: captured before the first await / engine free
     if (bytes.isEmpty) return Future<void>.value();
+    final h = fnv1a64(bytes);
+    if (_hasSaved && h == _lastHash) return Future<void>.value(); // already on disk
     final meta = buildMeta(); // sync: also captured before any engine free
-    _lastHash = fnv1a64(bytes);
+    _lastHash = h;
     _hasSaved = true;
     return _enqueue(bytes, meta, _lastHash);
   }
+
+  /// Stop the periodic timer without tearing the controller down — the app went to
+  /// background and the pre-pause [flushNow] already captured the state, so ~12 isolate
+  /// wakeups/min would buy nothing. [resume] re-arms it. [battery F12]
+  void pause() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  /// Restart the periodic timer after [pause]. No-op once [stop] has been called.
+  void resume() {
+    if (_stopped) return;
+    start();
+  }
+
+  @visibleForTesting
+  bool get timerActive => _timer != null;
 
   Future<void> _enqueue(Uint8List bytes, DrawingMeta meta, int fnv) {
     _pending = (bytes: bytes, meta: meta, fnv: fnv);

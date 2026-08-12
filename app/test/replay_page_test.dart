@@ -139,6 +139,32 @@ void main() {
     expect(host.disposed, isTrue);
   });
 
+  testWidgets('backgrounding pauses a running sweep; inactive does not', (tester) async {
+    final host = FakeReplayHost(actions: 9000);
+    await pumpReplay(tester, host);
+    expect(find.byIcon(Icons.pause), findsOneWidget, reason: 'auto-play is running');
+
+    // `inactive` (focus loss, permission prompts) keeps the sweep running — house style.
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pump();
+    expect(find.byIcon(Icons.pause), findsOneWidget);
+
+    // `paused` (actually backgrounded) stops the 30 Hz replay loop. While paused the test
+    // binding disables frames, so the icon is asserted after resume — which also checks
+    // that resuming does NOT auto-restart the sweep (resume is manual). [battery F7]
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump(); // settle any in-flight seek
+    final seeksWhilePaused = host.seeks.length;
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(host.seeks.length, seeksWhilePaused, reason: 'no ticks while backgrounded');
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(find.byIcon(Icons.play_arrow), findsOneWidget,
+        reason: 'sweep paused on background and stays paused after resume');
+  });
+
   testWidgets('duration chips: default 30s, switching retunes a RUNNING sweep + persists',
       (tester) async {
     final host = FakeReplayHost(actions: 9000);

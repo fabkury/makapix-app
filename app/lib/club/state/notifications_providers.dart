@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/widgets.dart' show AppLifecycleState, WidgetsBinding;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/club_notification.dart';
@@ -20,6 +21,14 @@ class UnreadCountNotifier extends StateNotifier<int> {
     refresh();
     _timer = Timer.periodic(const Duration(seconds: 60), (_) {
       if (ref.read(notificationsSseProvider)) return; // SSE connected — no poll
+      // Backgrounding tears the SSE stream down, which used to make THIS poll the live
+      // network path exactly while the app was invisible — skip it unless foreground
+      // (`inactive` counts as foreground, the house semantics). [battery F9]
+      final ls = WidgetsBinding.instance.lifecycleState;
+      final foreground = ls == null ||
+          ls == AppLifecycleState.resumed ||
+          ls == AppLifecycleState.inactive;
+      if (!foreground) return;
       refresh();
     });
   }

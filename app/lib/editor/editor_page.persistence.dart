@@ -36,7 +36,6 @@ extension _EditorPersistence on _EditorPageState {
     if (mounted) {
       _refreshState();
       _redraw();
-      setState(() {});
     }
 
     // Consume any pending Club "Edit in Makapix" request only AFTER the real current drawing is
@@ -63,7 +62,6 @@ extension _EditorPersistence on _EditorPageState {
           if (mounted) {
             _refreshState();
             _redraw();
-            setState(() {});
           }
       }
     }
@@ -273,7 +271,6 @@ extension _EditorPersistence on _EditorPageState {
     if (mounted) {
       _refreshState();
       _redraw();
-      setState(() {});
     }
   }
 
@@ -304,7 +301,6 @@ extension _EditorPersistence on _EditorPageState {
         if (mounted) {
           _refreshState();
           _redraw();
-          setState(() {});
         }
         break;
     }

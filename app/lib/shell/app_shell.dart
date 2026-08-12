@@ -46,7 +46,12 @@ class _AppShellState extends ConsumerState<AppShell> {
   int _index = _club; // launch on the social pillar
 
   void _select(int i) {
-    if (_index != i) setState(() => _index = i);
+    if (_index != i) {
+      setState(() => _index = i);
+      // Mirror the mounted pillar for pillar-gated providers (player poll etc.). [battery F8]
+      ref.read(activePillarProvider.notifier).state =
+          i == _editor ? AppPillar.editor : AppPillar.club;
+    }
   }
 
   @override
