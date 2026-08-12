@@ -33,7 +33,7 @@ class ReplayPage extends StatefulWidget {
   State<ReplayPage> createState() => _ReplayPageState();
 }
 
-class _ReplayPageState extends State<ReplayPage> {
+class _ReplayPageState extends State<ReplayPage> with WidgetsBindingObserver {
   final ValueNotifier<ui.Image?> _image = ValueNotifier(null);
   int _imageGen = 0; // staleness stamp: decodes can land out of order (the editor's idiom)
   // The slider thumb in VISIBLE-CHANGE index space (0..visibleCount) — every tick of the
@@ -54,8 +54,21 @@ class _ReplayPageState extends State<ReplayPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this); // pause the sweep on background [battery F7]
     _loadSweepPref();
     _start();
+  }
+
+  // The 30 Hz sweep is a Timer (journal replay through a second Engine + composite + decode
+  // per tick), so unlike a muted Ticker it keeps burning while the app is backgrounded —
+  // pause it. `inactive` stays running (desktop focus loss, the house style —
+  // notifications_sse.dart). The user resumes by pressing play. [battery F7]
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_playing &&
+        (state == AppLifecycleState.paused || state == AppLifecycleState.hidden)) {
+      _pause();
+    }
   }
 
   Future<void> _loadSweepPref() async {
@@ -152,6 +165,7 @@ class _ReplayPageState extends State<ReplayPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _sweep?.cancel();
     _image.value?.dispose();
     _image.dispose();
