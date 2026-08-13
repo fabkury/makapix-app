@@ -44,12 +44,14 @@ extension _EditorTimeline on _EditorPageState {
     final s = _chromeScale;
     final tileMain =
         vertical ? (46.0 * s * th / tw).clamp(28.0 * s, 84.0 * s) + 12 : (46.0 * s * tw / th).clamp(28.0 * s, 84.0 * s);
+    _filmTileExtent = tileMain + 10; // container (tileMain + 6) + 2+2 main-axis margins, both axes
     final strip = GestureDetector(
       // Long-press the empty area near the frames → "Add animation frame" (the thumbnails keep
       // their own long-press menu, which wins as the deeper gesture).
       behavior: HitTestBehavior.translucent,
       onLongPress: _addFrameMenu,
       child: ListView.builder(
+        controller: _filmCtrl,
         scrollDirection: axis,
         itemCount: count,
         padding: vertical ? const EdgeInsets.symmetric(vertical: 4) : const EdgeInsets.symmetric(horizontal: 4),
@@ -114,6 +116,31 @@ extension _EditorTimeline on _EditorPageState {
       color: const Color(0xFF15171A),
       child: vertical ? Column(children: children) : Row(children: children),
     );
+  }
+
+  // Scroll the film-roll just enough that the active frame's tile is fully visible (no-op when it
+  // already is). Called by the Play tool's frame-jump controls (prev/next/Go to…) — deliberately
+  // not by playback ticks or thumbnail taps. Near moves ease briefly; anything farther than one
+  // viewport (the last↔first wrap, a distant Go to…) snaps instantly instead of sweeping the strip.
+  void _ensureActiveFrameVisible() {
+    if (!_filmCtrl.hasClients || _filmTileExtent <= 0) return;
+    final pos = _filmCtrl.position;
+    final start = 4 + engine.activeFrame * _filmTileExtent; // 4 = the strip's leading padding
+    final end = start + _filmTileExtent;
+    double target;
+    if (start < pos.pixels) {
+      target = start;
+    } else if (end > pos.pixels + pos.viewportDimension) {
+      target = end - pos.viewportDimension;
+    } else {
+      return;
+    }
+    target = target.clamp(pos.minScrollExtent, pos.maxScrollExtent).toDouble();
+    if ((target - pos.pixels).abs() > pos.viewportDimension) {
+      _filmCtrl.jumpTo(target);
+    } else {
+      _filmCtrl.animateTo(target, duration: const Duration(milliseconds: 150), curve: Curves.easeOutCubic);
+    }
   }
 
   // Long-pressing the empty film-strip area surfaces the "Add animation frame" option (same action

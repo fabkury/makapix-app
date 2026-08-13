@@ -343,6 +343,11 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // film-roll frame thumbnails (cached, invalidated by per-frame content hash)
   final Map<int, ThumbCache> _frameThumbs = {};
   final Set<int> _thumbInFlight = {};
+  // Film-roll scroll position, shared by the portrait band and the landscape strip (only one is
+  // mounted at a time). _filmTileExtent is the per-tile main-axis extent (tile + margins) stashed
+  // by _buildFilmRoll so _ensureActiveFrameVisible can compute tile offsets without layout queries.
+  final ScrollController _filmCtrl = ScrollController();
+  double _filmTileExtent = 0;
   // layers film-strip thumbnails, keyed by (frame,layer) and invalidated by per-layer content hash
   final Map<int, ThumbCache> _layerThumbs = {};
   final Set<int> _layerThumbInFlight = {};
@@ -549,6 +554,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
     _imageVN.value?.dispose(); // release the composited canvas image before the notifier [F-10]
     _imageVN.dispose();
     _overlayVN.dispose();
+    _filmCtrl.dispose();
     if (_engineReady) engine.dispose();
     super.dispose();
   }

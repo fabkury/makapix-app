@@ -966,6 +966,7 @@ extension _EditorEngine on _EditorPageState {
     final next = ((engine.activeFrame + delta) % n + n) % n;
     _clearLayerGroup(); // the move-group indexed the previous frame's layer stack
     _act('SetActiveFrame($next)');
+    _ensureActiveFrameVisible();
   }
 
   // "Go to…" — prompt for a 1-based frame number and jump to it. Auto-pauses playback first; an
@@ -996,6 +997,7 @@ extension _EditorEngine on _EditorPageState {
     final target = (entered - 1).clamp(0, n - 1);
     if (target != engine.activeFrame) _clearLayerGroup();
     _act('SetActiveFrame($target)');
+    _ensureActiveFrameVisible();
   }
 
 }
