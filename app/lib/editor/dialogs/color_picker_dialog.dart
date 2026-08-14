@@ -2,6 +2,19 @@ import 'package:flutter/material.dart';
 
 import '../widgets/painters.dart';
 
+// Picker-area geometry. The square takes whatever width fits beside the fixed-width hue
+// ramp, capped at the historical 246 (the 280-wide desktop content) and floored so a
+// degenerate window still shows something grabbable. Sizing is MediaQuery-driven and
+// computed in build(): AlertDialog wraps its content in IntrinsicWidth, so a
+// LayoutBuilder there would throw, while a tight SizedBox answers intrinsics without
+// consulting its child.
+const double _kHueW = 26, _kGap = 8;
+const double _kMaxSq = 246, _kMinSq = 96;
+// Pinned on the AlertDialog so the width math and the dialog can never disagree, no
+// matter what Material's defaults do.
+const EdgeInsets _kInsetPadding = EdgeInsets.symmetric(horizontal: 40, vertical: 24);
+const EdgeInsets _kContentPadPortrait = EdgeInsets.fromLTRB(24, 20, 24, 24);
+
 /// The traditional square+hue color picker: a Saturation×Value square with a hue ramp beside it,
 /// an alpha slider, and a hex field. Dragging on the square or ramp updates the color live.
 class ColorPickerDialog extends StatefulWidget {
@@ -189,15 +202,137 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
     _syncFromColor();
   }
 
+  // The saturation×value square.
+  //
+  // Per-AXIS drag recognizers, NOT pan: inside the SingleChildScrollView,
+  // a pan recognizer loses vertical drags to the scrollable's own
+  // vertical-drag recognizer — and iOS's bouncing physics accepts drags
+  // even when the content fits (rubber-band), which made the picker
+  // nearly ungrabbable on iPhones while Android's clamping physics
+  // (refusing drags at zero extent) masked the bug. An innermost
+  // same-axis recognizer wins the arena (the nested-scrollable rule).
+  // Every update handler reads the full 2-D localPosition, so whichever
+  // axis claims the gesture, the color still tracks both axes.
+  Widget _buildSvSquare(double sq) => SizedBox(
+    width: sq,
+    height: sq,
+    child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onVerticalDragDown: (d) => _onSv(d.localPosition, Size(sq, sq)),
+      onVerticalDragUpdate: (d) => _onSv(d.localPosition, Size(sq, sq)),
+      onHorizontalDragUpdate: (d) => _onSv(d.localPosition, Size(sq, sq)),
+      child: CustomPaint(
+        key: const Key('pickerSvSquare'),
+        painter: _SvPainter(h, s, v),
+        size: Size(sq, sq),
+      ),
+    ),
+  );
+
+  // The hue ramp. Same recognizer set as the square: the horizontal recognizer never
+  // competes with the (vertical) scrollable, and it keeps a sideways-starting drag
+  // tracking the hue instead of going to nobody.
+  Widget _buildHueRamp(double sq) => SizedBox(
+    width: _kHueW,
+    height: sq,
+    child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onVerticalDragDown: (d) => _onHue(d.localPosition, sq),
+      onVerticalDragUpdate: (d) => _onHue(d.localPosition, sq),
+      onHorizontalDragUpdate: (d) => _onHue(d.localPosition, sq),
+      child: CustomPaint(
+        key: const Key('pickerHueRamp'),
+        painter: _HuePainter(h),
+        size: Size(_kHueW, sq),
+      ),
+    ),
+  );
+
+  Widget _buildPickerArea(double sq) => Row(
+    children: [
+      _buildSvSquare(sq),
+      const SizedBox(width: _kGap),
+      _buildHueRamp(sq),
+    ],
+  );
+
+  Widget _buildAlphaRow() => Row(
+    children: [
+      const SizedBox(width: 16, child: Text('A')),
+      Expanded(
+        child: Slider(
+          value: a.clamp(0, 255),
+          max: 255,
+          onChanged: (x) {
+            setState(() => a = x);
+            _syncFromColor();
+          },
+        ),
+      ),
+      SizedBox(
+        width: 48,
+        child: TextField(
+          controller: _aCtrl,
+          keyboardType: TextInputType.number,
+          textAlign: TextAlign.center,
+          decoration: const InputDecoration(
+            isDense: true,
+            border: OutlineInputBorder(),
+            contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          ),
+          onChanged: (_) => _applyAlpha(),
+        ),
+      ),
+    ],
+  );
+
+  Widget _buildHexRow() => Row(
+    children: [
+      const Text('#'),
+      const SizedBox(width: 6),
+      Expanded(
+        child: TextField(
+          controller: _hexCtrl,
+          decoration: const InputDecoration(
+            isDense: true,
+            border: OutlineInputBorder(),
+          ),
+          textCapitalization: TextCapitalization.characters,
+          onSubmitted: _applyHex,
+        ),
+      ),
+    ],
+  );
+
+  List<Widget> _dialogActions() => [
+    TextButton(
+      onPressed: () => Navigator.pop(context),
+      child: const Text('Cancel'),
+    ),
+    FilledButton(
+      onPressed: () => Navigator.pop(context, _color),
+      child: const Text('OK'),
+    ),
+  ];
+
   @override
   Widget build(BuildContext context) {
-    // Square fills the 280-wide content beside the hue ramp (280 - 8 gap - hueW), no empty space.
-    const double hueW = 26, sq = 280 - 8 - hueW;
+    // Size the square to what actually fits: on narrow phones (iPhone 12: 390 logical
+    // px wide) the dialog insets + content padding leave less than the historical 280,
+    // and a fixed-width row overflows — overflow still paints but is NOT hit-testable,
+    // which left the hue ramp's right side tap-dead on iOS.
+    final availW = MediaQuery.sizeOf(context).width -
+        _kInsetPadding.horizontal -
+        _kContentPadPortrait.horizontal;
+    final sq = (availW - _kGap - _kHueW).clamp(_kMinSq, _kMaxSq).toDouble();
     return AlertDialog(
+      insetPadding: _kInsetPadding,
+      contentPadding: _kContentPadPortrait,
       title: Row(
         children: [
-          const Text('Pick color'),
-          const Spacer(),
+          // Flexible, not Spacer-separated: on narrow phones the dialog can be tighter
+          // than the title's natural width, and the text must yield rather than overflow.
+          const Expanded(child: Text('Pick color', overflow: TextOverflow.ellipsis)),
           // Same dual indicator as the row-2 swatches: a translucent pick splits along the
           // anti-diagonal (opaque top-left / real alpha over the transparency checker
           // bottom-right), showing both its hue and how it will actually composite.
@@ -205,105 +340,16 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
         ],
       ),
       content: SizedBox(
-        width: 280,
+        width: sq + _kGap + _kHueW,
         // Scrollable so the dialog still works when the on-screen keyboard shrinks the space.
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                children: [
-                  SizedBox(
-                    width: sq,
-                    height: sq,
-                    // Per-AXIS drag recognizers, NOT pan: inside the SingleChildScrollView,
-                    // a pan recognizer loses vertical drags to the scrollable's own
-                    // vertical-drag recognizer — and iOS's bouncing physics accepts drags
-                    // even when the content fits (rubber-band), which made the picker
-                    // nearly ungrabbable on iPhones while Android's clamping physics
-                    // (refusing drags at zero extent) masked the bug. An innermost
-                    // same-axis recognizer wins the arena (the nested-scrollable rule).
-                    // Every update handler reads the full 2-D localPosition, so whichever
-                    // axis claims the gesture, the color still tracks both axes.
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onVerticalDragDown: (d) =>
-                          _onSv(d.localPosition, const Size(sq, sq)),
-                      onVerticalDragUpdate: (d) =>
-                          _onSv(d.localPosition, const Size(sq, sq)),
-                      onHorizontalDragUpdate: (d) =>
-                          _onSv(d.localPosition, const Size(sq, sq)),
-                      child: CustomPaint(
-                        key: const Key('pickerSvSquare'),
-                        painter: _SvPainter(h, s, v),
-                        size: const Size(sq, sq),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: hueW,
-                    height: sq,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onVerticalDragDown: (d) => _onHue(d.localPosition, sq),
-                      onVerticalDragUpdate: (d) => _onHue(d.localPosition, sq),
-                      child: CustomPaint(
-                        key: const Key('pickerHueRamp'),
-                        painter: _HuePainter(h),
-                        size: const Size(hueW, sq),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+              _buildPickerArea(sq),
               const SizedBox(height: 10),
-              Row(
-                children: [
-                  const SizedBox(width: 16, child: Text('A')),
-                  Expanded(
-                    child: Slider(
-                      value: a.clamp(0, 255),
-                      max: 255,
-                      onChanged: (x) {
-                        setState(() => a = x);
-                        _syncFromColor();
-                      },
-                    ),
-                  ),
-                  SizedBox(
-                    width: 48,
-                    child: TextField(
-                      controller: _aCtrl,
-                      keyboardType: TextInputType.number,
-                      textAlign: TextAlign.center,
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                      ),
-                      onChanged: (_) => _applyAlpha(),
-                    ),
-                  ),
-                ],
-              ),
-              Row(
-                children: [
-                  const Text('#'),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: TextField(
-                      controller: _hexCtrl,
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        border: OutlineInputBorder(),
-                      ),
-                      textCapitalization: TextCapitalization.characters,
-                      onSubmitted: _applyHex,
-                    ),
-                  ),
-                ],
-              ),
+              _buildAlphaRow(),
+              _buildHexRow(),
               const SizedBox(height: 8),
               // Type RGB (0–255) or HSV (H 0–360, S/V 0–100) directly; updates the color live.
               Row(
@@ -339,16 +385,7 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
           ),
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, _color),
-          child: const Text('OK'),
-        ),
-      ],
+      actions: _dialogActions(),
     );
   }
 }

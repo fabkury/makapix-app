@@ -13,11 +13,23 @@ void main() {
         home: const Material(child: ColorPickerDialog(initial: Color(0xFFFF0000))),
       );
 
-  testWidgets('hue ramp tracks a full vertical drag under iOS bouncing physics', (tester) async {
+  // The picker sizes itself from MediaQuery, so every test pins the surface to make the
+  // geometry deterministic. 430×932 portrait leaves 302px inside the dialog paddings, so
+  // the square caps at its 246px maximum — the same 26×246 ramp the original fixed-width
+  // dialog had, keeping the numeric expectations below valid.
+  Future<void> pumpAt(WidgetTester tester, Size size) async {
+    tester.view.physicalSize = size;
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(host());
+  }
+
+  testWidgets('hue ramp tracks a full vertical drag under iOS bouncing physics', (tester) async {
+    await pumpAt(tester, const Size(430, 932));
     final ramp = find.byKey(const Key('pickerHueRamp'));
     expect(ramp, findsOneWidget);
-    // Ramp is 26×246 (sq = 280 − 8 − 26). Drag from its center (y=123 → hue 180°, cyan)
+    // Ramp is 26×246 at this surface. Drag from its center (y=123 → hue 180°, cyan)
     // down 120 px (y=243 → hue 243/246·360 ≈ 356°). The BROKEN version kept cyan: the
     // down landed but the scrollable stole the updates.
     await tester.drag(ramp, const Offset(0, 120), warnIfMissed: false);
@@ -27,7 +39,7 @@ void main() {
   });
 
   testWidgets('SV square tracks a diagonal drag under iOS bouncing physics', (tester) async {
-    await tester.pumpWidget(host());
+    await pumpAt(tester, const Size(430, 932));
     final sq = find.byKey(const Key('pickerSvSquare'));
     expect(sq, findsOneWidget);
     // From the center (S=50, V=50) drag toward the top-right corner: S rises, V rises.
@@ -38,9 +50,22 @@ void main() {
   });
 
   testWidgets('a plain tap still sets the hue immediately (the down handler)', (tester) async {
-    await tester.pumpWidget(host());
+    await pumpAt(tester, const Size(430, 932));
     await tester.tapAt(tester.getCenter(find.byKey(const Key('pickerHueRamp'))));
     await tester.pump();
     expect(find.text('180'), findsOneWidget, reason: 'tap at ramp center = 180°');
+  });
+
+  testWidgets('the whole ramp is tappable at iPhone 12 portrait width', (tester) async {
+    // Regression: with the fixed 280px content, a 390px-wide screen left the picker row
+    // horizontally overflowed — painted but NOT hit-testable — so taps anywhere but the
+    // ramp's left sliver did nothing on iOS. The row must now fit entirely on screen.
+    await pumpAt(tester, const Size(390, 844));
+    final rect = tester.getRect(find.byKey(const Key('pickerHueRamp')));
+    expect(rect.width, 26, reason: 'the ramp keeps its full width');
+    expect(rect.right, lessThan(390), reason: 'the ramp sits entirely on screen');
+    await tester.tapAt(Offset(rect.right - 1, rect.center.dy));
+    await tester.pump();
+    expect(find.text('180'), findsOneWidget, reason: 'a tap at the ramp right edge lands');
   });
 }
