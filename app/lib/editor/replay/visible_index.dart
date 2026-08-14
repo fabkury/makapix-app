@@ -44,7 +44,7 @@ const Set<String> _kAlwaysVisible = {
 
 /// Engine tools whose pointer contact paints immediately (down + every move visible).
 const Set<String> _kStampTools = {
-  'Pencil', 'Brush', 'Airbrush', 'Eraser', 'Bucket', 'Dodge', 'Burn', 'Move',
+  'Pencil', 'Brush', 'Airbrush', 'AirbrushSoft', 'AirbrushMist', 'Eraser', 'Bucket', 'Dodge', 'Burn', 'Move',
 };
 
 /// Engine tools that rasterize on pointer-UP (the direct-gesture path scripts use).

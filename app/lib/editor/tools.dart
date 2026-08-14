@@ -96,7 +96,7 @@ String selectShapeEngineTool(String kind) => switch (kind) {
 const toolTips = <String, String>{
   'Pencil': 'Drag to draw hard pixels in the primary color.',
   'Brush': 'Drag to paint, blending onto existing pixels.',
-  'Airbrush': 'Drag to spray the primary color. Set size and intensity.',
+  'Airbrush': 'Drag to spray the primary color. Dots, Soft, and Mist lay different paint.',
   'Eraser': 'Drag to erase pixels to transparent.',
   'Bucket': 'Tap an area to flood-fill. Threshold sets color tolerance.',
   'Gradient': 'Drag to set the gradient fill.',

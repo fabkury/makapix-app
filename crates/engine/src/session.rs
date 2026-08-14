@@ -1352,7 +1352,7 @@ impl Session {
                 ToolKind::Pencil => self.stamp_active(p, PaintMode::Replace, self.settings.primary),
                 ToolKind::Brush => self.stamp_active(p, PaintMode::Over, self.settings.primary),
                 ToolKind::Eraser => self.stamp_active(p, PaintMode::Erase, Rgba8::TRANSPARENT),
-                ToolKind::Airbrush => self.airbrush_active(p),
+                t if t.is_airbrush() => self.airbrush_active(p),
                 ToolKind::Dodge => self.dodge_burn_active(p, self.dodge_dv(true)),
                 ToolKind::Burn => self.dodge_burn_active(p, self.dodge_dv(false)),
                 ToolKind::Bucket => self.flood_fill_at(p),
@@ -1478,7 +1478,7 @@ impl Session {
                 ToolKind::Pencil => self.stroke_active(last, p, PaintMode::Replace, self.settings.primary),
                 ToolKind::Brush => self.brush_stroke_spaced(last, p, PaintMode::Over, self.settings.primary),
                 ToolKind::Eraser => self.stroke_active(last, p, PaintMode::Erase, Rgba8::TRANSPARENT),
-                ToolKind::Airbrush => self.airbrush_stroke_spaced(last, p),
+                t if t.is_airbrush() => self.airbrush_stroke_spaced(last, p),
                 ToolKind::Dodge => self.dodge_burn_stroke_spaced(last, p, self.dodge_dv(true)),
                 ToolKind::Burn => self.dodge_burn_stroke_spaced(last, p, self.dodge_dv(false)),
                 _ => {}
@@ -1802,12 +1802,18 @@ impl Session {
             pp.drain(0..keep);
         }
     }
+    /// One dab of whichever Airbrush mode is active (the family shares every other path).
     fn airbrush_active(&mut self, p: Point) {
         let (size, intensity, color) = (self.settings.brush_size, self.settings.intensity, self.settings.primary);
         let clip = self.paint_clip();
         let sel = self.selection_arc(); // [C-2]
+        let kind = self.tool;
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-        tool::airbrush_dab(buf, sel.as_deref(), clip, p, size, intensity, color, &mut self.rng);
+        match kind {
+            ToolKind::AirbrushSoft => tool::soft_dab(buf, sel.as_deref(), clip, p, size, intensity, color),
+            ToolKind::AirbrushMist => tool::mist_dab(buf, sel.as_deref(), clip, p, size, intensity, color, &mut self.rng),
+            _ => tool::airbrush_dab(buf, sel.as_deref(), clip, p, size, intensity, color, &mut self.rng),
+        }
     }
 
     /// Distance (canvas px) between successive Brush/Airbrush/Dodge/Burn stamps: spacing% of the
@@ -1940,7 +1946,7 @@ impl Session {
                 }
                 // Brush/Airbrush/Dodge/Burn honor the spacing setting; Pencil/Eraser stay continuous.
                 ToolKind::Brush => self.brush_stroke_spaced(os, cs, PaintMode::Over, self.settings.primary),
-                ToolKind::Airbrush => self.airbrush_stroke_spaced(os, cs),
+                t if t.is_airbrush() => self.airbrush_stroke_spaced(os, cs),
                 // Dodge/Burn lighten/darken a stamp at each spaced step (as on the pointer path).
                 ToolKind::Dodge | ToolKind::Burn => {
                     self.dodge_burn_stroke_spaced(os, cs, self.dodge_dv(self.tool == ToolKind::Dodge));
@@ -1974,7 +1980,7 @@ impl Session {
         } else {
             match self.cursor_paint() {
                 Some((mode, color)) => self.stamp_active(p, mode, color),
-                None if self.tool == ToolKind::Airbrush => self.airbrush_active(p),
+                None if self.tool.is_airbrush() => self.airbrush_active(p),
                 None if matches!(self.tool, ToolKind::Dodge | ToolKind::Burn) => {
                     self.dodge_burn_active(p, self.dodge_dv(self.tool == ToolKind::Dodge));
                 }
@@ -3807,6 +3813,37 @@ mod tests {
         assert!(s.doc.undo()); // the drag
         assert!(s.doc.undo()); // the Hold dab
         assert!(!s.doc.undo(), "dab + drag are exactly two undo steps");
+    }
+
+    #[test]
+    fn airbrush_family_paints_through_dsl_strokes() {
+        // The two new modes select by DSL name and paint translucent pixels via the shared
+        // spray paths (pointer stroke + precision dab). [ADR 0006]
+        for kind in ["AirbrushSoft", "AirbrushMist"] {
+            let mut s = Session::new(16, 16);
+            s.run_script("SetPrimaryColor(#FFFFFFFF); SetIntensity(120); SetBrushSize(4)").unwrap();
+            s.run_script(&format!("SelectTool({kind})")).unwrap();
+            s.run_script("Stroke(8,8 12,8)").unwrap();
+            let mut max_a = 0u8;
+            for y in 0..16 {
+                for x in 0..16 {
+                    max_a = max_a.max(s.pixel(0, 0, x, y).a);
+                }
+            }
+            assert!(max_a > 0, "{kind} stroke painted nothing");
+            assert!(max_a < 255, "{kind} must lay translucent paint, got alpha {max_a}");
+            assert!(s.doc.undo(), "{kind} stroke commits one undo step");
+            // The precision-row dab (AirbrushCursor) sprays this mode too (Mist is stochastic,
+            // so scan for paint rather than probing one pixel).
+            s.run_script("SetCursor(8,8); AirbrushCursor()").unwrap();
+            let mut dab_a = 0u8;
+            for y in 0..16 {
+                for x in 0..16 {
+                    dab_a = dab_a.max(s.pixel(0, 0, x, y).a);
+                }
+            }
+            assert!(dab_a > 0 && dab_a < 255, "{kind} reticle dab should paint translucent pixels, got max alpha {dab_a}");
+        }
     }
 
     #[test]

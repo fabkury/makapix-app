@@ -526,6 +526,9 @@ extension _EditorEngine on _EditorPageState {
     }
     if (t == 'Shape') {
       _send('SelectTool($_shapeKind)'); // 'Shape' is a shell grouping; engine draws by ToolKind
+    } else if (t == 'Airbrush') {
+      // 'Airbrush' is a shell grouping over the engine's Airbrush/AirbrushSoft/AirbrushMist.
+      _send('SelectTool($_airbrushMode)');
     } else if (t == 'SelectShape') {
       // 'SelectShape' is a shell grouping over the engine's SelectRect/SelectEllipse/SelectFree.
       _send('SelectTool(${selectShapeEngineTool(_selShapeKind)})');
@@ -570,6 +573,7 @@ extension _EditorEngine on _EditorPageState {
   String? get _engineToolName {
     if (_transformTools.contains(_tool) || _tool == 'PlayPause' || _tool == 'Ruler') return null;
     if (_tool == 'Shape') return _shapeKind;
+    if (_tool == 'Airbrush') return _airbrushMode;
     if (_tool == 'SelectShape') return selectShapeEngineTool(_selShapeKind);
     return _tool;
   }

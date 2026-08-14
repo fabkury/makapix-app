@@ -390,6 +390,9 @@ class _EditorPageState extends ConsumerState<EditorPage>
   bool get _isDraftTool => _tool == 'Line' || _tool == 'Shape' || _tool == 'Gradient';
   // Which shape the unified "Shape" tool draws (Ellipse/Triangle/Rectangle); maps to a ToolKind.
   String _shapeKind = 'Rectangle';
+  // Which Airbrush mode is active (Dots/Soft/Mist); stored as the engine ToolKind name the
+  // shell grouping resolves to ('Airbrush' = Dots, for journal back-compat). [ADR 0006]
+  String _airbrushMode = 'Airbrush';
   bool get _hasShapeDraft => _shapeA != null && _shapeB != null;
 
   // The unified "Select" tool's Rect/Oval DRAFT flow: drag → adjust reticles → Commit, like the

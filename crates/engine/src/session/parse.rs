@@ -417,6 +417,8 @@ fn parse_tool(s: &str) -> Result<ToolKind, String> {
         "PrecisionPencil" => Pencil,
         "Brush" => Brush,
         "Airbrush" => Airbrush,
+        "AirbrushSoft" => AirbrushSoft,
+        "AirbrushMist" => AirbrushMist,
         "Eraser" => Eraser,
         "Bucket" => Bucket,
         "Gradient" => Gradient,

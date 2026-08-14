@@ -82,7 +82,7 @@ Gate B are deliberately parked with pickup notes in the RECOMMENDATIONS ledger.
 |---|---|---|
 | Up to 1024 frames / 64 layers | ✅ | enforced caps |
 | 128 undo/redo per frame + auto compaction | ✅ | global timeline, per-frame cap, absolute tile patches |
-| Pencil / Paintbrush / Airbrush (configurable size) | ✅ | airbrush seeded & reproducible |
+| Pencil / Paintbrush / Airbrush (configurable size) | ✅ | airbrush seeded & reproducible; Dots / Soft / Mist modes (hard spray / smoothstep-falloff stamp / center-weighted translucent specks) |
 | **Precision mode** (off-finger reticle, act-by-button) | ✅ | a per-tool toggle on Pencil/Brush/Airbrush/Eraser/Dodge/Burn/Eyedropper/Select Color; drag moves a ✛ reticle off the finger; arrows nudge 1px; DRAW/SPRAY = one dab, PICK = color pick, SELECT = color selection at the reticle; HOLD toggle = continuous stroke/spray while dragging (paint tools only). Reticle frames the target pixel without covering it |
 | Bucket fill (contiguous / discontiguous, threshold) | ✅ | flood oracle-tested |
 | Eraser (square / round, size) | ✅ | |

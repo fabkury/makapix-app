@@ -212,6 +212,15 @@ extension _EditorControls on _EditorPageState {
         });
       }));
     }
+    if (_tool == 'Airbrush') {
+      // Airbrush mode (Dots / Soft / Mist): three engine ToolKinds behind one tile, like the
+      // Shape kinds. 'Airbrush' stays the Dots kind name for journal back-compat. [ADR 0006]
+      const modes = ['Airbrush', 'AirbrushSoft', 'AirbrushMist'];
+      children.add(_toggle(const ['Dots', 'Soft', 'Mist'], modes.indexOf(_airbrushMode), (i) {
+        setState(() => _airbrushMode = modes[i]);
+        _send('SelectTool($_airbrushMode)'); // the engine draws by ToolKind; the shell groups them
+      }));
+    }
     // Brush footprint SIZE: every tool whose mark is a stamp/spray of `brush_size` — i.e. the
     // pixel/paint tools, the airbrush spray radius, and dodge/burn. The figure tools (Line/Rect/
     // Ellipse) ignore brush_size (they use line_width + fill), so they're deliberately excluded.
