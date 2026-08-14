@@ -22,6 +22,7 @@ import '../state/pmd_providers.dart';
 import '../state/post_providers.dart';
 import '../state/publish_providers.dart';
 import 'edit_post_details_page.dart';
+import 'lineage_page.dart';
 import 'hashtag_feed_page.dart';
 import 'post_stats_page.dart';
 import 'profile_page.dart';
@@ -465,6 +466,9 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
 
   /// Discreet public-lineage line (0002 §2): the Remix badge when this post has
   /// Parents, and its visible-remixes count. Absent for lineage-less posts.
+  /// Tapping opens the Lineage page (originals + remixes) — the page itself
+  /// carries the sign-in prompt for signed-out viewers (the lists are
+  /// login-gated; this line stays public).
   Widget? _remixLine(Post post) {
     if (post.parentCount == 0 && post.childCount == 0) return null;
     final parts = <String>[
@@ -473,11 +477,22 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
     ];
     return Padding(
       padding: const EdgeInsets.only(top: 4),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        const Icon(Icons.alt_route, size: 14, color: Colors.white38),
-        const SizedBox(width: 5),
-        Text(parts.join('  ·  '), style: const TextStyle(fontSize: 12, color: Colors.white38)),
-      ]),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(4),
+        onTap: () => Navigator.push(
+            context, MaterialPageRoute(builder: (_) => LineagePage(post: post))),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.alt_route, size: 14, color: Colors.white38),
+            const SizedBox(width: 5),
+            Text(parts.join('  ·  '),
+                style: const TextStyle(fontSize: 12, color: Colors.white38)),
+            const SizedBox(width: 3),
+            const Icon(Icons.chevron_right, size: 14, color: Colors.white38),
+          ]),
+        ),
+      ),
     );
   }
 

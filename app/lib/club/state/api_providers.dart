@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../api/auth_api.dart';
 import '../api/edit_api.dart';
 import '../api/feed_api.dart';
+import '../api/lineage_api.dart';
 import '../api/mkpx_api.dart';
 import '../api/moderation_api.dart';
 import '../api/notifications_api.dart';
@@ -28,6 +29,8 @@ final notificationsApiProvider =
 final playerApiProvider = Provider<PlayerApi>((ref) => PlayerApi(ref.watch(clubApiClientProvider)));
 final editApiProvider = Provider<EditApi>((ref) => EditApi());
 final mkpxApiProvider = Provider<MkpxApi>((ref) => MkpxApi(ref.watch(clubApiClientProvider)));
+final lineageApiProvider =
+    Provider<LineageApi>((ref) => LineageApi(ref.watch(clubApiClientProvider)));
 final settingsApiProvider =
     Provider<SettingsApi>((ref) => SettingsApi(ref.watch(clubApiClientProvider)));
 final statsApiProvider =

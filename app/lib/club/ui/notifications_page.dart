@@ -130,6 +130,11 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
         return '$who liked your comment';
       case 'follow':
         return '$who started following you';
+      case 'remix':
+        // Content fields are denormalized from the CHILD post (the remix), so
+        // contentTitle names the remix and the tile deep-links to it.
+        return '$who published a remix of your artwork'
+            '${x.contentTitle != null ? ': "${x.contentTitle}"' : ''}';
       case 'post_promoted':
         return 'Your post was promoted${x.contentTitle != null ? ': ${x.contentTitle}' : ''}';
       case 'mod_hashtags_updated':

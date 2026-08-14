@@ -17,6 +17,7 @@ import 'auth/forgot_password_page.dart';
 import 'auth/verify_email_page.dart';
 import 'edit_profile_page.dart';
 import 'my_players_page.dart';
+import 'my_remixes_page.dart';
 
 /// Reachable from the editor AppBar. Renders the sign-in form or the signed-in
 /// account view based on [authControllerProvider]. The app is not login-gated;
@@ -286,6 +287,13 @@ class _AccountView extends ConsumerWidget {
               context, MaterialPageRoute(builder: (_) => const MyPlayersPage())),
           icon: const Icon(Icons.cast_outlined),
           label: const Text('My Players'),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: () => Navigator.push(
+              context, MaterialPageRoute(builder: (_) => const MyRemixesPage())),
+          icon: const Icon(Icons.alt_route),
+          label: const Text('Remixes of my works'),
         ),
         const SizedBox(height: 12),
         OutlinedButton.icon(
