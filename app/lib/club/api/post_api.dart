@@ -56,16 +56,20 @@ class PostApi {
 
   /// Owner metadata edit (`PATCH /post/{id}`). [hashtags] is the artist-controlled
   /// list only — the server normalizes it and re-merges mod-owned tags (D10).
+  /// [remixable] toggles the public remix permission; null leaves it unchanged.
+  /// `true` on an ND-licensed post → 422 `remixable_conflicts_with_license`.
   /// Returns the updated post.
   Future<Post> update(int postId,
           {required String title,
           required String description,
-          required List<String> hashtags}) =>
+          required List<String> hashtags,
+          bool? remixable}) =>
       client.guard(() async {
         final resp = await client.dio.patch('/post/$postId', data: {
           'title': title,
           'description': description,
           'hashtags': hashtags,
+          'remixable': ?remixable,
         });
         return Post.fromJson((resp.data as Map).cast<String, dynamic>());
       });

@@ -1,11 +1,16 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
+import '../models/license_option.dart';
 import '../models/post.dart';
 import '../models/server_config.dart';
 import '../publish/conformance.dart';
+import '../publish/provenance_fields.dart';
 import '../publish/publish_draft.dart';
 import '../state/auth_controller.dart';
 import '../state/publish_providers.dart';
@@ -33,6 +38,13 @@ class _PublishPageState extends ConsumerState<PublishPage> {
   // Sharing the layers file is opt-out: editor publishes default to attaching it. _submit
   // re-checks the capability/size gates so the hidden-tile cases can't send it anyway.
   bool _shareLayers = true;
+  // The owner's Remixable choice (public, server default true). An ND license forces it off
+  // (server rule L5: remixable=true + ND license is a 422) — the toggle disables then.
+  bool _remixable = true;
+  // Set only by the user's explicit choice in the lineage-refusal dialog (a declared parent is
+  // gone or no longer Remixable): retry the publish without `remixed_from`. Never automatic.
+  bool _stripRemixClaim = false;
+  String _appVersion = '';
 
   /// The draft starts as [widget.draft] but the scale-to-nearest remedy can
   /// replace it (new bytes/dimensions/format), so the page reads this copy.
@@ -49,6 +61,10 @@ class _PublishPageState extends ConsumerState<PublishPage> {
     }
     // Clear any prior success/error from a previous publish.
     WidgetsBinding.instance.addPostFrameCallback((_) => ref.read(publishControllerProvider.notifier).reset());
+    // For the provenance declaration (client=app/<version>, editor_version).
+    PackageInfo.fromPlatform().then((info) {
+      if (mounted) setState(() => _appVersion = info.version);
+    }).catchError((_) {/* provenance stays version-less — never blocks publishing */});
   }
 
   @override
@@ -163,6 +179,7 @@ class _PublishPageState extends ConsumerState<PublishPage> {
         ),
         const SizedBox(height: 12),
         _licenseDropdown(),
+        _remixableTile(uploading),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('Post as hidden'),
@@ -177,6 +194,7 @@ class _PublishPageState extends ConsumerState<PublishPage> {
             child: Text('Your post will await moderator approval before appearing publicly.',
                 style: TextStyle(fontSize: 12, color: Colors.amberAccent)),
           ),
+        ..._remixDeclarationNote(),
         if (pub.status == PublishStatus.error && pub.error != null)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
@@ -211,11 +229,118 @@ class _PublishPageState extends ConsumerState<PublishPage> {
     );
   }
 
-  void _replace() {
+  /// The currently selected license, if any.
+  LicenseOption? _selectedLicense() {
+    final licenses = ref.read(licensesProvider).valueOrNull ?? const [];
+    for (final l in licenses) {
+      if (l.id == _licenseId) return l;
+    }
+    return null;
+  }
+
+  /// The upload device's form factor for `source_details.device_type`.
+  String _deviceType() {
+    if (Platform.isAndroid || Platform.isIOS) {
+      return isTabletish(context) ? 'tablet' : 'mobile';
+    }
+    return 'desktop';
+  }
+
+  /// "Allow remixes": the public per-post permission (server default true). An ND license
+  /// forces it off — the server would 422 the contradiction (`remixable_conflicts_with_license`).
+  Widget _remixableTile(bool uploading) {
+    final nd = _selectedLicense()?.isNoDerivatives ?? false;
+    final effective = !nd && _remixable;
+    return SwitchListTile(
+      contentPadding: EdgeInsets.zero,
+      title: const Text('Allow remixes'),
+      subtitle: Text(
+        nd
+            ? 'NoDerivatives licenses don\'t allow remixes.'
+            : 'Others can open this artwork in the editor and publish remixes, '
+                'credited to you in its public lineage. You can change this later.',
+        style: const TextStyle(fontSize: 12),
+      ),
+      value: effective,
+      onChanged: (uploading || nd) ? null : (v) => setState(() => _remixable = v),
+    );
+  }
+
+  /// Transparency line when this publish will declare public lineage.
+  List<Widget> _remixDeclarationNote() {
+    final parents = _draft.provenance?.parents ?? const [];
+    if (parents.isEmpty || _stripRemixClaim) return const [];
+    final src = _draft.source;
+    return [
+      Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text(
+          src != null
+              ? 'Will be published as a remix of "${src.title}" by @${src.ownerHandle} — the link is public and permanent.'
+              : 'Will be published as a remix (${parents.length} parent${parents.length == 1 ? '' : 's'}) — the link is public and permanent.',
+          style: const TextStyle(fontSize: 12, color: Colors.white54),
+        ),
+      ),
+    ];
+  }
+
+  Map<String, String> _provenanceFields({required bool replacing}) => provenanceFormFields(
+        appVersion: _appVersion,
+        platform: Platform.operatingSystem,
+        deviceType: _deviceType(),
+        provenance: _draft.provenance,
+        replacedSqid: replacing ? _draft.source?.sqid : null,
+        // The Remixable toggle belongs to upload (and later PATCH) — replace ignores it. An ND
+        // license omits the field: the server applies its own effective default (false).
+        remixable: replacing || (_selectedLicense()?.isNoDerivatives ?? false) ? null : _remixable,
+        declareParents: !_stripRemixClaim,
+      );
+
+  /// After an upload/replace refused with 422 `remix_not_allowed` / `parent_not_found`: surface
+  /// it and let the USER decide whether to publish without the remix declaration (the server
+  /// asked that clients never strip it silently).
+  Future<void> _offerStripRemixClaim({required bool replacing}) async {
+    final pub = ref.read(publishControllerProvider);
+    final gone = pub.errorCode == 'parent_not_found';
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(gone ? 'Original post not found' : 'Remixing was turned off'),
+        content: Text(
+          '${gone ? 'The post this remix declares as its original no longer exists.' : 'The artist has since disabled remixes of the original post.'}\n\n'
+          'You can publish without the remix declaration — your post won\'t be linked to the original.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Publish without remix claim'),
+          ),
+        ],
+      ),
+    );
+    if (proceed == true && mounted) {
+      setState(() => _stripRemixClaim = true);
+      if (replacing) {
+        await _replace();
+      } else {
+        await _submit();
+      }
+    }
+  }
+
+  Future<void> _replace() async {
     final d = _draft;
-    ref
-        .read(publishControllerProvider.notifier)
-        .replace(postId: d.source!.postId, bytes: d.bytes, filename: d.filename);
+    await ref.read(publishControllerProvider.notifier).replace(
+          postId: d.source!.postId,
+          bytes: d.bytes,
+          filename: d.filename,
+          provenanceFields: _provenanceFields(replacing: true),
+        );
+    if (!mounted) return;
+    if (ref.read(publishControllerProvider).isLineageRefusal && !_stripRemixClaim) {
+      await _offerStripRemixClaim(replacing: true);
+    }
   }
 
   /// One-tap conformance remedy: nearest-neighbor rescale of the draft to the
@@ -341,14 +466,14 @@ class _PublishPageState extends ConsumerState<PublishPage> {
     );
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     final d = _draft;
     // Mirror the tile's visibility/size gates: with the opt-out default, _shareLayers can be
     // true while the tile never showed (capability off) — never send the file in those cases.
     final rules = (ref.read(serverConfigProvider).valueOrNull ?? ClubServerConfig.fallback).upload.mkpx;
     final mkpx = d.mkpxBytes;
     final sendMkpx = _shareLayers && rules.enabled && mkpx != null && mkpx.length <= rules.maxFileBytes;
-    ref.read(publishControllerProvider.notifier).submit(
+    await ref.read(publishControllerProvider.notifier).submit(
           bytes: d.bytes,
           filename: d.filename,
           title: _title.text.trim().isEmpty ? 'Untitled' : _title.text.trim(),
@@ -357,7 +482,12 @@ class _PublishPageState extends ConsumerState<PublishPage> {
           hidden: _hidden,
           licenseId: _licenseId,
           mkpxBytes: sendMkpx ? mkpx : null,
+          provenanceFields: _provenanceFields(replacing: false),
         );
+    if (!mounted) return;
+    if (ref.read(publishControllerProvider).isLineageRefusal && !_stripRemixClaim) {
+      await _offerStripRemixClaim(replacing: false);
+    }
   }
 }
 

@@ -23,6 +23,11 @@ class UploadApi {
   /// [mkpxBytes] optionally attaches the layers (.mkpx) file in the same call
   /// (contract §6): atomic — if it fails validation (`mkpx_invalid`,
   /// `mkpx_too_large`) or quota, no post is created.
+  ///
+  /// [provenanceFields] are the optional provenance/lineage declarations
+  /// (`client`, `creation_method`, `source_details`, `remixed_from`,
+  /// `remixable` — see `publish/provenance_fields.dart`). Lineage failures:
+  /// 422 `parent_not_found` / `remix_not_allowed` / `too_many_parents`.
   Future<Post> uploadArtwork({
     required List<int> bytes,
     required String filename,
@@ -32,6 +37,7 @@ class UploadApi {
     bool hiddenByUser = false,
     int? licenseId,
     List<int>? mkpxBytes,
+    Map<String, String> provenanceFields = const {},
   }) =>
       client.guard(() async {
         final form = FormData.fromMap({
@@ -41,6 +47,7 @@ class UploadApi {
           'hashtags': hashtags,
           'hidden_by_user': hiddenByUser.toString(),
           'license_id': ?licenseId?.toString(),
+          ...provenanceFields,
           if (mkpxBytes != null)
             'mkpx': MultipartFile.fromBytes(mkpxBytes, filename: 'layers.mkpx'),
         });
@@ -59,9 +66,17 @@ class UploadApi {
 
   /// Replace an existing post's artwork in place (owner / allow-edit; the server
   /// enforces permission). Keeps the post's reactions/comments/stats.
-  Future<Post> replaceArtwork(int postId, List<int> bytes, String filename) =>
+  ///
+  /// [provenanceFields] as on [uploadArtwork]; here `remixed_from` APPENDS
+  /// lineage links (existing ones are never removed) and `remixable` is ignored
+  /// (that toggle belongs to PATCH /post/{id}).
+  Future<Post> replaceArtwork(int postId, List<int> bytes, String filename,
+          {Map<String, String> provenanceFields = const {}}) =>
       client.guard(() async {
-        final form = FormData.fromMap({'image': MultipartFile.fromBytes(bytes, filename: filename)});
+        final form = FormData.fromMap({
+          'image': MultipartFile.fromBytes(bytes, filename: filename),
+          ...provenanceFields,
+        });
         final resp = await client.dio.post('/post/$postId/replace-artwork', data: form);
         final data = (resp.data as Map?)?.cast<String, dynamic>() ?? const {};
         final postJson = (data['post'] as Map?)?.cast<String, dynamic>() ?? data;

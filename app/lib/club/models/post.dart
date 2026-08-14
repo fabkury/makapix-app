@@ -33,6 +33,16 @@ class Post {
   // Approved for Recent Artworks / search. The server serializes it for every
   // viewer, but only moderator UI acts on it (pending-approval queue, approve).
   final bool publicVisibility;
+  // ---- public lineage (artwork-provenance 0002) ----
+  // Whether the owner allows remixes. Gates the remix/edit-in-editor path for
+  // non-owners (owners may always remix their own work). Default true: a server
+  // predating the field must not lock down every post client-side.
+  final bool remixable;
+  // Lineage links where this post is the child (incl. tombstones) — the "is a
+  // Remix" fact; the badge shows when > 0.
+  final int parentCount;
+  // Publicly visible remixes of this post.
+  final int childCount;
 
   Post({
     required this.id,
@@ -66,6 +76,9 @@ class Post {
     this.hiddenByUser = false,
     this.hiddenByMod = false,
     this.publicVisibility = false,
+    this.remixable = true,
+    this.parentCount = 0,
+    this.childCount = 0,
   });
 
   bool get isAnimated => frameCount > 1;
@@ -118,6 +131,10 @@ class Post {
         hiddenByUser: j['hidden_by_user'] == true,
         hiddenByMod: j['hidden_by_mod'] == true,
         publicVisibility: j['public_visibility'] == true,
+        // Absent (older server) → true, so nothing gets locked down spuriously.
+        remixable: j['remixable'] != false,
+        parentCount: (j['parent_count'] as num?)?.toInt() ?? 0,
+        childCount: (j['child_count'] as num?)?.toInt() ?? 0,
       );
 }
 

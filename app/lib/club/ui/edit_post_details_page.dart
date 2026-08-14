@@ -46,8 +46,14 @@ class _EditPostDetailsPageState extends ConsumerState<EditPostDetailsPage> {
   late final String _baseTitle;
   late final String _baseDescription;
   late final List<String> _baseTags;
+  late final bool _baseRemixable;
 
+  late bool _remixable;
   bool _saving = false;
+
+  /// ND licenses can't be Remixable (server rule L5) — the toggle locks off.
+  bool get _ndLicense =>
+      widget.post.license?.identifier.toUpperCase().contains('-ND') ?? false;
 
   @override
   void initState() {
@@ -57,6 +63,8 @@ class _EditPostDetailsPageState extends ConsumerState<EditPostDetailsPage> {
     _baseDescription = p.description ?? '';
     // Only artist-controlled tags are editable; mod-owned ones stay chips.
     _baseTags = p.hashtags.where((t) => !p.isModTag(t)).toList();
+    _baseRemixable = p.remixable;
+    _remixable = p.remixable;
     _title = TextEditingController(text: _baseTitle);
     _description = TextEditingController(text: _baseDescription);
     _hashtags = TextEditingController(text: _baseTags.join(', '));
@@ -76,6 +84,7 @@ class _EditPostDetailsPageState extends ConsumerState<EditPostDetailsPage> {
   bool get _dirty {
     if (_title.text.trim() != _baseTitle) return true;
     if (_description.text != _baseDescription) return true;
+    if (_remixable != _baseRemixable) return true;
     final tags = EditPostDetailsPage.parseHashtags(_hashtags.text);
     if (tags.length != _baseTags.length) return true;
     for (var i = 0; i < tags.length; i++) {
@@ -94,6 +103,7 @@ class _EditPostDetailsPageState extends ConsumerState<EditPostDetailsPage> {
             title: title,
             description: _description.text,
             hashtags: EditPostDetailsPage.parseHashtags(_hashtags.text),
+            remixable: _remixable == _baseRemixable ? null : _remixable,
           );
       if (!mounted) return;
       // The detail page refetches; feeds/PMD re-list so titles stay in step.
@@ -189,7 +199,23 @@ class _EditPostDetailsPageState extends ConsumerState<EditPostDetailsPage> {
               const Text('Tagged by a moderator — these tags cannot be edited.',
                   style: TextStyle(fontSize: 12, color: Colors.white54)),
             ],
-            const SizedBox(height: 16),
+            const SizedBox(height: 4),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Allow remixes'),
+              subtitle: Text(
+                _ndLicense
+                    ? 'NoDerivatives licenses don\'t allow remixes.'
+                    : 'Others can open this artwork in the editor and publish remixes, '
+                        'credited to you in its public lineage. Existing remixes always '
+                        'keep their link.',
+                style: const TextStyle(fontSize: 12),
+              ),
+              value: !_ndLicense && _remixable,
+              onChanged:
+                  (_saving || _ndLicense) ? null : (v) => setState(() => _remixable = v),
+            ),
+            const SizedBox(height: 12),
             FilledButton.icon(
               onPressed: (_dirty && !_saving) ? _save : null,
               icon: _saving

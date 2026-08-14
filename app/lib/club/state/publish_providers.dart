@@ -36,7 +36,17 @@ class PublishState {
   final PublishStatus status;
   final Post? post;
   final String? error;
-  const PublishState(this.status, {this.post, this.error});
+
+  /// The stable server error code ('remix_not_allowed', 'parent_not_found', …)
+  /// so the UI can offer targeted remedies; null for transport/unknown errors.
+  final String? errorCode;
+  const PublishState(this.status, {this.post, this.error, this.errorCode});
+
+  /// A lineage refusal (0002 §2): a declared parent is gone or no longer
+  /// Remixable. The publish page offers the explicit "publish without the
+  /// remix claim" choice — never stripped automatically.
+  bool get isLineageRefusal =>
+      errorCode == 'remix_not_allowed' || errorCode == 'parent_not_found';
 }
 
 class PublishController extends StateNotifier<PublishState> {
@@ -52,6 +62,7 @@ class PublishController extends StateNotifier<PublishState> {
     required bool hidden,
     int? licenseId,
     List<int>? mkpxBytes,
+    Map<String, String> provenanceFields = const {},
   }) async {
     state = const PublishState(PublishStatus.uploading);
     try {
@@ -64,23 +75,31 @@ class PublishController extends StateNotifier<PublishState> {
             hiddenByUser: hidden,
             licenseId: licenseId,
             mkpxBytes: mkpxBytes,
+            provenanceFields: provenanceFields,
           );
       state = PublishState(PublishStatus.success, post: post);
     } on ClubError catch (e) {
-      state = PublishState(PublishStatus.error, error: e.message);
+      state = PublishState(PublishStatus.error, error: e.message, errorCode: e.code);
     } catch (_) {
       state = const PublishState(PublishStatus.error, error: 'Upload failed. Please try again.');
     }
   }
 
   /// Replace an existing post's artwork in place (owner).
-  Future<void> replace({required int postId, required List<int> bytes, required String filename}) async {
+  Future<void> replace({
+    required int postId,
+    required List<int> bytes,
+    required String filename,
+    Map<String, String> provenanceFields = const {},
+  }) async {
     state = const PublishState(PublishStatus.uploading);
     try {
-      final post = await ref.read(uploadApiProvider).replaceArtwork(postId, bytes, filename);
+      final post = await ref
+          .read(uploadApiProvider)
+          .replaceArtwork(postId, bytes, filename, provenanceFields: provenanceFields);
       state = PublishState(PublishStatus.success, post: post);
     } on ClubError catch (e) {
-      state = PublishState(PublishStatus.error, error: e.message);
+      state = PublishState(PublishStatus.error, error: e.message, errorCode: e.code);
     } catch (_) {
       state = const PublishState(PublishStatus.error, error: 'Replace failed. Please try again.');
     }

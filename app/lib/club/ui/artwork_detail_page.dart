@@ -221,6 +221,7 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
             ]),
             const SizedBox(height: 4),
             _meta(post),
+            ?_remixLine(post),
             if (_isOwner(post) && post.hiddenByUser)
               const Padding(
                 padding: EdgeInsets.only(top: 6),
@@ -462,6 +463,24 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
     return Text(parts.join('  ·  '), style: const TextStyle(fontSize: 12, color: Colors.white38));
   }
 
+  /// Discreet public-lineage line (0002 §2): the Remix badge when this post has
+  /// Parents, and its visible-remixes count. Absent for lineage-less posts.
+  Widget? _remixLine(Post post) {
+    if (post.parentCount == 0 && post.childCount == 0) return null;
+    final parts = <String>[
+      if (post.parentCount > 0) 'Remix',
+      if (post.childCount > 0) '${post.childCount} remix${post.childCount == 1 ? '' : 'es'}',
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        const Icon(Icons.alt_route, size: 14, color: Colors.white38),
+        const SizedBox(width: 5),
+        Text(parts.join('  ·  '), style: const TextStyle(fontSize: 12, color: Colors.white38)),
+      ]),
+    );
+  }
+
   // ---- mkpx-upload: golden Edit button, layers download, author attach/detach ----
 
   /// The layers-file capability advertised by `GET /config` (`upload.mkpx`).
@@ -476,7 +495,16 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
 
   /// Golden + glowing when the post has a layers file the signed-in user can
   /// open (opens the .mkpx); the regular icon otherwise (imports the render).
+  /// Gated on the post's public `remixable` flag for non-owners (0002 §2): the
+  /// server would refuse the download (403) and the publish (422) anyway.
   Widget _editButton(BuildContext context, Post post) {
+    if (!post.remixable && !_isOwner(post)) {
+      return const IconButton(
+        icon: Icon(Icons.edit_off),
+        tooltip: "The artist doesn't allow remixes",
+        onPressed: null,
+      );
+    }
     final golden =
         _mkpxRules.enabled && post.hasMkpx && ref.watch(authControllerProvider).isSignedIn;
     if (!golden) {
@@ -1056,6 +1084,11 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
       if (e.isAuth) {
         messenger.showSnackBar(const SnackBar(
             content: Text('Your session expired — sign in again to download the layers file.')));
+      } else if (e.status == 403 && e.code == 'not_remixable') {
+        // The owner turned Remixable off since this page loaded.
+        messenger.showSnackBar(
+            const SnackBar(content: Text("The artist doesn't allow remixes of this post.")));
+        ref.invalidate(postDetailProvider(widget.sqid));
       } else if (e.status == 404) {
         // Detached or dropped (artwork replaced) since this payload was fetched.
         messenger.showSnackBar(
