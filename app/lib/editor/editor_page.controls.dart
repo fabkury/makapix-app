@@ -931,30 +931,38 @@ extension _EditorControls on _EditorPageState {
                 AlphaSwatch(color: color, width: 28, height: 28, borderRadius: 4),
                 const SizedBox(width: 14),
                 Expanded(
-                  child: Row(children: [
-                    Text('Color ${cur + 1} of $n'),
-                    if (name != null) ...[
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          name,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 13, color: Color(0xFFFFD54F)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('Color ${cur + 1} of $n'),
+                      // The name lives on its own line under the number — beside it the
+                      // space was too tight for anything readable. Names run up to 64
+                      // characters, so allow two lines before the ellipsis.
+                      Row(children: [
+                        if (name != null)
+                          Flexible(
+                            child: Text(
+                              name,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 13, color: Color(0xFFFFD54F)),
+                            ),
+                          ),
+                        IconButton(
+                          iconSize: 15,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints.tightFor(width: 30, height: 30),
+                          tooltip: name == null ? 'Name this color' : 'Edit name',
+                          onPressed: () async {
+                            final renamed = await _editColorName(cur, name);
+                            if (renamed) setS(() {});
+                          },
+                          icon: const Icon(Icons.edit, size: 15, color: Colors.white54),
                         ),
-                      ),
+                      ]),
                     ],
-                    IconButton(
-                      iconSize: 15,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints.tightFor(width: 30, height: 30),
-                      tooltip: name == null ? 'Name this color' : 'Edit name',
-                      onPressed: () async {
-                        final renamed = await _editColorName(cur, name);
-                        if (renamed) setS(() {});
-                      },
-                      icon: const Icon(Icons.edit, size: 15, color: Colors.white54),
-                    ),
-                  ]),
+                  ),
                 ),
                 Row(mainAxisSize: MainAxisSize.min, children: [
                   arrow(Icons.arrow_back, 'Move left', t.left),
