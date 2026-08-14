@@ -10,6 +10,12 @@ import '../widgets/painters.dart';
 // consulting its child.
 const double _kHueW = 26, _kGap = 8;
 const double _kMaxSq = 246, _kMinSq = 96;
+// Both painters deliberately draw their markers past the paint bounds (the SV ring is
+// r=7 with a 3px stroke at a clamped center; the hue marker overhangs 1px per side).
+// The scrollable clips its content once it overflows (landscape, or the keyboard up),
+// so the picker area keeps this much slack on the clipped sides — never clip the
+// markers away instead.
+const double _kMarkerSlack = 9;
 // Pinned on the AlertDialog so the width math and the dialog can never disagree, no
 // matter what Material's defaults do.
 const EdgeInsets _kInsetPadding = EdgeInsets.symmetric(horizontal: 40, vertical: 24);
@@ -324,7 +330,9 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
     final availW = MediaQuery.sizeOf(context).width -
         _kInsetPadding.horizontal -
         _kContentPadPortrait.horizontal;
-    final sq = (availW - _kGap - _kHueW).clamp(_kMinSq, _kMaxSq).toDouble();
+    final sq = (availW - 2 * _kMarkerSlack - _kGap - _kHueW)
+        .clamp(_kMinSq, _kMaxSq)
+        .toDouble();
     return AlertDialog(
       insetPadding: _kInsetPadding,
       contentPadding: _kContentPadPortrait,
@@ -340,13 +348,23 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
         ],
       ),
       content: SizedBox(
-        width: sq + _kGap + _kHueW,
+        width: sq + _kGap + _kHueW + 2 * _kMarkerSlack,
         // Scrollable so the dialog still works when the on-screen keyboard shrinks the space.
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildPickerArea(sq),
+              // No bottom slack: the spacer below is part of the scroll content, so the
+              // markers can never be clipped on that side.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  _kMarkerSlack,
+                  _kMarkerSlack,
+                  _kMarkerSlack,
+                  0,
+                ),
+                child: _buildPickerArea(sq),
+              ),
               const SizedBox(height: 10),
               _buildAlphaRow(),
               _buildHexRow(),

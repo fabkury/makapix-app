@@ -68,4 +68,19 @@ void main() {
     await tester.pump();
     expect(find.text('180'), findsOneWidget, reason: 'a tap at the ramp right edge lands');
   });
+
+  testWidgets('the markers keep their slack inside the scroll clip', (tester) async {
+    // Both painters draw their markers slightly past the paint bounds, and the
+    // scrollable clips its content once it overflows (keyboard up, tight screens).
+    // The picker area must keep slack on the clipped sides so a marker sitting at an
+    // extreme never loses an edge.
+    await pumpAt(tester, const Size(390, 844));
+    final scroll = tester.getRect(find.byType(SingleChildScrollView));
+    final ramp = tester.getRect(find.byKey(const Key('pickerHueRamp')));
+    final square = tester.getRect(find.byKey(const Key('pickerSvSquare')));
+    // 9 = _kMarkerSlack (the SV ring: r=7 plus half its 3px stroke, rounded up).
+    expect(ramp.right, lessThanOrEqualTo(scroll.right - 9));
+    expect(square.left, greaterThanOrEqualTo(scroll.left + 9));
+    expect(square.top, greaterThanOrEqualTo(scroll.top + 9));
+  });
 }
