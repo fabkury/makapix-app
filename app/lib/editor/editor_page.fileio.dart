@@ -30,7 +30,8 @@ extension _EditorFileIo on _EditorPageState {
   Future<void> _save() async {
     // A portable, user-visible file → the compact (DEFLATE) profile. The library autosave and the
     // render-snapshot paths (PNG/GIF/WebP export) keep the cheap plain profile; `_open` loads either.
-    final bytes = engine.saveCompact();
+    // Provenance travels with the file (META chunk), so lineage survives export/share round trips.
+    final bytes = engine.saveCompactWithMeta(_provenance.toMeta());
     try {
       final path = await FilePicker.saveFile(
         dialogTitle: 'Save .mkpx',
@@ -78,6 +79,7 @@ extension _EditorFileIo on _EditorPageState {
         debugPrint('open: "$name" loaded with a content-hash warning');
       }
       _clubSource = null;
+      _restoreProvenance(bytes);
       await _createFreshDrawing(
           title: name.replaceAll(RegExp(r'\.mkpx$', caseSensitive: false), ''),
           contentFromBytes: true,
@@ -198,6 +200,9 @@ extension _EditorFileIo on _EditorPageState {
     if (!mounted) return;
     switch (status) {
       case ImportStatus.ok:
+        // The sticky import bit (artwork-provenance 0001 §1): once set, it survives the work's
+        // whole history — the next autosave persists it into the file's META chunk.
+        _provenance.markImported(res.files.single.name.split('.').last.toLowerCase());
         // A successful import is a non-DSL document mutation: close the Journal chapter and
         // anchor the next one on the post-import content (ADR 0003). [replay]
         await _journalCutAndBaseline('import');
@@ -279,10 +284,11 @@ extension _EditorFileIo on _EditorPageState {
       height: h,
       frameCount: fc,
       source: _clubSource,
+      provenance: _provenance,
       // The layers file offered by the "Share the layers (.mkpx) file" checkbox —
       // compact profile, same as user-facing saves. The publish page decides
       // whether it is actually sent.
-      mkpxBytes: engine.saveCompact(),
+      mkpxBytes: engine.saveCompactWithMeta(_provenance.toMeta()),
       totalDurationMs: totalDurationMs,
     );
     if (!mounted) return;
@@ -343,6 +349,11 @@ extension _EditorFileIo on _EditorPageState {
       if (!mounted) return;
     }
     _resendEngineTool();
+    // Remix seeding counts as import, and the seeding post is the work's first (base) Parent
+    // (artwork-provenance 0001 §2 + 0002 §1). Deliberately NOT inherited from the downloaded
+    // file's own META: the remix's parent is the post itself; grandparents live in the server's
+    // lineage graph. On a failed load the engine holds unrelated content — claim nothing.
+    _provenance = ok ? (DocProvenance.fresh()..addParent(req.sourceSqid)) : DocProvenance.unknown();
     await _createFreshDrawing(title: req.sourceTitle, contentFromBytes: true, reason: 'club');
     if (!mounted) return;
     if (!ok) {

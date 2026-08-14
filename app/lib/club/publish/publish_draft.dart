@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import '../edit/club_edit_request.dart';
+import 'doc_provenance.dart';
 
 /// The exported artwork handed from the editor to the publish flow. Keeps
 /// `lib/club` free of any engine dependency — it receives bytes + dimensions,
@@ -16,6 +17,11 @@ class PublishDraft {
   /// Set when the document was opened from a Club artwork (enables Replace +
   /// remix metadata pre-fill). Null for a brand-new drawing.
   final ClubEditSource? source;
+
+  /// The document's durable provenance (sticky import bit + Club parent
+  /// sqids) — drives the upload's `creation_method` / `remixed_from`
+  /// declarations. Null when the draft didn't come from the editor.
+  final DocProvenance? provenance;
 
   /// The document as a compact-profile .mkpx ("the layers file"), offered as an
   /// optional attachment at publish time. Null when the draft didn't come from
@@ -36,6 +42,7 @@ class PublishDraft {
     required this.height,
     required this.frameCount,
     this.source,
+    this.provenance,
     this.mkpxBytes,
     this.totalDurationMs,
   });

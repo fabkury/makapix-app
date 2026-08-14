@@ -20,6 +20,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:makapix_club/club/anim/animation_timeline.dart';
 import 'package:makapix_club/club/edit/club_edit_request.dart';
 import 'package:makapix_club/club/publish/conformance.dart';
+import 'package:makapix_club/club/publish/doc_provenance.dart';
 import 'package:makapix_club/club/publish/publish_draft.dart';
 import 'package:makapix_club/club/state/edit_bridge.dart';
 import 'package:makapix_club/club/ui/publish_page.dart';
@@ -297,6 +298,11 @@ class _EditorPageState extends ConsumerState<EditorPage>
   String? _error;
   final Set<int> _selLayers = {}; // layers grouped to move together with the Move tool (no selection)
   ClubEditSource? _clubSource; // set when a Club artwork is opened (enables Replace / remix)
+  // Provenance of the working document (sticky import bit + Club parent sqids). Rides in the
+  // .mkpx META chunk on every save, so it survives save-to-local / reopen / export — the
+  // server-contract requirement from docs/artwork-provenance message 0002. Unlike _clubSource
+  // (in-memory Replace conveniences), this is durable history.
+  DocProvenance _provenance = DocProvenance.fresh();
   // Precision mode is remembered per tool: a tool name is present here while its Precision toggle
   // is on. Only tools in [_precisionTools] are ever added.
   final Set<String> _precisionOn = {};

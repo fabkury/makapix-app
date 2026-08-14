@@ -28,9 +28,11 @@ extension _EditorPersistence on _EditorPageState {
     final curId = _prefs?.getString(_kCurrentDrawing);
     if (curId != null && await _store!.exists(curId) && await _loadDrawingIntoEngine(curId)) {
       final meta = await _store!.readMeta(curId);
+      _restoreProvenance(_resumeDocBytes);
       _adopt(curId, meta?.title ?? 'Untitled', meta?.createdAt ?? DateTime.now());
     } else {
       // No restorable current drawing → track the default 64×64 doc as a fresh one.
+      _provenance = DocProvenance.fresh();
       await _createFreshDrawing(title: 'Untitled');
     }
     if (mounted) {
@@ -75,7 +77,9 @@ extension _EditorPersistence on _EditorPageState {
     _autosave = AutosaveController(
       id: id,
       store: store,
-      serialize: () => _engineReady ? engine.save() : Uint8List(0),
+      // Provenance rides in the META chunk of every library save, so the sticky import bit and
+      // the parent-sqid list survive save-to-local / reopen (artwork-provenance message 0002).
+      serialize: () => _engineReady ? engine.saveWithMeta(_provenance.toMeta()) : Uint8List(0),
       buildMeta: _buildMeta,
       onError: _onAutosaveError,
       // Journal write-ahead: flush the recorder and append a marker for the exact bytes
@@ -161,6 +165,15 @@ extension _EditorPersistence on _EditorPageState {
     // twice. [replay]
     _resumeDocBytes = bytes;
     return bytes != null;
+  }
+
+  // Restore the working document's provenance from the bytes it was just loaded from: our META
+  // keys when present, else "unknown" (a legacy/foreign file — creation_method is then omitted at
+  // publish rather than guessed). Callers pass the WINNING bytes (primary or .bak).
+  void _restoreProvenance(Uint8List? bytes) {
+    _provenance = (bytes == null || bytes.isEmpty)
+        ? DocProvenance.unknown()
+        : DocProvenance.fromMeta(Engine.readMkpxMeta(bytes) ?? const {});
   }
 
   // Stop tracking the outgoing drawing before a switch: either flush-and-keep it in the library,
@@ -254,6 +267,7 @@ extension _EditorPersistence on _EditorPageState {
   }) async {
     if (!await _releaseOutgoingDrawingInteractive('a new drawing')) return;
     mutateEngine();
+    _provenance = DocProvenance.fresh(); // a new document is provably never-imported from birth
     await _createFreshDrawing(title: title);
   }
 
@@ -267,6 +281,7 @@ extension _EditorPersistence on _EditorPageState {
     final ok = await _loadDrawingIntoEngine(id);
     if (!ok && mounted) _toast('Could not open that drawing (file missing or corrupt)');
     _clubSource = null;
+    if (ok) _restoreProvenance(_resumeDocBytes);
     _adopt(id, meta?.title ?? 'Untitled', meta?.createdAt ?? DateTime.now());
     if (mounted) {
       _refreshState();
