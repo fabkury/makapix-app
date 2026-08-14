@@ -417,6 +417,109 @@ pub extern "C" fn mkpx_save_compact(ptr: *mut Session, out_len: *mut u64) -> *mu
     Box::into_raw(bytes) as *mut u8
 }
 
+// ---- META (shell metadata riding inside the file — spec §11) ----
+//
+// Wire format shared with `engine_ffi.dart` for meta entries crossing the ABI, both directions:
+// UTF-8 `key\x1Fvalue` records joined by `\x1E` (unit/record separators — characters that cannot
+// appear in the sqids, flags, and format names the shell stores). Empty = no entries. The engine
+// core stays META-free; the splice happens here at the periphery, before any compact envelope.
+
+fn parse_packed_meta(bytes: &[u8]) -> Option<Vec<(String, String)>> {
+    if bytes.is_empty() {
+        return Some(Vec::new());
+    }
+    let s = std::str::from_utf8(bytes).ok()?;
+    let mut out = Vec::new();
+    for rec in s.split('\u{1E}') {
+        let (k, v) = rec.split_once('\u{1F}')?;
+        out.push((k.to_string(), v.to_string()));
+    }
+    Some(out)
+}
+
+/// Plain save + META splice. Metadata must never cost the user their document: on any meta
+/// problem (bad packing, splice refusal) the un-spliced engine bytes are returned instead.
+fn save_plain_with_meta(s: &mut Session, meta: *const u8, meta_len: usize) -> Vec<u8> {
+    let plain = s.save_bytes();
+    if meta.is_null() || meta_len == 0 {
+        return plain;
+    }
+    let packed = unsafe { slice::from_raw_parts(meta, meta_len) };
+    let entries = match parse_packed_meta(packed) {
+        Some(e) if !e.is_empty() => e,
+        _ => return plain,
+    };
+    let refs: Vec<(&str, &str)> = entries.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    makapix_engine::io::splice_meta_str(&plain, &refs).unwrap_or(plain)
+}
+
+/// [`mkpx_save`] plus a packed-meta argument: the entries ride in the file's `META` chunk.
+#[no_mangle]
+pub extern "C" fn mkpx_save_meta(
+    ptr: *mut Session,
+    meta: *const u8,
+    meta_len: usize,
+    out_len: *mut u64,
+) -> *mut u8 {
+    let s = match session(ptr) {
+        Some(s) => s,
+        None => return std::ptr::null_mut(),
+    };
+    let bytes = save_plain_with_meta(s, meta, meta_len).into_boxed_slice();
+    let len = bytes.len();
+    if !out_len.is_null() {
+        unsafe { *out_len = len as u64 };
+    }
+    Box::into_raw(bytes) as *mut u8
+}
+
+/// [`mkpx_save_compact`] plus a packed-meta argument (the splice happens before the DEFLATE wrap).
+#[no_mangle]
+pub extern "C" fn mkpx_save_compact_meta(
+    ptr: *mut Session,
+    meta: *const u8,
+    meta_len: usize,
+    out_len: *mut u64,
+) -> *mut u8 {
+    let s = match session(ptr) {
+        Some(s) => s,
+        None => return std::ptr::null_mut(),
+    };
+    let plain = save_plain_with_meta(s, meta, meta_len);
+    let bytes = makapix_codec::mkpx_compact::compress(&plain).into_boxed_slice();
+    let len = bytes.len();
+    if !out_len.is_null() {
+        unsafe { *out_len = len as u64 };
+    }
+    Box::into_raw(bytes) as *mut u8
+}
+
+/// Read the string-typed `META` entries out of `.mkpx` bytes — plain or compact, auto-detected —
+/// without loading the document. Returns a malloc'd packed-meta C string ("" when the file has no
+/// META), or null when the bytes are not a readable `.mkpx`. Free with `mkpx_free_string`.
+#[no_mangle]
+pub extern "C" fn mkpx_read_meta(data: *const u8, len: usize) -> *mut c_char {
+    if data.is_null() {
+        return std::ptr::null_mut();
+    }
+    let bytes = unsafe { slice::from_raw_parts(data, len) };
+    let entries = if makapix_codec::mkpx_compact::is_compact(bytes) {
+        match makapix_codec::mkpx_compact::open(bytes) {
+            Ok(plain) => makapix_engine::io::read_meta_str(&plain),
+            Err(_) => return std::ptr::null_mut(),
+        }
+    } else {
+        makapix_engine::io::read_meta_str(bytes)
+    };
+    match entries {
+        Ok(list) => {
+            let packed: Vec<String> = list.iter().map(|(k, v)| format!("{}\u{1F}{}", k, v)).collect();
+            cstring(&packed.join("\u{1E}"))
+        }
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
 /// Shared tail of the two import entry points: build the `ImportConfig` and apply decoded frames
 /// to the live session. Returns 0 on success, -1 on empty input, -2 when the memory-budget gate
 /// rolled the import back (a refusal is registered on the session).
@@ -1127,6 +1230,45 @@ mod tests {
         mkpx_free_bytes(saved, len);
         mkpx_free(p);
         mkpx_free(p2);
+    }
+
+    #[test]
+    fn ffi_meta_roundtrip_plain_and_compact() {
+        let p = mkpx_new(16, 16);
+        let script = b"SelectTool(Pencil); Tap(5,5)";
+        let _ = mkpx_run(p, script.as_ptr(), script.len());
+        let packed = "club.parents\u{1F}aB3xY,qW9zK\u{1E}club.everImported\u{1F}1";
+
+        for compact in [false, true] {
+            let mut len: u64 = 0;
+            let saved = if compact {
+                mkpx_save_compact_meta(p, packed.as_ptr(), packed.len(), &mut len)
+            } else {
+                mkpx_save_meta(p, packed.as_ptr(), packed.len(), &mut len)
+            };
+            assert!(!saved.is_null() && len > 0);
+            let back = mkpx_read_meta(saved, len as usize);
+            assert!(!back.is_null());
+            assert_eq!(unsafe { std::ffi::CStr::from_ptr(back) }.to_str().unwrap(), packed);
+            mkpx_free_string(back);
+            // The document loads unchanged with META aboard.
+            let p2 = mkpx_new(8, 8);
+            assert_eq!(mkpx_load(p2, saved, len as usize), 0);
+            assert_eq!(mkpx_width(p2), 16);
+            mkpx_free(p2);
+            mkpx_free_bytes(saved, len);
+        }
+
+        // No meta → identical to the plain save; reading it yields "".
+        let mut len: u64 = 0;
+        let saved = mkpx_save_meta(p, std::ptr::null(), 0, &mut len);
+        let back = mkpx_read_meta(saved, len as usize);
+        assert_eq!(unsafe { std::ffi::CStr::from_ptr(back) }.to_str().unwrap(), "");
+        mkpx_free_string(back);
+        mkpx_free_bytes(saved, len);
+        // Garbage bytes → null, not a crash.
+        assert!(mkpx_read_meta(b"nonsense".as_ptr(), 8).is_null());
+        mkpx_free(p);
     }
 
     // Tests that run an export mutate the process-wide EXPORT_PROGRESS atomics; serialize them so

@@ -60,6 +60,10 @@ typedef _LayerHashC = Uint64 Function(Pointer<Void>, Uint32, Uint32);
 typedef _LayerHashD = int Function(Pointer<Void>, int, int);
 typedef _SaveC = Pointer<Uint8> Function(Pointer<Void>, Pointer<Uint64>);
 typedef _SaveD = Pointer<Uint8> Function(Pointer<Void>, Pointer<Uint64>);
+typedef _SaveMetaC = Pointer<Uint8> Function(Pointer<Void>, Pointer<Uint8>, IntPtr, Pointer<Uint64>);
+typedef _SaveMetaD = Pointer<Uint8> Function(Pointer<Void>, Pointer<Uint8>, int, Pointer<Uint64>);
+typedef _ReadMetaC = Pointer<Utf8> Function(Pointer<Uint8>, IntPtr);
+typedef _ReadMetaD = Pointer<Utf8> Function(Pointer<Uint8>, int);
 typedef _LoadC = Int32 Function(Pointer<Void>, Pointer<Uint8>, IntPtr);
 typedef _LoadD = int Function(Pointer<Void>, Pointer<Uint8>, int);
 typedef _FreeStringC = Void Function(Pointer<Utf8>);
@@ -163,6 +167,37 @@ enum LoadStatus {
   bool get loaded => this == LoadStatus.ok || this == LoadStatus.okWithWarnings;
 }
 
+// META wire-format separators shared with crates/ffi (`parse_packed_meta`): US (0x1F) between
+// key and value, RS (0x1E) between records — characters that cannot appear in the sqids, flags,
+// and format names the shell stores.
+const String _metaKV = '\u001F';
+const String _metaRec = '\u001E';
+
+/// Pack `.mkpx` META entries for the ABI crossing (both directions): UTF-8 records of
+/// `key U+001F value` joined by U+001E. Entries containing a separator are dropped rather than
+/// corrupting the stream. Top-level so pure-Dart tests cover the packing without the engine
+/// binary.
+String packMkpxMeta(Map<String, String> entries) => entries.entries
+    .where((e) =>
+        !e.key.contains(_metaKV) &&
+        !e.key.contains(_metaRec) &&
+        !e.value.contains(_metaKV) &&
+        !e.value.contains(_metaRec))
+    .map((e) => '${e.key}$_metaKV${e.value}')
+    .join(_metaRec);
+
+/// Inverse of [packMkpxMeta]; malformed records (no separator) are skipped.
+Map<String, String> unpackMkpxMeta(String packed) {
+  final out = <String, String>{};
+  if (packed.isEmpty) return out;
+  for (final rec in packed.split(_metaRec)) {
+    final i = rec.indexOf(_metaKV);
+    if (i < 0) continue;
+    out[rec.substring(0, i)] = rec.substring(i + 1);
+  }
+  return out;
+}
+
 /// Top-level (not on [Engine]) so pure-Dart tests cover it without the engine binary.
 /// Unknown codes map to [LoadStatus.failed], never to success.
 LoadStatus loadStatusFromRc(int rc) => switch (rc) {
@@ -236,6 +271,9 @@ class Engine {
   late final _SaveD _save = _lib.lookupFunction<_SaveC, _SaveD>('mkpx_save');
   // Same C signature as mkpx_save (Session*, out_len) → bytes; wraps the plain bytes in DEFLATE.
   late final _SaveD _saveCompact = _lib.lookupFunction<_SaveC, _SaveD>('mkpx_save_compact');
+  // The meta-carrying save twins: (Session*, packed_meta, meta_len, out_len) → bytes.
+  late final _SaveMetaD _saveMeta = _lib.lookupFunction<_SaveMetaC, _SaveMetaD>('mkpx_save_meta');
+  late final _SaveMetaD _saveCompactMeta = _lib.lookupFunction<_SaveMetaC, _SaveMetaD>('mkpx_save_compact_meta');
   late final _LoadD _load = _lib.lookupFunction<_LoadC, _LoadD>('mkpx_load');
   late final _FreeStringD _freeStr = _lib.lookupFunction<_FreeStringC, _FreeStringD>('mkpx_free_string');
   late final _FreeBytesD _freeBytes = _lib.lookupFunction<_FreeBytesC, _FreeBytesD>('mkpx_free_bytes');
@@ -550,6 +588,54 @@ class Engine {
     }
   }
 
+  /// [save] with META entries riding inside the file (`META` chunk, format spec §11): [meta]
+  /// is packed via [packMkpxMeta] and spliced by the FFI periphery. Empty [meta] == [save].
+  Uint8List saveWithMeta(Map<String, String> meta) => _saveViaMeta(_saveMeta, meta);
+
+  /// [saveCompact] with META entries (the splice happens before the DEFLATE wrap).
+  Uint8List saveCompactWithMeta(Map<String, String> meta) => _saveViaMeta(_saveCompactMeta, meta);
+
+  Uint8List _saveViaMeta(_SaveMetaD fn, Map<String, String> meta) {
+    // Same hardening as [save]: zero-init length, nullptr guard, free-in-finally. [audit]
+    final packed = utf8.encode(packMkpxMeta(meta));
+    final metaPtr = packed.isEmpty ? nullptr : malloc<Uint8>(packed.length);
+    if (metaPtr != nullptr) metaPtr.asTypedList(packed.length).setAll(0, packed);
+    final lenPtr = calloc<Uint64>();
+    try {
+      final p = fn(_s, metaPtr, packed.length, lenPtr);
+      if (p == nullptr) return Uint8List(0);
+      final len = lenPtr.value;
+      try {
+        return Uint8List.fromList(p.asTypedList(len));
+      } finally {
+        _freeBytes(p, len);
+      }
+    } finally {
+      calloc.free(lenPtr);
+      if (metaPtr != nullptr) malloc.free(metaPtr);
+    }
+  }
+
+  /// Read the string META entries out of `.mkpx` bytes — plain or compact, auto-detected —
+  /// without loading the document. Empty map when the file carries none; null when the bytes
+  /// are not a readable `.mkpx`. Static (session-free), like the background decode helpers.
+  static Map<String, String>? readMkpxMeta(Uint8List bytes) {
+    if (bytes.isEmpty) return null;
+    final p = malloc<Uint8>(bytes.length);
+    p.asTypedList(bytes.length).setAll(0, bytes);
+    try {
+      final res = _sReadMeta(p, bytes.length);
+      if (res == nullptr) return null;
+      try {
+        return unpackMkpxMeta(res.toDartString());
+      } finally {
+        _sFreeString(res);
+      }
+    } finally {
+      malloc.free(p);
+    }
+  }
+
   LoadStatus load(Uint8List data) {
     final p = malloc<Uint8>(data.length);
     p.asTypedList(data.length).setAll(0, data);
@@ -696,6 +782,10 @@ class Engine {
       _staticLib.lookupFunction<_DecodeImageC, _DecodeImageD>('mkpx_decode_image');
   static final _FreeBytesD _sFreeBytes =
       _staticLib.lookupFunction<_FreeBytesC, _FreeBytesD>('mkpx_free_bytes');
+  static final _FreeStringD _sFreeString =
+      _staticLib.lookupFunction<_FreeStringC, _FreeStringD>('mkpx_free_string');
+  static final _ReadMetaD _sReadMeta =
+      _staticLib.lookupFunction<_ReadMetaC, _ReadMetaD>('mkpx_read_meta');
 
   /// Decode an image file (GIF/PNG/APNG/JPEG/BMP/WebP) into engine-native decoded frames **off
   /// the UI thread** — the expensive half of an import (audit #3). Only the resulting buffer's

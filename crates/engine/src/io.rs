@@ -645,6 +645,139 @@ pub fn save_to_bytes(doc: &Document) -> Vec<u8> {
     w.buf
 }
 
+// ---- META periphery helpers (spec §11) ----
+//
+// The engine core never emits `THMB`/`META` — `save_to_bytes` above stays byte-deterministic and
+// META-free. These helpers serve the periphery (crates/ffi) when the shell wants volatile metadata
+// (provenance, authorship) to travel inside a self-contained file: `splice_meta_str` inserts (or
+// replaces) the ancillary `META` chunk at its canonical position just before `INTG` and recomputes
+// the whole-file CRC; `read_meta_str` extracts the string-typed entries back. The loader is
+// unaffected either way — it skips `META` wholesale.
+
+/// Spec cap on META entries (§11).
+pub const MAX_META_ENTRIES: usize = 256;
+
+/// Bounds-check the container frame shared by the META helpers: signature, minimum length, a
+/// well-formed `INTG` trailer, and a matching whole-file CRC. Returns `body_end` (the INTG offset).
+fn meta_frame_check(mkpx: &[u8]) -> Result<usize, IoError> {
+    if mkpx.len() < 8 || mkpx[..8] != SIGNATURE {
+        return Err(IoError::BadMagic);
+    }
+    if mkpx.len() < 8 + INTG_LEN {
+        return Err(IoError::Incomplete);
+    }
+    let body_end = mkpx.len() - INTG_LEN;
+    let intg = &mkpx[body_end..];
+    if &intg[..4] != b"INTG" || intg[4] & 1 == 0 {
+        return Err(IoError::Corrupt("missing INTG"));
+    }
+    let stored = u32::from_le_bytes([intg[9], intg[10], intg[11], intg[12]]);
+    if stored != crc32c(&mkpx[..body_end]) {
+        return Err(IoError::Corrupt("CRC mismatch"));
+    }
+    Ok(body_end)
+}
+
+/// One forward step through the chunk stream: returns `(fourcc, chunk_start, chunk_end)` for the
+/// chunk at `pos` (header included in the range), bounds-checked against `body_end`.
+fn meta_chunk_at(mkpx: &[u8], pos: usize, body_end: usize) -> Result<([u8; 4], usize, usize), IoError> {
+    if pos + 9 > body_end {
+        return Err(IoError::Corrupt("chunk header"));
+    }
+    let fourcc: [u8; 4] = match mkpx[pos..pos + 4].try_into() {
+        Ok(a) => a,
+        Err(_) => return Err(IoError::Corrupt("fourcc")),
+    };
+    let len = u32::from_le_bytes([mkpx[pos + 5], mkpx[pos + 6], mkpx[pos + 7], mkpx[pos + 8]]) as usize;
+    let end = (pos + 9).checked_add(len).ok_or(IoError::Corrupt("chunk length"))?;
+    if end > body_end {
+        return Err(IoError::Corrupt("chunk length"));
+    }
+    Ok((fourcc, pos, end))
+}
+
+/// Rebuild `mkpx` with the given string entries as its `META` chunk (replacing any existing one;
+/// an empty `entries` strips META), re-signing with a fresh whole-file CRC. Entry count and string
+/// lengths are enforced against the spec caps — oversized input is an error, never a silent
+/// truncation (a truncated provenance list would lie).
+pub fn splice_meta_str(mkpx: &[u8], entries: &[(&str, &str)]) -> Result<Vec<u8>, IoError> {
+    if entries.len() > MAX_META_ENTRIES {
+        return Err(IoError::TooLarge("meta entries"));
+    }
+    for (k, v) in entries {
+        if k.len() > MAX_STR || v.len() > MAX_STR {
+            return Err(IoError::TooLarge("meta string"));
+        }
+    }
+    let body_end = meta_frame_check(mkpx)?;
+    let mut w = Writer::new();
+    w.buf.reserve_exact(mkpx.len() + 64 + entries.iter().map(|(k, v)| k.len() + v.len() + 12).sum::<usize>());
+    w.bytes(&mkpx[..8]);
+    let mut pos = 8usize;
+    while pos < body_end {
+        let (fourcc, start, end) = meta_chunk_at(mkpx, pos, body_end)?;
+        if &fourcc != b"META" {
+            w.bytes(&mkpx[start..end]);
+        }
+        pos = end;
+    }
+    if !entries.is_empty() {
+        let mut meta = Writer::new();
+        meta.varint(entries.len() as u32);
+        for (k, v) in entries {
+            meta.str(k);
+            meta.u8(0); // value_type 0 = str
+            meta.str(v);
+        }
+        write_chunk(&mut w, b"META", false, &meta.buf);
+    }
+    let crc = crc32c(&w.buf);
+    let mut intg = Writer::new();
+    intg.u32(crc);
+    write_chunk(&mut w, b"INTG", true, &intg.buf);
+    Ok(w.buf)
+}
+
+/// Extract the string-typed entries of the `META` chunk from a **plain** container (the compact
+/// envelope is the periphery's to open first). Non-string entry types are skipped, preserving the
+/// "unknown keys preserved/ignored" stance; a file without META yields an empty list. Hostile
+/// input is safe: every read is bounds-checked and the CRC is verified before the walk.
+pub fn read_meta_str(mkpx: &[u8]) -> Result<Vec<(String, String)>, IoError> {
+    let body_end = meta_frame_check(mkpx)?;
+    let mut pos = 8usize;
+    while pos < body_end {
+        let (fourcc, start, end) = meta_chunk_at(mkpx, pos, body_end)?;
+        if &fourcc == b"META" {
+            let mut r = Reader::new(&mkpx[start + 9..end]);
+            let count = r.varint()? as usize;
+            if count > MAX_META_ENTRIES {
+                return Err(IoError::TooLarge("meta entries"));
+            }
+            let mut out = Vec::new();
+            for _ in 0..count {
+                let key = r.str()?;
+                match r.u8()? {
+                    0 => out.push((key, r.str()?)),
+                    1 | 2 => {
+                        r.take(8)?;
+                    }
+                    3 => {
+                        let n = r.varint()? as usize;
+                        if n > MAX_STR {
+                            return Err(IoError::TooLarge("meta bytes"));
+                        }
+                        r.take(n)?;
+                    }
+                    _ => return Err(IoError::Corrupt("meta value type")),
+                }
+            }
+            return Ok(out);
+        }
+        pos = end;
+    }
+    Ok(Vec::new())
+}
+
 struct Chunks<'a> {
     head: Option<&'a [u8]>,
     tile: Option<&'a [u8]>,
@@ -992,6 +1125,75 @@ mod tests {
         assert_eq!(back.palettes[1].color_names, doc.palettes[1].color_names);
         // Save→load→save is byte-stable with names present.
         assert_eq!(save_to_bytes(&back), bytes);
+    }
+
+    #[test]
+    fn meta_splice_read_roundtrip() {
+        let mut doc = Document::new(16, 16);
+        doc.active_frame_mut().active_layer_mut().pixels.set(3, 3, Rgba8::WHITE);
+        let plain = save_to_bytes(&doc);
+
+        let entries = [("club.parents", "aB3xY,qW9zK"), ("club.everImported", "1")];
+        let spliced = splice_meta_str(&plain, &entries).unwrap();
+        assert_eq!(
+            read_meta_str(&spliced).unwrap(),
+            entries.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect::<Vec<_>>()
+        );
+        // The document still loads identically — the loader skips META.
+        let back = load_from_bytes(&spliced).unwrap();
+        assert_eq!(back.content_hash(), doc.content_hash());
+        // A file without META reads as empty, not an error.
+        assert_eq!(read_meta_str(&plain).unwrap(), Vec::new());
+    }
+
+    #[test]
+    fn meta_splice_replaces_and_strips() {
+        let doc = Document::new(8, 8);
+        let plain = save_to_bytes(&doc);
+        let first = splice_meta_str(&plain, &[("k", "old"), ("gone", "x")]).unwrap();
+        let second = splice_meta_str(&first, &[("k", "new")]).unwrap();
+        assert_eq!(read_meta_str(&second).unwrap(), vec![("k".to_string(), "new".to_string())]);
+        // Empty entries strip META entirely, restoring the engine-canonical bytes.
+        let stripped = splice_meta_str(&second, &[]).unwrap();
+        assert_eq!(stripped, plain);
+    }
+
+    #[test]
+    fn meta_read_skips_non_string_types_and_rejects_garbage() {
+        let doc = Document::new(8, 8);
+        let plain = save_to_bytes(&doc);
+        // Hand-build a META chunk with a u64 entry between two strings.
+        let body_end = plain.len() - INTG_LEN;
+        let mut w = Writer::new();
+        w.bytes(&plain[..body_end]);
+        let mut meta = Writer::new();
+        meta.varint(3);
+        meta.str("a");
+        meta.u8(0);
+        meta.str("1");
+        meta.str("stamp");
+        meta.u8(1); // u64
+        meta.bytes(&42u64.to_le_bytes());
+        meta.str("z");
+        meta.u8(0);
+        meta.str("2");
+        write_chunk(&mut w, b"META", false, &meta.buf);
+        let crc = crc32c(&w.buf);
+        let mut intg = Writer::new();
+        intg.u32(crc);
+        write_chunk(&mut w, b"INTG", true, &intg.buf);
+        assert_eq!(
+            read_meta_str(&w.buf).unwrap(),
+            vec![("a".to_string(), "1".to_string()), ("z".to_string(), "2".to_string())]
+        );
+        // Corrupt (CRC-broken) input is rejected, not walked.
+        let mut bad = w.buf.clone();
+        bad[10] ^= 0xFF;
+        assert!(read_meta_str(&bad).is_err());
+        assert!(splice_meta_str(&bad, &[("k", "v")]).is_err());
+        // Oversized entries error rather than truncate.
+        let long = "x".repeat(5000);
+        assert!(splice_meta_str(&plain, &[("k", long.as_str())]).is_err());
     }
 
     #[test]
