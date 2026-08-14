@@ -413,6 +413,7 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
     _buildHexRow(),
     const SizedBox(height: 8),
     _buildModeChips(),
+    const SizedBox(height: 8),
     // Type RGB (0–255) or HSV (H 0–360, S/V 0–100) directly; updates the color live.
     _buildFieldsRow(),
   ];

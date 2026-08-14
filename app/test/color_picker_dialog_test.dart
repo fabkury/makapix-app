@@ -186,5 +186,15 @@ void main() {
       expect(find.text('H'), findsOneWidget);
       expect(find.text('R'), findsNothing);
     });
+
+    testWidgets('the chips keep breathing room above the fields', (tester) async {
+      await pumpAt(tester, const Size(430, 932)); // HSV mode from setUp
+      final chipBottom = tester.getRect(find.byType(ChoiceChip).first).bottom;
+      final hField = find.ancestor(
+        of: find.text('H'),
+        matching: find.byType(TextField),
+      );
+      expect(tester.getRect(hField).top, greaterThanOrEqualTo(chipBottom + 8));
+    });
   });
 }
