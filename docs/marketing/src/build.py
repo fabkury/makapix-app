@@ -229,7 +229,7 @@ def slide_rgba(orient):
       <span class="tag">R 8</span><span class="tag">G 8</span>
       <span class="tag">B 8</span><span class="tag" style="color:#4080C0;">A 8</span>
     </div>
-    <div class="caption">SOFT ALPHA, PAINTED — NOT KEYED</div>"""
+    <div class="caption">SOFT ALPHA, PAINTED, NOT KEYED</div>"""
 
 
 def slide_blend(orient):
@@ -315,7 +315,7 @@ def slide_palette(orient):
     }}
     .pstrip div {{ aspect-ratio: 1; }}
     </style>
-    {strip(data['shuffled'], 'IMPORTED — ANY ORDER')}
+    {strip(data['shuffled'], 'IMPORTED: ANY ORDER')}
     {strip(data['sorted'], 'ONE TAP: SORTED BY SIMILARITY')}
     {'<div class="phone" style="width: calc(var(--u)*52);"><img src="'
      + art('crops/palette_top.png') + '"></div>' if orient == 'portrait' else ''}"""
@@ -365,19 +365,19 @@ SLIDES = {
                slide_frames),
     "rgba": ("MAKAPIX EDITOR",
              'TRUE <span class="a">32-BIT</span> RGBA.',
-             "Every pixel carries real 8-bit alpha — no chroma-key tricks.",
+             "Every pixel carries real 8-bit alpha. No chroma-key tricks.",
              slide_rgba),
     "blend": ("MAKAPIX EDITOR",
               'REAL <span class="a">BLEND</span> MODES.',
-              "Multiply, Screen, Overlay, Difference — ten modes of true layer math.",
+              "Multiply, Screen, Overlay, Difference: ten modes of true layer math.",
               slide_blend),
     "select": ("MAKAPIX EDITOR",
                'SELECTION <span class="a">ALGEBRA</span>.',
-               "Add, subtract, intersect — or select a layer's pixels in one tap.",
+               "Add, subtract, intersect, or select a layer's pixels in one tap.",
                slide_select),
     "levels": ("MAKAPIX EDITOR",
                '<span class="a">LEVELS</span>, NOT GUESSWORK.',
-               "Remap black point, gamma, and highlights — way beyond Brightness/Contrast.",
+               "Remap black point, gamma, and highlights. Way beyond Brightness/Contrast.",
                slide_levels),
     "ruler": ("MAKAPIX EDITOR",
               'MEASURE <span class="a">ANYTHING</span>.',
@@ -385,7 +385,7 @@ SLIDES = {
               slide_ruler),
     "palette": ("MAKAPIX EDITOR",
                 'PALETTES THAT <span class="a">TRAVEL</span>.',
-                "Import and export .gpl files — and sort any palette by visual similarity.",
+                "Import and export .gpl files, and sort any palette by visual similarity.",
                 slide_palette),
     "cleanedge": ("MAKAPIX EDITOR",
                   'ROTATE WITHOUT <span class="a">JAGGIES</span>.',
