@@ -189,6 +189,17 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
     _syncFromColor(skipHsv: true);
   }
 
+  // iOS's plain number pad has no return key AT ALL, so the on-screen keyboard could
+  // only be dismissed by closing the whole dialog. signed:true selects the
+  // numbers-and-punctuation keyboard, which has one (labeled Done via
+  // textInputAction). Android's number pad already has an enter key — keep it bare.
+  TextInputType get _numKeyboard =>
+      Theme.of(context).platform == TargetPlatform.iOS
+          ? const TextInputType.numberWithOptions(signed: true)
+          : TextInputType.number;
+
+  void _unfocus() => FocusManager.instance.primaryFocus?.unfocus();
+
   // A compact integer field for the RGB / HSV rows.
   Widget _numField(
     String label,
@@ -199,7 +210,8 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
       padding: const EdgeInsets.symmetric(horizontal: 3),
       child: TextField(
         controller: ctrl,
-        keyboardType: TextInputType.number,
+        keyboardType: _numKeyboard,
+        textInputAction: TextInputAction.done,
         textAlign: TextAlign.center,
         decoration: InputDecoration(
           labelText: label,
@@ -217,6 +229,7 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
 
   // Live update from a drag/tap on the saturation×value square.
   void _onSv(Offset local, Size size) {
+    _unfocus(); // touching the picker area means the user is done typing
     setState(() {
       s = (local.dx / size.width).clamp(0.0, 1.0);
       v = 1 - (local.dy / size.height).clamp(0.0, 1.0);
@@ -226,6 +239,7 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
 
   // Live update from a drag/tap on the hue ramp.
   void _onHue(Offset local, double height) {
+    _unfocus(); // touching the picker area means the user is done typing
     setState(() => h = (local.dy / height * 360).clamp(0.0, 359.999));
     _syncFromColor();
   }
@@ -320,7 +334,8 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
         width: 48,
         child: TextField(
           controller: _aCtrl,
-          keyboardType: TextInputType.number,
+          keyboardType: _numKeyboard,
+          textInputAction: TextInputAction.done,
           textAlign: TextAlign.center,
           decoration: const InputDecoration(
             isDense: true,
@@ -529,10 +544,16 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
     // a second one: a landscape phone with the keyboard up can leave too little height
     // for side-by-side panes, and the stacked scrollable layout is the one that still
     // works there.
-    if (editorUsesLandscape(size) && availH >= 150) {
-      return _buildLandscape(size, availH);
-    }
-    return _buildPortrait(size);
+    // Translucent, so it only receives taps nothing else claims: a tap on any
+    // non-interactive part of the dialog dismisses the keyboard — which, on the iOS
+    // number pad, has no key of its own to do that.
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: _unfocus,
+      child: (editorUsesLandscape(size) && availH >= 150)
+          ? _buildLandscape(size, availH)
+          : _buildPortrait(size),
+    );
   }
 }
 

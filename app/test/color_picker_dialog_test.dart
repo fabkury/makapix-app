@@ -197,4 +197,58 @@ void main() {
       expect(tester.getRect(hField).top, greaterThanOrEqualTo(chipBottom + 8));
     });
   });
+
+  group('keyboard dismissal (iOS)', () {
+    testWidgets('numeric fields carry a keyboard with a Done key', (tester) async {
+      await pumpAt(tester, const Size(430, 932)); // host theme is iOS
+      final hField = find.ancestor(
+        of: find.text('H'),
+        matching: find.byType(TextField),
+      );
+      final tf = tester.widget<TextField>(hField);
+      // The bare iOS number pad has no return key; signed:true selects the
+      // numbers-and-punctuation keyboard, which does.
+      expect(
+        tf.keyboardType,
+        const TextInputType.numberWithOptions(signed: true),
+      );
+      expect(tf.textInputAction, TextInputAction.done);
+    });
+
+    testWidgets('tapping outside a field dismisses the keyboard', (tester) async {
+      await pumpAt(tester, const Size(430, 932));
+      final hField = find.ancestor(
+        of: find.text('H'),
+        matching: find.byType(TextField),
+      );
+      await tester.tap(hField);
+      await tester.pump();
+      final editable = tester.widget<EditableText>(
+        find.descendant(of: hField, matching: find.byType(EditableText)),
+      );
+      expect(editable.focusNode.hasFocus, isTrue);
+      await tester.tap(find.text('Pick color')); // the title: not interactive
+      await tester.pump();
+      expect(editable.focusNode.hasFocus, isFalse);
+    });
+
+    testWidgets('tapping the picker area dismisses the keyboard', (tester) async {
+      await pumpAt(tester, const Size(430, 932));
+      final hField = find.ancestor(
+        of: find.text('H'),
+        matching: find.byType(TextField),
+      );
+      await tester.tap(hField);
+      await tester.pump();
+      final editable = tester.widget<EditableText>(
+        find.descendant(of: hField, matching: find.byType(EditableText)),
+      );
+      expect(editable.focusNode.hasFocus, isTrue);
+      await tester.tapAt(
+        tester.getCenter(find.byKey(const Key('pickerSvSquare'))),
+      );
+      await tester.pump();
+      expect(editable.focusNode.hasFocus, isFalse);
+    });
+  });
 }
