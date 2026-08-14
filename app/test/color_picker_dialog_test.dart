@@ -83,4 +83,69 @@ void main() {
     expect(square.left, greaterThanOrEqualTo(scroll.left + 9));
     expect(square.top, greaterThanOrEqualTo(scroll.top + 9));
   });
+
+  group('landscape (iPhone 12: 844×390)', () {
+    testWidgets('two panes: picker left, fields and buttons right, no overflow', (tester) async {
+      await pumpAt(tester, const Size(844, 390));
+      expect(tester.takeException(), isNull, reason: 'everything fits on screen');
+      expect(find.byKey(const Key('pickerSvSquare')), findsOneWidget);
+      expect(find.byKey(const Key('pickerHueRamp')), findsOneWidget);
+      expect(find.text('OK'), findsOneWidget);
+      expect(find.text('Cancel'), findsOneWidget);
+      final square = tester.getRect(find.byKey(const Key('pickerSvSquare')));
+      final hexMark = tester.getRect(find.text('#'));
+      expect(hexMark.left, greaterThan(square.right),
+          reason: 'the fields sit in a pane right of the picker');
+      final ok = tester.getRect(find.text('OK'));
+      expect(ok.bottom, greaterThan(hexMark.bottom),
+          reason: 'the buttons sit at the bottom of the right pane');
+    });
+
+    testWidgets('hue drag tracks in landscape (square at its full 246)', (tester) async {
+      await pumpAt(tester, const Size(844, 390));
+      // availH = 390 − 48 − 28 = 314 → the square caps at 246, so the portrait drag
+      // arithmetic (243/246·360 ≈ 356°) transfers verbatim.
+      await tester.drag(find.byKey(const Key('pickerHueRamp')), const Offset(0, 120),
+          warnIfMissed: false);
+      await tester.pump();
+      expect(find.text('356'), findsOneWidget, reason: 'H field shows the fully-tracked hue');
+    });
+
+    testWidgets('OK pops the picked color, Cancel pops null', (tester) async {
+      tester.view.physicalSize = const Size(844, 390);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      Color? picked = const Color(0x12345678);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(platform: TargetPlatform.iOS),
+          home: Builder(
+            builder: (context) => Center(
+              child: FilledButton(
+                onPressed: () async {
+                  picked = await showDialog<Color>(
+                    context: context,
+                    builder: (_) =>
+                        const ColorPickerDialog(initial: Color(0xFF00FF00)),
+                  );
+                },
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      expect(picked, const Color(0xFF00FF00));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(picked, isNull);
+    });
+  });
 }
