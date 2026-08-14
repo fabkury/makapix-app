@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../ui/layout.dart';
 import '../widgets/painters.dart';
@@ -29,6 +31,11 @@ const EdgeInsets _kInsetPadding = EdgeInsets.symmetric(horizontal: 40, vertical:
 const EdgeInsets _kContentPadPortrait = EdgeInsets.fromLTRB(24, 20, 24, 24);
 const EdgeInsets _kContentPadLandscape = EdgeInsets.fromLTRB(16, 16, 16, 12);
 
+// Which trio of numeric fields is shown; the choice is a lasting user preference.
+const String kColorPickerModePref = 'editor.colorPickerMode_v1';
+
+enum _ColorFieldMode { rgb, hsv }
+
 /// The traditional square+hue color picker: a Saturation×Value square with a hue ramp beside it,
 /// an alpha slider, and a hex field. Dragging on the square or ramp updates the color live.
 class ColorPickerDialog extends StatefulWidget {
@@ -40,6 +47,7 @@ class ColorPickerDialog extends StatefulWidget {
 
 class _ColorPickerDialogState extends State<ColorPickerDialog> {
   double h = 0, s = 0, v = 0, a = 255;
+  _ColorFieldMode _mode = _ColorFieldMode.rgb;
   late final TextEditingController _hexCtrl,
       _rCtrl,
       _gCtrl,
@@ -66,6 +74,31 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
     _vCtrl = TextEditingController();
     _aCtrl = TextEditingController();
     _syncFromColor();
+    _loadModePref();
+  }
+
+  // The RGB/HSV choice is a lasting preference, not per-dialog state. Worst case for
+  // the async load is one frame of the RGB default before a stored HSV arrives.
+  Future<void> _loadModePref() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getString(kColorPickerModePref) == _ColorFieldMode.hsv.name &&
+          mounted) {
+        setState(() => _mode = _ColorFieldMode.hsv);
+      }
+    } catch (_) {
+      // No prefs (or a bad value): keep the RGB default.
+    }
+  }
+
+  void _setMode(_ColorFieldMode m) {
+    if (m == _mode) return;
+    setState(() => _mode = m);
+    unawaited(
+      SharedPreferences.getInstance()
+          .then((p) => p.setString(kColorPickerModePref, m.name))
+          .catchError((_) => true),
+    );
   }
 
   @override
@@ -342,41 +375,46 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
     ],
   );
 
+  Widget _buildModeChips() => Wrap(
+    spacing: 6,
+    children: [
+      for (final m in _ColorFieldMode.values)
+        ChoiceChip(
+          label: Text(m.name.toUpperCase()),
+          selected: _mode == m,
+          selectedColor: const Color(0xFF30A050),
+          visualDensity: VisualDensity.compact,
+          onSelected: (_) => _setMode(m),
+        ),
+    ],
+  );
+
+  // One trio at a time; every controller stays alive and synced, so switching modes
+  // shows the current color's values immediately.
+  Widget _buildFieldsRow() => _mode == _ColorFieldMode.rgb
+      ? Row(
+          children: [
+            _numField('R', _rCtrl, _applyRgb),
+            _numField('G', _gCtrl, _applyRgb),
+            _numField('B', _bCtrl, _applyRgb),
+          ],
+        )
+      : Row(
+          children: [
+            _numField('H', _hCtrl, _applyHsv),
+            _numField('S', _sCtrl, _applyHsv),
+            _numField('V', _vCtrl, _applyHsv),
+          ],
+        );
+
   // The rows below the picker area, shared verbatim by both orientations.
   List<Widget> _buildFieldSection() => [
     _buildAlphaRow(),
     _buildHexRow(),
     const SizedBox(height: 8),
+    _buildModeChips(),
     // Type RGB (0–255) or HSV (H 0–360, S/V 0–100) directly; updates the color live.
-    Row(
-      children: [
-        const SizedBox(
-          width: 30,
-          child: Text(
-            'RGB',
-            style: TextStyle(fontSize: 12, color: Colors.white60),
-          ),
-        ),
-        _numField('R', _rCtrl, _applyRgb),
-        _numField('G', _gCtrl, _applyRgb),
-        _numField('B', _bCtrl, _applyRgb),
-      ],
-    ),
-    const SizedBox(height: 8),
-    Row(
-      children: [
-        const SizedBox(
-          width: 30,
-          child: Text(
-            'HSV',
-            style: TextStyle(fontSize: 12, color: Colors.white60),
-          ),
-        ),
-        _numField('H', _hCtrl, _applyHsv),
-        _numField('S', _sCtrl, _applyHsv),
-        _numField('V', _vCtrl, _applyHsv),
-      ],
-    ),
+    _buildFieldsRow(),
   ];
 
   Widget _buildPortrait(Size size) {

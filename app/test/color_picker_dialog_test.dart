@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:makapix_club/editor/dialogs/color_picker_dialog.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   // Regression (iPhone 12 TestFlight report): the picker's content sits in a
@@ -13,6 +14,13 @@ void main() {
         home: const Material(child: ColorPickerDialog(initial: Color(0xFFFF0000))),
       );
 
+  // The drag/tap tests read their results from the H/S/V text fields, which are only
+  // visible in HSV mode — seed the stored mode accordingly. (The chip tests override
+  // this per-test.)
+  setUp(() {
+    SharedPreferences.setMockInitialValues({kColorPickerModePref: 'hsv'});
+  });
+
   // The picker sizes itself from MediaQuery, so every test pins the surface to make the
   // geometry deterministic. 430×932 portrait leaves 302px inside the dialog paddings, so
   // the square caps at its 246px maximum — the same 26×246 ramp the original fixed-width
@@ -23,6 +31,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(host());
+    await tester.pump(); // flush the stored-mode load
   }
 
   testWidgets('hue ramp tracks a full vertical drag under iOS bouncing physics', (tester) async {
@@ -146,6 +155,36 @@ void main() {
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
       expect(picked, isNull);
+    });
+  });
+
+  group('RGB/HSV mode chips', () {
+    testWidgets('defaults to RGB; the HSV chip swaps the fields and stores the mode', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      await pumpAt(tester, const Size(430, 932));
+      // RGB mode: the R/G/B trio shows, H/S/V does not; hex + alpha always present.
+      expect(find.text('R'), findsOneWidget);
+      expect(find.text('H'), findsNothing);
+      expect(find.text('#'), findsOneWidget);
+      expect(find.text('A'), findsOneWidget);
+      await tester.tap(find.text('HSV'));
+      await tester.pump();
+      expect(find.text('H'), findsOneWidget);
+      expect(find.text('R'), findsNothing);
+      expect(find.text('#'), findsOneWidget);
+      expect(find.text('A'), findsOneWidget);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString(kColorPickerModePref), 'hsv',
+          reason: 'the chosen mode persists');
+    });
+
+    testWidgets('reopens in the stored mode', (tester) async {
+      SharedPreferences.setMockInitialValues({kColorPickerModePref: 'hsv'});
+      await pumpAt(tester, const Size(430, 932));
+      expect(find.text('H'), findsOneWidget);
+      expect(find.text('R'), findsNothing);
     });
   });
 }
