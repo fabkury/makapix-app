@@ -1194,6 +1194,7 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
       title: post.title,
       linkUrl: '$base/p/${post.sqid}',
       onError: (m) => messenger.showSnackBar(SnackBar(content: Text(m))),
+      onNotice: (m) => messenger.showSnackBar(SnackBar(content: Text(m), duration: const Duration(seconds: 4))),
     );
   }
 

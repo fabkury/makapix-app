@@ -13,7 +13,7 @@ import 'package:makapix_club/engine_ffi.dart';
 Future<Uint8List?> rescaleArtworkBytes(Uint8List bytes,
     {required int width, required int height, required String format}) async {
   try {
-    final out = await Engine.encodeRasterInBackground(bytes,
+    final (out, _) = await Engine.encodeRasterInBackground(bytes,
         width: width, height: height, format: format);
     return out.isEmpty ? null : out;
   } catch (_) {

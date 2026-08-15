@@ -254,7 +254,7 @@ extension _EditorFileIo on _EditorPageState {
     // Encode off the UI thread so a multi-frame WebP doesn't jank/ANR. [audit F-12]
     var docBytes = engine.save();
     _toast('Rendering WebP…');
-    final bytes = await Engine.encodeInBackground(docBytes, format: 'webp');
+    final (bytes, _) = await Engine.encodeInBackground(docBytes, format: 'webp');
     // Release the ~document-sized snapshot now — it is not needed past the encode, so it should
     // not stay resident across the metadata decode + Navigator.push below. [audit #14]
     docBytes = Uint8List(0);
@@ -393,7 +393,8 @@ extension _EditorFileIo on _EditorPageState {
       if (!Platform.isAndroid && !Platform.isIOS) {
         await File(path).writeAsBytes(bytes);
       }
-      if (mounted) _toast(done);
+      // A long notice (the GIF flatten heads-up) gets more read time than the plain size toast.
+      if (mounted) _toast(done, duration: Duration(seconds: done.length > 60 ? 4 : 2));
     } catch (e) {
       if (mounted) _toast('Could not save: $e');
     }
@@ -427,9 +428,10 @@ extension _EditorFileIo on _EditorPageState {
   // Encode the document to `format` off the UI thread behind a modal progress dialog. The dialog
   // polls the engine library's process-wide export progress (one step per frame composited + one
   // per frame encoded — a 1,024-frame × 64-layer document can take minutes) and offers Cancel,
-  // which asks the encoder to stop at the next frame boundary. Returns (bytes, canceled):
-  // bytes is empty on failure or cancellation.
-  Future<(Uint8List, bool)> _encodeWithProgress(String format,
+  // which asks the encoder to stop at the next frame boundary. Returns (bytes, canceled,
+  // flattened): bytes is empty on failure or cancellation; flattened is true only for a GIF
+  // whose semi-transparent pixels were thresholded to 1-bit alpha.
+  Future<(Uint8List, bool, bool)> _encodeWithProgress(String format,
           {required String title, int frame = 0, int layer = 0, int scale = 1}) =>
       encodeWithProgress(
         context: context,
@@ -463,9 +465,10 @@ extension _EditorFileIo on _EditorPageState {
     final done = layerOnly ? 'Exported layer ${layer + 1}' : 'Exported $chosen';
     final Uint8List bytes;
     if (scale == 1) {
-      bytes = await Engine.encodeInBackground(engine.save(), format: format, frame: frame, layer: layer); // [F-12]
+      final (b, _) = await Engine.encodeInBackground(engine.save(), format: format, frame: frame, layer: layer); // [F-12]
+      bytes = b;
     } else {
-      final (b, canceled) =
+      final (b, canceled, _) =
           await _encodeWithProgress(format, frame: frame, layer: layer, scale: scale, title: 'Rendering $chosen…');
       if (canceled) {
         _toast('Export canceled');
@@ -491,7 +494,7 @@ extension _EditorFileIo on _EditorPageState {
     final choice = await _exportScaleDialog(frames: fc);
     if (choice == null) return;
     final (scale, _) = choice;
-    final (bytes, canceled) = await _encodeWithProgress('gif', scale: scale, title: 'Rendering GIF…');
+    final (bytes, canceled, flattened) = await _encodeWithProgress('gif', scale: scale, title: 'Rendering GIF…');
     if (canceled) {
       _toast('Export canceled');
       return;
@@ -500,10 +503,13 @@ extension _EditorFileIo on _EditorPageState {
       _toast('Export failed');
       return;
     }
+    // GIF holds 1-bit transparency; when the encode actually flattened semi-transparent pixels,
+    // the artist is told the look changed (docs/animator/01-features-landscape.md decision).
     await _saveExport(bytes,
         fileName: scale > 1 ? 'animation_${scale}x.gif' : 'animation.gif',
         ext: 'gif',
-        done: 'Exported GIF ($fc frames, ${bytes.length ~/ 1024} KiB)');
+        done: 'Exported GIF ($fc frames, ${bytes.length ~/ 1024} KiB)'
+            '${flattened ? ' — semi-transparent pixels were flattened' : ''}');
   }
 
   // Lossless animated WebP (static WebP for a single-frame document) — same engine export the
@@ -513,7 +519,7 @@ extension _EditorFileIo on _EditorPageState {
     final choice = await _exportScaleDialog(frames: fc);
     if (choice == null) return;
     final (scale, _) = choice;
-    final (bytes, canceled) = await _encodeWithProgress('webp', scale: scale, title: 'Rendering WebP…');
+    final (bytes, canceled, _) = await _encodeWithProgress('webp', scale: scale, title: 'Rendering WebP…');
     if (canceled) {
       _toast('Export canceled');
       return;
@@ -557,20 +563,28 @@ extension _EditorFileIo on _EditorPageState {
     if (animated) await prefs.setString(_kShareFormatPref, chosen);
 
     final Uint8List bytes;
+    var flattened = false;
     if (!animated && scale == 1) {
-      bytes = await Engine.encodeInBackground(engine.save(), format: 'png', frame: engine.activeFrame); // [F-12]
+      final (b, _) = await Engine.encodeInBackground(engine.save(), format: 'png', frame: engine.activeFrame); // [F-12]
+      bytes = b;
     } else {
-      final (b, canceled) = await _encodeWithProgress(format,
+      final (b, canceled, f) = await _encodeWithProgress(format,
           frame: engine.activeFrame, scale: scale, title: 'Rendering ${animated ? chosen : 'PNG'}…');
       if (canceled) {
         _toast('Share canceled');
         return;
       }
       bytes = b;
+      flattened = f;
     }
     if (bytes.isEmpty) {
       _toast('Share failed');
       return;
+    }
+    if (flattened) {
+      // GIF holds 1-bit transparency; tell the artist the look changed before the sheet opens.
+      _toast('GIF holds no partial transparency — semi-transparent pixels were flattened',
+          duration: const Duration(seconds: 4));
     }
 
     try {
@@ -711,9 +725,9 @@ extension _EditorFileIo on _EditorPageState {
     );
   }
 
-  void _toast(String m) {
+  void _toast(String m, {Duration duration = const Duration(seconds: 2)}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), duration: const Duration(seconds: 2)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), duration: duration));
   }
 
   Future<void> _pickColor({required Color initial, required ValueChanged<Color> onPick}) async {

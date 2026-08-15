@@ -827,8 +827,19 @@ fn export_flatten_ok(s: &Session) -> bool {
 /// applied one frame at a time). Frames are composited **on demand** and fed to the encoder one at
 /// a time, so no all-frames RGBA flatten is ever resident (audit #10). Returns a malloc'd buffer;
 /// len via `out_len`. Progress via `mkpx_export_progress`; null on failure OR `mkpx_export_cancel`.
+/// GIF holds 1-bit transparency, so alpha is thresholded at 128; when `out_flags` is non-null,
+/// bit 0 of `*out_flags` is set iff semi-transparent pixels were flattened — the shell uses it
+/// to tell the artist the look changed (mkpx_decode_image's out-param pattern).
 #[no_mangle]
-pub extern "C" fn mkpx_export_gif(ptr: *mut Session, scale: u32, out_len: *mut u64) -> *mut u8 {
+pub extern "C" fn mkpx_export_gif(
+    ptr: *mut Session,
+    scale: u32,
+    out_len: *mut u64,
+    out_flags: *mut u32,
+) -> *mut u8 {
+    if !out_flags.is_null() {
+        unsafe { *out_flags = 0 };
+    }
     let s = match session(ptr) {
         Some(s) => s,
         None => return std::ptr::null_mut(),
@@ -851,8 +862,14 @@ pub extern "C" fn mkpx_export_gif(ptr: *mut Session, scale: u32, out_len: *mut u
         export_progress_inc(); // one composite step done
         Some(frame)
     };
-    match makapix_codec::encode_gif_streaming(w as u32, h as u32, n, next, scale, &mut encode_progress_hook_streaming) {
-        Ok(v) => bytes_out(v, out_len),
+    let mut flattened = false;
+    match makapix_codec::encode_gif_streaming(w as u32, h as u32, n, next, scale, &mut encode_progress_hook_streaming, &mut flattened) {
+        Ok(v) => {
+            if flattened && !out_flags.is_null() {
+                unsafe { *out_flags |= 1 };
+            }
+            bytes_out(v, out_len)
+        }
         Err(_) => std::ptr::null_mut(),
     }
 }
@@ -1285,11 +1302,43 @@ mod tests {
         mkpx_export_progress_reset();
         assert_eq!(mkpx_export_progress(), 0, "reset clears the pair");
         let mut len: u64 = 0;
-        let out = mkpx_export_gif(p, 1, &mut len);
+        let mut flags: u32 = 7;
+        let out = mkpx_export_gif(p, 1, &mut len, &mut flags);
         assert!(!out.is_null() && len > 0);
+        assert_eq!(flags, 0, "opaque pencil art flattens nothing");
         mkpx_free_bytes(out, len);
         // 2 frames → 2 composite steps + 2 encode steps: done == total == 4.
         assert_eq!(mkpx_export_progress(), (4u64 << 32) | 4, "export ends at done == total");
+        mkpx_free(p);
+    }
+
+    #[test]
+    fn ffi_export_gif_flattens_semi_alpha_and_reports_it() {
+        let _guard = EXPORT_TEST_LOCK.lock().unwrap();
+        let p = mkpx_new(8, 8);
+        // Two semi-transparent pencil pixels straddling the 128 threshold: GIF holds 1-bit
+        // alpha, so the export must flatten them and set the tell-the-artist bit.
+        let script = b"SelectTool(Pencil); SetPrimaryColor(#FF000080); Tap(2,2); \
+                       SetPrimaryColor(#00FF0040); Tap(3,3)";
+        let _ = mkpx_run(p, script.as_ptr(), script.len());
+        let mut len: u64 = 0;
+        let mut flags: u32 = 0;
+        let out = mkpx_export_gif(p, 1, &mut len, &mut flags);
+        assert!(!out.is_null() && len > 0);
+        assert_eq!(flags & 1, 1, "semi-alpha content sets the flattened bit");
+        let exported = unsafe { slice::from_raw_parts(out, len as usize) }.to_vec();
+        mkpx_free_bytes(out, len);
+        let back = makapix_codec::decode(&exported).unwrap();
+        assert!(
+            back[0].rgba.chunks_exact(4).all(|px| px[3] == 0 || px[3] == 255),
+            "exported GIF holds only 1-bit alpha"
+        );
+        let px = |x: usize, y: usize| {
+            let i = (y * 8 + x) * 4;
+            back[0].rgba[i..i + 4].to_vec()
+        };
+        assert_eq!(px(2, 2)[3], 255, "alpha 128 thresholds up to opaque");
+        assert_eq!(px(3, 3)[3], 0, "alpha 64 thresholds down to transparent");
         mkpx_free(p);
     }
 
@@ -1349,7 +1398,7 @@ mod tests {
         assert_eq!(mkpx_frame_count(p), 3);
 
         let mut len: u64 = 0;
-        let out = mkpx_export_gif(p, 1, &mut len);
+        let out = mkpx_export_gif(p, 1, &mut len, std::ptr::null_mut());
         assert!(!out.is_null() && len > 0);
         let exported = unsafe { slice::from_raw_parts(out, len as usize) }.to_vec();
         mkpx_free_bytes(out, len);

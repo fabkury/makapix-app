@@ -114,8 +114,9 @@ fn main() {
             let mut progress = |_done: usize, _total: usize| true;
             let t = Instant::now();
             let out = if mode == "gif" {
+                let mut flattened = false;
                 makapix_codec::encode_gif_streaming(
-                    w as u32, h as u32, count, || it.next(), scale, &mut progress,
+                    w as u32, h as u32, count, || it.next(), scale, &mut progress, &mut flattened,
                 )
             } else {
                 makapix_codec::encode_animated_webp_streaming(

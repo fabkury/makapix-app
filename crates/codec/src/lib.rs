@@ -626,6 +626,29 @@ fn push_chunk(buf: &mut Vec<u8>, fourcc: &[u8; 4], data: &[u8]) {
     }
 }
 
+/// Flatten straight-RGBA alpha to GIF's 1-bit transparency in place: alpha below 128 becomes
+/// fully transparent black (RGB zeroed so the 256-color quantizer sees no ghost colors), 128 and
+/// above becomes fully opaque. Returns true when any semi-transparent pixel (alpha 1..=254) was
+/// changed — the "tell the artist" flag. Without this pass the `gif` crate silently promotes
+/// every alpha 1..=254 to opaque, turning soft rims into hard halos.
+fn gif_flatten_alpha(rgba: &mut [u8]) -> bool {
+    let mut flattened = false;
+    for px in rgba.chunks_exact_mut(4) {
+        match px[3] {
+            0 | 255 => {}
+            a if a < 128 => {
+                flattened = true;
+                px.copy_from_slice(&[0, 0, 0, 0]);
+            }
+            _ => {
+                flattened = true;
+                px[3] = 255;
+            }
+        }
+    }
+    flattened
+}
+
 /// Encode frames to an animated GIF (durations in microseconds).
 pub fn encode_gif(w: u32, h: u32, frames: &[(Vec<u8>, u32)]) -> Result<Vec<u8>, CodecError> {
     encode_gif_with(w, h, frames, 1, &mut |_, _| true)
@@ -645,14 +668,17 @@ pub fn encode_gif_with(
     // Thin adapter over the streaming core: pull frames from the slice (cloning each, as the old
     // slice path always did at scale 1). Keeps every existing caller/test working unchanged.
     let mut it = frames.iter();
-    encode_gif_streaming(w, h, frames.len(), || it.next().map(|(r, d)| (r.clone(), *d)), scale, progress)
+    let mut flattened = false;
+    encode_gif_streaming(w, h, frames.len(), || it.next().map(|(r, d)| (r.clone(), *d)), scale, progress, &mut flattened)
 }
 
 /// Streaming GIF encoder: pulls one `(rgba, duration_us)` frame at a time via `next` (so the caller
 /// can composite on demand and never hold all frames at once — the export peak fix, audit #10),
 /// `count` = total frames (for progress). Byte-identical to the slice path: same frames, order,
 /// scale, encoder calls. Each frame is quantized and LZW-written straight into `out`; nothing
-/// accumulates but the output.
+/// accumulates but the output. Alpha is flattened to GIF's 1-bit transparency (< 128 →
+/// transparent, else opaque); `*flattened` is set to true when any frame actually held
+/// semi-transparent pixels, so the caller can tell the artist the look changed.
 pub fn encode_gif_streaming(
     w: u32,
     h: u32,
@@ -660,6 +686,7 @@ pub fn encode_gif_streaming(
     mut next: impl FnMut() -> Option<(Vec<u8>, u32)>,
     scale: u32,
     progress: EncodeProgress,
+    flattened: &mut bool,
 ) -> Result<Vec<u8>, CodecError> {
     let scale = scale.clamp(1, 32);
     let mut out = Vec::new();
@@ -668,7 +695,11 @@ pub fn encode_gif_streaming(
         enc.set_repeat(image::codecs::gif::Repeat::Infinite)
             .map_err(|e| CodecError::Encode(e.to_string()))?;
         let mut i = 0usize;
-        while let Some((rgba, dur_us)) = next() {
+        while let Some((mut rgba, dur_us)) = next() {
+            // Flatten pre-upscale (cheaper, and nearest-neighbor makes it pixel-identical).
+            if gif_flatten_alpha(&mut rgba) {
+                *flattened = true;
+            }
             let data = if scale == 1 { rgba } else { upscale_nearest(w, h, &rgba, scale) };
             let img = RgbaImage::from_raw(w * scale, h * scale, data).ok_or(CodecError::Unsupported)?;
             let delay = Delay::from_numer_denom_ms((dur_us / 1000).max(1), 1);
@@ -707,6 +738,7 @@ pub struct GifStreamEncoder {
     enc: Option<GifEncoder<SharedBuf>>,
     w: u32,
     h: u32,
+    flattened: bool,
 }
 
 impl GifStreamEncoder {
@@ -715,10 +747,21 @@ impl GifStreamEncoder {
         let mut enc = GifEncoder::new(SharedBuf(buf.clone()));
         enc.set_repeat(image::codecs::gif::Repeat::Infinite)
             .map_err(|e| CodecError::Encode(e.to_string()))?;
-        Ok(GifStreamEncoder { buf, enc: Some(enc), w, h })
+        Ok(GifStreamEncoder { buf, enc: Some(enc), w, h, flattened: false })
+    }
+
+    /// Whether any pushed frame held semi-transparent pixels that the GIF flatten changed.
+    /// (Timelapse frames arrive pre-flattened over an opaque background, so there this stays
+    /// false by construction.)
+    pub fn flattened(&self) -> bool {
+        self.flattened
     }
 
     pub fn push(&mut self, rgba: Vec<u8>, dur_us: u32) -> Result<(), CodecError> {
+        let mut rgba = rgba;
+        if gif_flatten_alpha(&mut rgba) {
+            self.flattened = true;
+        }
         let img = RgbaImage::from_raw(self.w, self.h, rgba).ok_or(CodecError::Unsupported)?;
         let delay = Delay::from_numer_denom_ms((dur_us / 1000).max(1), 1);
         self.enc
@@ -788,6 +831,33 @@ mod tests {
         let frames = decode(&gif).unwrap();
         assert_eq!(frames.len(), 2);
         assert!(frames[0].duration_us >= 1000);
+    }
+
+    #[test]
+    fn gif_flattens_semi_alpha_and_reports_it() {
+        let (w, h) = (4u32, 4u32);
+        // One frame with all four alpha classes: opaque, transparent, below and above threshold.
+        let mut rgba = vec![0u8; (w * h * 4) as usize];
+        rgba[0..4].copy_from_slice(&[255, 0, 0, 255]); // (0,0) opaque — untouched
+        rgba[4..8].copy_from_slice(&[0, 255, 0, 64]); // (1,0) faint — flattens to transparent
+        rgba[8..12].copy_from_slice(&[0, 0, 255, 128]); // (2,0) half — flattens to opaque
+        let opaque = vec![9u8, 9, 9, 255].repeat((w * h) as usize);
+
+        let mut it = vec![(rgba, 50_000u32)].into_iter();
+        let mut flattened = false;
+        let gif = encode_gif_streaming(w, h, 1, || it.next(), 1, &mut |_, _| true, &mut flattened).unwrap();
+        assert!(flattened, "semi-transparent pixels set the flag");
+        let back = decode(&gif).unwrap();
+        assert!(back[0].rgba.chunks_exact(4).all(|px| px[3] == 0 || px[3] == 255));
+        assert_eq!(back[0].rgba[3], 255, "opaque pixel survives");
+        assert_eq!(back[0].rgba[7], 0, "alpha 64 becomes transparent");
+        assert_eq!(back[0].rgba[11], 255, "alpha 128 becomes opaque");
+
+        // Fully 0/255 content leaves the flag unset (the timelapse path relies on this).
+        let mut it2 = vec![(opaque, 50_000u32)].into_iter();
+        let mut flattened2 = false;
+        encode_gif_streaming(w, h, 1, || it2.next(), 1, &mut |_, _| true, &mut flattened2).unwrap();
+        assert!(!flattened2, "0/255-only content flattens nothing");
     }
 
     #[test]

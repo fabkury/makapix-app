@@ -78,8 +78,12 @@ typedef _ExportPngC = Pointer<Uint8> Function(Pointer<Void>, Uint32, Uint32, Poi
 typedef _ExportPngD = Pointer<Uint8> Function(Pointer<Void>, int, int, Pointer<Uint64>);
 typedef _ExportLayerPngC = Pointer<Uint8> Function(Pointer<Void>, Uint32, Uint32, Uint32, Pointer<Uint64>);
 typedef _ExportLayerPngD = Pointer<Uint8> Function(Pointer<Void>, int, int, int, Pointer<Uint64>);
-typedef _ExportGifC = Pointer<Uint8> Function(Pointer<Void>, Uint32, Pointer<Uint64>);
-typedef _ExportGifD = Pointer<Uint8> Function(Pointer<Void>, int, Pointer<Uint64>);
+// GIF carries an extra out-flags pointer (bit 0 = semi-transparent pixels were flattened to
+// GIF's 1-bit alpha) — the WebP export keeps the plain bytes+len shape.
+typedef _ExportGifC = Pointer<Uint8> Function(Pointer<Void>, Uint32, Pointer<Uint64>, Pointer<Uint32>);
+typedef _ExportGifD = Pointer<Uint8> Function(Pointer<Void>, int, Pointer<Uint64>, Pointer<Uint32>);
+typedef _ExportWebpC = Pointer<Uint8> Function(Pointer<Void>, Uint32, Pointer<Uint64>);
+typedef _ExportWebpD = Pointer<Uint8> Function(Pointer<Void>, int, Pointer<Uint64>);
 typedef _ExportProgressC = Uint64 Function();
 typedef _ExportProgressD = int Function();
 typedef _ExportVoidC = Void Function();
@@ -286,8 +290,7 @@ class Engine {
   late final _ExportPngD _exportFrameWebp = _lib.lookupFunction<_ExportPngC, _ExportPngD>('mkpx_export_frame_webp');
   late final _ExportLayerPngD _exportLayerWebp = _lib.lookupFunction<_ExportLayerPngC, _ExportLayerPngD>('mkpx_export_layer_webp');
   late final _ExportGifD _exportGif = _lib.lookupFunction<_ExportGifC, _ExportGifD>('mkpx_export_gif');
-  // Same C signature as export_gif (Session*, out_len) → bytes.
-  late final _ExportGifD _exportWebp = _lib.lookupFunction<_ExportGifC, _ExportGifD>('mkpx_export_webp');
+  late final _ExportWebpD _exportWebp = _lib.lookupFunction<_ExportWebpC, _ExportWebpD>('mkpx_export_webp');
   // Export progress/cancel are PROCESS-WIDE in the engine library (no session argument): the
   // encode isolate writes them, the UI isolate polls them.
   late final _ExportProgressD _exportProgress = _lib.lookupFunction<_ExportProgressC, _ExportProgressD>('mkpx_export_progress');
@@ -713,13 +716,19 @@ class Engine {
     return out;
   }
 
-  Uint8List exportGif({int scale = 1}) {
+  /// Animated GIF export. GIF holds 1-bit transparency, so the engine thresholds alpha at 128;
+  /// the returned flag is true when semi-transparent pixels were actually flattened — the
+  /// caller uses it to tell the artist the look changed.
+  (Uint8List, bool) exportGif({int scale = 1}) {
     final lenPtr = malloc<Uint64>();
-    final p = _exportGif(_s, scale, lenPtr);
+    final flagsPtr = malloc<Uint32>();
+    final p = _exportGif(_s, scale, lenPtr, flagsPtr);
     final out = p == nullptr ? Uint8List(0) : Uint8List.fromList(p.asTypedList(lenPtr.value));
     if (p != nullptr) _freeBytes(p, lenPtr.value);
+    final flattened = (flagsPtr.value & 1) != 0;
     malloc.free(lenPtr);
-    return out;
+    malloc.free(flagsPtr);
+    return (out, flattened);
   }
 
   /// Lossless WebP (static for one frame, animated WebP for many) — the recommended Club format.
@@ -829,8 +838,10 @@ class Engine {
   /// Build a throwaway document from a decoded raster (`width`×`height`, any supported still or
   /// animation) and encode it to `format` ('gif' | 'webp' | 'png') at `scale`, **off the UI thread**.
   /// Used by the shared share flow to re-render a Club artwork's downloaded pixels to a shareable
-  /// GIF / lossless WebP / PNG. Progress is reported via [exportProgressStatic]. Empty on failure.
-  static Future<Uint8List> encodeRasterInBackground(Uint8List raster,
+  /// GIF / lossless WebP / PNG. Progress is reported via [exportProgressStatic]. Returns
+  /// (bytes, flattened): bytes empty on failure; flattened is true only for a GIF whose
+  /// semi-transparent pixels were thresholded to 1-bit alpha (see [exportGif]).
+  static Future<(Uint8List, bool)> encodeRasterInBackground(Uint8List raster,
       {required int width, required int height, required String format, int scale = 1}) async {
     try {
       return await Isolate.run(() => _encodeRaster(raster, width, height, format, scale));
@@ -839,19 +850,19 @@ class Engine {
     }
   }
 
-  static Uint8List _encodeRaster(Uint8List raster, int width, int height, String format, int scale) {
+  static (Uint8List, bool) _encodeRaster(Uint8List raster, int width, int height, String format, int scale) {
     final e = Engine(width, height);
     try {
       // Stretch the whole render onto a native-sized canvas (integer nearest → exact native pixels
       // when the render is a clean integer upscale), pulling in every animation frame.
-      if (!e.importImage(raster, mode: 1, asLayer: false, startFrame: 0)) return Uint8List(0);
+      if (!e.importImage(raster, mode: 1, asLayer: false, startFrame: 0)) return (Uint8List(0), false);
       switch (format) {
         case 'webp':
-          return e.exportWebp(scale: scale);
+          return (e.exportWebp(scale: scale), false);
         case 'gif':
           return e.exportGif(scale: scale);
         default:
-          return e.exportPng(0, scale: scale); // static → PNG of the single frame
+          return (e.exportPng(0, scale: scale), false); // static → PNG of the single frame
       }
     } finally {
       e.dispose();
@@ -863,7 +874,9 @@ class Engine {
   /// snapshot and runs the (potentially slow, multi-frame) encode, so the editor stays responsive.
   /// Falls back to a synchronous encode if the isolate can't run. The opaque session pointer is
   /// never shared across isolates; each builds its own from the bytes. [audit F-12]
-  static Future<Uint8List> encodeInBackground(Uint8List docBytes,
+  /// Returns (bytes, flattened): bytes empty on failure; flattened is true only for a GIF whose
+  /// semi-transparent pixels were thresholded to 1-bit alpha (see [exportGif]).
+  static Future<(Uint8List, bool)> encodeInBackground(Uint8List docBytes,
       {required String format, int frame = 0, int layer = 0, int scale = 1}) async {
     try {
       return await Isolate.run(() => _encodeFromBytes(docBytes, format: format, frame: frame, layer: layer, scale: scale));
@@ -872,24 +885,24 @@ class Engine {
     }
   }
 
-  static Uint8List _encodeFromBytes(Uint8List docBytes,
+  static (Uint8List, bool) _encodeFromBytes(Uint8List docBytes,
       {required String format, int frame = 0, int layer = 0, int scale = 1}) {
     final e = Engine(8, 8);
     try {
-      if (!e.load(docBytes).loaded) return Uint8List(0);
+      if (!e.load(docBytes).loaded) return (Uint8List(0), false);
       switch (format) {
         case 'webp':
-          return e.exportWebp(scale: scale);
+          return (e.exportWebp(scale: scale), false);
         case 'gif':
           return e.exportGif(scale: scale);
         case 'frame-webp':
-          return e.exportFrameWebp(frame, scale: scale);
+          return (e.exportFrameWebp(frame, scale: scale), false);
         case 'layer-png':
-          return e.exportLayerPng(frame, layer, scale: scale);
+          return (e.exportLayerPng(frame, layer, scale: scale), false);
         case 'layer-webp':
-          return e.exportLayerWebp(frame, layer, scale: scale);
+          return (e.exportLayerWebp(frame, layer, scale: scale), false);
         default:
-          return e.exportPng(frame, scale: scale);
+          return (e.exportPng(frame, scale: scale), false);
       }
     } finally {
       e.dispose();

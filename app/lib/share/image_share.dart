@@ -177,12 +177,14 @@ Future<(int, String)?> showExportScaleDialog({
 }
 
 /// Run `encode` behind a modal progress dialog that polls the engine's process-wide export progress
-/// and offers Cancel (honored at the next frame boundary). Returns (bytes, canceled); bytes is
-/// empty on failure or cancellation.
-Future<(Uint8List, bool)> encodeWithProgress({
+/// and offers Cancel (honored at the next frame boundary). Returns (bytes, canceled, flattened);
+/// bytes is empty on failure or cancellation. `flattened` rides through from the encoder — true
+/// only for a GIF whose semi-transparent pixels were thresholded to 1-bit alpha, so the caller
+/// can tell the artist the look changed.
+Future<(Uint8List, bool, bool)> encodeWithProgress({
   required BuildContext context,
   required String title,
-  required Future<Uint8List> Function() encode,
+  required Future<(Uint8List, bool)> Function() encode,
 }) async {
   Engine.resetExportProgressStatic(); // the dialog must not briefly show the PREVIOUS export's bar
   var canceled = false;
@@ -227,11 +229,12 @@ Future<(Uint8List, bool)> encodeWithProgress({
       poll?.cancel();
       dialogOpen = false;
     }));
-    final bytes = await future;
+    final (bytes, flattened) = await future;
     if (dialogOpen && context.mounted) Navigator.of(context, rootNavigator: true).pop();
-    return (bytes, canceled);
+    return (bytes, canceled, flattened);
   }
-  return (await future, false);
+  final (bytes, flattened) = await future;
+  return (bytes, false, flattened);
 }
 
 /// Write already-encoded image bytes to a temp file and open the system share sheet, optionally with
@@ -306,6 +309,9 @@ Future<bool> shareRasterArtwork({
   required String title,
   String? linkUrl,
   void Function(String message)? onError,
+  // Non-fatal heads-up (e.g. "semi-transparent pixels were flattened" on a GIF share); the
+  // caller supplies the toast, mirroring onError.
+  void Function(String message)? onNotice,
 }) async {
   void fail(String m) => onError?.call(m);
   if (width < 1 || height < 1 || width > 256 || height > 256) {
@@ -340,17 +346,17 @@ Future<bool> shareRasterArtwork({
           : ('gif', 'gif', 'image/gif');
 
   if (!context.mounted) return false;
-  final (bytes, canceled) = await encodeWithProgress(
+  final (bytes, canceled, flattened) = await encodeWithProgress(
     context: context,
     title: 'Rendering ${animated ? chosen : 'PNG'}…',
     encode: () async {
       try {
         final raster = await fetchRaster();
-        if (raster.isEmpty) return Uint8List(0);
+        if (raster.isEmpty) return (Uint8List(0), false);
         return await Engine.encodeRasterInBackground(raster,
             width: width, height: height, format: format, scale: scale);
       } catch (_) {
-        return Uint8List(0);
+        return (Uint8List(0), false);
       }
     },
   );
@@ -359,6 +365,7 @@ Future<bool> shareRasterArtwork({
     fail('Could not render the image to share.');
     return false;
   }
+  if (flattened) onNotice?.call('GIF holds no partial transparency — semi-transparent pixels were flattened');
 
   try {
     await shareImageBytes(bytes: bytes, filenameBase: title, ext: ext, mime: mime, text: shareCaption(title, linkUrl));

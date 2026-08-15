@@ -214,7 +214,7 @@ class _MemLabPageState extends State<MemLabPage> {
           final t = Stopwatch()..start();
           final doc = engine.save();
           row['export_doc_bytes'] = doc.length;
-          final out = await Engine.encodeInBackground(doc, format: 'webp');
+          final (out, _) = await Engine.encodeInBackground(doc, format: 'webp');
           row['export_out_bytes'] = out.length;
           row['export_ms'] = t.elapsedMilliseconds;
         }
