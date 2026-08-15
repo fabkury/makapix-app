@@ -1,0 +1,7 @@
+NewDocument(32,32)
+SelectTool(Brush)
+SetPrimaryColor(#FF000080)
+SetBrushSize(8)
+SetBrushShape(Round)
+PointerDown(16,16)
+PointerUp()

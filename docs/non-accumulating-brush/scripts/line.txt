@@ -1,0 +1,8 @@
+NewDocument(32,32)
+SelectTool(Line)
+SetPrimaryColor(#FF000080)
+SetLineWidth(4)
+SetShapeFill(false)
+PointerDown(6,16)
+PointerMove(26,18)
+PointerUp()
