@@ -594,10 +594,10 @@ pub fn shape_cover_aa(
 ) {
     let lw = line_width.max(1) as i32;
     match kind {
-        ToolKind::Line => raster::thick_line_aa(a, b, lw, |x, y, c| plot(x, y, c)),
-        ToolKind::Rectangle => raster::rect_aa(a, b, rot, fill, lw, |x, y, c| plot(x, y, c)),
-        ToolKind::Ellipse => raster::ellipse_aa(a, b, rot, fill, lw, |x, y, c| plot(x, y, c)),
-        ToolKind::Triangle => raster::triangle_aa(a, b, rot, tip, fill, lw, |x, y, c| plot(x, y, c)),
+        ToolKind::Line => raster::thick_line_aa(a, b, lw, plot),
+        ToolKind::Rectangle => raster::rect_aa(a, b, rot, fill, lw, plot),
+        ToolKind::Ellipse => raster::ellipse_aa(a, b, rot, fill, lw, plot),
+        ToolKind::Triangle => raster::triangle_aa(a, b, rot, tip, fill, lw, plot),
         _ => {}
     }
 }
