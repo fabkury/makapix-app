@@ -1,8 +1,8 @@
 # Single-coat strokes over a max-coverage buffer; Spacing removed
 
-**Decided 2026-08-15 during the non-accumulating-strokes grilling. Not yet implemented** — this
-ADR records the decision ahead of the code; the full survey is
-`docs/nonaccumulating-strokes/ANALYSIS.md`.
+**Decided 2026-08-15 during the non-accumulating-strokes grilling; implemented the same day**
+(engine `crate::coat` + compositor + both stroke paths + Spacing removal; the on-device Dots/Mist
+feel pass gates the release). The full survey is `docs/nonaccumulating-strokes/ANALYSIS.md`.
 
 The stamp-accumulative stroke engine (each stamp composites `Over` on top of earlier stamps in
 the same stroke, metered by the Spacing setting) is replaced by **single-coat strokes**: per

@@ -353,7 +353,8 @@ extension _EditorReplay on _EditorPageState {
   /// the primary color and gradient stops, and a fresh `SetSeed`. Both the live session
   /// and a future replay execute the same lines, so they converge regardless of what a
   /// load/import did to session state — and the explicit seed makes Airbrush replays
-  /// bit-exact (`mkpx_load` resets the RNG; the shell otherwise never seeds it).
+  /// bit-exact. (`mkpx_load` does NOT touch the RNG — only `NewDocument` and `SetSeed`
+  /// reseed it — so this baseline `SetSeed` is what pins the stream in both worlds.)
   void _emitReplayBaseline() {
     if (!_engineReady) return;
     _resendEngineTool();

@@ -558,7 +558,7 @@ extension _EditorEngine on _EditorPageState {
     _send('SetBrushSize($_brushSize); SetBrushShape(${_round ? 'Round' : 'Square'})');
     _send('SetThreshold($_threshold); SetContiguous($_contiguous); SetAlphaCutoff($_alphaCutoff)');
     _send('SetIntensity($_intensity); SetShapeFill($_shapeFill); SetLineWidth($_lineWidth)');
-    _send('SetSpacing($_spacing); SetFillAllLayers($_fillAllLayers)');
+    _send('SetFillAllLayers($_fillAllLayers)');
     _send('SetSelectionMode($_selMode); SetProtectPixels($_protectPixels); SetWrap($_wrap)');
     _send('SetPixelPerfect($_perfect); SetOverscanView(${_overscan ? 1 : 0})');
     _send('SetEyedropSource(${_eyedropLayer ? 'Layer' : 'Frame'})');

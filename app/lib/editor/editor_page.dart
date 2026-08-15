@@ -148,10 +148,9 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // Optional per-entry display names, aligned with _palette (null = unnamed). Slot-bound in the
   // engine: they follow swaps/sorts/duplicates and survive in-place color edits.
   List<String?> _paletteNames = [];
-  // "Size", "Spacing" and "Intensity" are remembered PER TOOL (keyed by the active tool), not
-  // shared across tools. Each map holds a tool's last value; the getters fall back to the defaults.
+  // "Size" and "Intensity" are remembered PER TOOL (keyed by the active tool), not shared
+  // across tools. Each map holds a tool's last value; the getters fall back to the defaults.
   final Map<String, int> _sizeByTool = {};
-  final Map<String, int> _spacingByTool = {};
   final Map<String, int> _intensityByTool = {};
   // Default size when the user hasn't chosen one: 8px for the Airbrush (a 1px airbrush is useless),
   // 1px for everything else.
@@ -234,8 +233,6 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // as a gentle airbrush, while 25 keeps the first Dodge/Burn stroke subtle.
   int get _intensity => _intensityByTool[_tool] ?? (_tool == 'Airbrush' ? 50 : 25);
   set _intensity(int v) => _intensityByTool[_tool] = v;
-  int get _spacing => _spacingByTool[_tool] ?? 25; // Brush/Airbrush stamp spacing, % of brush size
-  set _spacing(int v) => _spacingByTool[_tool] = v;
   String _selMode = 'Replace';
   int _alphaCutoff = 0; // Sel Lyr: alpha cutoff (0..254); pixels with alpha > this (opaque) are "selected"
   // Gradient: the first color is ALWAYS the primary color; the remaining (count-1) colors are

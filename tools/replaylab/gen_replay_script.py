@@ -15,7 +15,7 @@ SETTINGS_BURST = [
     "SetBrushSize({bs}); SetBrushShape({shape})",
     "SetThreshold(32); SetContiguous(true); SetAlphaCutoff(8)",
     "SetIntensity(255); SetShapeFill(false); SetLineWidth(1)",
-    "SetSpacing(1); SetFillAllLayers(false)",
+    "SetFillAllLayers(false)",
     "SetSelectionMode(Replace); SetProtectPixels(false); SetWrap(false)",
     "SetPixelPerfect(false); SetOverscanView(0)",
     "SetEyedropSource(Frame)",

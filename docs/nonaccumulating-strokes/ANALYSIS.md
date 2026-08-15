@@ -1,7 +1,8 @@
 # Non-Accumulating Strokes — Removing the Spacing Parameter
 
-**Status: analysis only — nothing here is implemented.** Written 2026-08-15. Neutral survey in the
-style of `docs/hdr/ANALYSIS.md`; no go/no-go verdict is taken here.
+**Status: IMPLEMENTED 2026-08-15** (see ADR 0007; the on-device Dots/Mist feel pass gates the
+release). Originally written earlier the same day as a neutral pre-decision survey in the style of
+`docs/hdr/ANALYSIS.md` — kept as the record of the trade-offs weighed.
 
 > **2026-08-15, later the same day:** the design was grilled decision-by-decision and settled —
 > the outcome is **ADR 0007** (`docs/adr/0007-single-coat-strokes.md`), which supersedes this
