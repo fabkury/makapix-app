@@ -15,9 +15,13 @@ use crate::selection::Mask;
 use crate::tool::{BrushShape, ToolKind};
 use crate::util::hash_xy;
 
-/// Mist speck alpha (pre-color-alpha): specks stay faint no matter the Intensity, which now
-/// drives *density* (ADR 0007). The main feel-tuning knob for Mist.
-const MIST_SPECK_ALPHA: u32 = 56;
+/// Mist speck alpha band (pre-color-alpha). Every speck stays translucent, but each pixel draws
+/// its own depth from the hash: alpha ranges from `MIST_ALPHA_FLOOR` up to a per-pixel ceiling
+/// that scales with the local density envelope — which already carries both Intensity and the
+/// distance-to-path falloff, so high-Intensity strokes are denser AND deeper, and rim specks are
+/// faint. These two constants are the main feel-tuning knobs for Mist.
+const MIST_ALPHA_FLOOR: u32 = 24;
+const MIST_ALPHA_CEIL_MAX: u32 = 160;
 
 /// Fraction of the Dots footprint radius that is fully dense before the rim feather begins —
 /// at Intensity 255 the core is solid (a user decision) and only the fringe scatters.
@@ -223,10 +227,21 @@ impl StrokeCoat {
                     under
                 }
             }
-            // Mist: same field, faint fixed speck alpha modulated by the color's alpha.
+            // Mist: multi-level speckle — the same hash decides both WHETHER a pixel is a speck
+            // (low byte vs the density envelope) and HOW DEEP it is (the next byte picks an
+            // alpha between the floor and a ceiling scaled by the envelope). Purely geometric
+            // and idempotent like everything else in the coat; the grainy varied-opacity look
+            // that accumulation used to produce now comes from the field itself.
             ToolKind::AirbrushMist => {
-                if self.speck(x, y, c) {
-                    let a = (MIST_SPECK_ALPHA * self.ctx.color.a as u32 + 127) / 255;
+                let h = hash_xy(x, y, self.ctx.seed);
+                if c == 255 || (h & 0xFF) < c as u64 {
+                    let ceil = MIST_ALPHA_FLOOR + ((MIST_ALPHA_CEIL_MAX - MIST_ALPHA_FLOOR) * c as u32) / 255;
+                    let v = ((h >> 8) & 0xFF) as u32;
+                    let raw = MIST_ALPHA_FLOOR + ((ceil - MIST_ALPHA_FLOOR) * v) / 255;
+                    let a = (raw * self.ctx.color.a as u32 + 127) / 255;
+                    if a == 0 {
+                        return under;
+                    }
                     let src = Rgba8::new(self.ctx.color.r, self.ctx.color.g, self.ctx.color.b, a.min(255) as u8);
                     color::over(src, under)
                 } else {
@@ -371,17 +386,43 @@ mod tests {
         };
         assert_eq!(sample(7), sample(7), "same seed + path = identical specks");
         assert_ne!(sample(7), sample(8), "different seed = different field");
-        // Every mist speck is translucent.
+    }
+
+    #[test]
+    fn mist_specks_vary_in_depth_and_fade_outward() {
+        // Multi-level speckle: each speck draws its own alpha from the hash (grainy varied
+        // opacity WITHIN one stroke), every speck stays translucent, and depth fades with
+        // distance from the path (the ceiling rides the density envelope).
         let mut k = ctx(ToolKind::AirbrushMist);
-        k.intensity = 120;
+        k.intensity = 255;
+        k.size = 8;
         let mut c = StrokeCoat::new(rect(), k);
         c.dab(None, Point::new(16, 16));
+        let mut inner_max = 0u8;
+        let mut outer_max = 0u8;
+        let mut distinct = std::collections::BTreeSet::new();
         for y in 0..32 {
             for x in 0..32 {
                 let a = c.resolve(x, y, Rgba8::TRANSPARENT).a;
                 assert!(a < 255, "mist specks must be translucent");
+                if a == 0 {
+                    continue;
+                }
+                distinct.insert(a);
+                let d2 = (x - 16) * (x - 16) + (y - 16) * (y - 16);
+                if d2 <= 4 {
+                    inner_max = inner_max.max(a);
+                } else if d2 >= 36 {
+                    outer_max = outer_max.max(a);
+                }
             }
         }
+        assert!(distinct.len() >= 4, "specks must vary in depth: {distinct:?}");
+        assert!(outer_max > 0, "the rim still lands faint specks");
+        assert!(
+            inner_max > outer_max,
+            "depth fades outward: inner max {inner_max} vs outer max {outer_max}"
+        );
     }
 
     #[test]
