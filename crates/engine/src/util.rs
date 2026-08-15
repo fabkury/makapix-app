@@ -216,6 +216,40 @@ pub fn det_pow(x: f64, e: f64) -> f64 {
     det_exp2(e * det_log2(x))
 }
 
+/// Deterministic (sin x, cos x) for the AA shape rasterizers (ADR 0008). libm's `sin_cos` is
+/// not correctly rounded and forks per platform, so AA-ON rotation goes through this instead
+/// (AA-OFF keeps the legacy libm path untouched — its pixels are pinned). Quadrant reduction
+/// around a fixed π/2 literal, then fixed-length Taylor polynomials in a fixed evaluation
+/// order (IEEE-exact ops only, no `mul_add`, same doctrine as `det_log2`). Absolute error is
+/// < 1e-10 over the shape-rotation range (|x| ≤ ~7 rad) — five orders below the 1/512-pixel
+/// quantum the 16×16 subsample grid can even see.
+pub fn det_sincos(x: f64) -> (f64, f64) {
+    debug_assert!(x.abs() < 1.0e6, "det_sincos expects a UI-scale angle");
+    const HALF_PI: f64 = std::f64::consts::FRAC_PI_2;
+    // Nearest quadrant multiple: r ∈ [-π/4 - ε, π/4 + ε] (the reduction constant's rounding is
+    // itself deterministic, so the tiny residual is identical everywhere).
+    let q = (x / HALF_PI + 0.5).floor();
+    let r = x - q * HALF_PI;
+    let r2 = r * r;
+    // sin r / r and cos r as Horner-truncated Taylor series; at |r| ≤ π/4 the next terms
+    // (r^15/15!, r^14/14!) are < 3e-14.
+    let s = r
+        * (1.0
+            + r2 * (-1.0 / 6.0
+                + r2 * (1.0 / 120.0
+                    + r2 * (-1.0 / 5040.0 + r2 * (1.0 / 362_880.0 + r2 * (-1.0 / 39_916_800.0 + r2 / 6_227_020_800.0))))));
+    let c = 1.0
+        + r2 * (-1.0 / 2.0
+            + r2 * (1.0 / 24.0
+                + r2 * (-1.0 / 720.0 + r2 * (1.0 / 40_320.0 + r2 * (-1.0 / 3_628_800.0 + r2 / 479_001_600.0)))));
+    match (q as i64).rem_euclid(4) {
+        0 => (s, c),
+        1 => (c, -s),
+        2 => (-s, -c),
+        _ => (-c, s),
+    }
+}
+
 /// Monotonic id generator for stable frame/layer ids that survive reordering.
 #[derive(Clone, Debug, Default)]
 pub struct IdGen {
@@ -238,6 +272,22 @@ impl IdGen {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn det_sincos_tracks_libm_and_pins_the_axes() {
+        // Exact at the axes (the reduction lands r = 0 there, up to the π/2 literal's rounding).
+        assert_eq!(det_sincos(0.0), (0.0, 1.0));
+        // Close to libm everywhere the shape rotation can reach (libm is the accuracy referee
+        // only — determinism is what det_sincos adds).
+        let mut x = -7.0f64;
+        while x <= 7.0 {
+            let (s, c) = det_sincos(x);
+            assert!((s - x.sin()).abs() < 1e-10, "sin({x}) drifted: {s}");
+            assert!((c - x.cos()).abs() < 1e-10, "cos({x}) drifted: {c}");
+            assert!((s * s + c * c - 1.0).abs() < 1e-9);
+            x += 0.0137;
+        }
+    }
 
     #[test]
     fn hash_is_order_sensitive() {

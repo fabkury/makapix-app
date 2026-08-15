@@ -420,6 +420,274 @@ pub fn polygon_filled(pts: &[Point], mut plot: impl FnMut(i32, i32)) {
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// AA (coverage) rasterizers — ADR 0008 / docs/aa-brush/DESIGN.md. Additive twins of the binary
+// rasterizers above with a `plot(x, y, cover)` convention (`cover` 0..=255); the binary
+// `FnMut(i32, i32)` functions stay untouched because they also build 1-bit selection masks.
+//
+// Model: each shape is a CONTINUOUS region in pixel-center space (the binary rasterizers sample
+// pixel indices against centers at integer midpoints, so the continuous twin shifts by +0.5 and
+// pads its extents by +0.5 — which makes an axis-aligned shape's full-coverage silhouette equal
+// the binary one). Coverage = the fraction of a pixel's 16×16 subsample grid (centers at
+// p + (2k+1)/32) inside the region — 257 levels, effectively exact at 8-bit. Thick outlines are
+// coverage DIFFERENCES of two nested convex regions (outer minus inner), so a ring never
+// double-counts and needs no non-convex predicate.
+//
+// Determinism: predicates are fixed-order f64 arithmetic over dyadic-rational sample points —
+// only IEEE-exact ops (+ − × ÷, sqrt, floor, comparisons; never `mul_add`), with rotation from
+// `util::det_sincos`, never libm `sin_cos` (the det_log2 doctrine, util.rs).
+
+/// Subsample count of pixel `(x, y)` inside a CONVEX `inside` region (0..=256). Fast path: a
+/// convex region containing all four pixel corners contains every interior subsample.
+fn cover_convex(x: i32, y: i32, inside: &dyn Fn(f64, f64) -> bool) -> u32 {
+    let (xf, yf) = (x as f64, y as f64);
+    if inside(xf, yf) && inside(xf + 1.0, yf) && inside(xf, yf + 1.0) && inside(xf + 1.0, yf + 1.0) {
+        return 256;
+    }
+    let mut cnt = 0u32;
+    for j in 0..16 {
+        let sy = yf + (2 * j + 1) as f64 / 32.0;
+        for i in 0..16 {
+            let sx = xf + (2 * i + 1) as f64 / 32.0;
+            if inside(sx, sy) {
+                cnt += 1;
+            }
+        }
+    }
+    cnt
+}
+
+/// Subsample count → 8-bit coverage: 0 → 0, 256 → 255, linear (rounded) between.
+fn cover_to_alpha(cnt: u32) -> u8 {
+    ((cnt * 255 + 128) >> 8) as u8
+}
+
+/// Plot the coverage of `outer` (minus `inner`, when given — `inner` MUST be a subset of
+/// `outer`, as every ring here is a shrunk copy) over the pixel AABB.
+fn plot_aa(
+    (x0, y0, x1, y1): (i32, i32, i32, i32),
+    outer: &dyn Fn(f64, f64) -> bool,
+    inner: Option<&dyn Fn(f64, f64) -> bool>,
+    plot: &mut dyn FnMut(i32, i32, u8),
+) {
+    for y in y0..=y1 {
+        for x in x0..=x1 {
+            let mut cnt = cover_convex(x, y, outer);
+            if cnt > 0 {
+                if let Some(inn) = inner {
+                    cnt = cnt.saturating_sub(cover_convex(x, y, inn));
+                }
+            }
+            let a = cover_to_alpha(cnt);
+            if a > 0 {
+                plot(x, y, a);
+            }
+        }
+    }
+}
+
+/// AA disc: the coverage twin of [`disc`] — continuous radius `radius + 0.5` around the pixel
+/// center of `c`, so its axial full-coverage extent matches the binary disc.
+pub fn disc_aa(c: Point, radius: i32, mut plot: impl FnMut(i32, i32, u8)) {
+    let r = radius.max(1) as f64 + 0.5;
+    let (cx, cy) = (c.x as f64 + 0.5, c.y as f64 + 0.5);
+    let r2 = r * r;
+    let inside = move |sx: f64, sy: f64| {
+        let (dx, dy) = (sx - cx, sy - cy);
+        dx * dx + dy * dy <= r2
+    };
+    let bb = (
+        (cx - r).floor() as i32,
+        (cy - r).floor() as i32,
+        (cx + r).ceil() as i32,
+        (cy + r).ceil() as i32,
+    );
+    plot_aa(bb, &inside, None, &mut plot);
+}
+
+/// AA thick line: an oriented rectangle around the segment's pixel centers — perpendicular
+/// half-widths carry [`thick_line`]'s asymmetric `lo = -(t-1)/2, hi = t/2` convention (+0.5
+/// pad each side), ends extended 0.5 past the endpoint centers (square caps, matching the
+/// binary silhouette's reach). `a == b` degenerates to the binary point-block's box.
+pub fn thick_line_aa(a: Point, b: Point, thickness: i32, mut plot: impl FnMut(i32, i32, u8)) {
+    let t = thickness.max(1);
+    let (wl, wr) = (((t - 1) / 2) as f64 + 0.5, (t / 2) as f64 + 0.5);
+    let (ax, ay) = (a.x as f64 + 0.5, a.y as f64 + 0.5);
+    let (dxw, dyw) = ((b.x - a.x) as f64, (b.y - a.y) as f64);
+    let d2 = dxw * dxw + dyw * dyw;
+    if d2 == 0.0 {
+        // The binary point stamp is the block a+lo ..= a+hi in both axes.
+        let (lo, hi) = (-((t - 1) / 2) as f64, (t / 2) as f64);
+        let inside = move |sx: f64, sy: f64| {
+            sx - ax >= lo - 0.5 && sx - ax <= hi + 0.5 && sy - ay >= lo - 0.5 && sy - ay <= hi + 0.5
+        };
+        let bb = (
+            (ax + lo - 0.5).floor() as i32,
+            (ay + lo - 0.5).floor() as i32,
+            (ax + hi + 0.5).ceil() as i32,
+            (ay + hi + 0.5).ceil() as i32,
+        );
+        plot_aa(bb, &inside, None, &mut plot);
+        return;
+    }
+    let len = d2.sqrt();
+    let inside = move |sx: f64, sy: f64| {
+        let (px, py) = (sx - ax, sy - ay);
+        let along = px * dxw + py * dyw; // ∈ [0, d2] between the endpoint centers
+        if along < -0.5 * len || along > d2 + 0.5 * len {
+            return false;
+        }
+        let cross = px * dyw - py * dxw; // signed: + toward one perpendicular, − the other
+        cross <= wl * len && cross >= -wr * len
+    };
+    let w = wl.max(wr) + 0.5;
+    let bb = (
+        (ax.min(ax + dxw) - w - 1.0).floor() as i32,
+        (ay.min(ay + dyw) - w - 1.0).floor() as i32,
+        (ax.max(ax + dxw) + w + 1.0).ceil() as i32,
+        (ay.max(ay + dyw) + w + 1.0).ceil() as i32,
+    );
+    plot_aa(bb, &inside, None, &mut plot);
+}
+
+/// Shared geometry of the AA Rectangle/Ellipse: continuous center (pixel centers), det-rotated
+/// local frame, half-extents padded +0.5, and the world AABB. Mirrors [`rotated_shape`]'s
+/// derivation (including the 0.5 floor) with `det_sincos` in place of libm.
+struct AaBox {
+    cx: f64,
+    cy: f64,
+    sn: f64,
+    cs: f64,
+    hw: f64,
+    hh: f64,
+    bb: (i32, i32, i32, i32),
+}
+
+fn aa_box(a: Point, b: Point, rot: f32) -> AaBox {
+    let cx0 = (a.x + b.x) as f64 / 2.0;
+    let cy0 = (a.y + b.y) as f64 / 2.0;
+    let (sn, cs) = crate::util::det_sincos(rot as f64);
+    let (vbx, vby) = (b.x as f64 - cx0, b.y as f64 - cy0);
+    let hw0 = (cs * vbx + sn * vby).abs().max(0.5);
+    let hh0 = (-sn * vbx + cs * vby).abs().max(0.5);
+    let (hw, hh) = (hw0 + 0.5, hh0 + 0.5);
+    let (cx, cy) = (cx0 + 0.5, cy0 + 0.5);
+    let ax = cs.abs() * hw + sn.abs() * hh;
+    let ay = sn.abs() * hw + cs.abs() * hh;
+    AaBox {
+        cx,
+        cy,
+        sn,
+        cs,
+        hw,
+        hh,
+        bb: (
+            (cx - ax - 1.0).floor() as i32,
+            (cy - ay - 1.0).floor() as i32,
+            (cx + ax + 1.0).ceil() as i32,
+            (cy + ay + 1.0).ceil() as i32,
+        ),
+    }
+}
+
+/// AA Rectangle (axis-aligned or rotated): fill, or a `thickness`-wide inward ring (coverage of
+/// the box minus the box shrunk by `thickness` — the binary inward-band convention).
+pub fn rect_aa(a: Point, b: Point, rot: f32, fill: bool, thickness: i32, mut plot: impl FnMut(i32, i32, u8)) {
+    let g = aa_box(a, b, rot);
+    let (cx, cy, sn, cs, bb) = (g.cx, g.cy, g.sn, g.cs, g.bb);
+    let box_inside = move |hw: f64, hh: f64| {
+        move |sx: f64, sy: f64| {
+            let (dx, dy) = (sx - cx, sy - cy);
+            let lx = cs * dx + sn * dy;
+            let ly = -sn * dx + cs * dy;
+            lx.abs() <= hw && ly.abs() <= hh
+        }
+    };
+    let outer = box_inside(g.hw, g.hh);
+    let lw = thickness.max(1) as f64;
+    let (ihw, ihh) = (g.hw - lw, g.hh - lw);
+    if fill || ihw <= 0.0 || ihh <= 0.0 {
+        plot_aa(bb, &outer, None, &mut plot);
+    } else {
+        let inner = box_inside(ihw, ihh);
+        plot_aa(bb, &outer, Some(&inner), &mut plot);
+    }
+}
+
+/// AA Ellipse (axis-aligned or rotated): fill, or a `thickness`-wide inward ring (outer ellipse
+/// minus the ellipse with both semi-axes shrunk by `thickness`).
+pub fn ellipse_aa(a: Point, b: Point, rot: f32, fill: bool, thickness: i32, mut plot: impl FnMut(i32, i32, u8)) {
+    let g = aa_box(a, b, rot);
+    let (cx, cy, sn, cs, bb) = (g.cx, g.cy, g.sn, g.cs, g.bb);
+    let ell_inside = move |hw: f64, hh: f64| {
+        move |sx: f64, sy: f64| {
+            let (dx, dy) = (sx - cx, sy - cy);
+            let lx = cs * dx + sn * dy;
+            let ly = -sn * dx + cs * dy;
+            (lx / hw) * (lx / hw) + (ly / hh) * (ly / hh) <= 1.0
+        }
+    };
+    let outer = ell_inside(g.hw, g.hh);
+    let lw = thickness.max(1) as f64;
+    let (ihw, ihh) = (g.hw - lw, g.hh - lw);
+    if fill || ihw <= 0.0 || ihh <= 0.0 {
+        plot_aa(bb, &outer, None, &mut plot);
+    } else {
+        let inner = ell_inside(ihw, ihh);
+        plot_aa(bb, &outer, Some(&inner), &mut plot);
+    }
+}
+
+/// AA Triangle (rotated by `rot`, apex skewed by `tip`): fill, or the `thickness`-wide inward
+/// ring. Vertices are [`triangle_vertices`]' UNROUNDED continuous positions (det-rotated, in
+/// pixel-center space); "inside at margin m" = signed distance ≥ −m from every edge, so the
+/// outer region is the triangle padded 0.5 outward (matching the rect/ellipse pad) and the ring
+/// inner region is the triangle shrunk by `thickness − 0.5` — both convex.
+pub fn triangle_aa(a: Point, b: Point, rot: f32, tip: f32, fill: bool, thickness: i32, mut plot: impl FnMut(i32, i32, u8)) {
+    let cx = (a.x + b.x) as f64 / 2.0 + 0.5;
+    let cy = (a.y + b.y) as f64 / 2.0 + 0.5;
+    let (sn, cs) = crate::util::det_sincos(rot as f64);
+    let (vbx, vby) = ((b.x - a.x) as f64 / 2.0, (b.y - a.y) as f64 / 2.0);
+    let hw = (cs * vbx + sn * vby).abs().max(0.5);
+    let hh = (-sn * vbx + cs * vby).abs().max(0.5);
+    let to_world = |lx: f64, ly: f64| (cx + cs * lx - sn * ly, cy + sn * lx + cs * ly);
+    let t = (tip as f64).clamp(-1.0, 1.0);
+    let v = [to_world(t * hw, -hh), to_world(-hw, hh), to_world(hw, hh)];
+    // Per-edge (unit-normalizing) data: cross(p) / len = signed distance; orientation fixed by
+    // the triangle's signed area so "inside" is margin-uniform regardless of rotation.
+    let edge = |i: usize, j: usize| {
+        let (ex, ey) = (v[j].0 - v[i].0, v[j].1 - v[i].1);
+        (v[i].0, v[i].1, ex, ey, (ex * ex + ey * ey).sqrt().max(1e-9))
+    };
+    let edges = [edge(0, 1), edge(1, 2), edge(2, 0)];
+    let area2 = edges[0].2 * (v[2].1 - v[0].1) - edges[0].3 * (v[2].0 - v[0].0);
+    let orient = if area2 >= 0.0 { 1.0 } else { -1.0 };
+    let inside_at = move |margin: f64| {
+        move |sx: f64, sy: f64| {
+            edges.iter().all(|&(ox, oy, ex, ey, len)| {
+                let cross = ex * (sy - oy) - ey * (sx - ox);
+                orient * cross >= margin * len
+            })
+        }
+    };
+    let xs = [v[0].0, v[1].0, v[2].0];
+    let ys = [v[0].1, v[1].1, v[2].1];
+    let bb = (
+        (xs.iter().cloned().fold(f64::MAX, f64::min) - 2.0).floor() as i32,
+        (ys.iter().cloned().fold(f64::MAX, f64::min) - 2.0).floor() as i32,
+        (xs.iter().cloned().fold(f64::MIN, f64::max) + 2.0).ceil() as i32,
+        (ys.iter().cloned().fold(f64::MIN, f64::max) + 2.0).ceil() as i32,
+    );
+    let outer = inside_at(-0.5);
+    let lw = thickness.max(1) as f64;
+    if fill {
+        plot_aa(bb, &outer, None, &mut plot);
+    } else {
+        let inner = inside_at(lw - 0.5);
+        plot_aa(bb, &outer, Some(&inner), &mut plot);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -528,6 +796,133 @@ mod tests {
             ring.insert((x, y));
         });
         assert_eq!(fill, ring, "a thickness past the radius fills the exact shape (no center pinhole)");
+    }
+
+    // ---- AA (coverage) rasterizers ----
+
+    fn covers(f: impl FnOnce(&mut dyn FnMut(i32, i32, u8))) -> std::collections::HashMap<(i32, i32), u8> {
+        let mut m = std::collections::HashMap::new();
+        f(&mut |x, y, c| {
+            assert!(c > 0, "zero-coverage pixels must not be plotted");
+            assert!(m.insert((x, y), c).is_none(), "pixel ({x},{y}) plotted twice");
+        });
+        m
+    }
+
+    #[test]
+    fn disc_aa_brackets_the_binary_disc() {
+        let c = Point::new(10, 10);
+        let m = covers(|p| disc_aa(c, 4, |x, y, cv| p(x, y, cv)));
+        let mut hard = std::collections::HashSet::new();
+        disc(c, 4, |x, y| {
+            hard.insert((x, y));
+        });
+        // Every binary pixel has AA coverage; every FULL AA pixel is a binary pixel.
+        for p in &hard {
+            assert!(m.contains_key(p), "binary disc pixel {p:?} lost by AA");
+        }
+        for (p, &cv) in &m {
+            if cv == 255 {
+                assert!(hard.contains(p), "AA-full pixel {p:?} outside the binary disc");
+            }
+        }
+        // The rim actually anti-aliases: partial coverage exists, and the axial extremes match.
+        assert!(m.values().any(|&c| c > 0 && c < 255), "no partial rim coverage");
+        assert_eq!(m.get(&(14, 10)).copied(), Some(255), "axial extreme is full");
+        assert!(!m.contains_key(&(16, 10)), "coverage ends past the rim");
+    }
+
+    #[test]
+    fn disc_aa_coverage_decreases_outward() {
+        let c = Point::new(12, 12);
+        let m = covers(|p| disc_aa(c, 5, |x, y, cv| p(x, y, cv)));
+        let row: Vec<u8> = (12..=19).map(|x| m.get(&(x, 12)).copied().unwrap_or(0)).collect();
+        for w in row.windows(2) {
+            assert!(w[0] >= w[1], "coverage must fall monotonically along the radius: {row:?}");
+        }
+    }
+
+    #[test]
+    fn thick_line_aa_horizontal_matches_the_binary_band() {
+        // A horizontal w1 line: the center row is full, the rows above/below empty (the
+        // continuous band edge lands exactly on pixel boundaries — no smear on the axis).
+        let m = covers(|p| thick_line_aa(Point::new(2, 5), Point::new(9, 5), 1, |x, y, cv| p(x, y, cv)));
+        for x in 2..=9 {
+            assert_eq!(m.get(&(x, 5)).copied(), Some(255), "center row full at x={x}");
+        }
+        assert!(m.get(&(5, 4)).is_none() && m.get(&(5, 6)).is_none(), "w1 stays one row on-axis");
+        // The diagonal case does anti-alias.
+        let d = covers(|p| thick_line_aa(Point::new(0, 0), Point::new(9, 6), 1, |x, y, cv| p(x, y, cv)));
+        assert!(d.values().any(|&c| c > 0 && c < 255), "diagonal line has partial rim coverage");
+    }
+
+    #[test]
+    fn rect_aa_axis_aligned_full_set_is_the_binary_rect() {
+        let (a, b) = (Point::new(3, 4), Point::new(12, 9));
+        let m = covers(|p| rect_aa(a, b, 0.0, true, 1, |x, y, cv| p(x, y, cv)));
+        let mut hard = std::collections::HashSet::new();
+        rect_filled(a, b, |x, y| {
+            hard.insert((x, y));
+        });
+        let full: std::collections::HashSet<(i32, i32)> =
+            m.iter().filter(|&(_, &c)| c == 255).map(|(&p, _)| p).collect();
+        assert_eq!(full, hard, "axis-aligned AA rect's full-coverage silhouette == binary rect");
+    }
+
+    #[test]
+    fn rect_aa_ring_is_hollow_and_inside_the_fill() {
+        let (a, b) = (Point::new(2, 2), Point::new(17, 12));
+        let fill = covers(|p| rect_aa(a, b, 0.3, true, 1, |x, y, cv| p(x, y, cv)));
+        let ring = covers(|p| rect_aa(a, b, 0.3, false, 2, |x, y, cv| p(x, y, cv)));
+        for (p, &c) in &ring {
+            let f = fill.get(p).copied().unwrap_or(0);
+            assert!(f >= c, "ring coverage exceeds fill coverage at {p:?} ({c} > {f})");
+        }
+        let (cx, cy) = ((2 + 17) / 2, (2 + 12) / 2);
+        assert!(!ring.contains_key(&(cx, cy)), "ring center must be hollow");
+        assert_eq!(fill.get(&(cx, cy)).copied(), Some(255), "fill center is full");
+    }
+
+    #[test]
+    fn ellipse_aa_brackets_the_binary_ellipse() {
+        let (a, b) = (Point::new(0, 0), Point::new(18, 10));
+        let m = covers(|p| ellipse_aa(a, b, 0.0, true, 1, |x, y, cv| p(x, y, cv)));
+        let mut hard = std::collections::HashSet::new();
+        ellipse_filled(a, b, |x, y| {
+            hard.insert((x, y));
+        });
+        for p in &hard {
+            assert!(m.contains_key(p), "binary ellipse pixel {p:?} lost by AA");
+        }
+        assert!(m.values().any(|&c| c > 0 && c < 255), "no partial rim coverage");
+    }
+
+    #[test]
+    fn triangle_aa_fills_solid_and_rings_hollow() {
+        let (a, b) = (Point::new(2, 2), Point::new(20, 16));
+        let fill = covers(|p| triangle_aa(a, b, 0.0, 0.0, true, 1, |x, y, cv| p(x, y, cv)));
+        // The centroid region is fully covered; the rim anti-aliases.
+        assert_eq!(fill.get(&(11, 12)).copied(), Some(255), "deep interior is full");
+        assert!(fill.values().any(|&c| c > 0 && c < 255), "no partial rim coverage");
+        let ring = covers(|p| triangle_aa(a, b, 0.0, 0.0, false, 2, |x, y, cv| p(x, y, cv)));
+        assert!(!ring.contains_key(&(11, 12)), "ring interior must be hollow");
+        for (p, &c) in &ring {
+            let f = fill.get(p).copied().unwrap_or(0);
+            assert!(f >= c, "ring coverage exceeds fill coverage at {p:?} ({c} > {f})");
+        }
+    }
+
+    #[test]
+    fn rotated_aa_shapes_are_deterministic_across_runs() {
+        // Two evaluations must agree bit-for-bit (det_sincos + fixed-order f64 — no libm).
+        let run = || {
+            let mut v = Vec::new();
+            rect_aa(Point::new(3, 3), Point::new(20, 16), 0.3, false, 2, |x, y, c| v.push((x, y, c)));
+            ellipse_aa(Point::new(3, 3), Point::new(20, 16), 0.3, true, 1, |x, y, c| v.push((x, y, c)));
+            triangle_aa(Point::new(3, 3), Point::new(20, 18), 0.3, 0.4, true, 1, |x, y, c| v.push((x, y, c)));
+            v
+        };
+        assert_eq!(run(), run());
     }
 
     #[test]
