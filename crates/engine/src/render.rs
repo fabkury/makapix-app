@@ -259,6 +259,55 @@ mod tests {
         assert_eq!(preview.content_hash(), committed.content_hash(), "preview must equal commit");
     }
 
+    /// The Eraser twin of the invariant above (ADR 0008: the Eraser rides the coat): an erasing
+    /// coat over a blend-mode+opacity layer must PREVIEW exactly like committing it — including
+    /// full-coverage punch-through (the layer stops contributing, lower layers show) and a
+    /// fractional AA-style rim pixel (reduced alpha still composites under blend/opacity).
+    #[test]
+    fn eraser_coat_preview_equals_committed_composite() {
+        let mut d = Document::new(16, 16);
+        let o = d.origin();
+        d.active_frame_mut().layers[0].pixels.fill_all(Rgba8::rgb(120, 140, 160));
+        let mut top = d.new_layer("top");
+        top.blend = crate::document::BlendMode::Multiply;
+        top.opacity = 200;
+        d.active_frame_mut().layers.push(top);
+        d.active_frame_mut().active_layer = 1;
+        for dy in 0..8 {
+            for dx in 0..8 {
+                d.active_frame_mut().layers[1].pixels.set(o.x + dx, o.y + dy, Rgba8::new(250, 90, 30, 230));
+            }
+        }
+        let (fid, lid) = (d.active_frame().id, d.active_frame().layers[1].id);
+        let ctx = PaintCtx {
+            tool: ToolKind::Eraser,
+            color: Rgba8::WHITE, // ignored by the erase resolve
+            size: 4,
+            shape: BrushShape::Round,
+            intensity: 255,
+            dv: 0.0,
+            seed: 0,
+            fid,
+            lid,
+        };
+        let mut coat = crate::coat::StrokeCoat::new(d.canvas_rect(), ctx);
+        coat.segment(None, Point::new(o.x + 2, o.y + 2), Point::new(o.x + 6, o.y + 6));
+        coat.raise_for_test(o.x + 7, o.y + 1, 100); // a fractional AA-style rim pixel
+        let preview = composite_frame_ov(d.active_frame(), d.canvas_rect(), Some(&coat));
+        assert_ne!(
+            preview.content_hash(),
+            composite_frame(d.active_frame(), d.canvas_rect()).content_hash(),
+            "the erase must be visible in the preview"
+        );
+        let mut committed_frame = d.active_frame().clone();
+        coat.commit_into(&mut committed_frame.layers[1].pixels, d.canvas_rect());
+        let committed = composite_frame(&committed_frame, d.canvas_rect());
+        assert_eq!(preview.content_hash(), committed.content_hash(), "erase preview must equal commit");
+        // Punch-through: where the erase covers fully, only the bottom layer shows (the
+        // composite buffer is canvas-local — no gutter origin).
+        assert_eq!(preview.get(3, 3), Rgba8::rgb(120, 140, 160), "full erase shows the layer below");
+    }
+
     /// A coat pinned to a different frame id (or a deleted layer id) must degrade to a plain
     /// composite — never paint the wrong frame/layer [F-29].
     #[test]

@@ -70,10 +70,11 @@ impl StrokeCoat {
         }
     }
 
-    /// Whether `tool` paints through a coat (the four single-coat families). Pencil and Eraser
-    /// keep their continuous direct writes (ADR 0007).
+    /// Whether `tool` paints through a coat. The Eraser joined the single-coat families with
+    /// ADR 0008 (pixel-identical for hard erase — erasing is idempotent — and the substrate AA
+    /// fractional erase needs); Pencil is the one remaining continuous direct-write tool.
     pub fn tool_uses_coat(tool: ToolKind) -> bool {
-        matches!(tool, ToolKind::Brush | ToolKind::Dodge | ToolKind::Burn) || tool.is_airbrush()
+        matches!(tool, ToolKind::Brush | ToolKind::Eraser | ToolKind::Dodge | ToolKind::Burn) || tool.is_airbrush()
     }
 
     #[inline]
@@ -126,9 +127,9 @@ impl StrokeCoat {
     pub fn dab(&mut self, sel: Option<&Mask>, p: Point) {
         let size = self.ctx.size.max(1);
         match self.ctx.tool {
-            // Brush and Dodge/Burn share the stamp footprint convention (radius (size−1)/2,
-            // shape honored); their coverage is binary — the swept union.
-            ToolKind::Brush | ToolKind::Dodge | ToolKind::Burn => {
+            // Brush, Eraser, and Dodge/Burn share the stamp footprint convention (radius
+            // (size−1)/2, shape honored); their coverage is binary — the swept union.
+            ToolKind::Brush | ToolKind::Eraser | ToolKind::Dodge | ToolKind::Burn => {
                 let radius = (size as i32 - 1) / 2;
                 match self.ctx.shape {
                     BrushShape::Round => {
@@ -185,6 +186,13 @@ impl StrokeCoat {
                 self.raise(sel, p.x + dx, p.y + dy, v.min(255) as u8);
             }
         }
+    }
+
+    /// Test-only fractional raise (the AA brush is the production writer of partial coverage;
+    /// invariant tests in render.rs need one before it exists on a given path).
+    #[cfg(test)]
+    pub(crate) fn raise_for_test(&mut self, x: i32, y: i32, v: u8) {
+        self.raise(None, x, y, v);
     }
 
     /// Dense dab trail from `a` to `b` (storage coordinates): a dab at every line pixel.
@@ -247,6 +255,19 @@ impl StrokeCoat {
                     color::over(src, under)
                 } else {
                     under
+                }
+            }
+            // Eraser: coverage is how much alpha the stroke removes — full coverage erases the
+            // pixel outright (255 ⇒ TRANSPARENT exactly, the pre-ADR-0008 hard erase), and a
+            // fractional AA rim scales the pixel's alpha down proportionally. `ctx.color` is
+            // deliberately ignored. RGB is kept while any alpha remains (a premultiplied-free
+            // straight-alpha scale), dropped only at full erase.
+            ToolKind::Eraser => {
+                let a = (under.a as u32 * (255 - c as u32) + 127) / 255;
+                if a == 0 {
+                    Rgba8::TRANSPARENT
+                } else {
+                    Rgba8::new(under.r, under.g, under.b, a as u8)
                 }
             }
             // Brush (c = 255 ⇒ alpha = color.a) and Soft (c = the falloff envelope): one coat
@@ -471,6 +492,56 @@ mod tests {
         let preview: Vec<Rgba8> =
             (0..32 * 32).map(|i| c.resolve(i % 32, i / 32, buf.get(i % 32, i / 32))).collect();
         // ...must equal what commit writes.
+        c.commit_into(&mut buf, rect());
+        for y in 0..32 {
+            for x in 0..32 {
+                assert_eq!(buf.get(x, y), preview[(y * 32 + x) as usize], "at ({x},{y})");
+            }
+        }
+    }
+
+    #[test]
+    fn eraser_coat_full_coverage_is_exact_hard_erase() {
+        // ADR 0008: the Eraser rides the coat, and hard erase must stay pixel-identical —
+        // coverage 255 resolves to exactly TRANSPARENT, whatever was under it and whatever
+        // color the ctx froze (the Eraser ignores its color).
+        let mut k = ctx(ToolKind::Eraser);
+        k.color = Rgba8::new(9, 9, 9, 77); // must be ignored
+        let mut c = StrokeCoat::new(rect(), k);
+        c.segment(None, Point::new(4, 8), Point::new(20, 8));
+        c.segment(None, Point::new(20, 8), Point::new(4, 8)); // scrubbing must not matter
+        for &under in &[Rgba8::WHITE, Rgba8::new(1, 2, 3, 4), Rgba8::new(200, 0, 0, 128)] {
+            assert_eq!(c.resolve(10, 8, under), Rgba8::TRANSPARENT, "full-coverage erase of {under:?}");
+        }
+        // Identity where the stroke never passed, and on already-transparent pixels.
+        assert_eq!(c.resolve(10, 20, Rgba8::WHITE), Rgba8::WHITE);
+        assert_eq!(c.resolve(10, 8, Rgba8::TRANSPARENT), Rgba8::TRANSPARENT);
+    }
+
+    #[test]
+    fn eraser_coat_fractional_coverage_scales_alpha_and_keeps_rgb() {
+        // The AA substrate: partial coverage removes a proportional share of the pixel's alpha
+        // and keeps its RGB (straight alpha — no color shift on the erased rim).
+        let c = StrokeCoat::new(rect(), ctx(ToolKind::Eraser));
+        let mut c = c;
+        c.raise(None, 5, 5, 128);
+        let out = c.resolve(5, 5, Rgba8::new(10, 20, 30, 200));
+        assert_eq!((out.r, out.g, out.b), (10, 20, 30), "RGB survives a partial erase");
+        assert_eq!(out.a, 100, "alpha 200 at coverage 128 → (200·(255−128)+127)/255 = 100");
+        // Coverage 0 → untouched; coverage max-combines like every coat (re-raising is free).
+        c.raise(None, 5, 5, 90);
+        assert_eq!(c.cover_at(5, 5), 128, "raise is max-combine, never additive");
+    }
+
+    #[test]
+    fn eraser_commit_matches_resolve_bit_for_bit() {
+        let mut c = StrokeCoat::new(rect(), ctx(ToolKind::Eraser));
+        c.segment(None, Point::new(8, 16), Point::new(24, 16));
+        c.raise(None, 2, 2, 100); // a fractional (AA-style) rim pixel rides along
+        let mut buf = crate::buffer::RgbaBuffer::new(32, 32);
+        buf.fill_all(Rgba8::new(40, 40, 40, 220));
+        let preview: Vec<Rgba8> =
+            (0..32 * 32).map(|i| c.resolve(i % 32, i / 32, buf.get(i % 32, i / 32))).collect();
         c.commit_into(&mut buf, rect());
         for y in 0..32 {
             for x in 0..32 {

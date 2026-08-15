@@ -62,8 +62,8 @@ struct Stroke {
 /// One open drag segment of the held precision pen (see `Session::pen_segment`).
 struct PenSegment {
     before: EditScope,
-    /// Single-coat coverage when the frozen tool is a coat family (ADR 0007); `None` for
-    /// Pencil/Eraser, whose pen segments keep painting the layer directly.
+    /// Single-coat coverage when the frozen tool is a coat family (ADR 0007; Eraser included
+    /// since ADR 0008); `None` for the Pencil, whose pen segments keep painting directly.
     coat: Option<StrokeCoat>,
 }
 
@@ -1341,7 +1341,6 @@ impl Session {
                     pp.push((p, orig));
                 }
                 ToolKind::Pencil => self.stamp_active(p, PaintMode::Replace, self.settings.primary),
-                ToolKind::Eraser => self.stamp_active(p, PaintMode::Erase, Rgba8::TRANSPARENT),
                 t if StrokeCoat::tool_uses_coat(t) => {
                     let mut c = self.open_coat(t);
                     let sel = self.selection_arc(); // [C-2]
@@ -1528,7 +1527,6 @@ impl Session {
                 match self.tool {
                     ToolKind::Pencil if self.pixel_perfect_active() => self.pencil_perfect_step(last, p),
                     ToolKind::Pencil => self.stroke_active(last, p, PaintMode::Replace, self.settings.primary),
-                    ToolKind::Eraser => self.stroke_active(last, p, PaintMode::Erase, Rgba8::TRANSPARENT),
                     _ => {}
                 }
             }
