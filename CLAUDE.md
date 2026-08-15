@@ -179,8 +179,9 @@ One Riverpod `StateProvider`, `pendingClubEditProvider` (`app/lib/club/state/edi
 - **Edit/remix (Club → editor):** the detail page sets a `ClubEditRequest`; `AppShell` switches pillars
   while `EditorPage` downloads the artwork, loads it as a fresh document, and records a `ClubEditSource`
   for **Replace** vs **Post as new**. (Both listeners fire on the same dispatch — race-free.)
-- **Publish (editor → Club):** "Post to Club" exports bytes (static→PNG, animated→GIF) and opens the
-  publish flow; `lib/club` does conformance, metadata, license, visibility, and the upload.
+- **Publish (editor → Club):** "Post to Club" exports bytes (lossless WebP — static or animated;
+  never GIF) and opens the publish flow; `lib/club` does conformance, metadata, license,
+  visibility, and the upload.
 
 ## Platform gotchas (Windows / Android)
 

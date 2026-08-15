@@ -1,8 +1,11 @@
 # AA edges for round Brush, shape tools, and round Eraser — design
 
-**Status: designed 2026-08-15 (grilling session), NOT implemented.** The decision record is
-ADR 0008; vocabulary ("Anti-alias (AA)") is in `CONTEXT.md`. Implementation waits for an
-explicit go.
+**Status: IMPLEMENTED 2026-08-15** (same day as the design grilling; commits `e074e2c..` on
+main — companion fixes first, then pins → rasterizers → Eraser-onto-coat → SetAA → shell chip).
+The decision record is ADR 0008; vocabulary ("Anti-alias (AA)") is in `CONTEXT.md`. One
+implementation note: the "tell" channel for the GIF companion fix landed as an `out_flags`
+out-param on `mkpx_export_gif` (the `mkpx_decode_image` pattern), carried through the encode
+isolates as `(bytes, flattened)` records.
 
 ## What
 

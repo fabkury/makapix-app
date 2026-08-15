@@ -1,7 +1,8 @@
 # AA as supersampled coverage through the stroke coat; Eraser unifies onto the coat
 
-**Decided 2026-08-15 during the AA grilling; NOT yet implemented** — the full design is
-`docs/aa-brush/DESIGN.md`, and vocabulary ("Anti-alias (AA)") is in `CONTEXT.md`.
+**Decided 2026-08-15 during the AA grilling; implemented the same day** (companion fixes →
+AA-OFF pin suite → coverage rasterizers → Eraser unification → `SetAA` → shell chip) — the full
+design is `docs/aa-brush/DESIGN.md`, and vocabulary ("Anti-alias (AA)") is in `CONTEXT.md`.
 
 An **AA toggle** gives round Brush, Line/Rectangle/Ellipse/Triangle, and round Eraser
 fractional-coverage edges. Edge pixels get coverage from a **16×16 integer subgrid** tested
