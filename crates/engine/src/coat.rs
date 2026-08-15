@@ -21,7 +21,7 @@ use crate::util::hash_xy;
 /// distance-to-path falloff, so high-Intensity strokes are denser AND deeper, and rim specks are
 /// faint. These two constants are the main feel-tuning knobs for Mist.
 const MIST_ALPHA_FLOOR: u32 = 24;
-const MIST_ALPHA_CEIL_MAX: u32 = 160;
+const MIST_ALPHA_CEIL_MAX: u32 = 224; // raised from 160 after the 2026-08-15 device feel pass
 
 /// Fraction of the Dots footprint radius that is fully dense before the rim feather begins —
 /// at Intensity 255 the core is solid (a user decision) and only the fringe scatters.
