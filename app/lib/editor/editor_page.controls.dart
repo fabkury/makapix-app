@@ -277,6 +277,26 @@ extension _EditorControls on _EditorPageState {
         _send('SetIntensity($_intensity)');
       });
     }
+    // The shared AA (anti-alias) chip (ADR 0008): shape tools always; Brush/Eraser only in Round
+    // mode (the chip hides with Square — the engine ignores AA there). One flag across all of
+    // them, persisted. A size-1 brush stays hard with AA on, like Perfect above size 1 — but AA
+    // stays tappable there because it also governs the shapes.
+    if (_aaCapable) {
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: FilterChip(
+          selected: _aa,
+          label: Text(_aa ? 'AA ✔' : 'AA'),
+          selectedColor: const Color(0xFF30A050),
+          onSelected: (v) {
+            setState(() => _aa = v);
+            _send('SetAA($_aa)');
+            _persistAa();
+            if (_hasShapeDraft) _redraw(); // the pending shape preview re-renders AA'd live
+          },
+        ),
+      ));
+    }
     // (Spacing is gone: strokes are single-coat — ADR 0007 — so there is no stamp metering
     // left to expose.)
     if (_tool == 'Bucket' || _tool == 'SelectByColor') {

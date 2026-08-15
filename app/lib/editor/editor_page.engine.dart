@@ -16,6 +16,7 @@ extension _EditorEngine on _EditorPageState {
       final saved = prefs.getStringList(_prefsKey);
       final threeRow = prefs.getBool(_prefs3RowKey); // null = never chosen → 2-row default
       final pinned3 = prefs.getString(_prefsPinnedThirdKey);
+      final aa = prefs.getBool(_kAaPref) ?? false;
       final all = tools.map((t) => t.dsl).toList();
       List<String>? reconciled;
       if (saved != null) {
@@ -31,6 +32,12 @@ extension _EditorEngine on _EditorPageState {
           _threeRowPref = threeRow;
           // validate against the catalog — a stale/removed dsl in old prefs falls back to the default
           if (pinned3 != null && tools.any((t) => t.dsl == pinned3)) _pinnedThirdTool = pinned3;
+          if (aa != _aa) {
+            _aa = aa;
+            // The prefs read is async and can land after engine boot already pushed the
+            // default — re-send so the engine agrees with the restored chip state.
+            _send('SetAA($_aa)');
+          }
         });
       }
     } catch (_) {/* prefs unavailable → keep defaults */}
@@ -54,6 +61,13 @@ extension _EditorEngine on _EditorPageState {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_prefsPinnedThirdKey, _pinnedThirdTool);
+    } catch (_) {}
+  }
+
+  Future<void> _persistAa() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kAaPref, _aa);
     } catch (_) {}
   }
 
@@ -561,6 +575,9 @@ extension _EditorEngine on _EditorPageState {
     _send('SetFillAllLayers($_fillAllLayers)');
     _send('SetSelectionMode($_selMode); SetProtectPixels($_protectPixels); SetWrap($_wrap)');
     _send('SetPixelPerfect($_perfect); SetOverscanView(${_overscan ? 1 : 0})');
+    // On its own line: under the replay line-skip an old app drops exactly the unknown verb's
+    // line, so SetAA must not carry siblings it would take down with it.
+    _send('SetAA($_aa)');
     _send('SetEyedropSource(${_eyedropLayer ? 'Layer' : 'Frame'})');
     _send('SetSelectColorSource(${_selColorLayer ? 'Layer' : 'Frame'})');
     _send('SetCleanEdge($_cleanEdge); SetCleanEdgeWidth(${(_cleanEdgeWidth * 1000).round()})');

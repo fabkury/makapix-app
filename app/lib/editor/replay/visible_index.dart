@@ -133,7 +133,7 @@ bool _statementVisible(String verb, String tool, bool penHeld) {
     'SortPaletteAt', 'ClearPalette', 'ClearPaletteAt', 'NamePaletteColor',
     // The settings family — enumerated (not a Set* catch-all) so a FUTURE visible Set
     // verb still gets the safe default below.
-    'SetAlphaCutoff', 'SetBcScope', 'SetBrightnessContrast', 'SetBrushShape', 'SetBrushSize',
+    'SetAA', 'SetAlphaCutoff', 'SetBcScope', 'SetBrightnessContrast', 'SetBrushShape', 'SetBrushSize',
     'SetCleanEdge', 'SetCleanEdgeWidth', 'SetContiguous', 'SetEyedropSource',
     'SetFillAllLayers', 'SetGradientSmoothstep', 'SetGradientStops', 'SetGradientType',
     'SetHsvScope', 'SetHsvShift', 'SetIntensity', 'SetLevels', 'SetLevelsScope',

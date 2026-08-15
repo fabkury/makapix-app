@@ -90,6 +90,7 @@ void main() {
       'SelectTool(Pencil)',
       for (var i = 0; i < 30; i++) 'AdvanceClock(33)',
       'SetThreshold(32); SetContiguous(true); SetAlphaCutoff(8)',
+      'SetAA(true)', // the ADR 0008 toggle is a setting, not a visible tick
       'Tap(2,2)', // the only real change
     ];
     final v = visiblePositions(flatOf(lines));

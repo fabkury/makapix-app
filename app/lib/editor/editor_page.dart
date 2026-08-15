@@ -71,6 +71,7 @@ const _prefsPinnedThirdKey = 'toolbar_pinned3_v1'; // 3-row mode: which tool is 
 const _kCurrentDrawing = 'editor.currentDrawingId'; // last-open library drawing (silent restore)
 const _kShareFormatPref = 'editor.shareFormat_v1'; // last-used Share format for animations (GIF/WebP)
 const _kExportStillFormatPref = 'editor.exportStillFormat_v1'; // last-used frame/layer export format (PNG/WebP)
+const _kAaPref = 'editor.aa_v1'; // the shared AA (anti-alias) toggle (ADR 0008), persisted across restarts
 const _transformTools = {'Flip', 'Rotate', 'Resize', 'Invert'};
 // Row-3 "action" tools in the reorderable grid: tapping fires an action/toggle immediately rather
 // than selecting a draw tool (handled in _toolTile / _doToolAction). Undo/Redo are NOT here — they
@@ -157,6 +158,9 @@ class _EditorPageState extends ConsumerState<EditorPage>
   int get _brushSize => _sizeByTool[_tool] ?? (_tool == 'Airbrush' ? 8 : 1);
   set _brushSize(int v) => _sizeByTool[_tool] = v;
   bool _round = true;
+  // The shared AA (anti-alias) flag (ADR 0008): one engine setting for round Brush, the shapes
+  // (Line/Rect/Ellipse/Triangle), and the round Eraser. Default OFF; persisted (_kAaPref).
+  bool _aa = false;
   bool _eyedropLayer = false; // Eyedropper source: false = composited frame (default), true = active layer's raw pixels
   bool _selColorLayer = false; // Select Color source: false = composited frame (default), true = active layer's raw pixels
   bool _perfect = false; // Pencil pixel-perfect: drop L-corner doubles on a 1px stroke
@@ -358,6 +362,9 @@ class _EditorPageState extends ConsumerState<EditorPage>
 
   // Whether the current tool offers a Precision toggle at all.
   bool get _precisionCapable => _precisionTools.contains(_tool);
+  // Whether the current tool offers the AA toggle: the shape tools always; Brush and Eraser
+  // only in Round mode (the engine ignores AA for Square, so the chip hides with it).
+  bool get _aaCapable => _tool == 'Line' || _tool == 'Shape' || ((_tool == 'Brush' || _tool == 'Eraser') && _round);
   // Whether the current tool is *in* precision mode right now.
   bool get _isPrecision => _precisionOn.contains(_tool);
 
