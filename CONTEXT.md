@@ -48,19 +48,31 @@ options row. One tool to the artist; the mode decides what a pass leaves behind.
 _Avoid_: brush type, variant
 
 **Dots**:
-The Airbrush's original mode: a scatter of hard, fully opaque pixels. The pixel-art-oriented
-spray.
+The Airbrush's original mode: a scatter of hard, fully opaque pixels, densest near the
+stroke's path. The pixel-art-oriented spray.
 _Avoid_: Pixel (as a mode name)
 
 **Soft**:
-The Airbrush mode that lays a smooth translucent stamp, strongest at the center and fading to
-nothing at the rim. Passes build up toward opaque.
+The Airbrush mode that lays a smooth translucent gradient, strongest nearest the stroke's
+path and fading to nothing at the rim. One stroke lays one coat; repeated strokes build
+toward opaque.
 _Avoid_: soft brush (it is a mode, not a tool)
 
 **Mist**:
-The Airbrush mode that scatters faint translucent specks, denser near the center. Passes
-accumulate into grainy clouds.
+The Airbrush mode that scatters faint translucent specks, densest near the stroke's path.
+Repeated strokes accumulate into grainy clouds.
 _Avoid_: Spray (that word belongs to the precision-row dab button)
+
+**Stroke**:
+One continuous application of a paint tool, from touch to lift. In precision mode, one drag
+segment of the held pen; a tap is a stroke of a single dab. The unit that lays one coat.
+_Avoid_: gesture, drag (as nouns for it)
+
+**Single-coat stroke**:
+The paint model (decided 2026-08-15): within one stroke, repainting the same spot never
+deepens it — a stroke lays one coat, capped by the tool's settings, and lifting to stroke
+again lays another. A "pass" always means a whole stroke.
+_Avoid_: non-accumulating (engineering docs only), one-pass
 
 ### Animator vocabulary
 
