@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import 'package:makapix_club/engine_ffi.dart';
 
+import 'action_runner.dart';
 import 'journal_format.dart';
 import 'mp4_channel.dart';
 import 'timelapse_plan.dart';
@@ -200,7 +201,9 @@ Future<void> _timelapseWorker(_TimelapseJob job) async {
             break;
           }
         }
-        engine!.run(flat.actions.sublist(pos, end).join('\n'));
+        // Drop only lines the engine rejects (e.g. verbs from a newer app), never the batch
+        // remainder — the previous code discarded the error entirely.
+        runActionsSkippingBad(engine!.run, flat.actions, pos, end, onSkip: debugPrint);
         pos = end;
       }
     }

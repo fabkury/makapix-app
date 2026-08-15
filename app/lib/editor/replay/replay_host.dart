@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:makapix_club/engine_ffi.dart';
 
+import 'action_runner.dart';
 import 'journal_format.dart';
 import 'visible_index.dart' as vi;
 
@@ -179,13 +180,10 @@ class EngineReplayHost implements ReplayHost {
         final nextCp = ((_pos ~/ checkpointStride) + 1) * checkpointStride;
         if (nextCp > _pos && nextCp < end) end = nextCp;
       }
-      final script = _actions.sublist(_pos, end).join('\n');
-      final err = engine.run(script);
-      if (err != null) {
-        // A journal recorded what the editor SENT — a parse error in it replays to the
-        // same rejection. Log and continue; determinism is preserved either way.
-        debugPrint('replay: script error at $_pos..$end: $err');
-      }
+      // A journal recorded what the editor SENT — a parse error in it usually replays to the
+      // same rejection. A verb from a NEWER app version is the exception: it drops only its
+      // own line (never the batch remainder), so the replay diverges minimally.
+      runActionsSkippingBad(engine.run, _actions, _pos, end, onSkip: debugPrint);
       _pos = end;
       if (checkpointStride != null) {
         if (_pos % checkpointStride == 0 || _chapterBaseAt.containsKey(_pos)) {
