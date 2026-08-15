@@ -246,7 +246,10 @@ impl Session {
             SetBrushSize(s) => self.settings.brush_size = s.max(1),
             SetBrushShape(s) => self.settings.brush_shape = s,
             SetIntensity(i) => self.settings.intensity = i,
-            SetSpacing(s) => self.settings.spacing = s.clamp(1, 1000),
+            // Fossilized by replay (the ADR 0006 doctrine): Spacing was removed with the
+            // single-coat stroke model (ADR 0007), but journals recorded before it contain
+            // `SetSpacing(...)` lines — the verb must parse forever and do nothing.
+            SetSpacing(_) => {}
             SetThreshold(t) => self.settings.threshold = t,
             SetAlphaCutoff(t) => self.settings.alpha_cutoff = t,
             SelectByAlpha(m) => self.select_by_alpha(m),

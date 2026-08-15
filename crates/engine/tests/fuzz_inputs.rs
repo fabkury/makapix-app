@@ -53,7 +53,7 @@ fn known_adversarial_scripts_never_panic() {
         "SelectTool(Levels)\nSetLevels(254,100,255)\nSetLevelsScope(Frame)\nApplyLevels()\nUndo()",
         "SetLevels()\nSetLevelsScope()\nApplyLevels()",
         "SetGradientType(Linear)\nSetGradientStops(#000@0,#fff@1)\nSelectTool(Gradient)\nPointerDown(-5,-5)\nPointerUp()",
-        // F-6: unbounded pointer coordinates → used to spin spaced_points / raster::line.
+        // F-6: unbounded pointer coordinates → used to spin the stroke rasterizer (raster::line).
         "SelectTool(Pencil)\nPointerDown(2000000000,2000000000)\nPointerMove(-2000000000,-2000000000)\nPointerUp()",
         "SelectTool(Brush)\nPointerDown(0,0)\nPointerMove(2147483647,-2147483648)\nPointerUp()",
         // F-29: changing the active layer/frame mid-stroke must not record against the wrong layer.

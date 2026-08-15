@@ -7,7 +7,6 @@ use crate::color::{self, Rgba8};
 use crate::geom::{IRect, Point};
 use crate::raster;
 use crate::selection::Mask;
-use crate::util::SeededRng;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ToolKind {
@@ -88,8 +87,8 @@ impl ToolKind {
     }
 
     /// The Airbrush family — one shell tool tile, three ways of laying paint (Dots = plain
-    /// `Airbrush` for journal back-compat, Soft, Mist). All three share the spray behavior
-    /// paths (spacing, precision dab, stroke commit); only the dab differs. [ADR 0006]
+    /// `Airbrush` for journal back-compat, Soft, Mist). All three share the single-coat stroke
+    /// paths (coat lifecycle, precision dab, stroke commit); only the dab differs. [ADR 0006]
     pub fn is_airbrush(self) -> bool {
         matches!(self, ToolKind::Airbrush | ToolKind::AirbrushSoft | ToolKind::AirbrushMist)
     }
@@ -162,9 +161,6 @@ pub struct ToolSettings {
     pub brush_size: u16,
     pub brush_shape: BrushShape,
     pub intensity: u8,
-    /// Brush/Airbrush stamp spacing along a stroke, as a percent of brush size (e.g. 25 = a stamp
-    /// every quarter-diameter). Higher = more separated stamps. 1..=1000.
-    pub spacing: u16,
     pub threshold: u8,
     /// Select-Layer alpha cutoff (0..=254): pixels with alpha > this (the opaque/drawn pixels) are
     /// "selected". Default 0 (all non-transparent pixels).
@@ -234,7 +230,6 @@ impl Default for ToolSettings {
             brush_size: 1,
             brush_shape: BrushShape::Round,
             intensity: 50,
-            spacing: 25,
             threshold: 0,
             alpha_cutoff: 0,
             contiguous: true,
@@ -485,131 +480,9 @@ pub fn apply_gradient(buf: &mut RgbaBuffer, sel: Option<&Mask>, clip: IRect, spe
     }
 }
 
-/// Airbrush dab: stochastically spray `intensity`-many points within radius (SPEC §11.1).
-#[allow(clippy::too_many_arguments)]
-pub fn airbrush_dab(
-    buf: &mut RgbaBuffer,
-    sel: Option<&Mask>,
-    clip: IRect,
-    center: Point,
-    size: u16,
-    intensity: u8,
-    color: Rgba8,
-    rng: &mut SeededRng,
-) {
-    let radius = (size.max(1) as i32).max(1);
-    let count = ((intensity as u32 * radius as u32) / 32).max(1);
-    let r2 = (radius * radius) as f32;
-    for _ in 0..count {
-        let dx = (rng.next_f32() * 2.0 - 1.0) * radius as f32;
-        let dy = (rng.next_f32() * 2.0 - 1.0) * radius as f32;
-        if dx * dx + dy * dy <= r2 {
-            plot(buf, sel, clip, center.x + dx as i32, center.y + dy as i32, color, PaintMode::Over);
-        }
-    }
-}
-
-/// Soft dab (Airbrush Soft mode): a deterministic radial stamp. Alpha peaks at `intensity`
-/// in the center and smoothsteps to 0 at the rim (radius `size`), modulated by the color's
-/// own alpha (Brush-style). Composites Over, so overlapping stamps and repeated passes build
-/// toward opaque (flow-style buildup — deliberate; see ADR 0006).
-pub fn soft_dab(
-    buf: &mut RgbaBuffer,
-    sel: Option<&Mask>,
-    clip: IRect,
-    center: Point,
-    size: u16,
-    intensity: u8,
-    color: Rgba8,
-) {
-    let radius = (size.max(1) as i32).max(1);
-    let rf = radius as f32;
-    // Peak per-pixel alpha: intensity modulated by the color's own alpha.
-    let peak = (intensity as u32 * color.a as u32 + 127) / 255;
-    if peak == 0 {
-        return;
-    }
-    for dy in -radius..=radius {
-        for dx in -radius..=radius {
-            let d = ((dx * dx + dy * dy) as f32).sqrt();
-            if d >= rf {
-                continue;
-            }
-            let t = 1.0 - d / rf;
-            let s = t * t * (3.0 - 2.0 * t); // smoothstep falloff
-            let a = (peak as f32 * s + 0.5) as u32;
-            if a == 0 {
-                continue;
-            }
-            let c = Rgba8::new(color.r, color.g, color.b, a.min(255) as u8);
-            plot(buf, sel, clip, center.x + dx, center.y + dy, c, PaintMode::Over);
-        }
-    }
-}
-
-/// Mist dab (Airbrush Mist mode): stochastically scatter faint specks, denser near the
-/// center — each accepted uniform-disc sample is pulled inward by a second uniform draw.
-/// Per-particle alpha = `intensity` modulated by the color's own alpha; the attempt count
-/// matches the Dots mode at full intensity, so Mist density is Intensity-independent.
-#[allow(clippy::too_many_arguments)]
-pub fn mist_dab(
-    buf: &mut RgbaBuffer,
-    sel: Option<&Mask>,
-    clip: IRect,
-    center: Point,
-    size: u16,
-    intensity: u8,
-    color: Rgba8,
-    rng: &mut SeededRng,
-) {
-    let radius = (size.max(1) as i32).max(1);
-    let count = (8 * radius as u32).max(1);
-    let a = (intensity as u32 * color.a as u32 + 127) / 255;
-    if a == 0 {
-        return;
-    }
-    let c = Rgba8::new(color.r, color.g, color.b, a.min(255) as u8);
-    let r2 = (radius * radius) as f32;
-    for _ in 0..count {
-        let dx = (rng.next_f32() * 2.0 - 1.0) * radius as f32;
-        let dy = (rng.next_f32() * 2.0 - 1.0) * radius as f32;
-        if dx * dx + dy * dy <= r2 {
-            let u = rng.next_f32(); // center-weighting: pull the sample toward the center
-            plot(buf, sel, clip, center.x + (dx * u) as i32, center.y + (dy * u) as i32, c, PaintMode::Over);
-        }
-    }
-}
-
-/// Dodge (lighten, dv>0) / Burn (darken, dv<0) the value channel within a stamp.
-pub fn dodge_burn_stamp(
-    buf: &mut RgbaBuffer,
-    sel: Option<&Mask>,
-    clip: IRect,
-    center: Point,
-    size: u16,
-    shape: BrushShape,
-    dv: f32,
-) {
-    let radius = (size.max(1) as i32 - 1) / 2;
-    let mut apply = |x: i32, y: i32| {
-        if !clip.contains(Point::new(x, y)) {
-            return;
-        }
-        if let Some(m) = sel {
-            if !m.get(x, y) {
-                return;
-            }
-        }
-        let c = buf.get(x, y);
-        if c.a != 0 {
-            buf.set(x, y, color::hsv_shift(c, 0.0, 0.0, dv));
-        }
-    };
-    match shape {
-        BrushShape::Round => raster::disc(center, radius.max(1), &mut apply),
-        BrushShape::Square => raster::square(center, radius, &mut apply),
-    }
-}
+// The Airbrush/Dodge/Burn dab implementations moved into the single-coat stroke model
+// (`crate::coat`, ADR 0007): dabs write max-combined coverage into a per-stroke coat, and
+// `StrokeCoat::resolve` applies it — there are no per-dab layer writes anymore.
 
 /// HSV-shift every selected (or all, if no selection) non-transparent pixel (SPEC §11.4).
 pub fn hsv_shift_region(buf: &mut RgbaBuffer, sel: Option<&Mask>, dh: f32, ds: f32, dv: f32) {
@@ -841,79 +714,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn airbrush_is_reproducible_under_seed() {
-        let dab = |seed| {
-            let mut b = RgbaBuffer::new(32, 32);
-            let mut rng = SeededRng::new(seed);
-            for _ in 0..5 {
-                airbrush_dab(&mut b, None, IRect::new(0, 0, 32, 32), Point::new(16, 16), 6, 200, Rgba8::WHITE, &mut rng);
-            }
-            b.content_hash()
-        };
-        assert_eq!(dab(7), dab(7));
-        assert_ne!(dab(7), dab(8));
-    }
-
-    #[test]
-    fn soft_dab_is_deterministic_and_falls_off_radially() {
-        let stamp = || {
-            let mut b = RgbaBuffer::new(32, 32);
-            soft_dab(&mut b, None, IRect::new(0, 0, 32, 32), Point::new(16, 16), 8, 200, Rgba8::WHITE);
-            b
-        };
-        // No RNG involved: two identical calls produce byte-identical buffers.
-        assert_eq!(stamp().content_hash(), stamp().content_hash());
-        let b = stamp();
-        // Peak alpha at the center = intensity (opaque white primary → no modulation).
-        assert_eq!(b.get(16, 16).a, 200);
-        // Monotone falloff along a radius, reaching 0 at (and beyond) the rim.
-        let alphas: Vec<u8> = (0..=8).map(|dx| b.get(16 + dx, 16).a).collect();
-        for w in alphas.windows(2) {
-            assert!(w[0] >= w[1], "alpha must not increase outward: {alphas:?}");
-        }
-        assert_eq!(b.get(24, 16).a, 0, "rim pixel is untouched");
-        assert_eq!(b.get(25, 16).a, 0, "beyond the rim is untouched");
-    }
-
-    #[test]
-    fn soft_dab_modulates_the_colors_own_alpha() {
-        let mut b = RgbaBuffer::new(32, 32);
-        let translucent = Rgba8::new(255, 255, 255, 128);
-        soft_dab(&mut b, None, IRect::new(0, 0, 32, 32), Point::new(16, 16), 8, 200, translucent);
-        // Center alpha = round(200·128/255) — the mode's alpha multiplies the color's.
-        assert_eq!(b.get(16, 16).a, ((200u32 * 128 + 127) / 255) as u8);
-    }
-
-    #[test]
-    fn mist_dab_is_reproducible_under_seed_and_translucent() {
-        let dab = |seed| {
-            let mut b = RgbaBuffer::new(32, 32);
-            let mut rng = SeededRng::new(seed);
-            for _ in 0..5 {
-                mist_dab(&mut b, None, IRect::new(0, 0, 32, 32), Point::new(16, 16), 6, 60, Rgba8::WHITE, &mut rng);
-            }
-            b
-        };
-        assert_eq!(dab(7).content_hash(), dab(7).content_hash());
-        assert_ne!(dab(7).content_hash(), dab(8).content_hash());
-        // Every touched pixel is translucent after one dab (specks land at alpha 60, and even
-        // a few overlaps can't reach opaque).
-        let mut b = RgbaBuffer::new(32, 32);
-        let mut rng = SeededRng::new(3);
-        mist_dab(&mut b, None, IRect::new(0, 0, 32, 32), Point::new(16, 16), 6, 60, Rgba8::WHITE, &mut rng);
-        let mut touched = 0;
-        for y in 0..32 {
-            for x in 0..32 {
-                let a = b.get(x, y).a;
-                assert!(a < 255, "mist specks must be translucent");
-                if a > 0 {
-                    touched += 1;
-                }
-            }
-        }
-        assert!(touched > 0, "a mist dab must land at least one speck");
-    }
+    // (The airbrush/soft/mist dab tests moved to `crate::coat` with the dab implementations —
+    // falloff, peak, seed determinism, and translucency are asserted on the coat now.)
 
     #[test]
     fn fill_region_with_selection() {

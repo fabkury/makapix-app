@@ -163,34 +163,6 @@ struct ScaleDraftLayer {
     src: RgbaBuffer,
 }
 
-/// Stamp positions along `a`→`b`, one every `step` px of arc length. `acc` is the distance already
-/// traveled toward the next stamp (carried across calls so spacing stays even across a stroke that
-/// arrives as many short segments); it is updated in place. The segment's own endpoints are not
-/// implicitly stamped — the caller stamps the stroke's first point on press.
-fn spaced_points(a: Point, b: Point, step: f32, acc: &mut f32) -> Vec<Point> {
-    let mut out = Vec::new();
-    let (ax, ay) = (a.x as f32, a.y as f32);
-    let (dx, dy) = ((b.x - a.x) as f32, (b.y - a.y) as f32);
-    let len = (dx * dx + dy * dy).sqrt();
-    if len <= 0.0 {
-        return out;
-    }
-    let (ux, uy) = (dx / len, dy / len);
-    let step = step.max(1.0);
-    let mut traveled = 0.0_f32;
-    loop {
-        let need = step - *acc; // distance from here to the next stamp
-        if traveled + need > len {
-            *acc += len - traveled; // ran out of segment; keep the partial distance
-            break;
-        }
-        traveled += need;
-        *acc = 0.0;
-        out.push(Point::new((ax + ux * traveled).round() as i32, (ay + uy * traveled).round() as i32));
-    }
-    out
-}
-
 /// Apply a move draft's lift+move to `frame` in place: clear the origin (the selected pixels, or the
 /// whole layer for a layer move) and blit the lifted content at the current offset, honoring Wrap.
 /// Shared by the display preview (on a throwaway clone) and `move_draft_commit` (on the real frame),
@@ -309,10 +281,6 @@ pub struct Session {
     play_total: u64,
     play_cache_dirty: bool,
     stroke: Option<Stroke>,
-    /// Distance (canvas px) traveled since the last spaced Brush/Airbrush/Dodge/Burn stamp in the current
-    /// stroke. Carried across pointer/reticle moves so stamps stay evenly spaced regardless of how
-    /// the path is chopped into events. Reset to 0 when a stroke begins.
-    paint_acc: f32,
     /// Uncommitted figure (Line/Rectangle/Ellipse) being previewed and fine-tuned: its two
     /// defining endpoints in canvas pixels. The active tool decides how it renders. `None` when
     /// no draft is pending. Committed (rasterized) only on an explicit `shape_commit()`.
@@ -388,7 +356,6 @@ impl Session {
             play_total: 0,
             play_cache_dirty: true,
             stroke: None,
-            paint_acc: 0.0,
             shape_draft: None,
             shape_rotation: 0.0,
             triangle_tip: 0.0,
@@ -1894,59 +1861,8 @@ impl Session {
             pp.drain(0..keep);
         }
     }
-    /// One dab of whichever Airbrush mode is active (the family shares every other path).
-    fn airbrush_active(&mut self, p: Point) {
-        let (size, intensity, color) = (self.settings.brush_size, self.settings.intensity, self.settings.primary);
-        let clip = self.paint_clip();
-        let sel = self.selection_arc(); // [C-2]
-        let kind = self.tool;
-        let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-        match kind {
-            ToolKind::AirbrushSoft => tool::soft_dab(buf, sel.as_deref(), clip, p, size, intensity, color),
-            ToolKind::AirbrushMist => tool::mist_dab(buf, sel.as_deref(), clip, p, size, intensity, color, &mut self.rng),
-            _ => tool::airbrush_dab(buf, sel.as_deref(), clip, p, size, intensity, color, &mut self.rng),
-        }
-    }
-
-    /// Distance (canvas px) between successive Brush/Airbrush/Dodge/Burn stamps: spacing% of the
-    /// brush size, never below 1px.
-    fn brush_step(&self) -> f32 {
-        (self.settings.spacing as f32 / 100.0 * self.settings.brush_size as f32).max(1.0)
-    }
-
-    /// Stamp the brush along `a`→`b` at the configured spacing, carrying `paint_acc` so the spacing
-    /// is even across the whole stroke (not reset per segment/event).
-    fn brush_stroke_spaced(&mut self, a: Point, b: Point, mode: PaintMode, color: Rgba8) {
-        let pts = spaced_points(a, b, self.brush_step(), &mut self.paint_acc);
-        if pts.is_empty() {
-            return;
-        }
-        let (size, shape) = (self.settings.brush_size, self.settings.brush_shape);
-        let clip = self.paint_clip();
-        let sel = self.selection_arc(); // [C-2]
-        let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-        for p in pts {
-            tool::stamp(buf, sel.as_deref(), clip, p, size, shape, color, mode);
-        }
-    }
-
-    /// Spray airbrush dabs along `a`→`b` at the configured spacing (interpolated, carrying
-    /// `paint_acc`), so a fast drag still lays an even trail of dabs.
-    fn airbrush_stroke_spaced(&mut self, a: Point, b: Point) {
-        let pts = spaced_points(a, b, self.brush_step(), &mut self.paint_acc);
-        for p in pts {
-            self.airbrush_active(p);
-        }
-    }
-
-    /// Dodge/burn a stamp at each spaced point along `a`→`b` (interpolated, carrying `paint_acc`),
-    /// so a fast drag lightens/darkens an even trail instead of leaving gaps.
-    fn dodge_burn_stroke_spaced(&mut self, a: Point, b: Point, dv: f32) {
-        let pts = spaced_points(a, b, self.brush_step(), &mut self.paint_acc);
-        for p in pts {
-            self.dodge_burn_active(p, dv);
-        }
-    }
+    /// Dodge/Burn's signed value shift, from the Intensity setting (frozen into a coat's ctx
+    /// at stroke start).
     fn dodge_dv(&self, lighten: bool) -> f32 {
         let mag = self.settings.intensity as f32 / 255.0 * 0.25;
         if lighten {
@@ -1954,13 +1870,6 @@ impl Session {
         } else {
             -mag
         }
-    }
-    fn dodge_burn_active(&mut self, p: Point, dv: f32) {
-        let (size, shape) = (self.settings.brush_size, self.settings.brush_shape);
-        let clip = self.paint_clip();
-        let sel = self.selection_arc(); // [C-2]
-        let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-        tool::dodge_burn_stamp(buf, sel.as_deref(), clip, p, size, shape, dv);
     }
 
     // ---- precision mode (draw-by-button, reticle off the finger) ----
@@ -1987,7 +1896,7 @@ impl Session {
     /// Clamp an incoming pointer coordinate to a generous margin around the canvas. Off-canvas
     /// input is legitimate (a freehand stroke can run past the edge and be clipped), so this is NOT
     /// `clamp_cursor`'s canvas-tight clamp — but an unbounded coordinate from a malformed event would
-    /// make `spaced_points`/`raster::line` iterate billions of times (a multi-second hang / OOM).
+    /// make `raster::line` (the coat's dab trail) iterate billions of times (a hang / OOM).
     /// One canvas span of margin preserves every real stroke while bounding the work. [audit F-6]
     fn clamp_pointer(&self, p: Point) -> Point {
         // Pointer/DSL input is canvas-relative (gutter = negative / ≥ canvas). Clamp to the reachable
@@ -2045,10 +1954,11 @@ impl Session {
                     self.pencil_perfect_segment(os, cs, &mut pp);
                     self.pen_pp = pp;
                 }
-                _ => match self.cursor_paint() {
-                    Some((mode, color)) => self.stroke_active(os, cs, mode, color),
-                    None => {}
-                },
+                _ => {
+                    if let Some((mode, color)) = self.cursor_paint() {
+                        self.stroke_active(os, cs, mode, color);
+                    }
+                }
             }
         }
     }
@@ -2077,11 +1987,8 @@ impl Session {
             let sel = self.selection_arc(); // [C-2]
             c.dab(sel.as_deref(), p);
             self.flatten_coat(&c);
-        } else {
-            match self.cursor_paint() {
-                Some((mode, color)) => self.stamp_active(p, mode, color),
-                None => {}
-            }
+        } else if let Some((mode, color)) = self.cursor_paint() {
+            self.stamp_active(p, mode, color);
         }
         self.commit_edit(before);
     }

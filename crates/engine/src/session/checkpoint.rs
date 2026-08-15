@@ -291,7 +291,6 @@ impl Session {
         self.pen_segment = None;
         self.pen_held = false;
         self.pen_pp.clear();
-        self.paint_acc = 0.0;
         self.paste_draft = None;
         self.shape_draft = None;
         self.shape_rotation = 0.0;
