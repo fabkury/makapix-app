@@ -4,6 +4,7 @@
 //! probes.
 
 use crate::buffer::RgbaBuffer;
+use crate::coat::{PaintCtx, StrokeCoat};
 use crate::color::Rgba8;
 use crate::document::{BlendMode, Document, Frame, LoopMode};
 use crate::geom::{IRect, Point, PointF};
@@ -52,6 +53,10 @@ struct Stroke {
     /// colors), used to detect and undo the L-shaped "corner double" as the stroke is drawn. Only
     /// populated for a 1px Pencil with `pixel_perfect` on; empty otherwise. See [`pp_corner`].
     pp: Vec<(Point, Rgba8)>,
+    /// Single-coat coverage for the Brush/Airbrush/Dodge/Burn families (ADR 0007): the layer
+    /// stays pristine while the stroke is live; the compositor previews this coat and
+    /// `pointer_up` resolves it into the layer once. Dies with the `Stroke` on cancel/restore.
+    coat: Option<StrokeCoat>,
 }
 
 /// One layer's lifted content within a [`MoveDraft`], re-blitted at `anchor + offset`.
@@ -460,13 +465,18 @@ impl Session {
     }
 
     pub fn composite_active_bytes(&self) -> Vec<u8> {
-        render::composite_active(&self.doc).to_rgba_bytes()
+        // The live coat rides along (matched by frame id inside) so mid-stroke composites —
+        // Watch replay scrubbing and Timelapse sampling halt between PointerDown and PointerUp —
+        // show the stroke forming instead of a pristine layer (ADR 0007).
+        render::composite_frame_ov(self.doc.active_frame(), self.doc.canvas_rect(), self.live_coat())
+            .to_rgba_bytes()
     }
 
     pub fn composite_frame_bytes(&self, frame: usize) -> Vec<u8> {
         let f = &self.doc.frames[frame.min(self.doc.frames.len() - 1)];
-        // Export/publish path: always the canvas window, never the gutter.
-        render::composite_frame(f, self.doc.canvas_rect()).to_rgba_bytes()
+        // Export/publish path: always the canvas window, never the gutter. The live coat rides
+        // along (frame-id matched inside) for the mid-stroke replay/timelapse samplers.
+        render::composite_frame_ov(f, self.doc.canvas_rect(), self.live_coat()).to_rgba_bytes()
     }
 
     /// Content hash of a frame (low 64 bits) — used by the shell to cache thumbnails.
@@ -480,7 +490,7 @@ impl Session {
     pub fn frame_thumb_bytes(&self, frame: usize, tw: u32, th: u32) -> Vec<u8> {
         let i = frame.min(self.doc.frames.len() - 1);
         let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
-        let flat = render::composite_frame(&self.doc.frames[i], self.doc.canvas_rect());
+        let flat = render::composite_frame_ov(&self.doc.frames[i], self.doc.canvas_rect(), self.live_coat());
         let (tw, th) = (tw.max(1), th.max(1));
         let mut out = vec![0u8; (tw * th * 4) as usize];
         for ty in 0..th {
@@ -586,8 +596,8 @@ impl Session {
             // The reticle is now drawn by the UI as a thin, screen-space, marching-ants overlay
             // (not baked into canvas pixels), so the engine no longer renders it.
             cursor: None,
-            // Wired to the live single-coat stroke when the paint path lands (ADR 0007).
-            coat: None,
+            // The live single-coat stroke previews inside the frame composite (ADR 0007).
+            coat: self.live_coat(),
         };
         // A move/rotate draft or a pending HSV / brightness-contrast / levels adjustment renders
         // as a display-only preview: composite a clone of the active frame with it applied (the
@@ -1330,8 +1340,9 @@ impl Session {
             _ => {}
         }
         let before = self.begin_edit();
-        self.paint_acc = 0.0; // fresh stroke → reset Brush/Airbrush spacing
         let mut floating = None;
+        // Single-coat coverage for the Brush/Airbrush/Dodge/Burn families (ADR 0007).
+        let mut coat = None;
         // Pixel-perfect Pencil: seeds the corner-double filter with the first painted pixel (captured
         // with its pre-stroke color so a later removal restores it). Empty for every other case.
         let mut pp = Vec::new();
@@ -1352,11 +1363,13 @@ impl Session {
                     pp.push((p, orig));
                 }
                 ToolKind::Pencil => self.stamp_active(p, PaintMode::Replace, self.settings.primary),
-                ToolKind::Brush => self.stamp_active(p, PaintMode::Over, self.settings.primary),
                 ToolKind::Eraser => self.stamp_active(p, PaintMode::Erase, Rgba8::TRANSPARENT),
-                t if t.is_airbrush() => self.airbrush_active(p),
-                ToolKind::Dodge => self.dodge_burn_active(p, self.dodge_dv(true)),
-                ToolKind::Burn => self.dodge_burn_active(p, self.dodge_dv(false)),
+                t if StrokeCoat::tool_uses_coat(t) => {
+                    let mut c = self.open_coat(t);
+                    let sel = self.selection_arc(); // [C-2]
+                    c.dab(sel.as_deref(), p);
+                    coat = Some(c);
+                }
                 ToolKind::Bucket => self.flood_fill_at(p),
                 ToolKind::Move => {
                     // lift selected pixels into a floating buffer
@@ -1413,7 +1426,52 @@ impl Session {
                 }
             });
         }
-        self.stroke = Some(Stroke { before, start: p, last: p, path: vec![p], floating, pp });
+        self.stroke = Some(Stroke { before, start: p, last: p, path: vec![p], floating, pp, coat });
+    }
+
+    /// Freeze the paint settings into a fresh coat for a single-coat stroke of `tool` (ADR 0007:
+    /// mid-stroke `Set*` verbs apply from the NEXT stroke). Draws the speckle seed — exactly one
+    /// RNG draw, live and replay alike — iff the coat is for a scatter mode (Dots/Mist).
+    fn open_coat(&mut self, tool: ToolKind) -> StrokeCoat {
+        let seed = if matches!(tool, ToolKind::Airbrush | ToolKind::AirbrushMist) {
+            self.rng.next_u64()
+        } else {
+            0
+        };
+        let dv = match tool {
+            ToolKind::Dodge => self.dodge_dv(true),
+            ToolKind::Burn => self.dodge_dv(false),
+            _ => 0.0,
+        };
+        let f = self.doc.active_frame();
+        let ctx = PaintCtx {
+            tool,
+            color: self.settings.primary,
+            size: self.settings.brush_size,
+            shape: self.settings.brush_shape,
+            intensity: self.settings.intensity,
+            dv,
+            seed,
+            fid: f.id,
+            lid: f.active_layer().id,
+        };
+        StrokeCoat::new(self.doc.canvas_rect(), ctx)
+    }
+
+    /// The live single-coat stroke's coat, if any — what the compositor previews (ADR 0007).
+    fn live_coat(&self) -> Option<&StrokeCoat> {
+        self.stroke.as_ref().and_then(|s| s.coat.as_ref())
+    }
+
+    /// Resolve `coat` into its own frame/layer (by id [F-29]), clipped to the CURRENT canvas
+    /// rect so a journaled mid-stroke canvas resize can't write out of bounds.
+    fn flatten_coat(&mut self, coat: &StrokeCoat) {
+        let clip = self.doc.canvas_rect();
+        if let Some(fi) = self.doc.frame_index_by_id(coat.ctx.fid) {
+            if let Some(li) = self.doc.frames[fi].layer_index_by_id(coat.ctx.lid) {
+                coat.commit_into(&mut self.doc.frames[fi].layers[li].pixels, clip);
+            }
+        }
     }
 
     pub fn pointer_move(&mut self, x: i32, y: i32) {
@@ -1475,15 +1533,21 @@ impl Session {
             return;
         }
         if self.active_editable() {
-            match self.tool {
-                ToolKind::Pencil if self.pixel_perfect_active() => self.pencil_perfect_step(last, p),
-                ToolKind::Pencil => self.stroke_active(last, p, PaintMode::Replace, self.settings.primary),
-                ToolKind::Brush => self.brush_stroke_spaced(last, p, PaintMode::Over, self.settings.primary),
-                ToolKind::Eraser => self.stroke_active(last, p, PaintMode::Erase, Rgba8::TRANSPARENT),
-                t if t.is_airbrush() => self.airbrush_stroke_spaced(last, p),
-                ToolKind::Dodge => self.dodge_burn_stroke_spaced(last, p, self.dodge_dv(true)),
-                ToolKind::Burn => self.dodge_burn_stroke_spaced(last, p, self.dodge_dv(false)),
-                _ => {}
+            // A single-coat stroke paints into its coat under the ctx FROZEN at stroke start —
+            // dispatch keys off the coat's presence, never off `self.tool`, so a journaled
+            // mid-stroke `SelectTool` can neither reroute nor strand the stroke (ADR 0007).
+            if self.stroke.as_ref().is_some_and(|s| s.coat.is_some()) {
+                let sel = self.selection_arc(); // [C-2]
+                if let Some(c) = self.stroke.as_mut().and_then(|s| s.coat.as_mut()) {
+                    c.segment(sel.as_deref(), last, p);
+                }
+            } else {
+                match self.tool {
+                    ToolKind::Pencil if self.pixel_perfect_active() => self.pencil_perfect_step(last, p),
+                    ToolKind::Pencil => self.stroke_active(last, p, PaintMode::Replace, self.settings.primary),
+                    ToolKind::Eraser => self.stroke_active(last, p, PaintMode::Erase, Rgba8::TRANSPARENT),
+                    _ => {}
+                }
             }
         }
         if let Some(s) = &mut self.stroke {
@@ -1493,7 +1557,7 @@ impl Session {
     }
 
     pub fn pointer_up(&mut self) {
-        let stroke = match self.stroke.take() {
+        let mut stroke = match self.stroke.take() {
             Some(s) => s,
             None => return,
         };
@@ -1597,6 +1661,16 @@ impl Session {
                 self.combine_selection(&shape, self.selection_mode);
             }
             _ => {}
+        }
+
+        // Single-coat stroke: resolve the coat into its layer now — the layer was pristine all
+        // stroke long — so the diff below records exactly what the preview showed (ADR 0007).
+        // The coat's presence also gates the commit: `self.tool` may have been switched by a
+        // journaled mid-stroke `SelectTool`, but the stroke still owes its one undo record.
+        if let Some(coat) = stroke.coat.take() {
+            self.flatten_coat(&coat);
+            self.commit_edit(stroke.before);
+            return;
         }
 
         // Commit pixel changes as one undo record (single source of truth). [audit F-20]
@@ -5327,36 +5401,31 @@ mod tests {
     }
 
     #[test]
-    fn brush_spacing_leaves_gaps_between_stamps() {
-        // A 1px brush dragged straight across, with spacing far larger than the brush, should lay
-        // discrete dots — not a solid line.
+    fn brush_stroke_is_one_uniform_coat() {
+        // Single-coat strokes (ADR 0007): a translucent Brush crossing back over itself lays ONE
+        // uniform coat — no overlap darkening, no scrub-back deepening.
         let mut s = Session::new(32, 1);
-        s.settings.primary = Rgba8::WHITE;
+        s.settings.primary = Rgba8::new(255, 0, 0, 128);
         s.settings.brush_size = 1;
         s.tool = ToolKind::Brush;
-        s.settings.spacing = 500; // step = 5px (500% of size 1)
-        s.pointer_down(0, 0); // first stamp at x=0
+        s.pointer_down(0, 0);
         s.pointer_move(31, 0);
+        s.pointer_move(0, 0); // scrub back across the whole line
         s.pointer_up();
-        // stamps at x = 0, 5, 10, 15, 20, 25, 30 …
-        assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::WHITE);
-        assert_eq!(s.pixel(0, 0, 5, 0), Rgba8::WHITE);
-        assert_eq!(s.pixel(0, 0, 10, 0), Rgba8::WHITE);
-        // …and gaps between them
-        assert_eq!(s.pixel(0, 0, 2, 0), Rgba8::TRANSPARENT);
-        assert_eq!(s.pixel(0, 0, 7, 0), Rgba8::TRANSPARENT);
+        for x in 0..32 {
+            assert_eq!(s.pixel(0, 0, x, 0).a, 128, "uniform single coat at x={x}");
+        }
     }
 
     #[test]
-    fn brush_spacing_is_even_across_chopped_segments() {
-        // The same straight drag delivered as many tiny moves must produce the same evenly spaced
-        // dots as one big move (the accumulator carries across events).
-        let stamps = |chop: bool| {
+    fn brush_stroke_is_event_rate_invariant() {
+        // The same straight drag delivered as many tiny moves must paint the identical result as
+        // one big move — output depends on the path geometry, never on event chattiness.
+        let painted = |chop: bool| {
             let mut s = Session::new(32, 1);
             s.settings.primary = Rgba8::WHITE;
             s.settings.brush_size = 1;
             s.tool = ToolKind::Brush;
-            s.settings.spacing = 400; // step = 4px
             s.pointer_down(0, 0);
             if chop {
                 for x in 1..=31 {
@@ -5366,20 +5435,18 @@ mod tests {
                 s.pointer_move(31, 0);
             }
             s.pointer_up();
-            (0..32).filter(|&x| s.pixel(0, 0, x, 0) == Rgba8::WHITE).collect::<Vec<_>>()
+            s.hash_hex_active_layer()
         };
-        assert_eq!(stamps(true), stamps(false));
-        assert_eq!(stamps(false), vec![0, 4, 8, 12, 16, 20, 24, 28]);
+        assert_eq!(painted(true), painted(false));
     }
 
     #[test]
-    fn dense_spacing_paints_a_solid_line() {
-        // Tight spacing on a 1px brush fills every pixel (no regression vs. continuous strokes).
+    fn brush_stroke_paints_a_solid_line() {
+        // Dabs land at every path pixel (there is no spacing): a 1px brush drag is a solid line.
         let mut s = Session::new(16, 1);
         s.settings.primary = Rgba8::WHITE;
         s.settings.brush_size = 1;
         s.tool = ToolKind::Brush;
-        s.settings.spacing = 25; // step clamps to 1px for size 1
         s.pointer_down(0, 0);
         s.pointer_move(15, 0);
         s.pointer_up();
@@ -5389,9 +5456,67 @@ mod tests {
     }
 
     #[test]
-    fn dodge_spacing_leaves_gaps_between_stamps() {
-        // Dodge honors the spacing setting just like the brush: dragged across a solid gray row
-        // with a step far larger than the brush, it lightens discrete dots and leaves the gaps.
+    fn mid_stroke_layer_is_pristine_and_preview_equals_commit() {
+        // While a single-coat stroke is live the document layer is untouched (raw readers see
+        // the pre-stroke state) yet the composite shows the stroke; and the mid-stroke composite
+        // equals the post-commit composite bit for bit (the shared resolve path).
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::rgb(255, 0, 0);
+        s.settings.brush_size = 3;
+        s.tool = ToolKind::Brush;
+        let pristine_layer = s.hash_hex_active_layer();
+        let pristine_composite = s.composite_frame_bytes(0);
+        s.pointer_down(2, 8);
+        s.pointer_move(13, 8);
+        assert_eq!(s.hash_hex_active_layer(), pristine_layer, "layer pristine mid-stroke");
+        let mid = s.composite_frame_bytes(0);
+        assert_ne!(mid, pristine_composite, "the composite shows the live coat");
+        s.pointer_up();
+        assert_ne!(s.hash_hex_active_layer(), pristine_layer, "commit landed in the layer");
+        assert_eq!(s.composite_frame_bytes(0), mid, "preview == commit, bit for bit");
+    }
+
+    #[test]
+    fn scatter_stroke_is_seed_deterministic_via_dsl() {
+        // Dots draws exactly one RNG seed per stroke: same session seed + same path = identical
+        // pixels; a different seed re-rolls the field.
+        let run = |seed: u64| {
+            let mut s = Session::new(32, 32);
+            s.run_script(&format!(
+                "SetSeed({seed})\nSelectTool(Airbrush)\nSetBrushSize(6)\nSetIntensity(120)\n\
+                 SetPrimaryColor(#FFFFFFFF)\nStroke([(4,16),(27,16)])"
+            ))
+            .unwrap();
+            s.hash_hex_active_layer()
+        };
+        assert_eq!(run(5), run(5));
+        assert_ne!(run(5), run(6));
+    }
+
+    #[test]
+    fn soft_stroke_caps_at_intensity_and_strokes_build() {
+        // One Soft stroke caps at the frozen Intensity no matter the scrubbing; lifting and
+        // stroking again builds toward opaque (buildup lives BETWEEN strokes now).
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.settings.brush_size = 4;
+        s.settings.intensity = 200;
+        s.tool = ToolKind::AirbrushSoft;
+        s.pointer_down(8, 8);
+        s.pointer_move(9, 8);
+        s.pointer_move(8, 8); // scrub — must not deepen
+        s.pointer_up();
+        let one = s.pixel(0, 0, 8, 8).a;
+        assert_eq!(one, 200, "a single stroke caps at Intensity");
+        s.pointer_down(8, 8);
+        s.pointer_up();
+        assert!(s.pixel(0, 0, 8, 8).a > one, "a second stroke builds");
+    }
+
+    #[test]
+    fn dodge_applies_once_per_stroke() {
+        // Single-coat Dodge (ADR 0007): a drag across a gray row — with a scrub back over the
+        // whole of it — lightens every covered pixel exactly once, uniformly.
         let mut s = Session::new(32, 1);
         s.settings.brush_size = 1;
         // Fill the row with mid-gray so there is something to lighten.
@@ -5400,20 +5525,17 @@ mod tests {
         s.pointer_down(0, 0);
         s.pointer_move(31, 0);
         s.pointer_up();
-        // Dodge with a 5px step (500% of a 1px brush).
         s.tool = ToolKind::Dodge;
         s.settings.intensity = 255;
-        s.settings.spacing = 500;
-        s.pointer_down(0, 0); // first stamp at x=0
+        s.pointer_down(0, 0);
         s.pointer_move(31, 0);
+        s.pointer_move(0, 0); // scrub back — must not lighten twice
         s.pointer_up();
-        // Lightened at the spaced stamps…
-        assert!(s.pixel(0, 0, 0, 0).r > 100, "x=0 lightened");
-        assert!(s.pixel(0, 0, 5, 0).r > 100, "x=5 lightened");
-        assert!(s.pixel(0, 0, 10, 0).r > 100, "x=10 lightened");
-        // …untouched in the gaps between them.
-        assert_eq!(s.pixel(0, 0, 2, 0).r, 100, "x=2 untouched");
-        assert_eq!(s.pixel(0, 0, 7, 0).r, 100, "x=7 untouched");
+        let once = s.pixel(0, 0, 0, 0).r;
+        assert!(once > 100, "dodge lightened");
+        for x in 0..32 {
+            assert_eq!(s.pixel(0, 0, x, 0).r, once, "uniform once-per-stroke shift at x={x}");
+        }
     }
 
     #[test]
