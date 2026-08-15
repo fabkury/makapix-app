@@ -59,6 +59,14 @@ struct Stroke {
     coat: Option<StrokeCoat>,
 }
 
+/// One open drag segment of the held precision pen (see `Session::pen_segment`).
+struct PenSegment {
+    before: EditScope,
+    /// Single-coat coverage when the frozen tool is a coat family (ADR 0007); `None` for
+    /// Pencil/Eraser, whose pen segments keep painting the layer directly.
+    coat: Option<StrokeCoat>,
+}
+
 /// One layer's lifted content within a [`MoveDraft`], re-blitted at `anchor + offset`.
 struct MoveFloat {
     lid: u32,
@@ -273,9 +281,12 @@ pub struct Session {
     pub layer_sel: Vec<usize>,
     /// Precision-pencil reticle position + active pen stroke (draw-by-button, off-finger).
     cursor: Point,
-    precision_before: Option<EditScope>,
+    /// The open precision drag segment — the pen path's stroke unit (ADR 0007: in precision
+    /// mode, a Stroke = one drag segment). Carries the segment's undo scope and, for the
+    /// single-coat tools, its coat — so every clear site drops both together.
+    pen_segment: Option<PenSegment>,
     /// Precision "Hold": the pen is logically down (drag segments paint). Each segment opens and
-    /// commits its own `precision_before` edit (`cursor_stroke_begin`/`cursor_stroke_end`), so
+    /// commits its own `pen_segment` edit (`cursor_stroke_begin`/`cursor_stroke_end`), so
     /// Undo mid-Hold reverts the LAST drag, not everything since Hold began.
     pen_held: bool,
     /// Pixel-perfect corner-filter tail for the precision pen line: the reticle path has no
@@ -365,7 +376,7 @@ impl Session {
             selection_mode: CombineMode::Replace,
             layer_sel: vec![0],
             cursor: Point::new(w as i32 / 2, h as i32 / 2),
-            precision_before: None,
+            pen_segment: None,
             pen_held: false,
             pen_pp: Vec::new(),
             clipboard: None,
@@ -1324,7 +1335,7 @@ impl Session {
         }
         // Likewise never leave a precision-pen line open beneath a new pointer stroke — two open
         // edits would both diff the same layer and double-record the overlapping pixels. [F-29]
-        if self.precision_before.is_some() {
+        if self.pen_segment.is_some() {
             self.cursor_pen_up();
         }
         let p = self.clamp_pointer(Point::new(x, y)); // bound off-canvas input [F-6]
@@ -1459,8 +1470,13 @@ impl Session {
     }
 
     /// The live single-coat stroke's coat, if any — what the compositor previews (ADR 0007).
+    /// Pointer strokes and precision drag segments are mutually exclusive (`pointer_down` closes
+    /// any open pen segment), so at most one coat is ever live.
     fn live_coat(&self) -> Option<&StrokeCoat> {
-        self.stroke.as_ref().and_then(|s| s.coat.as_ref())
+        self.stroke
+            .as_ref()
+            .and_then(|s| s.coat.as_ref())
+            .or_else(|| self.pen_segment.as_ref().and_then(|s| s.coat.as_ref()))
     }
 
     /// Resolve `coat` into its own frame/layer (by id [F-29]), clipped to the CURRENT canvas
@@ -1696,9 +1712,9 @@ impl Session {
         if let Some(stroke) = self.stroke.take() {
             self.restore_edit(&stroke.before);
         }
-        // Precision pen line in progress.
-        if let Some(scope) = self.precision_before.take() {
-            self.restore_edit(&scope);
+        // Precision pen line in progress (the segment's coat, if any, dies with it).
+        if let Some(seg) = self.pen_segment.take() {
+            self.restore_edit(&seg.before);
             self.pen_pp.clear(); // the painted pixels were reverted; the tail is stale
         }
     }
@@ -2007,11 +2023,20 @@ impl Session {
     pub fn move_cursor(&mut self, dx: i32, dy: i32) {
         let old = self.cursor;
         self.cursor = self.clamp_cursor(Point::new(old.x + dx, old.y + dy));
-        if self.precision_before.is_some() && self.active_editable() && self.cursor != old {
+        if self.pen_segment.is_some() && self.active_editable() && self.cursor != old {
             // Translate the reticle path to storage coordinates for the paint helpers.
             let o = self.doc.origin();
             let os = Point::new(old.x + o.x, old.y + o.y);
             let cs = self.cursor_storage();
+            // A single-coat segment paints its coat under the ctx FROZEN at segment start —
+            // dispatch keys off the coat, never off `self.tool` (ADR 0007).
+            if self.pen_segment.as_ref().is_some_and(|s| s.coat.is_some()) {
+                let sel = self.selection_arc(); // [C-2]
+                if let Some(c) = self.pen_segment.as_mut().and_then(|s| s.coat.as_mut()) {
+                    c.segment(sel.as_deref(), os, cs);
+                }
+                return;
+            }
             match self.tool {
                 // Pixel-perfect 1px Pencil: run the corner-double filter along the reticle path,
                 // carrying its tail in `pen_pp` (the pen line has no `Stroke` to hold it).
@@ -2019,13 +2044,6 @@ impl Session {
                     let mut pp = std::mem::take(&mut self.pen_pp);
                     self.pencil_perfect_segment(os, cs, &mut pp);
                     self.pen_pp = pp;
-                }
-                // Brush/Airbrush/Dodge/Burn honor the spacing setting; Pencil/Eraser stay continuous.
-                ToolKind::Brush => self.brush_stroke_spaced(os, cs, PaintMode::Over, self.settings.primary),
-                t if t.is_airbrush() => self.airbrush_stroke_spaced(os, cs),
-                // Dodge/Burn lighten/darken a stamp at each spaced step (as on the pointer path).
-                ToolKind::Dodge | ToolKind::Burn => {
-                    self.dodge_burn_stroke_spaced(os, cs, self.dodge_dv(self.tool == ToolKind::Dodge));
                 }
                 _ => match self.cursor_paint() {
                     Some((mode, color)) => self.stroke_active(os, cs, mode, color),
@@ -2039,12 +2057,11 @@ impl Session {
     /// that dab as its own undo step IMMEDIATELY — subsequent drag segments each record their own
     /// step (`cursor_stroke_begin`/`cursor_stroke_end`), so Undo mid-Hold reverts the last drag.
     pub fn cursor_pen_down(&mut self) {
-        if self.pen_held || self.precision_before.is_some() || !self.active_editable() {
+        if self.pen_held || self.pen_segment.is_some() || !self.active_editable() {
             return;
         }
         self.pen_held = true;
         let before = self.begin_edit();
-        self.paint_acc = 0.0; // fresh pen line → reset Brush/Airbrush spacing
         self.pen_pp.clear(); // fresh pen line → reset the pixel-perfect corner-filter tail
         let p = self.cursor_storage();
         if self.tool == ToolKind::Pencil && self.pixel_perfect_active() {
@@ -2053,13 +2070,16 @@ impl Session {
             let sel = self.selection_arc(); // [C-2]
             let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
             tool::plot(buf, sel.as_deref(), clip, p.x, p.y, color, PaintMode::Replace);
+        } else if StrokeCoat::tool_uses_coat(self.tool) {
+            // The Hold dab is its own one-dab single-coat stroke (ADR 0007): coat, dab,
+            // flatten, and let the commit below record it as one step — same as always.
+            let mut c = self.open_coat(self.tool);
+            let sel = self.selection_arc(); // [C-2]
+            c.dab(sel.as_deref(), p);
+            self.flatten_coat(&c);
         } else {
             match self.cursor_paint() {
                 Some((mode, color)) => self.stamp_active(p, mode, color),
-                None if self.tool.is_airbrush() => self.airbrush_active(p),
-                None if matches!(self.tool, ToolKind::Dodge | ToolKind::Burn) => {
-                    self.dodge_burn_active(p, self.dodge_dv(self.tool == ToolKind::Dodge));
-                }
                 None => {}
             }
         }
@@ -2070,11 +2090,14 @@ impl Session {
     /// the segment's `move_cursor` calls paint into; `cursor_stroke_end` commits it as ONE step.
     /// No-op unless the pen is held (a plain reticle drag paints nothing).
     pub fn cursor_stroke_begin(&mut self) {
-        if !self.pen_held || self.precision_before.is_some() || !self.active_editable() {
+        if !self.pen_held || self.pen_segment.is_some() || !self.active_editable() {
             return;
         }
-        self.precision_before = Some(self.begin_edit());
-        self.paint_acc = 0.0; // fresh segment → reset Brush/Airbrush spacing
+        let before = self.begin_edit();
+        // A fresh segment is a fresh single-coat stroke for the coat families (fresh frozen
+        // ctx + fresh scatter seed) — the pen path's "lift and stroke again".
+        let coat = StrokeCoat::tool_uses_coat(self.tool).then(|| self.open_coat(self.tool));
+        self.pen_segment = Some(PenSegment { before, coat });
         self.pen_pp.clear();
         if self.tool == ToolKind::Pencil && self.pixel_perfect_active() {
             // Seed the corner filter with the reticle pixel — already painted by the Hold dab or
@@ -2085,10 +2108,14 @@ impl Session {
         }
     }
 
-    /// The drag segment ends (finger up, Hold still on): commit its pixels as ONE undo step.
+    /// The drag segment ends (finger up, Hold still on): resolve its coat (if any) and commit
+    /// its pixels as ONE undo step.
     pub fn cursor_stroke_end(&mut self) {
-        if let Some(before) = self.precision_before.take() {
-            self.commit_edit(before);
+        if let Some(seg) = self.pen_segment.take() {
+            if let Some(c) = seg.coat {
+                self.flatten_coat(&c);
+            }
+            self.commit_edit(seg.before);
         }
         self.pen_pp.clear();
     }
@@ -2097,8 +2124,11 @@ impl Session {
     /// segment already committed theirs; a segment still open (finger down as Hold flips off)
     /// commits here as its final step.
     pub fn cursor_pen_up(&mut self) {
-        if let Some(before) = self.precision_before.take() {
-            self.commit_edit(before);
+        if let Some(seg) = self.pen_segment.take() {
+            if let Some(c) = seg.coat {
+                self.flatten_coat(&c);
+            }
+            self.commit_edit(seg.before);
         }
         self.pen_held = false;
         self.pen_pp.clear();
@@ -2111,14 +2141,21 @@ impl Session {
     }
 
     /// Apply a single airbrush dab at the reticle, committed as one undo edit. This is the
-    /// "one go at a time" airbrush, driven off-finger by the Airbrush's precision mode.
+    /// "one go at a time" airbrush, driven off-finger by the Airbrush's precision mode — a
+    /// degenerate one-dab single-coat stroke (ADR 0007), with its own scatter seed draw.
     pub fn airbrush_cursor(&mut self) {
         if !self.active_editable() {
             return;
         }
         let before = self.begin_edit();
         let p = self.cursor_storage();
-        self.airbrush_active(p);
+        // A non-airbrush active tool sprays Dots — the pre-coat default (`airbrush_active`'s
+        // fallback arm), preserved for journal compatibility.
+        let tool = if self.tool.is_airbrush() { self.tool } else { ToolKind::Airbrush };
+        let mut c = self.open_coat(tool);
+        let sel = self.selection_arc(); // [C-2]
+        c.dab(sel.as_deref(), p);
+        self.flatten_coat(&c);
         self.commit_edit(before);
     }
 

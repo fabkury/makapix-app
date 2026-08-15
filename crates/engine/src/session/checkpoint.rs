@@ -211,7 +211,7 @@ impl Session {
     /// sessions, so checkpoint density stays fine.
     pub fn is_quiescent(&self) -> bool {
         self.stroke.is_none()
-            && self.precision_before.is_none()
+            && self.pen_segment.is_none()
             && !self.pen_held
             && self.move_before.is_none() // covers move_layers/move_bbox (same lifecycle)
             && self.move_sel_before.is_none()
@@ -286,8 +286,9 @@ impl Session {
         self.last_gradient = cp.last_gradient.clone();
         self.mem_budget_override = cp.mem_budget_override;
         // Transient gesture/draft state was empty at take (quiescence) — reset to defaults.
+        // (Any live coat dies with `stroke`/`pen_segment`.)
         self.stroke = None;
-        self.precision_before = None;
+        self.pen_segment = None;
         self.pen_held = false;
         self.pen_pp.clear();
         self.paint_acc = 0.0;
