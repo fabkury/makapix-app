@@ -586,6 +586,8 @@ impl Session {
             // The reticle is now drawn by the UI as a thin, screen-space, marching-ants overlay
             // (not baked into canvas pixels), so the engine no longer renders it.
             cursor: None,
+            // Wired to the live single-coat stroke when the paint path lands (ADR 0007).
+            coat: None,
         };
         // A move/rotate draft or a pending HSV / brightness-contrast / levels adjustment renders
         // as a display-only preview: composite a clone of the active frame with it applied (the
