@@ -15,13 +15,14 @@ use crate::selection::Mask;
 use crate::tool::{BrushShape, ToolKind};
 use crate::util::hash_xy;
 
-/// Mist speck alpha band (pre-color-alpha). Every speck stays translucent, but each pixel draws
-/// its own depth from the hash: alpha ranges from `MIST_ALPHA_FLOOR` up to a per-pixel ceiling
-/// that scales with the local density envelope — which already carries both Intensity and the
-/// distance-to-path falloff, so high-Intensity strokes are denser AND deeper, and rim specks are
-/// faint. These two constants are the main feel-tuning knobs for Mist.
+/// Mist speck alpha band (pre-color-alpha). Each pixel draws its own depth from the hash: alpha
+/// ranges from `MIST_ALPHA_FLOOR` up to a per-pixel ceiling that scales with the local density
+/// envelope — which already carries both Intensity and the distance-to-path falloff, so
+/// high-Intensity strokes are denser AND deeper, and rim specks are faint. With the ceiling at
+/// the full 255, the deepest specks of a full-Intensity stroke reach opaque; most stay
+/// translucent. These two constants are the main feel-tuning knobs for Mist.
 const MIST_ALPHA_FLOOR: u32 = 24;
-const MIST_ALPHA_CEIL_MAX: u32 = 224; // raised from 160 after the 2026-08-15 device feel pass
+const MIST_ALPHA_CEIL_MAX: u32 = 255; // 160 → 224 → 255 across the 2026-08-15 feel passes
 
 /// Fraction of the Dots footprint radius that is fully dense before the rim feather begins —
 /// at Intensity 255 the core is solid (a user decision) and only the fringe scatters.
@@ -404,12 +405,16 @@ mod tests {
         for y in 0..32 {
             for x in 0..32 {
                 let a = c.resolve(x, y, Rgba8::TRANSPARENT).a;
-                assert!(a < 255, "mist specks must be translucent");
                 if a == 0 {
                     continue;
                 }
-                distinct.insert(a);
+                // With the ceiling at 255, the deepest full-Intensity specks may reach opaque —
+                // but the rim, where the envelope is low, must stay translucent.
                 let d2 = (x - 16) * (x - 16) + (y - 16) * (y - 16);
+                if d2 >= 36 {
+                    assert!(a < 255, "rim specks must stay translucent (got {a} at d²={d2})");
+                }
+                distinct.insert(a);
                 if d2 <= 4 {
                     inner_max = inner_max.max(a);
                 } else if d2 >= 36 {
