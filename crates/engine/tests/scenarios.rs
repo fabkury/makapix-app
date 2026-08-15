@@ -66,6 +66,159 @@ fn pencil_pixel_perfect_off_keeps_corner() {
     assert_eq!(s.pixel(0, 0, 3, 2), RED);
 }
 
+// ---- AA (anti-aliased edges, ADR 0008) ----
+
+#[test]
+fn aa_brush_lays_a_full_core_and_a_fractional_rim() {
+    let s = run(
+        r#"
+        NewDocument(24,24)
+        SelectTool(Brush); SetPrimaryColor(#FF0000FF); SetBrushShape(Round); SetBrushSize(7); SetAA(true)
+        Stroke([(12,12)])
+    "#,
+    );
+    assert_eq!(s.pixel(0, 0, 12, 12), RED, "the dab core is fully opaque");
+    // The rim carries partial alpha somewhere — that's the anti-aliasing.
+    let mut partial = 0;
+    for y in 0..24 {
+        for x in 0..24 {
+            let a = s.pixel(0, 0, x, y).a;
+            if a > 0 && a < 255 {
+                partial += 1;
+            }
+        }
+    }
+    assert!(partial > 0, "an AA dab must have fractional rim pixels");
+}
+
+#[test]
+fn aa_stroke_is_drag_speed_independent() {
+    // The same geometric path in 1 segment vs 4 segments must land identical pixels — coverage
+    // max-combines, so over-stamping the rim never deepens it (ADR 0007 meets ADR 0008).
+    let base = "NewDocument(24,24)\nSelectTool(Brush); SetPrimaryColor(#00AA55FF); SetBrushShape(Round); SetBrushSize(5); SetAA(true)";
+    let fast = run(&format!("{base}\nStroke([(4,12),(20,12)])"));
+    let slow = run(&format!("{base}\nStroke([(4,12),(8,12),(12,12),(16,12),(20,12)])"));
+    assert_eq!(fast.hash_hex_active_layer(), slow.hash_hex_active_layer());
+}
+
+#[test]
+fn aa_is_a_no_op_at_size_1_and_for_the_square_brush() {
+    // ADR 0008's explicit no-list: a size-1 round brush and the Square brush stay hard.
+    for setup in [
+        "SetBrushShape(Round); SetBrushSize(1)",
+        "SetBrushShape(Square); SetBrushSize(4)",
+    ] {
+        let base = format!("NewDocument(24,24)\nSelectTool(Brush); SetPrimaryColor(#FF0000FF); {setup}");
+        let off = run(&format!("{base}; SetAA(false)\nStroke([(4,4),(16,10)])"));
+        let on = run(&format!("{base}; SetAA(true)\nStroke([(4,4),(16,10)])"));
+        assert_eq!(off.hash_hex_active_layer(), on.hash_hex_active_layer(), "{setup}");
+    }
+}
+
+#[test]
+fn aa_eraser_erases_a_full_core_and_a_fractional_rim() {
+    let s = run(
+        r#"
+        NewDocument(24,24)
+        SetPrimaryColor(#0000FFFF); SelectAll(); FillSelection(); SelectNone()
+        SelectTool(Eraser); SetBrushShape(Round); SetBrushSize(7); SetAA(true)
+        Stroke([(12,12)])
+    "#,
+    );
+    assert_eq!(s.pixel(0, 0, 12, 12), Rgba8::TRANSPARENT, "the core erases fully");
+    let mut partial = 0;
+    for y in 0..24 {
+        for x in 0..24 {
+            let p = s.pixel(0, 0, x, y);
+            if p.a > 0 && p.a < 255 {
+                // A partially-erased rim pixel keeps its RGB.
+                assert_eq!((p.r, p.g, p.b), (0, 0, 255), "rim keeps RGB at ({x},{y})");
+                partial += 1;
+            }
+        }
+    }
+    assert!(partial > 0, "an AA erase must have fractional rim pixels");
+}
+
+#[test]
+fn aa_hard_clips_at_the_selection_boundary() {
+    // The 1-bit mask clips the AA gradient exactly at its edge (ADR 0008: selections stay
+    // pixel-exact) — nothing lands outside, full coverage still lands inside.
+    let s = run(
+        r#"
+        NewDocument(24,24)
+        SelectTool(SelectRect); PointerDown(6,6); PointerMove(15,15); PointerUp()
+        SelectTool(Brush); SetPrimaryColor(#FF0000FF); SetBrushShape(Round); SetBrushSize(7); SetAA(true)
+        Stroke([(6,10),(15,10)])
+    "#,
+    );
+    for y in 0..24 {
+        for x in 0..24 {
+            let inside = (6..=15).contains(&x) && (6..=15).contains(&y);
+            if !inside {
+                assert_eq!(s.pixel(0, 0, x, y), Rgba8::TRANSPARENT, "leaked outside the selection at ({x},{y})");
+            }
+        }
+    }
+    assert_eq!(s.pixel(0, 0, 10, 10), RED, "the stroke core inside the selection is full");
+}
+
+#[test]
+fn aa_shapes_have_fractional_edges_and_round_trip() {
+    // A rotated AA rectangle commits fractional edge pixels, and the document (off-palette rim
+    // shades included) survives the .mkpx save/load byte-exactly.
+    let mut s = run(
+        r#"
+        NewDocument(24,24)
+        SelectTool(Rectangle); SetPrimaryColor(#FF0000FF); SetShapeFill(true); SetAA(true)
+        ShapeSet(3,3,20,16); SetShapeRotation(300); ShapeCommit()
+    "#,
+    );
+    let mut partial = 0;
+    for y in 0..24 {
+        for x in 0..24 {
+            let a = s.pixel(0, 0, x, y).a;
+            if a > 0 && a < 255 {
+                partial += 1;
+            }
+        }
+    }
+    assert!(partial > 0, "an AA shape must have fractional edge pixels");
+    let bytes = s.save_bytes();
+    let mut back = Session::empty();
+    back.load_bytes(&bytes).unwrap();
+    assert_eq!(s.doc.content_hash(), back.doc.content_hash(), "AA pixels round-trip byte-exactly");
+}
+
+#[test]
+fn aa_shape_preview_equals_its_commit() {
+    // The live draft preview and the commit share tool::shape_cover_aa — assert it end-to-end:
+    // every canvas pixel of the previewed display equals the committed display.
+    let mut s = run(
+        r#"
+        NewDocument(24,24)
+        SelectTool(Ellipse); SetPrimaryColor(#227799FF); SetShapeFill(false); SetLineWidth(2); SetAA(true)
+        ShapeSet(3,3,20,16); SetShapeRotation(300)
+    "#,
+    );
+    let preview = s.display_bytes(false, false, false);
+    s.run_script("ShapeCommit()").unwrap();
+    let committed = s.display_bytes(false, false, false);
+    assert_eq!(preview, committed, "AA shape preview must equal its commit pixel-for-pixel");
+}
+
+#[test]
+fn aa_frozen_at_stroke_start() {
+    // ADR 0007 doctrine: a mid-stroke SetAA applies from the NEXT stroke — the live coat keeps
+    // the ctx it froze at pointer_down.
+    let base = "NewDocument(24,24)\nSelectTool(Brush); SetPrimaryColor(#FF0000FF); SetBrushShape(Round); SetBrushSize(5)";
+    let mid = run(&format!(
+        "{base}; SetAA(false)\nPointerDown(4,12)\nSetAA(true)\nPointerMove(20,12)\nPointerUp()"
+    ));
+    let off = run(&format!("{base}; SetAA(false)\nStroke([(4,12),(20,12)])"));
+    assert_eq!(mid.hash_hex_active_layer(), off.hash_hex_active_layer(), "mid-stroke SetAA must not reroute the coat");
+}
+
 #[test]
 fn pencil_pixel_perfect_restores_underlying() {
     // Pre-fill the corner pixel green, then draw the pixel-perfect staircase over it. The removed

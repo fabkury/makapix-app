@@ -38,6 +38,10 @@ pub struct PaintCtx {
     pub size: u16,
     pub shape: BrushShape,
     pub intensity: u8,
+    /// Anti-aliased dabs (ADR 0008): fractional rim coverage from `raster::disc_aa`. Frozen at
+    /// stroke start like every ctx field (a mid-stroke `SetAA` applies from the next stroke);
+    /// only ever true for a round Brush/Eraser of size > 1 (see `Session::open_coat`).
+    pub aa: bool,
     /// Dodge/Burn signed value shift; 0.0 for the paint tools.
     pub dv: f32,
     /// Per-stroke speckle-field seed (Dots/Mist; 0 otherwise). Drawn from the session RNG —
@@ -134,7 +138,17 @@ impl StrokeCoat {
                 match self.ctx.shape {
                     BrushShape::Round => {
                         if size <= 1 {
+                            // Size 1 is the precision instrument: a hard pixel even with AA on
+                            // (ADR 0008's explicit no).
                             self.raise(sel, p.x, p.y, 255);
+                        } else if self.ctx.aa {
+                            // AA dab: fractional rim coverage; max-combine along the path makes
+                            // the stroke edge independent of drag speed.
+                            let mut pts = Vec::new();
+                            raster::disc_aa(p, radius.max(1), |x, y, c| pts.push((x, y, c)));
+                            for (x, y, c) in pts {
+                                self.raise(sel, x, y, c);
+                            }
                         } else {
                             let mut pts = Vec::new();
                             raster::disc(p, radius.max(1), &mut |x, y| pts.push((x, y)));
@@ -321,6 +335,7 @@ mod tests {
             size: 4,
             shape: BrushShape::Round,
             intensity: 200,
+            aa: false,
             dv: 0.1,
             seed: 42,
             fid: 0,

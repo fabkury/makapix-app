@@ -196,6 +196,11 @@ pub struct ToolSettings {
     /// pixels (the L-shaped elbow at each turn) so the line stays a clean 1px wide. Only meaningful
     /// at `brush_size == 1`; a no-op otherwise.
     pub pixel_perfect: bool,
+    /// Anti-alias (AA, ADR 0008): one shared flag for the round Brush, the shape tools
+    /// (Line/Rectangle/Ellipse/Triangle), and the round Eraser — fractional-coverage edges from
+    /// the supersampled AA rasterizers instead of hard pixel steps. Ignored by every other tool;
+    /// a size-1 or Square brush stays hard regardless (see `Session::open_coat`).
+    pub aa: bool,
     /// Overscan view: when on, the display renders the whole storage area (canvas + gutter, the gutter
     /// dimmed) and selection gestures may reach into the gutter. A view/interaction flag driven from
     /// the shell (like `wrap`); it never affects paint tools, export or thumbnails. [SPEC §8]
@@ -246,6 +251,7 @@ impl Default for ToolSettings {
             protect_pixels: false,
             wrap: false,
             pixel_perfect: false,
+            aa: false,
             overscan_view: false,
             clean_edge: true,
             clean_edge_width: 1.0,
@@ -571,9 +577,47 @@ fn rotated_kind(kind: ToolKind) -> Option<u8> {
     }
 }
 
+/// The AA shapes' shared geometry dispatch (ADR 0008): route a Line/Rectangle/Ellipse/Triangle
+/// to its coverage rasterizer. Commit (`draw_shape` with `aa`) and the live preview both go
+/// through THIS function with the same inputs, so their coverage per pixel is identical by
+/// construction — only the plotting differs (clip/selection on commit, the display on preview).
+#[allow(clippy::too_many_arguments)]
+pub fn shape_cover_aa(
+    kind: ToolKind,
+    a: Point,
+    b: Point,
+    rot: f32,
+    tip: f32,
+    fill: bool,
+    line_width: u16,
+    plot: &mut dyn FnMut(i32, i32, u8),
+) {
+    let lw = line_width.max(1) as i32;
+    match kind {
+        ToolKind::Line => raster::thick_line_aa(a, b, lw, |x, y, c| plot(x, y, c)),
+        ToolKind::Rectangle => raster::rect_aa(a, b, rot, fill, lw, |x, y, c| plot(x, y, c)),
+        ToolKind::Ellipse => raster::ellipse_aa(a, b, rot, fill, lw, |x, y, c| plot(x, y, c)),
+        ToolKind::Triangle => raster::triangle_aa(a, b, rot, tip, fill, lw, |x, y, c| plot(x, y, c)),
+        _ => {}
+    }
+}
+
+/// Coverage ⊗ color: the color with its alpha scaled by `cover` — the coat's 8-bit rounding
+/// idiom, shared by the AA shape commit and preview so the two can never disagree.
+#[inline]
+pub fn cover_color(color: Rgba8, cover: u8) -> Option<Rgba8> {
+    let a = (cover as u32 * color.a as u32 + 127) / 255;
+    if a == 0 {
+        None
+    } else {
+        Some(Rgba8::new(color.r, color.g, color.b, a as u8))
+    }
+}
+
 /// Draw a shape (Line/Rectangle/Ellipse/Triangle), outline or filled (SPEC §28.1), optionally
 /// rotated by `rot` radians (Rectangle/Ellipse/Triangle). `tip` ∈ [-1, 1] skews a Triangle's apex
-/// horizontally along its top edge (ignored by the other shapes).
+/// horizontally along its top edge (ignored by the other shapes). With `aa` (ADR 0008) the shape
+/// draws through the coverage rasterizers instead — fractional rim alpha via [`cover_color`].
 #[allow(clippy::too_many_arguments)]
 pub fn draw_shape(
     buf: &mut RgbaBuffer,
@@ -588,7 +632,16 @@ pub fn draw_shape(
     fill: bool,
     line_width: u16,
     mode: PaintMode,
+    aa: bool,
 ) {
+    if aa {
+        shape_cover_aa(kind, a, b, rot, tip, fill, line_width, &mut |x, y, c| {
+            if let Some(src) = cover_color(color, c) {
+                plot(buf, sel, clip, x, y, src, mode);
+            }
+        });
+        return;
+    }
     let lw = line_width.max(1) as i32;
     let mut f = |x: i32, y: i32| plot(buf, sel, clip, x, y, color, mode);
     // The Triangle carries its own rotation + apex skew through one path.

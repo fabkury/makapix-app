@@ -1,0 +1,9 @@
+# Anti-alias (AA, ADR 0008) demo: a diagonal round-Brush stroke with SetAA(true) lays a fully
+# opaque core with a fractional-coverage rim (distinct legend letters per rim alpha in the ascii
+# probe), and an AA rotated Rectangle commits smooth edges. Probe it headlessly, e.g.:
+#   cargo run -p makapix-cli -- run examples/aa_brush.txt ascii:0:0 stats:0:0 hash:0:0 assert.roundtrip
+NewDocument(32, 20)
+SelectTool(Brush); SetPrimaryColor(#C03028FF); SetBrushShape(Round); SetBrushSize(5); SetAA(true)
+Stroke([(3,15),(14,5)])
+SelectTool(Rectangle); SetShapeFill(false); SetLineWidth(2)
+ShapeSet(17,3,29,16); SetShapeRotation(300); ShapeCommit()

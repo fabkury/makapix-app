@@ -11,7 +11,7 @@ use crate::geom::{IRect, Point, PointF};
 use crate::io;
 use crate::render;
 use crate::selection::{CombineMode, Mask};
-use crate::tool::{self, GradientKind, PaintMode, Stop, ToolKind, ToolSettings};
+use crate::tool::{self, BrushShape, GradientKind, PaintMode, Stop, ToolKind, ToolSettings};
 use crate::util::{hash_hex, Hash, SeededRng, VirtualClock};
 use std::sync::Arc;
 
@@ -626,6 +626,16 @@ impl Session {
         let lw = self.settings.line_width.max(1) as i32;
         let fill = self.settings.shape_fill;
         let rot = self.shape_rotation;
+        // AA (ADR 0008): preview through the SAME coverage dispatch the commit uses
+        // (tool::shape_cover_aa + tool::cover_color), so preview == commit per pixel.
+        if self.settings.aa {
+            tool::shape_cover_aa(self.tool, a, b, rot, self.triangle_tip, fill, self.settings.line_width, &mut |x, y, c| {
+                if let Some(src) = tool::cover_color(color, c) {
+                    buf.blend_over(x, y, src);
+                }
+            });
+            return;
+        }
         // The Triangle carries its own rotation + apex skew through one path.
         if self.tool == ToolKind::Triangle {
             if fill {
@@ -1420,6 +1430,12 @@ impl Session {
             ToolKind::Burn => self.dodge_dv(false),
             _ => 0.0,
         };
+        // AA (ADR 0008) applies to the round Brush and Eraser only — never the airbrushes or
+        // Dodge/Burn — and a size-1 or Square brush stays hard.
+        let aa = self.settings.aa
+            && matches!(tool, ToolKind::Brush | ToolKind::Eraser)
+            && matches!(self.settings.brush_shape, BrushShape::Round)
+            && self.settings.brush_size > 1;
         let f = self.doc.active_frame();
         let ctx = PaintCtx {
             tool,
@@ -1427,6 +1443,7 @@ impl Session {
             size: self.settings.brush_size,
             shape: self.settings.brush_shape,
             intensity: self.settings.intensity,
+            aa,
             dv,
             seed,
             fid: f.id,
@@ -1578,10 +1595,11 @@ impl Session {
                 ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse | ToolKind::Triangle => {
                     let color = self.settings.primary;
                     let (fill, lw, kind) = (self.settings.shape_fill, self.settings.line_width, self.tool);
+                    let aa = self.settings.aa;
                     let clip = self.paint_clip();
                     let sel = self.selection_clone();
                     let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-                    tool::draw_shape(buf, sel.as_ref(), clip, kind, start, last, 0.0, 0.0, color, fill, lw, PaintMode::Over);
+                    tool::draw_shape(buf, sel.as_ref(), clip, kind, start, last, 0.0, 0.0, color, fill, lw, PaintMode::Over, aa);
                 }
                 ToolKind::Move => {
                     if let (Some(float), Some(sel)) = (stroke.floating, self.selection_clone()) {
@@ -1742,8 +1760,9 @@ impl Session {
             let color = self.settings.primary;
             let (fill, lw, kind) = (self.settings.shape_fill, self.settings.line_width, self.tool);
             let (rot, tip) = (self.shape_rotation, self.triangle_tip);
+            let aa = self.settings.aa;
             let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-            tool::draw_shape(buf, sel.as_ref(), clip, kind, a, b, rot, tip, color, fill, lw, PaintMode::Over);
+            tool::draw_shape(buf, sel.as_ref(), clip, kind, a, b, rot, tip, color, fill, lw, PaintMode::Over, aa);
         }
         self.commit_edit(before);
         self.shape_draft = None;

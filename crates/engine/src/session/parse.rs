@@ -66,6 +66,9 @@ pub enum Action {
     SetProtectPixels(bool),
     SetWrap(bool),
     SetPixelPerfect(bool),
+    /// Anti-alias (ADR 0008): one shared flag for round Brush, Line/Rect/Ellipse/Triangle, and
+    /// round Eraser — fractional-coverage edges instead of hard pixel steps.
+    SetAA(bool),
     SetOverscanView(bool),
     SetCleanEdge(bool),
     SetCleanEdgeWidth(i32), // thousandths, 0..=2000 = 0.0..=2.0 (the SetShapeRotation convention)
@@ -270,6 +273,7 @@ impl Session {
             SetProtectPixels(b) => self.settings.protect_pixels = b,
             SetWrap(b) => self.settings.wrap = b,
             SetPixelPerfect(b) => self.settings.pixel_perfect = b,
+            SetAA(b) => self.settings.aa = b,
             SetOverscanView(b) => self.settings.overscan_view = b,
             SetEyedropSource(b) => self.settings.eyedrop_layer = b,
             SetSelectColorSource(b) => self.settings.select_color_layer = b,
@@ -638,6 +642,7 @@ fn parse_line(line: &str) -> Result<Action, String> {
         "SetProtectPixels" => SetProtectPixels(boola(0)?),
         "SetWrap" => SetWrap(boola(0)?),
         "SetPixelPerfect" => SetPixelPerfect(boola(0)?),
+        "SetAA" => SetAA(boola(0)?),
         "SetOverscanView" => SetOverscanView(boola(0)?),
         "SetCleanEdge" => SetCleanEdge(boola(0)?),
         "SetCleanEdgeWidth" => SetCleanEdgeWidth(i32a(0)?),
