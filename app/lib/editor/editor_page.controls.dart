@@ -280,8 +280,10 @@ extension _EditorControls on _EditorPageState {
     // The shared AA (anti-alias) chip (ADR 0008): shape tools always; Brush/Eraser only in Round
     // mode (the chip hides with Square — the engine ignores AA there). One flag across all of
     // them, persisted. A size-1 brush stays hard with AA on, like Perfect above size 1 — but AA
-    // stays tappable there because it also governs the shapes.
-    if (_aaCapable) {
+    // stays tappable there because it also governs the shapes. Placement: right after Size/Shape
+    // for Brush/Eraser (here), at the END of the row for Line/Shape (added below their blocks —
+    // a user placement decision, 2026-08-15).
+    void addAaChip() {
       children.add(Padding(
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: FilterChip(
@@ -296,6 +298,10 @@ extension _EditorControls on _EditorPageState {
           },
         ),
       ));
+    }
+
+    if (_aaCapable && (_tool == 'Brush' || _tool == 'Eraser')) {
+      addAaChip();
     }
     // (Spacing is gone: strokes are single-coat — ADR 0007 — so there is no stamp metering
     // left to expose.)
@@ -389,6 +395,10 @@ extension _EditorControls on _EditorPageState {
           _reapplyRatio();
         });
       }
+    }
+    // AA rides at the END of the figure tools' row (user placement decision, 2026-08-15).
+    if (_aaCapable && (_tool == 'Line' || _tool == 'Shape')) {
+      addAaChip();
     }
     if (_tool == 'Gradient') {
       // Changing the gradient (type, color count or any color) updates a pending draft instantly.
