@@ -65,6 +65,25 @@ pub fn hash_hex(h: Hash) -> String {
     format!("{:032x}", h)
 }
 
+/// SplitMix64 finalizer: a fast, high-quality 64-bit mixer. Doubles as `SeededRng`'s state
+/// expander and as the position hash behind the single-coat speckle field (ADR 0007) — pure
+/// integer ops, so it is deterministic on every platform by construction.
+#[inline]
+pub fn splitmix64(z: u64) -> u64 {
+    let mut v = z;
+    v = (v ^ (v >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    v = (v ^ (v >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    v ^ (v >> 31)
+}
+
+/// Deterministic per-pixel hash for the speckle field: mixes a pixel position with a per-stroke
+/// seed. Two rounds of `splitmix64` decorrelate the structured (x, y) lattice from the seed.
+#[inline]
+pub fn hash_xy(x: i32, y: i32, seed: u64) -> u64 {
+    let p = ((x as u32 as u64) << 32) | (y as u32 as u64);
+    splitmix64(seed.wrapping_add(splitmix64(p)))
+}
+
 /// xoshiro256** — small, fast, high-quality, fully deterministic from a seed (SPEC §5.1).
 #[derive(Clone, Debug)]
 pub struct SeededRng {
@@ -83,10 +102,7 @@ impl SeededRng {
         let mut z = seed;
         let mut next = || {
             z = z.wrapping_add(0x9E37_79B9_7F4A_7C15);
-            let mut v = z;
-            v = (v ^ (v >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-            v = (v ^ (v >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-            v ^ (v >> 31)
+            splitmix64(z)
         };
         SeededRng { s: [next(), next(), next(), next()] }
     }
@@ -234,6 +250,37 @@ mod tests {
         let mut h = Hasher::new();
         h.write(&[9, 8, 7, 6]);
         assert_eq!(h.finish(), hash_bytes(&[9, 8, 7, 6]));
+    }
+
+    /// Pin `splitmix64`'s exact outputs (reference values from the canonical SplitMix64
+    /// finalizer) so the RNG state expansion and the speckle field can never fork silently.
+    #[test]
+    fn splitmix64_bit_patterns_are_pinned() {
+        assert_eq!(splitmix64(0), 0);
+        // Canonical SplitMix64 test vector: first output for seed 0.
+        assert_eq!(splitmix64(0x9E37_79B9_7F4A_7C15), 0xE220_A839_7B1D_CDAF);
+        // Seeding is unchanged by the extraction: seed 0's first state word is the mix of
+        // one golden-ratio step.
+        assert_eq!(SeededRng::new(0).s[0], 0xE220_A839_7B1D_CDAF);
+    }
+
+    #[test]
+    fn hash_xy_is_deterministic_and_position_sensitive() {
+        assert_eq!(hash_xy(3, 7, 42), hash_xy(3, 7, 42));
+        assert_ne!(hash_xy(3, 7, 42), hash_xy(7, 3, 42), "transposed coords must differ");
+        assert_ne!(hash_xy(3, 7, 42), hash_xy(3, 7, 43), "seed must matter");
+        assert_ne!(hash_xy(-1, 0, 1), hash_xy(0, -1, 1), "negative coords stay distinct");
+        // The low byte (the speck threshold lane) is roughly uniform: over a 64×64 grid,
+        // each bucket of 16 values should land within a loose band around 256.
+        let mut buckets = [0u32; 16];
+        for y in 0..64 {
+            for x in 0..64 {
+                buckets[(hash_xy(x, y, 5) & 0xFF) as usize / 16] += 1;
+            }
+        }
+        for (i, &n) in buckets.iter().enumerate() {
+            assert!((160..=360).contains(&n), "bucket {i} skewed: {n}/4096");
+        }
     }
 
     #[test]

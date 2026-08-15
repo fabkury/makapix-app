@@ -7,6 +7,7 @@
 
 pub mod buffer;
 pub mod cleanedge;
+pub mod coat;
 pub mod color;
 pub mod document;
 pub mod geom;
