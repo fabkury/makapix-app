@@ -74,6 +74,15 @@ deepens it — a stroke lays one coat, capped by the tool's settings, and liftin
 again lays another. A "pass" always means a whole stroke.
 _Avoid_: non-accumulating (engineering docs only), one-pass
 
+**Anti-alias (AA)**:
+A single app-wide toggle (default off) that gives the round Brush, the shape tools (Line,
+Rectangle, Ellipse, Triangle), and the round Eraser smooth fractional-coverage edges instead
+of hard pixel steps. Crisp, not fuzzy — the edge is exact, only its boundary pixels are
+partial. Pencil, Bucket, Gradient, and the Square brush always stay hard, and a size-1 brush
+stays a single hard pixel even with AA on.
+_Avoid_: smoothing, feathering, soft (those describe the Airbrush's falloff, not AA's crisp
+edge)
+
 ### Animator vocabulary
 
 **Scene**:
