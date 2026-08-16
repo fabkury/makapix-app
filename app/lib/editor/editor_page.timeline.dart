@@ -458,7 +458,9 @@ extension _EditorTimeline on _EditorPageState {
             tooltip: 'Add layer',
             onPressed: () {
               _clearLayerGroup(); // focus moves to the new layer; the engine resets its group too
-              _act('AddLayer()');
+              // Insert just above the active layer (not at the top of the stack), like the
+              // long-press menu's "New layer above".
+              _act('AddLayerAt(${activeLayer + 1})');
             },
             icon: const Icon(Icons.add_box)),
         Container(width: vertical ? null : 1, height: vertical ? 1 : null, color: Colors.black26),
