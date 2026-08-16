@@ -136,6 +136,28 @@ One frame of a multi-frame Prop used as a held stance. An Actor in Posing mode s
 chosen by hold Keys instead of playing its Cycle. Playing vs. Posing is a per-Actor mode.
 _Avoid_: state, variant
 
+### Keyboard vocabulary (Editor)
+
+**Command**:
+A nameable Editor operation a physical keyboard can invoke — selecting a tool, stepping a
+frame, undoing. A Command always takes the same pathway as its on-screen control; the
+keyboard is another way to press the button, never a side door.
+_Avoid_: action (that word belongs to the Journal and the engine), shortcut (that is the
+Chord–Command pair, not the operation)
+
+**Chord**:
+The physical keystroke — a key plus its modifiers — that the artist presses.
+_Avoid_: hotkey, keystroke (in UI copy)
+
+**Binding**:
+The assignment of a Chord to a Command. The unit the artist customizes.
+_Avoid_: mapping, shortcut definition
+
+**Hold binding**:
+A Binding that acts while its Chord is held and reverts on release — hold to pan, hold to
+pick a color, let go to resume. Distinct from a tap Binding, which fires once.
+_Avoid_: spring-loaded, momentary (engineering docs only)
+
 ### Replay vocabulary (Editor)
 
 **Journal**:
