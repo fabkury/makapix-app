@@ -34,6 +34,10 @@ import 'gallery/gallery_page.dart';
 import 'levels_math.dart';
 import 'palette_io.dart';
 import 'palette_page.dart';
+import 'keyboard/commands.dart';
+import 'keyboard/default_bindings.dart';
+import 'keyboard/dispatcher.dart';
+import 'keyboard/editor_access.dart';
 import 'persistence/autosave_controller.dart';
 import 'persistence/drawing_meta.dart';
 import 'persistence/drawing_store.dart';
@@ -64,6 +68,7 @@ part 'editor_page.controls.dart';
 part 'editor_page.toolgrid.dart';
 part 'editor_page.persistence.dart';
 part 'editor_page.replay.dart';
+part 'editor_page.keyboard.dart';
 
 const double _kMinZoom = 0.25, _kMaxZoom = 32.0;
 const _prefsKey = 'tool_order_v1';
@@ -83,6 +88,9 @@ const _actionTools = {'Onion'};
 // Tools that support a "Precision" mode (off-finger reticle + act-by-button). Precision is
 // a per-tool toggle, remembered independently per tool — see [_precisionTools].
 const _precisionTools = {'Pencil', 'Brush', 'Airbrush', 'Eraser', 'Bucket', 'Dodge', 'Burn', 'Eyedropper', 'SelectByColor'};
+// Tools whose mark is a stamp/spray of `brush_size` — the row-1 Size slider's audience and the
+// [ / ] keyboard Commands' enablement (the figure tools use line_width + fill instead).
+const _kBrushSizeTools = {'Pencil', 'Brush', 'Airbrush', 'Eraser', 'Dodge', 'Burn'};
 
 class EditorPage extends ConsumerStatefulWidget {
   const EditorPage({super.key});
@@ -146,6 +154,10 @@ class _EditorPageState extends ConsumerState<EditorPage>
   bool _memBannerShown = false;
   String _tool = 'Pencil';
   Color _primary = const Color(0xFF000000);
+  // The last primary before the current one — the X Command's swap partner ("swap with
+  // previous color"; the editor has no secondary color by design). Starts white so the very
+  // first X toggles black↔white. Maintained by _setPrimary.
+  Color _previousPrimary = const Color(0xFFFFFFFF);
   List<Color> _palette = [];
   // Optional per-entry display names, aligned with _palette (null = unnamed). Slot-bound in the
   // engine: they follow swaps/sorts/duplicates and survive in-place color edits.
@@ -323,6 +335,9 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // screen-pixel offset. Two fingers pan/zoom; the app-bar Fit button resets both.
   double _zoom = 1.0;
   Offset _pan = Offset.zero;
+  // Last laid-out canvas box (cached by _buildCanvas): the keyboard zoom Commands need the
+  // box for focal-point math outside the LayoutBuilder.
+  Size? _lastCanvasBox;
   // Multi-touch on the canvas: one finger draws, two+ fingers pan/zoom. While pinching, drawing is
   // suspended until all fingers lift.
   final Map<int, Offset> _touchPos = {}; // live position of every finger on the canvas
@@ -488,6 +503,13 @@ class _EditorPageState extends ConsumerState<EditorPage>
 
   bool get _engineReady => _error == null;
 
+  // ---- Physical keyboard (DESIGN.md; ADR 0009): the Command registry, the default Binding
+  // table, and the EditorAccess adapter the EditorKeyboard dispatcher drives. All fixed
+  // defaults in v1; phase 6.B swaps _keyboardBindings for the stored/merged table.
+  late final _EditorKeyboardHost _keyboardHost = _EditorKeyboardHost(this);
+  final List<CommandDef> _keyboardCommands = buildCommands();
+  final BindingTable _keyboardBindings = defaultBindings();
+
   @override
   void initState() {
     super.initState();
@@ -643,7 +665,12 @@ class _EditorPageState extends ConsumerState<EditorPage>
     return Scaffold(
       body: SafeArea(
         bottom: false,
-        child: landscape ? _buildLandscapeBody(layers) : _buildPortraitBody(layers),
+        child: EditorKeyboard(
+          access: _keyboardHost,
+          commands: _keyboardCommands,
+          bindings: _keyboardBindings,
+          child: landscape ? _buildLandscapeBody(layers) : _buildPortraitBody(layers),
+        ),
       ),
     );
   }

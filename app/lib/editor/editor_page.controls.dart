@@ -224,7 +224,8 @@ extension _EditorControls on _EditorPageState {
     // Brush footprint SIZE: every tool whose mark is a stamp/spray of `brush_size` — i.e. the
     // pixel/paint tools, the airbrush spray radius, and dodge/burn. The figure tools (Line/Rect/
     // Ellipse) ignore brush_size (they use line_width + fill), so they're deliberately excluded.
-    const sizeTools = {'Pencil', 'Brush', 'Airbrush', 'Eraser', 'Dodge', 'Burn'};
+    // (_kBrushSizeTools is hoisted to editor_page.dart — the [ / ] keyboard Commands share it.)
+    const sizeTools = _kBrushSizeTools;
     // Stamp SHAPE (Round/Square): only tools that stamp a footprint of `brush_shape`. The airbrush
     // always sprays a disc (no shape), and figures don't stamp — both are excluded.
     const shapeTools = {'Pencil', 'Brush', 'Eraser', 'Dodge', 'Burn'};

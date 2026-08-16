@@ -166,6 +166,7 @@ extension _EditorCanvas on _EditorPageState {
   Widget _buildCanvas() {
     return LayoutBuilder(builder: (context, c) {
       final box = Size(c.maxWidth, c.maxHeight);
+      _lastCanvasBox = box; // cached for the keyboard zoom Commands' focal-point math
       final (vScale, vOff) = _view(box);
       // The display image is storage-sized under the overscan view; offset it so the canvas stays
       // put on screen (the gutter extends past the edges). Equals vOff in the normal view.

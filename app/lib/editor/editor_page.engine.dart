@@ -753,6 +753,9 @@ extension _EditorEngine on _EditorPageState {
   }
 
   void _setPrimary(Color c) {
+    // Remember the outgoing primary for the X Command's swap (only on a real change, so
+    // re-picking the current color never collapses previous onto current).
+    if (c != _primary) _previousPrimary = _primary;
     setState(() => _primary = c);
     _send('SetPrimaryColor(${_hex(c)})');
     if (_tool == 'Gradient') {
