@@ -169,7 +169,8 @@ extension _EditorTimeline on _EditorPageState {
   // the Undo/Redo/Play/Onion actions (which are now row-3 tools). The top level holds the two Club
   // actions (Go to Club / Post to Club) + four grouped submenus (File / Import & export / Canvas /
   // View) that open as bottom sheets — matching the frame/layer/palette menus — so the list stays
-  // short. The header line is the document at a glance: canvas size + frame count.
+  // short. The header is the document at a glance: artwork name (tap to rename) + canvas size +
+  // frame count.
   PopupMenuItem<String> _menuRow(String value, IconData icon, String label, {bool submenu = false}) =>
       PopupMenuItem<String>(
         value: value,
@@ -191,6 +192,20 @@ extension _EditorTimeline on _EditorPageState {
       },
       onSelected: _onEditorMenu,
       itemBuilder: (_) => [
+        // The whole name row is the rename button (the pencil is the affordance); it must be an
+        // *enabled* item — children of disabled PopupMenuItems have unreliable hit-testing.
+        PopupMenuItem<String>(
+          value: 'rename',
+          child: Row(children: [
+            Expanded(
+              child: Text(_drawingTitle,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            ),
+            const SizedBox(width: 12),
+            const Icon(Icons.edit, size: 16),
+          ]),
+        ),
         PopupMenuItem<String>(
           enabled: false,
           child: Text(
@@ -214,6 +229,9 @@ extension _EditorTimeline on _EditorPageState {
 
   void _onEditorMenu(String v) {
     switch (v) {
+      case 'rename':
+        _renameCurrentDrawing();
+        break;
       case 'club':
         ref.read(openClubProvider.notifier).state++;
         break;

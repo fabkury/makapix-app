@@ -50,6 +50,7 @@ import 'thumbnail.dart';
 import 'widgets/painters.dart';
 import 'dialogs/crop_dialog.dart';
 import 'dialogs/color_picker_dialog.dart';
+import 'dialogs/rename_drawing_dialog.dart';
 
 // The editor screen's implementation is split across part files (each a private
 // `extension _Editor* on _EditorPageState`) to keep every file focused and under

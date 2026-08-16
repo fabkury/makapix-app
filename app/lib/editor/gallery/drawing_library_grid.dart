@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import 'package:makapix_club/engine_ffi.dart';
 
+import '../dialogs/rename_drawing_dialog.dart';
 import '../persistence/drawing_meta.dart';
 import '../persistence/drawing_store.dart';
 import '../widgets/painters.dart';
@@ -138,23 +139,7 @@ class _DrawingLibraryGridState extends State<DrawingLibraryGrid> {
   }
 
   Future<void> _rename(DrawingMeta m) async {
-    final ctrl = TextEditingController(text: m.title);
-    final name = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Rename drawing'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: 'Title'),
-          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: const Text('Save')),
-        ],
-      ),
-    );
+    final name = await showRenameDrawingDialog(context, initialTitle: m.title);
     if (name == null || name.isEmpty || name == m.title) return;
     await widget.store.writeMeta(m.copyWith(title: name));
     await _load();

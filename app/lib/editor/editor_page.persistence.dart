@@ -111,6 +111,16 @@ extension _EditorPersistence on _EditorPageState {
     }
   }
 
+  // Rename the open drawing (the ☰ header's pencil). The explicit writeMeta matters: autosave
+  // short-circuits when the document bytes are unchanged, so a title-only edit would otherwise
+  // never reach disk.
+  Future<void> _renameCurrentDrawing() async {
+    final name = await showRenameDrawingDialog(context, initialTitle: _drawingTitle);
+    if (name == null || name.isEmpty || name == _drawingTitle || !mounted) return;
+    setState(() => _drawingTitle = name);
+    await _store?.writeMeta(_buildMeta());
+  }
+
   // ---- drawing identity transitions -------------------------------------------
 
   // Adopt an already-loaded drawing as the current one (no engine change) and begin autosaving it.
@@ -303,7 +313,18 @@ extension _EditorPersistence on _EditorPageState {
     final result = await Navigator.of(context).push<GalleryResult>(
       MaterialPageRoute(builder: (_) => GalleryPage(store: store, currentId: _drawingId)),
     );
-    if (result == null || !mounted) return;
+    if (!mounted) return;
+    // A gallery rename of the open drawing lands in meta.json only; re-adopt the title so the
+    // next autosave doesn't stamp the old one back.
+    final id = _drawingId;
+    if (id != null) {
+      final meta = await store.readMeta(id);
+      if (!mounted) return;
+      if (meta != null && meta.title != _drawingTitle) {
+        setState(() => _drawingTitle = meta.title);
+      }
+    }
+    if (result == null) return;
     switch (result.action) {
       case GalleryAction.open:
         await _openExistingDrawing(result.id!);
