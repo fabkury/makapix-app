@@ -117,7 +117,7 @@ Gate B are deliberately parked with pickup notes in the RECOMMENDATIONS ledger.
 ## Club social layer (C0–C3, Dart-only — `app/lib/club/`)
 | Area | Status | Notes |
 |---|---|---|
-| **C0** GitHub OAuth + PKCE + token store | ✅ | server-brokered OAuth via **HTTPS App Links** (`flutter_web_auth_2`; app id `club.makapix.app`); tokens at rest in `flutter_secure_storage`; single-flight 401→refresh→retry (`api/club_api_client.dart`). **Verified on-device** (App Links verified on both hosts; returns into the app). Residual one-tap Custom-Tab return is accepted (§6.3) |
+| **C0** GitHub OAuth + PKCE + token store | ✅ | server-brokered OAuth via `flutter_web_auth_2` — return leg is an **HTTPS App Link on dev** and the **`club.makapix.app://` custom scheme on prod** (Chrome same-site handling; `club_config.dart` documents why); app id `club.makapix.app`; tokens at rest in `flutter_secure_storage`; single-flight 401→refresh→retry (`api/club_api_client.dart`). **Verified on-device**. Residual one-tap Custom-Tab return is accepted (§6.3) |
 | **Sign in with Apple** (iOS, guideline 4.8) | ✅ | native `ASAuthorizationController` sheet → `apple_identity_token` grant on `/auth/token` (`auth/apple_oauth.dart`, `ClubSession.loginApple`); nonce replay protection; relay-email ("Hide My Email") → separate account, verified non-relay email links like GitHub. **Live end-to-end on prod, device-verified 2026-07-09** (contract + rollout: `docs/ios-release/apple-signin-server.md`, server `docs/apple-signin/` msgs 0001–0004). iOS-only by nature; button self-hides elsewhere |
 | **C0** Welcome / sign-in funnel | ✅ | signed-out users land on `ClubWelcomePage` (featured grid + sign-in), matching the website |
 | **C0b** In-app account creation | ✅ | **chosen-password** register → single 6-digit OTP verify → auto sign-in (A2) → welcome wizard (handle w/ live availability + **Back** · avatar/bio · `complete-welcome`). "Verify your email" recovery + forgot-password (OTP) on sign-in; Settings → Account (change password/handle, linked logins). Handle rules mirror the server (1–32 printable-Unicode code points). **Verified end-to-end on-device against dev.** `ui/auth/*`, `state/registration_controller.dart` |
@@ -189,8 +189,10 @@ through C3 plus most of C4. Verified against the code 2026-07-26:
 8. **Onion skin** is an on/off toggle only — configurable range/opacity (§28.3) missing. (Neighbors
    **loop-wrap** since 2026-07-09: frame 0 ghosts the last frame as prev, the last frame ghosts frame 0 as
    next — all animations are assumed loops.)
-9. **Action journal** (§28.2) — autosave + crash recovery are fully built
-   (`editor_page.persistence.dart`); the append-only action journal (bug-repro format) was never added.
+9. ~~**Action journal** (§28.2)~~ — **resolved with the replay work (1.2.0, 2026-08)**: autosave + crash
+   recovery (`editor_page.persistence.dart`) *and* the append-only action journal are both built — the
+   journal (`app/lib/editor/replay/journal_recorder.dart`, crash-torn-line repair) powers Watch-replay
+   and timelapse export, and doubles as the bug-repro format.
 10. **Gradient per-stop position UI** — engine supports stop positions; the UI doesn't expose them.
 
 **Club:**

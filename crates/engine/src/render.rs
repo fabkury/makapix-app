@@ -122,8 +122,10 @@ pub struct Overlays<'a> {
     pub coat: Option<&'a StrokeCoat>,
 }
 
-/// Render a frame to a display buffer with optional overlays (onion skin, selection ants,
-/// grid, checker background). Used by the shell's canvas and the `render` probe. `src` (storage
+/// Render a frame to a display buffer with optional overlays (onion skin, grid, checker
+/// background, precision cursor, live coat). Selection marching ants are NOT drawn here —
+/// the shell animates them from `mkpx_outline_mask`.
+/// Used by the shell's canvas and the `render` probe. `src` (storage
 /// coordinates) selects the window: the canvas rect for the normal view, the full storage rect for
 /// the overscan view. The output is `src.w × src.h` and everything is drawn output-relative.
 pub fn render_display(frame: &Frame, src: IRect, ov: &Overlays) -> RgbaBuffer {

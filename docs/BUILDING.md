@@ -71,10 +71,10 @@ The prebuilt release app is at `app/build/windows/x64/runner/Release/makapix_clu
 
 The Rust engine cross-compiles to an Android `.so` (bundled into the APK via `jniLibs`); the Dart
 loader opens `libmakapix_ffi.so` on Android. One-time prereqs: Android SDK + NDK, `rustup target add
-aarch64-linux-android armv7-linux-androideabi`, `cargo install cargo-ndk`.
+aarch64-linux-android armv7-linux-androideabi x86_64-linux-android`, `cargo install cargo-ndk`.
 
 ```powershell
-./build_android.ps1              # cross-compiles .so (arm64+arm32) + builds app-release.apk
+./build_android.ps1              # cross-compiles .so (arm64-v8a + armeabi-v7a + x86_64) + builds app-release.apk
 ./build_android.ps1 -Install     # also installs to a USB-connected phone (USB debugging on)
 ```
 

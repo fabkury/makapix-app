@@ -1,4 +1,6 @@
-//! `Mask` — a 1-bit, document-sized selection (SPEC §12). Editor state, not persisted.
+//! `Mask` — a 1-bit, storage-sized selection (SPEC §12). Document-scoped state: undoable
+//! (each history record carries the mask transition) and persisted in `.mkpx` (`SELC`) for
+//! crash safety; only the combine *mode* is transient tool state.
 //! Selection geometry reuses `raster`. Combine modes compose a freshly-rasterized shape
 //! with the existing selection.
 

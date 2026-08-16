@@ -11,8 +11,8 @@ import 'widgets/common.dart';
 
 /// Artist dashboard (`SPEC-CLUB.md` §19, aggregate). Totals + breakdowns (country
 /// / device / emoji) + a paged per-post table, with an authenticated-only toggle.
-/// Mirrors the website's `/u/{sqid}/dashboard`. (The per-post `/post/{id}/stats`
-/// drill-in is deferred.)
+/// Mirrors the website's `/u/{sqid}/dashboard`. The per-post `/post/{id}/stats`
+/// drill-in is `post_stats_page.dart` (owner kebab → Statistics).
 class ArtistDashboardPage extends ConsumerStatefulWidget {
   final String userKey; // public_sqid or UUID — the dashboard endpoint accepts either
   const ArtistDashboardPage({super.key, required this.userKey});
