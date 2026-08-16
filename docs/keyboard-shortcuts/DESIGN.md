@@ -1,7 +1,13 @@
 # Physical keyboard shortcuts in the Makapix Editor — design
 
-**Date:** 2026-08-16 · **Status:** designed, not implemented. Product of the grilling session
-that followed `ANALYSIS.md` (same directory); decisions below are settled unless marked draft.
+**Date:** 2026-08-16 · **Status:** **v1 (6.A) implemented 2026-08-16** — stages: registry +
+dispatcher + tap bindings · Hold bindings · broad Shift-constrain · discoverability + stored-
+bindings loader. As-built amendments to §4's draft map: **X = swap primary ↔ previous color**
+(the editor has no secondary color; a shell-remembered last color, maintained by `_setPrimary`),
+**Primary+V switches to the CopyPaste tool** before starting the paste draft, `playback.stop`
+exists as its own Esc-bound Command, and `help.keyboard` (?) opens the cheat sheet. Phase 6.B
+(the rebinding UI) remains open. Product of the grilling session that followed `ANALYSIS.md`
+(same directory); decisions below are settled unless marked draft.
 Terminology (Command, Chord, Binding, Hold binding) is canonical in `CONTEXT.md`; the
 architectural ground rule is ADR 0009.
 

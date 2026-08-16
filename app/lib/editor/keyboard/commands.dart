@@ -292,5 +292,12 @@ List<CommandDef> buildCommands() {
       enabled: _always,
       invoke: (a) => a.openLayerSheet(),
     ),
+    CommandDef(
+      id: 'help.keyboard',
+      label: 'Keyboard shortcuts',
+      category: 'Panels',
+      enabled: _always,
+      invoke: (a) => a.openKeyboardHelp(),
+    ),
   ];
 }

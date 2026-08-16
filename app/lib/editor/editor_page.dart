@@ -34,6 +34,8 @@ import 'gallery/gallery_page.dart';
 import 'levels_math.dart';
 import 'palette_io.dart';
 import 'palette_page.dart';
+import 'keyboard/bindings_store.dart';
+import 'keyboard/cheat_sheet.dart';
 import 'keyboard/commands.dart';
 import 'keyboard/constrain.dart';
 import 'keyboard/default_bindings.dart';
@@ -524,7 +526,8 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // defaults in v1; phase 6.B swaps _keyboardBindings for the stored/merged table.
   late final _EditorKeyboardHost _keyboardHost = _EditorKeyboardHost(this);
   final List<CommandDef> _keyboardCommands = buildCommands();
-  final BindingTable _keyboardBindings = defaultBindings();
+  // Defaults at construction; _initPersistence swaps in the stored/merged table (fail-soft).
+  BindingTable _keyboardBindings = defaultBindings();
 
   @override
   void initState() {

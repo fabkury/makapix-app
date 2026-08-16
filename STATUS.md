@@ -179,8 +179,12 @@ through C3 plus most of C4. Verified against the code 2026-07-26:
 3. **Sprite-sheet export UI** — supported in `crates/codec`, not wired into the export dialog.
 4. **Trim to non-transparent bounds** (§28.1) — resize + crop-to-selection exist; Trim doesn't.
 5. **Reference image underlay** (§28.3) — not implemented.
-6. **Keyboard shortcuts** (§28.5) — no key handling in the editor (tools, undo/redo, save, play/pause,
-   zoom, frame prev/next).
+6. ~~**Keyboard shortcuts** (§28.5)~~ — **✅ shipped 2026-08-16** (phase 6.A of
+   `docs/keyboard-shortcuts/DESIGN.md` + ADR 0009): the whole ~45-Command catalog as fixed default
+   Bindings (hybrid Primary-chord + tool-letter map), Hold bindings (Space-pan · Alt-eyedrop),
+   broad Shift-constrain on every directional drag, the hold-Primary cheat-sheet overlay + the
+   ☰ → Keyboard page, and the 6.B-ready stored-bindings loader. The rebinding UI (6.B) remains
+   open. Android keyboard device pass pending; iPad ships best-effort by decision.
 7. **Preferences screen** (§28.5) — individual settings persist ad-hoc via `shared_preferences`; no
    preferences UI (default canvas size, grid/onion defaults, theme, autosave interval, haptics,
    confirm-before-destructive).

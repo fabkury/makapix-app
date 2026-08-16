@@ -83,5 +83,6 @@ BindingTable defaultBindings() {
     'doc.export': [sp(LogicalKeyboardKey.keyE)],
     'sheet.timeline': [c(LogicalKeyboardKey.keyT)],
     'sheet.layers': [c(LogicalKeyboardKey.keyY)],
+    'help.keyboard': [s(LogicalKeyboardKey.slash)], // "?" (Shift+/ folds onto slash)
   };
 }

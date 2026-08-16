@@ -223,6 +223,7 @@ extension _EditorTimeline on _EditorPageState {
         _menuRow('share', Icons.import_export, 'Import & export', submenu: true),
         _menuRow('canvas', Icons.crop_rotate, 'Canvas', submenu: true),
         _menuRow('view', Icons.visibility_outlined, 'View', submenu: true),
+        _menuRow('keyboard', Icons.keyboard_outlined, 'Keyboard'),
       ],
     );
   }
@@ -255,6 +256,9 @@ extension _EditorTimeline on _EditorPageState {
         break;
       case 'view':
         _viewMenu();
+        break;
+      case 'keyboard':
+        _openKeyboardHelp();
         break;
     }
   }

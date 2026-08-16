@@ -19,6 +19,12 @@ extension _EditorPersistence on _EditorPageState {
       final dir = await getApplicationSupportDirectory();
       _store = DrawingStore(dir);
       _prefs = await SharedPreferences.getInstance();
+      // Stored keyboard Bindings (6.B-ready; the file doesn't exist until a rebinding UI
+      // writes it). Fail-soft inside loadBindings: any trouble keeps the defaults.
+      final bindings = await loadBindings(dir, _keyboardBindings);
+      if (mounted && !identical(bindings, _keyboardBindings)) {
+        setState(() => _keyboardBindings = bindings);
+      }
     } catch (e) {
       debugPrint('persistence init failed (editor still usable, no autosave): $e');
       return;

@@ -4,9 +4,12 @@
 // Command bound to it (registry order breaks ties: Enter commits a draft before it toggles play).
 // Engine-free by construction: everything goes through the EditorAccess host, so widget tests
 // drive it with a fake and tester.sendKeyEvent.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'cheat_sheet.dart';
 import 'chords.dart';
 import 'commands.dart';
 import 'default_bindings.dart';
@@ -40,6 +43,11 @@ class _EditorKeyboardState extends State<EditorKeyboard> with WidgetsBindingObse
   bool _spaceHeld = false;
   bool _pickHeld = false;
   bool _constrainHeld = false;
+  // Hold-Primary cheat-sheet overlay (DESIGN.md §2.5): the Primary modifier held alone for
+  // [_kOverlayDelay] shows the sheet; any other key, or release, hides it.
+  static const _kOverlayDelay = Duration(milliseconds: 600);
+  Timer? _overlayTimer;
+  bool _overlayVisible = false;
 
   @override
   void initState() {
@@ -96,6 +104,32 @@ class _EditorKeyboardState extends State<EditorKeyboard> with WidgetsBindingObse
       _constrainHeld = false;
       widget.access.setConstrain(false);
     }
+    _hideOverlay();
+  }
+
+  void _hideOverlay() {
+    _overlayTimer?.cancel();
+    _overlayTimer = null;
+    if (_overlayVisible && mounted) setState(() => _overlayVisible = false);
+  }
+
+  bool _isPrimaryModifierKey(LogicalKeyboardKey k) => primaryIsMeta()
+      ? k == LogicalKeyboardKey.metaLeft || k == LogicalKeyboardKey.metaRight
+      : k == LogicalKeyboardKey.controlLeft || k == LogicalKeyboardKey.controlRight;
+
+  // The overlay arm/disarm machine. Never consumes anything — Primary keeps being a modifier.
+  void _trackOverlay(KeyEvent event, {required bool gated}) {
+    if (_isPrimaryModifierKey(event.logicalKey)) {
+      if (event is KeyDownEvent && !gated) {
+        _overlayTimer ??= Timer(_kOverlayDelay, () {
+          if (mounted) setState(() => _overlayVisible = true);
+        });
+      } else if (event is KeyUpEvent) {
+        _hideOverlay();
+      }
+      return; // repeats of the held modifier keep the overlay up
+    }
+    if (event is KeyDownEvent) _hideOverlay(); // a chord was meant, not the reference card
   }
 
   // Shift is both a chord modifier AND the constrain hold, so it is tracked level-triggered
@@ -177,6 +211,7 @@ class _EditorKeyboardState extends State<EditorKeyboard> with WidgetsBindingObse
     _trackConstrain(event);
     final gated =
         _textEditingActive() || !(ModalRoute.of(context)?.isCurrent ?? true);
+    _trackOverlay(event, gated: gated);
     final hold = _handleHolds(event, gated: gated);
     if (hold != null) return hold;
     if (event is KeyUpEvent) return KeyEventResult.ignored; // taps fire on the way down
@@ -217,7 +252,13 @@ class _EditorKeyboardState extends State<EditorKeyboard> with WidgetsBindingObse
         onFocusChange: (has) {
           if (!has) releaseAllHolds();
         },
-        child: widget.child,
+        child: Stack(fit: StackFit.passthrough, children: [
+          widget.child,
+          if (_overlayVisible)
+            Positioned.fill(
+              child: KeyboardOverlay(commands: widget.commands, bindings: widget.bindings),
+            ),
+        ]),
       ),
     );
   }

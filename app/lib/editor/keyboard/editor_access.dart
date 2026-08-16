@@ -62,4 +62,5 @@ abstract class EditorAccess {
   void openExportMenu();
   void openFrameSheet();
   void openLayerSheet();
+  void openKeyboardHelp(); // the ☰ → Keyboard cheat-sheet page
 }

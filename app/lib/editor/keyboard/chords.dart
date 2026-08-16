@@ -76,13 +76,17 @@ class Chord {
     return Chord(key, shift: shift, alt: alt, primary: primary);
   }
 
-  /// Human label with the platform's real modifier glyphs, for the cheat sheet.
-  String display() => [
-        if (primary) primaryIsMeta() ? '⌘' : 'Ctrl',
-        if (alt) primaryIsMeta() ? '⌥' : 'Alt',
-        if (shift) '⇧',
-        _keyName(key),
-      ].join(primaryIsMeta() ? '' : '+');
+  /// Human label in the platform's modifier vocabulary, for the cheat sheet:
+  /// glyph-run on Apple platforms (⌘⇧Z), plus-separated words elsewhere (Ctrl+Shift+Z).
+  String display() {
+    final mac = primaryIsMeta();
+    return [
+      if (primary) mac ? '⌘' : 'Ctrl',
+      if (alt) mac ? '⌥' : 'Alt',
+      if (shift) mac ? '⇧' : 'Shift',
+      _keyName(key),
+    ].join(mac ? '' : '+');
+  }
 
   @override
   String toString() => 'Chord(${serialize()})';

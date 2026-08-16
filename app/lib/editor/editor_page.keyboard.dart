@@ -134,6 +134,8 @@ class _EditorKeyboardHost implements EditorAccess {
   void openFrameSheet() => _s._frameMenu(_s.engine.activeFrame); // pauses playback itself
   @override
   void openLayerSheet() => _s._layerOptions(_s._activeLayerIndex()); // pauses playback itself
+  @override
+  void openKeyboardHelp() => _s._openKeyboardHelp();
 
   // ---- Hold bindings (the dispatcher guarantees begin/end pairing and forced release) ----
 
@@ -209,6 +211,16 @@ extension _EditorKeyboardOps on _EditorPageState {
   // Hold-Space pan: shift the view by a screen-pixel delta (the canvas pan drag's engine-free
   // twin of the pinch's derived pan).
   void _panBy(Offset screenDelta) => setState(() => _pan += screenDelta);
+
+  // ☰ → Keyboard (and the ? Command): the read-only cheat-sheet page. 6.B grows the
+  // rebinding controls on this same page.
+  void _openKeyboardHelp() {
+    if (_playing) _pause();
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) =>
+          KeyboardCheatSheetPage(commands: _keyboardCommands, bindings: _keyboardBindings),
+    ));
+  }
 
   // "Actual pixels": one canvas pixel per logical screen pixel (zoom is fit-relative).
   void _zoomActualPixels() {

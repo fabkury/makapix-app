@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:makapix_club/editor/keyboard/cheat_sheet.dart';
 import 'package:makapix_club/editor/keyboard/commands.dart';
 import 'package:makapix_club/editor/keyboard/default_bindings.dart';
 import 'package:makapix_club/editor/keyboard/dispatcher.dart';
@@ -231,6 +232,37 @@ void main() {
     expect(a.calls, ['setConstrain:false']);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftRight);
+  });
+
+  testWidgets('holding Primary alone raises the cheat-sheet overlay; release hides it',
+      (tester) async {
+    await pumpKeyboard(tester);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(KeyboardOverlay), findsNothing); // not yet — 600 ms threshold
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(KeyboardOverlay), findsOneWidget);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+    expect(find.byType(KeyboardOverlay), findsNothing);
+  });
+
+  testWidgets('a chord keeps the overlay away', (tester) async {
+    final a = await pumpKeyboard(tester);
+    a.canUndoV = true;
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyZ); // a chord was meant
+    await tester.pump(const Duration(milliseconds: 800));
+    expect(find.byType(KeyboardOverlay), findsNothing);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyZ);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    expect(a.calls, ['undo']);
+  });
+
+  testWidgets('? routes to the keyboard help page command', (tester) async {
+    final a = await pumpKeyboard(tester);
+    await chord(tester, LogicalKeyboardKey.slash, modifiers: [LogicalKeyboardKey.shiftLeft]);
+    expect(a.calls, ['setConstrain:true', 'openKeyboardHelp', 'setConstrain:false']);
   });
 
   testWidgets('holds are gated by a focused text field', (tester) async {
