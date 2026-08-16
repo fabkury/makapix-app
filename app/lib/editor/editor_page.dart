@@ -338,6 +338,12 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // Last laid-out canvas box (cached by _buildCanvas): the keyboard zoom Commands need the
   // box for focal-point math outside the LayoutBuilder.
   Size? _lastCanvasBox;
+  // Hold bindings (DESIGN.md §2.3). While Space is held, canvas drags pan the view; the
+  // routing decision is taken at drag BEGIN (`_panDragLast` non-null marks a pan drag), so a
+  // mid-drag press/release never changes a gesture's meaning under the finger.
+  bool _spacePanning = false;
+  Offset? _panDragLast; // last screen position of an in-flight hold-Space pan drag
+  String? _holdPickPrevTool; // tool to restore when the hold-Alt Eyedropper is released
   // Multi-touch on the canvas: one finger draws, two+ fingers pan/zoom. While pinching, drawing is
   // suspended until all fingers lift.
   final Map<int, Offset> _touchPos = {}; // live position of every finger on the canvas

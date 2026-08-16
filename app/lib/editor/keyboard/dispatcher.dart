@@ -30,14 +30,20 @@ class EditorKeyboard extends StatefulWidget {
   State<EditorKeyboard> createState() => _EditorKeyboardState();
 }
 
-class _EditorKeyboardState extends State<EditorKeyboard> {
+class _EditorKeyboardState extends State<EditorKeyboard> with WidgetsBindingObserver {
   final FocusNode _node = FocusNode(debugLabel: 'EditorKeyboard', skipTraversal: true);
   // Chord → the Commands it can fire, in registry order.
   late Map<Chord, List<CommandDef>> _byChord;
+  // Hold-binding state (Space-pan / Alt-eyedrop). Begin/end must pair exactly: a keyUp the
+  // editor never sees (dialog opened, app backgrounded, focus lost) is force-released, so a
+  // held mode can never survive its key (DESIGN.md §2.3 "stuck-state recovery").
+  bool _spaceHeld = false;
+  bool _pickHeld = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _rebuildTable();
   }
 
@@ -59,8 +65,81 @@ class _EditorKeyboardState extends State<EditorKeyboard> {
 
   @override
   void dispose() {
+    releaseAllHolds();
+    WidgetsBinding.instance.removeObserver(this);
     _node.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Backgrounding swallows keyUps; a hold must never survive it.
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      releaseAllHolds();
+    }
+  }
+
+  /// Force-release every active hold (lifecycle, focus loss, teardown).
+  void releaseAllHolds() {
+    if (_spaceHeld) {
+      _spaceHeld = false;
+      widget.access.setSpacePan(false);
+    }
+    if (_pickHeld) {
+      _pickHeld = false;
+      widget.access.endHoldPick();
+    }
+  }
+
+  // The Hold-binding state machine. Runs before the tap table; returns null when the event is
+  // not a hold key. KeyUps release even when the gates have changed since the press.
+  KeyEventResult? _handleHolds(KeyEvent event, {required bool gated}) {
+    final key = event.logicalKey;
+    final isAlt = key == LogicalKeyboardKey.altLeft || key == LogicalKeyboardKey.altRight;
+    final isSpace = key == LogicalKeyboardKey.space;
+    if (!isAlt && !isSpace) return null;
+    if (event is KeyUpEvent) {
+      if (isSpace && _spaceHeld) {
+        _spaceHeld = false;
+        widget.access.setSpacePan(false);
+        return KeyEventResult.handled;
+      }
+      if (isAlt && _pickHeld) {
+        _pickHeld = false;
+        widget.access.endHoldPick();
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
+    if (gated) return KeyEventResult.ignored; // text field / covered route: keys pass through
+    if (event is KeyRepeatEvent) {
+      // A held hold-key auto-repeats; the hold is level-triggered, so swallow the chatter.
+      return (isSpace && _spaceHeld) || (isAlt && _pickHeld)
+          ? KeyEventResult.handled
+          : KeyEventResult.ignored;
+    }
+    if (isSpace) {
+      if (HardwareKeyboard.instance.isShiftPressed ||
+          HardwareKeyboard.instance.isAltPressed ||
+          HardwareKeyboard.instance.isControlPressed ||
+          HardwareKeyboard.instance.isMetaPressed) {
+        return KeyEventResult.ignored; // modified Space is not the pan hold
+      }
+      if (!_spaceHeld) {
+        _spaceHeld = true;
+        widget.access.setSpacePan(true);
+      }
+      return KeyEventResult.handled;
+    }
+    // Alt down: spring the temporary Eyedropper — but never mid-draft (the tool switch would
+    // cancel the draft) and never mid-drag (the stroke would change meaning under the finger).
+    if (!_pickHeld && !widget.access.hasAnyDraft && !widget.access.pointerActive) {
+      _pickHeld = true;
+      widget.access.beginHoldPick();
+    }
+    return KeyEventResult.handled;
   }
 
   // A TextField (or any editable) owns the keyboard while focused: every Chord passes through.
@@ -74,11 +153,14 @@ class _EditorKeyboardState extends State<EditorKeyboard> {
   }
 
   KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
-    if (event is KeyUpEvent) return KeyEventResult.ignored; // Hold bindings land in stage 2
-    if (_textEditingActive()) return KeyEventResult.ignored;
-    // A covered editor (dialog, sheet, the ☰ popup, a pushed page) hears nothing; Flutter's
-    // own Esc-dismiss closes those routes.
-    if (!(ModalRoute.of(context)?.isCurrent ?? true)) return KeyEventResult.ignored;
+    // Gate: a focused editable, or a covered editor (dialog, sheet, the ☰ popup, a pushed
+    // page), hears nothing; Flutter's own Esc-dismiss closes those routes.
+    final gated =
+        _textEditingActive() || !(ModalRoute.of(context)?.isCurrent ?? true);
+    final hold = _handleHolds(event, gated: gated);
+    if (hold != null) return hold;
+    if (event is KeyUpEvent) return KeyEventResult.ignored; // taps fire on the way down
+    if (gated) return KeyEventResult.ignored;
     final chord = Chord.fromEvent(event);
     if (chord == null) return KeyEventResult.ignored;
     final candidates = _byChord[chord];
@@ -111,6 +193,10 @@ class _EditorKeyboardState extends State<EditorKeyboard> {
         focusNode: _node,
         autofocus: true,
         onKeyEvent: _onKeyEvent,
+        // Losing focus (a dialog/sheet took over) means keyUps stop arriving — force-release.
+        onFocusChange: (has) {
+          if (!has) releaseAllHolds();
+        },
         child: widget.child,
       ),
     );

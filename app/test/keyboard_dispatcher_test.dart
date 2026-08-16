@@ -146,8 +146,10 @@ void main() {
     await chord(tester, LogicalKeyboardKey.digit1, modifiers: [LogicalKeyboardKey.controlLeft]);
     await chord(tester, LogicalKeyboardKey.keyV, modifiers: [LogicalKeyboardKey.controlLeft]);
     expect(a.calls, [
-      'moveLayer:1',
-      'moveLayer:-1',
+      // Pressing Alt springs the hold-pick around each Alt chord — by design, the chord
+      // still fires while the temporary Eyedropper is up.
+      'beginHoldPick', 'moveLayer:1', 'endHoldPick',
+      'beginHoldPick', 'moveLayer:-1', 'endHoldPick',
       'brushSizeBy:1',
       'zoomFit',
       'zoom100',
@@ -159,6 +161,61 @@ void main() {
     final a = await pumpKeyboard(tester);
     await chord(tester, LogicalKeyboardKey.keyQ);
     await chord(tester, LogicalKeyboardKey.arrowLeft); // reserved, deliberately unbound
+    expect(a.calls, isEmpty);
+  });
+
+  // ---- Hold bindings (stage 2) ----
+
+  testWidgets('hold-Space pans: level-triggered, repeat-proof', (tester) async {
+    final a = await pumpKeyboard(tester);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
+    await tester.sendKeyRepeatEvent(LogicalKeyboardKey.space);
+    await tester.sendKeyRepeatEvent(LogicalKeyboardKey.space);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
+    expect(a.calls, ['setSpacePan:true', 'setSpacePan:false']);
+  });
+
+  testWidgets('hold-Alt springs the Eyedropper and restores on release', (tester) async {
+    final a = await pumpKeyboard(tester);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    expect(a.calls, ['beginHoldPick', 'endHoldPick']);
+  });
+
+  testWidgets('hold-Alt never fires mid-draft or mid-drag', (tester) async {
+    final a = await pumpKeyboard(tester);
+    a.hasAnyDraftV = true;
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    a
+      ..hasAnyDraftV = false
+      ..pointerActiveV = true;
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    expect(a.calls, isEmpty);
+  });
+
+  testWidgets('backgrounding force-releases holds; the late keyUp is inert', (tester) async {
+    final a = await pumpKeyboard(tester);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    expect(a.calls, ['setSpacePan:true', 'beginHoldPick']);
+    a.calls.clear();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    expect(a.calls, ['setSpacePan:false', 'endHoldPick']);
+    a.calls.clear();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    expect(a.calls, isEmpty);
+  });
+
+  testWidgets('holds are gated by a focused text field', (tester) async {
+    final a = await pumpKeyboard(tester, child: const Column(children: [TextField()]));
+    await tester.tap(find.byType(TextField));
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
     expect(a.calls, isEmpty);
   });
 }

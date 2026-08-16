@@ -188,8 +188,9 @@ extension _EditorCanvas on _EditorPageState {
               }
             } else {
               // first finger → draw (unless this tool doesn't draw on the canvas). The Rotate and
-              // Resize tools are otherwise inert, but accept their handle drag while a draft is open.
-              if (!_isInertCanvasTool || _isRotateHandleActive || _isResizeHandleActive) {
+              // Resize tools are otherwise inert, but accept their handle drag while a draft is
+              // open. A held Space pans with ANY tool, inert ones included.
+              if (_spacePanning || !_isInertCanvasTool || _isRotateHandleActive || _isResizeHandleActive) {
                 _drawPointer = e.pointer;
                 _beginDraw(e.localPosition, box);
               }
@@ -345,6 +346,12 @@ extension _EditorCanvas on _EditorPageState {
   // ---- single-pointer draw helpers (driven by the multi-touch state machine above) ----
 
   void _beginDraw(Offset pos, Size box) {
+    if (_spacePanning) {
+      // Hold-Space pan: the whole drag moves the view (screen-space deltas — _pan is in
+      // screen pixels). Begin-of-drag decides; releasing Space mid-drag keeps it a pan.
+      _panDragLast = pos;
+      return;
+    }
     if (_isRotateHandleActive) {
       _beginRotateHandle(pos, box);
       return;
@@ -408,6 +415,11 @@ extension _EditorCanvas on _EditorPageState {
   }
 
   void _continueDraw(Offset pos, Size box) {
+    if (_panDragLast != null) {
+      _panBy(pos - _panDragLast!);
+      _panDragLast = pos;
+      return;
+    }
     if (_isRotateHandleActive) {
       _continueRotateHandle(pos, box);
       return;
@@ -511,6 +523,10 @@ extension _EditorCanvas on _EditorPageState {
   }
 
   void _endDraw() {
+    if (_panDragLast != null) {
+      _panDragLast = null; // a pan drag ends without touching any tool pathway
+      return;
+    }
     if (_isRotateHandleActive) {
       _rotateDragging = false; // releasing leaves the angle/position where dragged (awaiting Commit)
       _rotDraftMoveLast = null;
@@ -572,6 +588,10 @@ extension _EditorCanvas on _EditorPageState {
   // Abort an in-progress draw, discarding its marks without an undo step (used when a second finger
   // interrupts a nascent stroke to begin pan/zoom).
   void _cancelDraw() {
+    if (_panDragLast != null) {
+      _panDragLast = null; // the second finger's pinch takes over from the pan drag
+      return;
+    }
     if (_isRotateHandleActive) {
       _rotateDragging = false; // a second finger interrupted; keep the angle/position where it is
       _rotDraftMoveLast = null;

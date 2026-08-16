@@ -32,6 +32,8 @@ class _EditorKeyboardHost implements EditorAccess {
   String get activeTool => _s._tool;
   @override
   bool get brushSizeApplies => _kBrushSizeTools.contains(_s._tool);
+  @override
+  bool get pointerActive => _s._drawPointer != null || _s._pinching;
 
   @override
   void selectTool(String dsl) => _s._selectTool(dsl);
@@ -132,6 +134,32 @@ class _EditorKeyboardHost implements EditorAccess {
   void openFrameSheet() => _s._frameMenu(_s.engine.activeFrame); // pauses playback itself
   @override
   void openLayerSheet() => _s._layerOptions(_s._activeLayerIndex()); // pauses playback itself
+
+  // ---- Hold bindings (the dispatcher guarantees begin/end pairing and forced release) ----
+
+  @override
+  void setSpacePan(bool held) {
+    // Only the flag: an in-flight drag keeps the meaning it began with (`_panDragLast` marks
+    // a pan drag until pointer-up), so press/release mid-drag never hijacks a stroke.
+    _s._spacePanning = held;
+  }
+
+  @override
+  void beginHoldPick() {
+    // The dispatcher already guards drafts and active drags; re-check the tool here.
+    if (_s._tool == 'Eyedropper') return;
+    _s._holdPickPrevTool = _s._tool;
+    _s._selectTool('Eyedropper');
+  }
+
+  @override
+  void endHoldPick() {
+    final prev = _s._holdPickPrevTool;
+    _s._holdPickPrevTool = null;
+    if (!_s.mounted) return; // forced release during editor teardown: nothing to restore
+    // Restore only if the spring is still in effect — a tap on another tool wins.
+    if (prev != null && _s._tool == 'Eyedropper') _s._selectTool(prev);
+  }
 }
 
 // New thin shell methods the keyboard needed but no button had reified yet. Each mirrors its
@@ -172,6 +200,10 @@ extension _EditorKeyboardOps on _EditorPageState {
   }
 
   void _zoomStep(double factor) => _zoomTo(_zoom * factor);
+
+  // Hold-Space pan: shift the view by a screen-pixel delta (the canvas pan drag's engine-free
+  // twin of the pinch's derived pan).
+  void _panBy(Offset screenDelta) => setState(() => _pan += screenDelta);
 
   // "Actual pixels": one canvas pixel per logical screen pixel (zoom is fit-relative).
   void _zoomActualPixels() {

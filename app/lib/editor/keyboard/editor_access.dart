@@ -15,6 +15,14 @@ abstract class EditorAccess {
   int get activeLayer;
   String get activeTool; // the shell tool name (tools.dart dsl)
   bool get brushSizeApplies; // the active tool uses the brush-size setting
+  bool get pointerActive; // a canvas drag (or pinch) is in flight
+
+  // ---- Hold bindings (DESIGN.md §2.3): act while the Chord is held, revert on release.
+  // The dispatcher owns the key state machine and guarantees begin/end pairing (including
+  // forced release on focus loss and app backgrounding); the host owns the effect.
+  void setSpacePan(bool held); // hold-Space: canvas drags pan the view while held
+  void beginHoldPick(); // hold-Alt: temporary Eyedropper, remembering the current tool
+  void endHoldPick(); // restore the remembered tool (no-op if the user switched meanwhile)
 
   // ---- tool / edit ----
   void selectTool(String dsl); // _selectTool: cancels drafts, pauses playback, etc.
