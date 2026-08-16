@@ -172,7 +172,7 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
   // The Contribute selector: like a feed icon, but its "feed" is the Contribute page (page 0).
   Widget _contributeIcon(ColorScheme cs) {
     final selected = _page == 0;
-    return _navIcon(selected ? Icons.add_circle : Icons.add_circle_outline, 'Contribute',
+    return _navIcon(selected ? Icons.brush : Icons.brush_outlined, 'Contribute',
         () => _goToPage(0),
         color: selected ? cs.primary : null);
   }

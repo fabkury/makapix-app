@@ -28,7 +28,7 @@ class ClubWelcomePage extends ConsumerWidget {
           // The editor stays reachable without signing in (mirrors the design's no-login Create).
           IconButton(
             tooltip: 'Contribute (open the editor)',
-            icon: const Icon(Icons.add_circle_outline),
+            icon: const Icon(Icons.brush_outlined),
             onPressed: () => ref.read(openEditorProvider.notifier).state++,
           ),
         ],
