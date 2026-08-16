@@ -1016,11 +1016,15 @@ pub extern "C" fn mkpx_timelapse_set_overlay(rgba: *const u8, w: u32, h: u32, x:
 }
 
 /// Produce ONE timelapse output frame from the CURRENT session state:
-/// composite(`frame`) → flatten over `bg` → integer NN upscale ×`scale` (clamped 1..=32) →
-/// center-pad onto an `out_w`×`out_h` bg-filled canvas → blit the registered overlay (if
-/// any) → return RGBA8888 (`format` 0) or tightly-packed I420/BT.601-limited (`format` 1;
-/// requires even `out_w`/`out_h`; the centering offset is floored to even for chroma
-/// alignment). `bg_rgba` is 0xRRGGBBAA; its alpha is ignored (padding is opaque).
+/// composite(`frame`) → flatten transparency → integer NN upscale ×`scale` (clamped
+/// 1..=32) → center-pad onto an `out_w`×`out_h` bg-filled canvas → blit the registered
+/// overlay (if any) → return RGBA8888 (`format` 0) or tightly-packed I420/BT.601-limited
+/// (`format` 1; requires even `out_w`/`out_h`; the centering offset is floored to even for
+/// chroma alignment). `bg_rgba` is 0xRRGGBBAA; its alpha is ignored (padding is opaque).
+/// `checker` 0 flattens transparency over `bg`; nonzero flattens it over the editor
+/// canvas's transparency checker instead — cells ≈1.25 art-pixels in OUTPUT space (the
+/// fit-to-screen editor look), clipped to the artwork (padding stays `bg`); the flatten
+/// runs after the upscale so cells are output-resolution, not art-pixel blocks.
 /// Returns a malloc'd buffer (free with `mkpx_free_bytes`); len via `out_len` (RGBA:
 /// `out_w*out_h*4`; I420: `out_w*out_h*3/2`). Null on: null session, the scaled size
 /// exceeding `out_w`/`out_h`, odd I420 dimensions, or an unknown format. Does NOT touch
@@ -1034,6 +1038,7 @@ pub extern "C" fn mkpx_timelapse_frame(
     out_w: u32,
     out_h: u32,
     bg_rgba: u32,
+    checker: c_int,
     format: c_int,
     out_len: *mut u64,
 ) -> *mut u8 {
@@ -1055,8 +1060,20 @@ pub extern "C" fn mkpx_timelapse_frame(
     }
     let bg = [(bg_rgba >> 24) as u8, (bg_rgba >> 16) as u8, (bg_rgba >> 8) as u8];
     let mut rgba = s.composite_frame_bytes(frame as usize);
-    makapix_codec::flatten_over_bg(&mut rgba, bg);
-    let scaled = makapix_codec::upscale_nearest(w as u32, h as u32, &rgba, scale);
+    let scaled = if checker != 0 {
+        // Alpha survives the upscale; the checker flatten then runs in output space,
+        // anchored at the content's top-left (center_pad never moves content pixels, so
+        // no offset plumbing). Cell = round(1.25·scale): ≈1.25 art-pixels per cell, the
+        // editor's 8-logical-px checker as seen at fit-to-screen zoom. Same grays as
+        // render.rs's checker_bg and the shell's CanvasPainter.
+        let mut up = makapix_codec::upscale_nearest(w as u32, h as u32, &rgba, scale);
+        let cell = (scale * 5 + 2) / 4;
+        makapix_codec::flatten_over_checker(sw, &mut up, cell, [200, 200, 200], [160, 160, 160]);
+        up
+    } else {
+        makapix_codec::flatten_over_bg(&mut rgba, bg);
+        makapix_codec::upscale_nearest(w as u32, h as u32, &rgba, scale)
+    };
     let mut out = makapix_codec::center_pad_rgba(
         sw,
         sh,
@@ -1673,7 +1690,7 @@ mod tests {
         let p = mkpx_new(2, 2);
         run_ok(p, "SelectTool(Pencil); SetBrushSize(1); SetPrimaryColor(#FF0000FF)\nTap(0,0)");
         let mut len = 0u64;
-        let buf = mkpx_timelapse_frame(p, 0, 2, 8, 8, 0x102030FF, 0, &mut len);
+        let buf = mkpx_timelapse_frame(p, 0, 2, 8, 8, 0x102030FF, 0, 0, &mut len);
         assert!(!buf.is_null());
         assert_eq!(len, 8 * 8 * 4);
         let px = unsafe { slice::from_raw_parts(buf, len as usize) };
@@ -1686,9 +1703,34 @@ mod tests {
         assert_eq!(at(0, 0), &[0x10, 0x20, 0x30, 255], "padding → bg");
         mkpx_free_bytes(buf, len);
         // Guards: scaled size exceeding the canvas, odd I420 dims, unknown format.
-        assert!(mkpx_timelapse_frame(p, 0, 8, 8, 8, 0, 0, &mut len).is_null());
-        assert!(mkpx_timelapse_frame(p, 0, 1, 7, 8, 0, 1, &mut len).is_null());
-        assert!(mkpx_timelapse_frame(p, 0, 1, 8, 8, 0, 2, &mut len).is_null());
+        assert!(mkpx_timelapse_frame(p, 0, 8, 8, 8, 0, 0, 0, &mut len).is_null());
+        assert!(mkpx_timelapse_frame(p, 0, 1, 7, 8, 0, 0, 1, &mut len).is_null());
+        assert!(mkpx_timelapse_frame(p, 0, 1, 8, 8, 0, 0, 2, &mut len).is_null());
+        mkpx_free(p);
+    }
+
+    #[test]
+    fn ffi_timelapse_frame_checker_under_artwork_only() {
+        // 2×2 canvas, one red pixel, scale 2 → cell = (2·5+2)/4 = 3 output px. Content
+        // (4×4) centered at (2,2) on 8×8; the checker anchors at the content's top-left.
+        let p = mkpx_new(2, 2);
+        run_ok(p, "SelectTool(Pencil); SetBrushSize(1); SetPrimaryColor(#FF0000FF)\nTap(0,0)");
+        let mut len = 0u64;
+        let buf = mkpx_timelapse_frame(p, 0, 2, 8, 8, 0x102030FF, 1, 0, &mut len);
+        assert!(!buf.is_null());
+        let px = unsafe { slice::from_raw_parts(buf, len as usize) };
+        let at = |x: usize, y: usize| &px[(y * 8 + x) * 4..(y * 8 + x) * 4 + 4];
+        // Opaque art pixels are untouched by the checker.
+        assert_eq!(at(2, 2), &[255, 0, 0, 255]);
+        // Transparent content: content-relative (2,0) is cell (0,0) → light; (3,0) is
+        // cell (1,0) → dark; (2,3) is cell (0,1) → dark.
+        assert_eq!(at(4, 2), &[200, 200, 200, 255], "content (2,0) → light cell");
+        assert_eq!(at(5, 2), &[160, 160, 160, 255], "content (3,0) → dark cell");
+        assert_eq!(at(4, 5), &[160, 160, 160, 255], "content (2,3) → dark cell");
+        // Padding stays the opaque bg — the checker never leaks past the artwork.
+        assert_eq!(at(0, 0), &[0x10, 0x20, 0x30, 255]);
+        assert_eq!(at(7, 7), &[0x10, 0x20, 0x30, 255]);
+        mkpx_free_bytes(buf, len);
         mkpx_free(p);
     }
 
@@ -1698,7 +1740,7 @@ mod tests {
         // All-black canvas (fill with an opaque black stroke covering both tiles' pixels).
         run_ok(p, "SelectTool(Pencil); SetBrushSize(4); SetPrimaryColor(#000000FF)\nStroke([(0,0),(1,1)])");
         let mut len = 0u64;
-        let buf = mkpx_timelapse_frame(p, 0, 1, 8, 8, 0x000000FF, 1, &mut len);
+        let buf = mkpx_timelapse_frame(p, 0, 1, 8, 8, 0x000000FF, 0, 1, &mut len);
         assert!(!buf.is_null());
         assert_eq!(len, 8 * 8 * 3 / 2, "I420 = w*h*3/2");
         let px = unsafe { slice::from_raw_parts(buf, len as usize) };
@@ -1715,13 +1757,13 @@ mod tests {
         // A 1×1 opaque white overlay at (0,0).
         let ov = [255u8, 255, 255, 255];
         assert_eq!(mkpx_timelapse_set_overlay(ov.as_ptr(), 1, 1, 0, 0), 0);
-        let buf = mkpx_timelapse_frame(p, 0, 1, 4, 4, 0x000000FF, 0, &mut len);
+        let buf = mkpx_timelapse_frame(p, 0, 1, 4, 4, 0x000000FF, 0, 0, &mut len);
         let px = unsafe { slice::from_raw_parts(buf, len as usize) };
         assert_eq!(&px[0..4], &[255, 255, 255, 255], "overlay blitted at (0,0)");
         mkpx_free_bytes(buf, len);
         // Clear → gone.
         assert_eq!(mkpx_timelapse_set_overlay(std::ptr::null(), 0, 0, 0, 0), 0);
-        let buf = mkpx_timelapse_frame(p, 0, 1, 4, 4, 0x000000FF, 0, &mut len);
+        let buf = mkpx_timelapse_frame(p, 0, 1, 4, 4, 0x000000FF, 0, 0, &mut len);
         let px = unsafe { slice::from_raw_parts(buf, len as usize) };
         assert_eq!(&px[0..4], &[0, 0, 0, 255], "cleared overlay no longer draws");
         mkpx_free_bytes(buf, len);

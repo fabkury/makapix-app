@@ -230,8 +230,11 @@ Future<void> _timelapseWorker(_TimelapseJob job) async {
       }
       final frameIndex = e.isFinale ? e.frameIndex! : engine.activeFrame;
       final scale = letterboxScale(engine.width, engine.height, job.outW, job.outH);
+      // checker: transparent artwork pixels show the transparency checker the artist saw
+      // while drawing (padding stays kTimelapseBg).
       final frame = engine.timelapseFrame(
-          frameIndex, scale, job.outW, job.outH, kTimelapseBg, isI420 ? 1 : 0);
+          frameIndex, scale, job.outW, job.outH, kTimelapseBg, isI420 ? 1 : 0,
+          checker: true);
       if (frame.isEmpty) throw const TimelapseExportException('frame render failed');
       if (mp4 != null) {
         await mp4.feed(frame, ptsUs);

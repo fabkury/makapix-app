@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:makapix_club/editor/replay/replay_host.dart';
 import 'package:makapix_club/editor/replay/replay_page.dart';
+import 'package:makapix_club/editor/widgets/painters.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Engine-free host: 4×4 frames whose top-left pixel encodes the position, seeks recorded.
@@ -201,10 +202,12 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('canvas stretches to the available space, not the true pixel size', (tester) async {
-    // Regression: RawImage sizes itself to the image's intrinsic pixels (4×4 from the fake
-    // host) unless given explicit dimensions — the replay must fill the box like the
-    // editor canvas does.
+  testWidgets('canvas fills the box via CanvasPainter (checker under transparency)',
+      (tester) async {
+    // Two regressions in one: the replay must fill the layout box like the editor canvas
+    // (never the 4×4 intrinsic pixels), and it must paint through CanvasPainter — the
+    // painter that draws the transparency checker under the artwork (a plain RawImage
+    // would let transparent pixels fall through to the dark page background).
     final host = FakeReplayHost(actions: 100);
     // decodeImageFromPixels completes on the real engine — the whole flow needs real async.
     await tester.runAsync(() async {
@@ -213,12 +216,13 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 150));
     });
     await tester.pump();
-    final raw = tester.widgetList<RawImage>(find.byType(RawImage));
-    expect(raw, isNotEmpty, reason: 'a frame should be showing');
-    final img = raw.first;
-    expect(img.width, greaterThan(100), reason: 'must span the layout box, not 4px');
-    expect(img.fit, BoxFit.contain);
-    expect(img.filterQuality, FilterQuality.none);
+    final paints = tester.widgetList<CustomPaint>(
+        find.byWidgetPredicate((w) => w is CustomPaint && w.painter is CanvasPainter));
+    expect(paints, isNotEmpty, reason: 'a frame should be showing');
+    final painter = paints.first.painter! as CanvasPainter;
+    expect(painter.image, isNotNull);
+    expect(painter.scale * painter.image!.width, greaterThan(100),
+        reason: 'must span the layout box, not 4px');
     await tester.tap(find.byIcon(Icons.pause));
     await tester.pump();
   });

@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:makapix_club/editor/widgets/painters.dart' show CanvasPainter;
 import 'package:makapix_club/engine_ffi.dart' show premultiplyRgbaInPlace;
 
 import 'replay_host.dart';
@@ -214,21 +216,25 @@ class _ReplayPageState extends State<ReplayPage> with WidgetsBindingObserver {
                     child: Padding(
                       padding: const EdgeInsets.all(12),
                       // Like the editor canvas: stretch to the largest fit, never the true
-                      // pixel size. RawImage sizes itself to the image's intrinsic pixels
-                      // unless given explicit dimensions, so hand it the whole box and let
-                      // BoxFit.contain center the upscale (nearest-neighbor = crisp).
+                      // pixel size — a hand-rolled BoxFit.contain feeding the editor's
+                      // CanvasPainter, which draws the transparency checker under the
+                      // artwork (a RawImage would let transparent pixels fall through to
+                      // the page background) and the image NN-scaled on top.
                       child: LayoutBuilder(
                         builder: (_, box) => ValueListenableBuilder<ui.Image?>(
                           valueListenable: _image,
-                          builder: (_, img, _) => img == null
-                              ? const SizedBox.shrink()
-                              : RawImage(
-                                  image: img,
-                                  width: box.maxWidth,
-                                  height: box.maxHeight,
-                                  fit: BoxFit.contain,
-                                  filterQuality: FilterQuality.none,
-                                ),
+                          builder: (_, img, _) {
+                            if (img == null) return const SizedBox.shrink();
+                            final scale = math.min(
+                                box.maxWidth / img.width, box.maxHeight / img.height);
+                            final off = Offset(
+                                (box.maxWidth - img.width * scale) / 2,
+                                (box.maxHeight - img.height * scale) / 2);
+                            return CustomPaint(
+                              size: Size(box.maxWidth, box.maxHeight),
+                              painter: CanvasPainter(img, scale, off),
+                            );
+                          },
                         ),
                       ),
                     ),

@@ -96,8 +96,8 @@ typedef _CkptRestoreD = int Function(Pointer<Void>, int);
 typedef _CkptIdsC = Uint32 Function(Pointer<Void>, Pointer<Uint32>, Uint32);
 typedef _CkptIdsD = int Function(Pointer<Void>, Pointer<Uint32>, int);
 // Timelapse export — crates/ffi mkpx_timelapse_* / mkpx_tl_encode_*.
-typedef _TlFrameC = Pointer<Uint8> Function(Pointer<Void>, Uint32, Uint32, Uint32, Uint32, Uint32, Int32, Pointer<Uint64>);
-typedef _TlFrameD = Pointer<Uint8> Function(Pointer<Void>, int, int, int, int, int, int, Pointer<Uint64>);
+typedef _TlFrameC = Pointer<Uint8> Function(Pointer<Void>, Uint32, Uint32, Uint32, Uint32, Uint32, Int32, Int32, Pointer<Uint64>);
+typedef _TlFrameD = Pointer<Uint8> Function(Pointer<Void>, int, int, int, int, int, int, int, Pointer<Uint64>);
 typedef _TlOverlayC = Int32 Function(Pointer<Uint8>, Uint32, Uint32, Int32, Int32);
 typedef _TlOverlayD = int Function(Pointer<Uint8>, int, int, int, int);
 typedef _TlBeginC = Int32 Function(Int32, Uint32, Uint32);
@@ -464,12 +464,15 @@ class Engine {
   // ---- timelapse export (editor/replay/timelapse_export.dart) ----
 
   /// One timelapse output frame from the current session state: composite(frame) →
-  /// flatten over bg → integer upscale ×scale → center-pad to outW×outH → overlay blit →
-  /// RGBA8888 (format 0) or tightly-packed I420/BT.601 (format 1; even dims required).
-  /// Empty on failure. bgRgba is 0xRRGGBBAA (alpha ignored — padding is opaque).
-  Uint8List timelapseFrame(int frame, int scale, int outW, int outH, int bgRgba, int format) {
+  /// flatten transparency → integer upscale ×scale → center-pad to outW×outH → overlay
+  /// blit → RGBA8888 (format 0) or tightly-packed I420/BT.601 (format 1; even dims
+  /// required). Empty on failure. bgRgba is 0xRRGGBBAA (alpha ignored — padding is
+  /// opaque). [checker] flattens transparency over the editor canvas's checker (clipped
+  /// to the artwork; padding stays bgRgba) instead of over bgRgba.
+  Uint8List timelapseFrame(int frame, int scale, int outW, int outH, int bgRgba, int format,
+      {bool checker = false}) {
     final lenPtr = malloc<Uint64>();
-    final ptr = _tlFrame(_s, frame, scale, outW, outH, bgRgba, format, lenPtr);
+    final ptr = _tlFrame(_s, frame, scale, outW, outH, bgRgba, checker ? 1 : 0, format, lenPtr);
     final len = lenPtr.value;
     malloc.free(lenPtr);
     if (ptr == nullptr) return Uint8List(0);

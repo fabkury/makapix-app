@@ -313,6 +313,29 @@ pub fn flatten_over_bg(rgba: &mut [u8], bg: [u8; 3]) {
     }
 }
 
+/// Composite RGBA in place over an opaque two-gray transparency checker (square cells of
+/// `cell` px, alternating `light`/`dark`, anchored at the buffer's top-left); output alpha
+/// becomes 255 everywhere. The timelapse export's transparency treatment: transparent
+/// artwork pixels show the checker the artist saw while drawing, not a flat background.
+/// `w` is the buffer's pixel width. Same integer over math as [`flatten_over_bg`].
+pub fn flatten_over_checker(w: u32, rgba: &mut [u8], cell: u32, light: [u8; 3], dark: [u8; 3]) {
+    let w = (w as usize).max(1);
+    let cell = (cell as usize).max(1);
+    for (i, px) in rgba.chunks_exact_mut(4).enumerate() {
+        let a = px[3] as u32;
+        if a == 255 {
+            continue;
+        }
+        let (x, y) = (i % w, i / w);
+        let bg = if (x / cell + y / cell) % 2 == 0 { light } else { dark };
+        let inv = 255 - a;
+        for c in 0..3 {
+            px[c] = ((px[c] as u32 * a + bg[c] as u32 * inv + 127) / 255) as u8;
+        }
+        px[3] = 255;
+    }
+}
+
 /// RGBA → I420 (yuv420p), BT.601 limited range ("studio swing") — the universal safe default
 /// for MediaCodec / VideoToolbox H.264 at these resolutions. REQUIRES even `w` and `h` (the
 /// FFI validates before calling; asserted here). Layout: Y plane (`w*h` bytes) ++ U plane ++
@@ -1119,6 +1142,28 @@ mod tests {
         let out = center_pad_rgba(3, 3, &vec![1u8; 3 * 3 * 4], 8, 8, bg, true);
         // oy = floor(5/2) = 2 (even already); ox likewise — content top-left at (2,2).
         assert_eq!(&out[(2 * 8 + 2) * 4..(2 * 8 + 2) * 4 + 4], &[1, 1, 1, 1]);
+    }
+
+    #[test]
+    fn flatten_over_checker_cells_and_blend() {
+        let light = [200, 200, 200];
+        let dark = [160, 160, 160];
+        // 6×3, cell 2: opaque pixel kept; transparent pixels take the cell's gray.
+        let mut buf = vec![0u8; 6 * 3 * 4];
+        buf[0..4].copy_from_slice(&[255, 0, 0, 255]); // opaque red at (0,0)
+        buf[(1 * 6 + 2) * 4..(1 * 6 + 2) * 4 + 4].copy_from_slice(&[0, 0, 255, 127]); // half blue at (2,1)
+        flatten_over_checker(6, &mut buf, 2, light, dark);
+        let at = |x: usize, y: usize| &buf[(y * 6 + x) * 4..(y * 6 + x) * 4 + 4];
+        assert_eq!(at(0, 0), &[255, 0, 0, 255], "opaque pixels are untouched");
+        assert_eq!(at(1, 1), &[200, 200, 200, 255], "cell (0,0) is light");
+        assert_eq!(at(2, 0), &[160, 160, 160, 255], "cell (1,0) is dark");
+        assert_eq!(at(0, 2), &[160, 160, 160, 255], "cell (0,1) is dark");
+        assert_eq!(at(2, 2), &[200, 200, 200, 255], "cell (1,1) is light");
+        // Translucent blend over its (dark) cell: c·a + g·(1−a), +127 rounding.
+        let g = |s: u32| ((s * 127 + 160 * 128 + 127) / 255) as u8;
+        assert_eq!(at(2, 1), &[g(0), g(0), g(255), 255]);
+        // Output is opaque everywhere.
+        assert!(buf.chunks_exact(4).all(|p| p[3] == 255));
     }
 
     #[test]
