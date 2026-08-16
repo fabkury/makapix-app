@@ -39,6 +39,7 @@ class _EditorKeyboardState extends State<EditorKeyboard> with WidgetsBindingObse
   // held mode can never survive its key (DESIGN.md §2.3 "stuck-state recovery").
   bool _spaceHeld = false;
   bool _pickHeld = false;
+  bool _constrainHeld = false;
 
   @override
   void initState() {
@@ -90,6 +91,24 @@ class _EditorKeyboardState extends State<EditorKeyboard> with WidgetsBindingObse
     if (_pickHeld) {
       _pickHeld = false;
       widget.access.endHoldPick();
+    }
+    if (_constrainHeld) {
+      _constrainHeld = false;
+      widget.access.setConstrain(false);
+    }
+  }
+
+  // Shift is both a chord modifier AND the constrain hold, so it is tracked level-triggered
+  // and NEVER consumed — shifted chords and text-field capitals keep working. Ungated: no
+  // drag can be live while a text field or covered route has the keyboard, so mirroring the
+  // physical key is harmless there and correct everywhere else.
+  void _trackConstrain(KeyEvent event) {
+    final key = event.logicalKey;
+    if (key != LogicalKeyboardKey.shiftLeft && key != LogicalKeyboardKey.shiftRight) return;
+    final held = event is! KeyUpEvent;
+    if (held != _constrainHeld) {
+      _constrainHeld = held;
+      widget.access.setConstrain(held);
     }
   }
 
@@ -155,6 +174,7 @@ class _EditorKeyboardState extends State<EditorKeyboard> with WidgetsBindingObse
   KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
     // Gate: a focused editable, or a covered editor (dialog, sheet, the ☰ popup, a pushed
     // page), hears nothing; Flutter's own Esc-dismiss closes those routes.
+    _trackConstrain(event);
     final gated =
         _textEditingActive() || !(ModalRoute.of(context)?.isCurrent ?? true);
     final hold = _handleHolds(event, gated: gated);

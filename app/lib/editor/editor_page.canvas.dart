@@ -345,6 +345,29 @@ extension _EditorCanvas on _EditorPageState {
 
   // ---- single-pointer draw helpers (driven by the multi-touch state machine above) ----
 
+  // The Move / Move-selection / Paste drags are incremental (the engine takes deltas), so a
+  // held Shift can't be a point transform there: these two helpers track the drag's ORIGIN and
+  // the total already sent, and each move sends the corrective delta toward the (axis-locked,
+  // when constrained) total — the engine's accumulated position always equals the intended
+  // total, with no off-axis drift and no jump when Shift lands mid-drag.
+  void _beginTotalDrag(Offset originCanvas) {
+    _dragTotalOrigin = originCanvas;
+    _dragSentDx = 0;
+    _dragSentDy = 0;
+  }
+
+  (int, int) _totalDragDelta(Offset pCanvas) {
+    final origin = _dragTotalOrigin;
+    if (origin == null) return (0, 0);
+    var total = pCanvas - origin;
+    if (_constrainHeld) total = axisLockTotal(total);
+    final dx = total.dx.round() - _dragSentDx;
+    final dy = total.dy.round() - _dragSentDy;
+    _dragSentDx += dx;
+    _dragSentDy += dy;
+    return (dx, dy);
+  }
+
   void _beginDraw(Offset pos, Size box) {
     if (_spacePanning) {
       // Hold-Space pan: the whole drag moves the view (screen-space deltas — _pan is in
@@ -374,10 +397,12 @@ extension _EditorCanvas on _EditorPageState {
     }
     if (_isCopyPaste) {
       _pasteDragLast = _toCanvas(pos, box); // a drag moves the floating paste draft (if any)
+      _beginTotalDrag(_pasteDragLast!);
       return;
     }
     if (_tool == 'Move' && _moveSelectionMode) {
       _moveSelDragLast = _toCanvas(pos, box); // a drag moves the selection mask, not the pixels
+      _beginTotalDrag(_moveSelDragLast!);
       _send('MoveSelectionBegin()'); // coalesce the whole drag into ONE undo step
       return;
     }
@@ -389,6 +414,7 @@ extension _EditorCanvas on _EditorPageState {
       // later drag would skip MoveDraftBegin, deadening the tool.
       _moveDraftStarted = _hasMoveDraft;
       _moveDragLast = _toCanvas(pos, box);
+      _beginTotalDrag(_moveDragLast!);
       return;
     }
     if (_isCursorTool) {
@@ -443,8 +469,7 @@ extension _EditorCanvas on _EditorPageState {
     if (_isCopyPaste) {
       if (_hasPasteDraft && _pasteDragLast != null) {
         final p = _toCanvas(pos, box);
-        final dx = (p.dx - _pasteDragLast!.dx).round();
-        final dy = (p.dy - _pasteDragLast!.dy).round();
+        final (dx, dy) = _totalDragDelta(p);
         if (dx != 0 || dy != 0) {
           _send('PasteMove($dx, $dy)');
           _pasteDragLast = p;
@@ -456,8 +481,7 @@ extension _EditorCanvas on _EditorPageState {
     if (_tool == 'Move' && _moveSelectionMode) {
       if (_moveSelDragLast != null) {
         final p = _toCanvas(pos, box);
-        final dx = (p.dx - _moveSelDragLast!.dx).round();
-        final dy = (p.dy - _moveSelDragLast!.dy).round();
+        final (dx, dy) = _totalDragDelta(p);
         if (dx != 0 || dy != 0) {
           _send('MoveSelection($dx, $dy)');
           _moveSelDragLast = p;
@@ -469,8 +493,7 @@ extension _EditorCanvas on _EditorPageState {
     if (_isMoveDrafting) {
       if (_moveDragLast != null) {
         final p = _toCanvas(pos, box);
-        final dx = (p.dx - _moveDragLast!.dx).round();
-        final dy = (p.dy - _moveDragLast!.dy).round();
+        final (dx, dy) = _totalDragDelta(p);
         if (dx != 0 || dy != 0) {
           if (!_moveDraftStarted) {
             _send('MoveDraftBegin()'); // first movement lifts the content into the draft
@@ -756,9 +779,11 @@ extension _EditorCanvas on _EditorPageState {
       _redraw();
       return;
     }
-    final p = _toCanvas(pos, box);
+    // Constrained snapping works on raw (sub-pixel) input, rounded once inside _ratioed, so
+    // the snap decision never jitters near the 22.5° boundaries at low zoom.
+    final p = _constrainHeld ? _toCanvasRaw(pos, box) : _toCanvas(pos, box);
     if (_shapeDrag == 4) {
-      _moveWholeDraft(p);
+      _moveWholeDraft(_toCanvas(pos, box)); // rigid move: unconstrained, integer input
       return;
     }
     if (_shapeDrag == 1) {
@@ -767,7 +792,8 @@ extension _EditorCanvas on _EditorPageState {
       _shapeB = _ratioed(_shapeA!, p); // dragging B: anchor is A
     } else {
       // New figure: A fixed at the press point, B follows (ratio-locked to A if enabled).
-      final a = _newShapeStart ?? p;
+      // (The fallback floors so a constrained drag's raw input never lands a fractional A.)
+      final a = _newShapeStart ?? Offset(p.dx.floorToDouble(), p.dy.floorToDouble());
       _shapeA = a;
       _shapeB = _ratioed(a, p);
     }
@@ -810,10 +836,19 @@ extension _EditorCanvas on _EditorPageState {
   // only). The box is sized to reach the finger in whichever axis is more extended. Bounded to the
   // generous off-canvas margin so the handles match the engine preview.
   Offset _ratioed(Offset anchor, Offset moving) {
+    // Held Shift (fixed gesture grammar, DESIGN.md §2.4): Line/Gradient snap the endpoint to
+    // the nearest 45° direction; Shape/Select Shape square up (ratio 1) — overriding, but
+    // never mutating, the persisted Lock Ratio settings.
+    if (_constrainHeld && (_tool == 'Line' || _tool == 'Gradient')) {
+      final s = snapToOctant(anchor, moving);
+      return _clampGenerous(Offset(s.dx.roundToDouble(), s.dy.roundToDouble()));
+    }
     // Shape and Select Shape each carry their own independent lock + ratio.
     final (locked, ratio) = _tool == 'SelectShape' ? (_selLockRatio, _selRatio) : (_lockRatio, _ratio);
-    if (!locked || !(_tool == 'Shape' || _tool == 'SelectShape')) return _clampGenerous(moving);
-    final r = ratio <= 0 ? 1.0 : ratio;
+    if (!(locked || _constrainHeld) || !(_tool == 'Shape' || _tool == 'SelectShape')) {
+      return _clampGenerous(moving);
+    }
+    final r = _constrainHeld ? 1.0 : (ratio <= 0 ? 1.0 : ratio);
     final dw = moving.dx - anchor.dx;
     final dh = moving.dy - anchor.dy;
     final h = (dh.abs() > dw.abs() / r) ? dh.abs() : dw.abs() / r;
@@ -872,9 +907,10 @@ extension _EditorCanvas on _EditorPageState {
 
   void _continueSelDraft(Offset pos, Size box) {
     if (_selDrag == 0) return;
-    final p = _toCanvas(pos, box);
+    // Raw input under constrain, as in _continueShape (rounded once inside _ratioed).
+    final p = _constrainHeld ? _toCanvasRaw(pos, box) : _toCanvas(pos, box);
     if (_selDrag == 4) {
-      _moveWholeSelDraft(p);
+      _moveWholeSelDraft(_toCanvas(pos, box));
       return;
     }
     if (_selDrag == 1) {
@@ -882,7 +918,9 @@ extension _EditorCanvas on _EditorPageState {
     } else if (_selDrag == 2) {
       _selB = _ratioed(_selA!, p); // dragging B: anchor is A
     } else {
-      final a = _newSelStart ?? p; // new draft: A fixed at the press, B follows (ratio-locked to A)
+      // New draft: A fixed at the press, B follows (ratio-locked to A). Floored fallback, as
+      // in _continueShape.
+      final a = _newSelStart ?? Offset(p.dx.floorToDouble(), p.dy.floorToDouble());
       _selA = a;
       _selB = _ratioed(a, p);
     }
@@ -1029,12 +1067,19 @@ extension _EditorCanvas on _EditorPageState {
       // rather than snapping under it. (For a fresh measurement the offset is zero, so B = finger.)
       // Not clamped — endpoints may sit off-canvas.
       final p = raw + _rulerGrabOffset;
+      // Held Shift snaps the dragged arm to the nearest 45° around its pivot (B pivots A and
+      // vice versa; C pivots the vertex A). Still unclamped; rounded once after the snap.
+      Offset snap(Offset pivot) {
+        final s = snapToOctant(pivot, p);
+        return Offset(s.dx.roundToDouble(), s.dy.roundToDouble());
+      }
+
       if (_rulerDrag == 1) {
-        _rulerA = p;
+        _rulerA = _constrainHeld && _rulerB != null ? snap(_rulerB!) : p;
       } else if (_rulerDrag == 5) {
-        _rulerC = p;
+        _rulerC = _constrainHeld && _rulerA != null ? snap(_rulerA!) : p;
       } else {
-        _rulerB = p; // dragging B, or growing a new measurement (A stays put)
+        _rulerB = _constrainHeld && _rulerA != null ? snap(_rulerA!) : p; // dragging B, or growing a new measurement (A stays put)
         // While a fresh measurement grows in Angle mode, C tracks its default 30° position so the
         // whole rig is visible as it forms; on release it stays put and becomes independent.
         if (_rulerDrag == 3 && _rulerAngle) _rulerC = defaultRulerC(_rulerA!, _rulerB!);

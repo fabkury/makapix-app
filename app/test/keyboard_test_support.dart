@@ -103,4 +103,6 @@ class FakeEditorAccess implements EditorAccess {
   void beginHoldPick() => calls.add('beginHoldPick');
   @override
   void endHoldPick() => calls.add('endHoldPick');
+  @override
+  void setConstrain(bool held) => calls.add('setConstrain:$held');
 }

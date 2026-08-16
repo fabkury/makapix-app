@@ -35,6 +35,7 @@ import 'levels_math.dart';
 import 'palette_io.dart';
 import 'palette_page.dart';
 import 'keyboard/commands.dart';
+import 'keyboard/constrain.dart';
 import 'keyboard/default_bindings.dart';
 import 'keyboard/dispatcher.dart';
 import 'keyboard/editor_access.dart';
@@ -344,6 +345,15 @@ class _EditorPageState extends ConsumerState<EditorPage>
   bool _spacePanning = false;
   Offset? _panDragLast; // last screen position of an in-flight hold-Space pan drag
   String? _holdPickPrevTool; // tool to restore when the hold-Alt Eyedropper is released
+  // Held Shift (DESIGN.md §2.4): directional drags snap/lock while true. Fixed gesture
+  // grammar, not a Binding; mid-drag changes re-evaluate on the next pointer event.
+  bool _constrainHeld = false;
+  // Shared by the Move / Move-selection / Paste drags (at most one drag exists at a time):
+  // the drag origin in canvas coords and the total delta already sent to the engine. The
+  // continue handlers send CORRECTIVE deltas toward the (possibly axis-locked) total from
+  // the origin, so a held Shift locks the whole drag without off-axis drift.
+  Offset? _dragTotalOrigin;
+  int _dragSentDx = 0, _dragSentDy = 0;
   // Multi-touch on the canvas: one finger draws, two+ fingers pan/zoom. While pinching, drawing is
   // suspended until all fingers lift.
   final Map<int, Offset> _touchPos = {}; // live position of every finger on the canvas

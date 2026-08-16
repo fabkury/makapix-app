@@ -23,6 +23,7 @@ abstract class EditorAccess {
   void setSpacePan(bool held); // hold-Space: canvas drags pan the view while held
   void beginHoldPick(); // hold-Alt: temporary Eyedropper, remembering the current tool
   void endHoldPick(); // restore the remembered tool (no-op if the user switched meanwhile)
+  void setConstrain(bool held); // hold-Shift: directional drags snap/lock (fixed grammar)
 
   // ---- tool / edit ----
   void selectTool(String dsl); // _selectTool: cancels drafts, pauses playback, etc.

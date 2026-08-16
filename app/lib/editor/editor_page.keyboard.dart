@@ -145,6 +145,11 @@ class _EditorKeyboardHost implements EditorAccess {
   }
 
   @override
+  void setConstrain(bool held) {
+    _s._constrainHeld = held;
+  }
+
+  @override
   void beginHoldPick() {
     // The dispatcher already guards drafts and active drags; re-check the tool here.
     if (_s._tool == 'Eyedropper') return;

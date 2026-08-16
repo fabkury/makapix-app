@@ -53,7 +53,12 @@ void main() {
     await chord(tester, LogicalKeyboardKey.keyG);
     await chord(tester, LogicalKeyboardKey.keyG, modifiers: [LogicalKeyboardKey.shiftLeft]);
     await chord(tester, LogicalKeyboardKey.keyI, modifiers: [LogicalKeyboardKey.controlLeft]);
-    expect(a.calls, ['selectTool:Bucket', 'selectTool:Gradient', 'selectTool:Invert']);
+    expect(a.calls, [
+      'selectTool:Bucket',
+      // Holding Shift raises constrain around the shifted chord — and the chord still fires.
+      'setConstrain:true', 'selectTool:Gradient', 'setConstrain:false',
+      'selectTool:Invert',
+    ]);
   });
 
   testWidgets('undo fires only when available, but the chord is always consumed', (tester) async {
@@ -71,7 +76,7 @@ void main() {
     await chord(tester, LogicalKeyboardKey.keyZ,
         modifiers: [LogicalKeyboardKey.controlLeft, LogicalKeyboardKey.shiftLeft]);
     await chord(tester, LogicalKeyboardKey.keyY, modifiers: [LogicalKeyboardKey.controlLeft]);
-    expect(a.calls, ['redo', 'redo']);
+    expect(a.calls, ['setConstrain:true', 'redo', 'setConstrain:false', 'redo']);
   });
 
   testWidgets('Enter commits a draft; without one it toggles playback', (tester) async {
@@ -208,6 +213,24 @@ void main() {
     await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
     expect(a.calls, isEmpty);
+  });
+
+  testWidgets('hold-Shift mirrors constrain, level-triggered', (tester) async {
+    final a = await pumpKeyboard(tester);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendKeyRepeatEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    expect(a.calls, ['setConstrain:true', 'setConstrain:false']);
+  });
+
+  testWidgets('backgrounding force-releases constrain too', (tester) async {
+    final a = await pumpKeyboard(tester);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftRight);
+    a.calls.clear();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    expect(a.calls, ['setConstrain:false']);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftRight);
   });
 
   testWidgets('holds are gated by a focused text field', (tester) async {
