@@ -157,6 +157,7 @@ extension _EditorSheets on _EditorPageState {
     required ScrollController controller,
     required double tileW,
     required VoidCallback refresh,
+    required ValueChanged<int> onTap,
   }) =>
       SizedBox(
         height: 44,
@@ -174,24 +175,29 @@ extension _EditorSheets on _EditorPageState {
             }
             final sel = i == cur;
             final inGroup = _selLayers.contains(i);
-            return Container(
-              margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-              padding: const EdgeInsets.all(2),
-              decoration: BoxDecoration(
-                color: const Color(0xFF101214),
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(
-                  color: sel ? const Color(0xFF4080C0) : (inGroup ? Colors.amber : Colors.black26),
-                  width: (sel || inGroup) ? 2 : 1,
+            return GestureDetector(
+              // Retarget the sheet only (like long-pressing the tile on the real strip):
+              // the engine's active layer stays put, so no side effect survives the sheet.
+              onTap: () => onTap(i),
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF101214),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
+                    color: sel ? const Color(0xFF4080C0) : (inGroup ? Colors.amber : Colors.black26),
+                    width: (sel || inGroup) ? 2 : 1,
+                  ),
                 ),
-              ),
-              child: Opacity(
-                opacity: l['visible'] == true ? 1 : 0.35,
-                child: CustomPaint(
-                  painter: const CheckerPainter(),
-                  child: cached != null
-                      ? RawImage(image: cached.img, fit: BoxFit.contain, filterQuality: FilterQuality.none)
-                      : const SizedBox.shrink(),
+                child: Opacity(
+                  opacity: l['visible'] == true ? 1 : 0.35,
+                  child: CustomPaint(
+                    painter: const CheckerPainter(),
+                    child: cached != null
+                        ? RawImage(image: cached.img, fit: BoxFit.contain, filterQuality: FilterQuality.none)
+                        : const SizedBox.shrink(),
+                  ),
                 ),
               ),
             );
@@ -269,6 +275,13 @@ extension _EditorSheets on _EditorPageState {
               tileW: stripTileW,
               refresh: () {
                 if (ctx.mounted) setS(() {});
+              },
+              onTap: (i) {
+                setS(() {
+                  cur = i;
+                  dragOpacity = null; // the new layer's opacity reads fresh from the engine
+                });
+                showCur();
               },
             ),
             const SizedBox(height: 8),
