@@ -27,7 +27,6 @@ One Flutter binary with two co-equal pillars:
 > repository** — references to them in the docs won't resolve in a public checkout.
 
 - **[`STATUS.md`](../STATUS.md)** — honest implementation coverage; the status document.
-- **[`PLAN.md`](../PLAN.md)** — the build plan & Windows dev environment for the Editor pillar.
 - **[`CLAUDE.md`](../CLAUDE.md)** — the working repo guide (build commands, architecture, platform
   gotchas).
 - **`docs/`** — deep dives: [`docs/mkpx-format/`](mkpx-format/) (the `.mkpx` container spec),
@@ -54,6 +53,26 @@ One Flutter binary with two co-equal pillars:
 `edit Rust → cargo test / mkpx run … (oracles, ASCII dumps, PNG diffs) → read results → edit Rust` —
 all on a Windows workstation, no device or emulator in the common case.
 
+## Toolchain setup (Windows 11)
+
+The engine loop needs only Rust; the interactive and Android tiers need more. Each row has a
+verification command.
+
+| Tool | Install | Verify |
+|------|---------|--------|
+| **Rust (MSVC)** | `winget install Rustlang.Rustup` → `rustup default stable-x86_64-pc-windows-msvc` | `rustc --version` (the workspace floor is `rust-version = "1.96"` in `Cargo.toml`) |
+| **VS Build Tools (C++)** | the "Desktop development with C++" workload (MSVC linker; Flutter Windows needs it too) **plus the "C++ ATL" component** (`flutter_secure_storage_windows` includes `<atlstr.h>`) | `cl.exe` resolves in a dev shell |
+| **Git** | `winget install Git.Git` | `git --version` |
+| **Flutter SDK** | download stable, add to `PATH`; then `flutter config --enable-windows-desktop` | `flutter doctor`; `flutter devices` lists **Windows** |
+| **Android Studio** | `winget install Google.AndroidStudio` (SDK, platform-tools) + the **NDK** via the SDK Manager | `adb --version` |
+| **Rust Android targets** | `rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android` | `rustup target list --installed` |
+| **cargo-ndk** | `cargo install cargo-ndk` | `cargo ndk --version` |
+
+With just the first row, `cargo test` and `cargo run -p makapix-cli -- run …` run the entire
+headless Tier-1 loop natively. There is no task runner beyond the root scripts
+(`build.ps1` · `build_android.ps1` · `release_android.ps1` · `build_ios.sh`) and no CI besides
+`codemagic.yaml` (iOS); the automated gates live in `release_android.ps1` and Codemagic's R2 check.
+
 ## Build & run on Windows
 
 ```powershell
@@ -70,8 +89,8 @@ The prebuilt release app is at `app/build/windows/x64/runner/Release/makapix_clu
 ## Build & install on Android
 
 The Rust engine cross-compiles to an Android `.so` (bundled into the APK via `jniLibs`); the Dart
-loader opens `libmakapix_ffi.so` on Android. One-time prereqs: Android SDK + NDK, `rustup target add
-aarch64-linux-android armv7-linux-androideabi x86_64-linux-android`, `cargo install cargo-ndk`.
+loader opens `libmakapix_ffi.so` on Android. One-time prereqs: the Android rows of the toolchain
+table above (SDK + NDK, the three rustup targets, `cargo-ndk`).
 
 ```powershell
 ./build_android.ps1              # cross-compiles .so (arm64-v8a + armeabi-v7a + x86_64) + builds app-release.apk

@@ -2,8 +2,9 @@
 #
 # SKELETON: the shape is complete and runnable, but a few values are wired to Codemagic-side
 # secrets that must exist before the first green build (see the CHECKLIST at the bottom). It builds
-# the Rust engine into a static xcframework, compiles the Flutter iOS app, signs it with the App
-# Store Connect API key (fully headless — no interactive Apple ID), and publishes to TestFlight.
+# the Rust engine into a dynamic-framework xcframework (MakapixFFI), compiles the Flutter iOS app,
+# signs it with the App Store Connect API key (fully headless — no interactive Apple ID), and
+# publishes to TestFlight.
 #
 # PUBLIC-REPO HYGIENE: no Team ID / Key ID / Issuer ID / App Store app id / .p8 appears here. The
 # App Store Connect API key is added once in the Codemagic UI as an integration named `makapix_ci`;
@@ -53,7 +54,7 @@ workflows:
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
           source "$HOME/.cargo/env"
           rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
-      - name: Build Rust static xcframework (build_ios.sh)
+      - name: Build Rust dynamic-framework xcframework (build_ios.sh)
         script: |
           source "$HOME/.cargo/env"
           ./build_ios.sh
@@ -134,4 +135,5 @@ workflows:
 # 3. Connect this GitHub repo; set the trigger (tag/manual) — left manual until CI is proven.
 # 4. Confirm `xcode-project use-profiles` + `export_options.plist` path on the Codemagic image
 #    (Codemagic generates the export options during `use-profiles`; adjust the path if needed).
-# 5. Verify the Podfile -force_load path resolves the static lib (R2) — first build may need a tweak.
+# 5. R2 gate: the built ipa must export the _mkpx_* symbols from the dynamic MakapixFFI.framework
+#    (the gate step verifies this; the old static-lib -force_load approach is dead — Xcode 26).

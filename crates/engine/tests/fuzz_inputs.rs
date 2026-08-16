@@ -6,12 +6,14 @@
 //! `catch_unwind` net by design, so this guarantee rests entirely on test coverage.
 //!
 //! These tests throw malformed DSL strings and corrupt `.mkpx` bytes at the engine and assert it
-//! never panics. A panic here aborts the test binary, which fails CI — that is exactly the signal
-//! we want. They run quickly and deterministically (no external RNG dep; the engine is zero-dep).
+//! never panics. A panic here aborts the test binary, failing the suite (and the release gates in
+//! `release_android.ps1`) — that is exactly the signal we want. They run quickly and
+//! deterministically (no external RNG dep; the engine is zero-dep).
 
 use makapix_engine::Session;
 
-/// Tiny deterministic LCG so the fuzz corpus is reproducible in CI (no `rand`, no `Math::random`).
+/// Tiny deterministic LCG so the fuzz corpus is reproducible on every machine (no `rand`, no
+/// `Math::random`).
 struct Lcg(u64);
 impl Lcg {
     fn next(&mut self) -> u64 {

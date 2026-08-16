@@ -93,7 +93,7 @@ Gate B are deliberately parked with pickup notes in the RECOMMENDATIONS ledger.
 | Selection ops Add / Subtract / Union / Intersect / Invert | ✅ | set-algebra tested |
 | HSV-shift selected pixels | ✅ | closed-form oracle |
 | Brightness/Contrast (layer/selection, Frame scope) | ✅ | HSV-style tool: live engine preview, ±255 brightness + ±100% contrast around the 128 pivot; a non-zero adjustment is a draft resolved by the commit-menu (Commit = one undo step); closed-form oracle |
-| Gradient (2–6 colors, positions, alpha) | ✅ | linear + radial; up to 6 evenly-spaced colors; alpha; optional seeded dither; blends source-over onto layer content (2026-08-16 — was overwrite; transparent stops leave pixels untouched), with a pixel-exact composited draft preview |
+| Gradient (2–6 colors, positions, alpha) | ✅ | linear + radial; up to 6 evenly-spaced colors; alpha; optional smoothstep easing; blends source-over onto layer content (2026-08-16 — was overwrite; transparent stops leave pixels untouched), with a pixel-exact composited draft preview |
 | Darkener / Lightener brush (intensity, size) | ✅ | dodge/burn via HSV-V |
 | **Ruler** (distance + **Angle** mode) | ✅ | pure-Dart canvas overlay (no engine): draggable endpoints with a px readout; Angle mode adds a third point C — 0–180° readout, cyan arc, smart chip flip, whole-cell snapping (2026-07-19) |
 | **Resize tool** (scale layer/selection) | ✅ | engine `Scale` verb; draft-adjust-commit like Rotate; per-tool **cleanEdge** resampling (upscale-only gate), 0.1×–8× (2026-07-14) |

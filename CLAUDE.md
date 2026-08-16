@@ -24,8 +24,9 @@ coverage; with the git log, the live frontier) · `SPEC.md` / `SPEC-CLUB.md` (in
 references for the two pillars — git-ignored, absent from public checkouts; rewritten 2026-08-16 to
 describe the system as built) · `docs/adr/` (the ADR series — 0007 single-coat strokes and 0008 AA define
 *current* engine behavior) · `docs/memlab/REPORT.md` (measured memory limits — the numbers to design
-against) · `docs/play-release.md` + `docs/ios-release/PLAN.md` (store pipelines) · `PLAN.md` (historical
-roadmap + Windows env notes).
+against) · `docs/play-release.md` + `docs/ios-release/PLAN.md` (store pipelines). (The original
+2026-06 build plan, `PLAN.md`, was retired 2026-08-16 — git history holds it; its toolchain-setup
+content lives on in `docs/BUILDING.md`.)
 
 **Conventions:** all new text — code comments, UI strings, docs, commits — is **American English** (repo
 standardized 2026-07-25). Club commits are phase-tagged (`feat(club/C4): …`); phases C0–C3 are complete,

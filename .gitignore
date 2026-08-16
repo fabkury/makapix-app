@@ -2,8 +2,7 @@
 /target
 **/target
 
-# ---- Harness artifacts (rendered PNGs, diffs, dumps) ----
-target/mkpx-artifacts/
+# ---- Scratch files ----
 *.tmp
 
 # ---- Flutter build output (also covered by app/**/.gitignore) ----
