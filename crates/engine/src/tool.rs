@@ -466,8 +466,10 @@ pub fn gradient_eval_sorted(kind: GradientKind, stops: &[Stop], p0: Point, p1: P
     gradient_color_at_sorted(stops, gradient_t(kind, p0, p1, x, y), smooth)
 }
 
-/// Fill a region with the gradient, clipped to selection and the canvas `clip` (SPEC §11.3).
-/// Deterministic per pixel.
+/// Blend a gradient over a region (source-over, like the Brush/shape tools' `PaintMode::Over`),
+/// clipped to selection and the canvas `clip` (SPEC §11.3). Transparent and semi-transparent stops
+/// composite onto existing content instead of overwriting it (behavior change 2026-08-16; earlier
+/// journals with gradients over content replay with the new blend). Deterministic per pixel.
 pub fn apply_gradient(buf: &mut RgbaBuffer, sel: Option<&Mask>, clip: IRect, spec: &GradientSpec, p0: Point, p1: Point) {
     // Sort the stops ONCE, not once per pixel — `gradient_color_at` used to clone+sort the whole
     // stop vector for every pixel (65 536× on a 256² fill). [audit F-14]
@@ -481,7 +483,7 @@ pub fn apply_gradient(buf: &mut RgbaBuffer, sel: Option<&Mask>, clip: IRect, spe
                 }
             }
             let t = gradient_t(spec.kind, p0, p1, x, y);
-            buf.set(x, y, gradient_color_at_sorted(&stops, t, spec.smoothstep));
+            buf.blend_over(x, y, gradient_color_at_sorted(&stops, t, spec.smoothstep));
         }
     }
 }

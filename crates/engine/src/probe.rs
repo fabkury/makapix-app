@@ -483,6 +483,9 @@ pub struct GradientOracle {
 }
 
 /// Closed-form gradient oracle (SPEC §22, §3.4): compare each pixel to the math.
+/// `apply_gradient` blends source-over, so the closed form only equals the buffer where blending
+/// is an identity — a layer that was empty under the gradient, or fully opaque stops. Scripts
+/// using `assert.gradient` must apply the gradient to an empty layer (or use opaque stops).
 pub fn gradient_oracle(
     buf: &RgbaBuffer,
     kind: GradientKind,

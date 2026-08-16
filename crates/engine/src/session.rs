@@ -577,16 +577,17 @@ impl Session {
             // The live single-coat stroke previews inside the frame composite (ADR 0007).
             coat: self.live_coat(),
         };
-        // A move/rotate draft or a pending HSV / brightness-contrast / levels adjustment renders
-        // as a display-only preview: composite a clone of the active frame with it applied (the
-        // document is untouched until Commit).
+        // A move/rotate draft, a pending HSV / brightness-contrast / levels adjustment, or a
+        // gradient draft/drag renders as a display-only preview: composite a clone of the active
+        // frame with it applied (the document is untouched until Commit).
         let preview = self
             .move_draft_preview_frame()
             .or_else(|| self.rotate_draft_preview_frame())
             .or_else(|| self.scale_draft_preview_frame())
             .or_else(|| self.hsv_preview_frame())
             .or_else(|| self.bc_preview_frame())
-            .or_else(|| self.levels_preview_frame());
+            .or_else(|| self.levels_preview_frame())
+            .or_else(|| self.gradient_preview_frame());
         let frame = preview.as_ref().unwrap_or_else(|| self.doc.active_frame());
         // Render the whole storage area so the tool previews (which draw in storage coordinates) need
         // no offset; then crop to the canvas for the normal view, or emit the whole thing (gutter
@@ -617,7 +618,7 @@ impl Session {
         }
     }
 
-    /// Live preview of a drag-in-progress for shape/selection/gradient/move tools, drawn on
+    /// Live preview of a drag-in-progress for shape/selection/move tools, drawn on
     /// top of the display so the user can fine-tune before releasing.
     /// Blend a figure (Line/Rectangle/Ellipse) between `a` and `b` into `buf`, honoring the
     /// fill/outline + line-width settings. Used both for the live preview and the draft preview.
@@ -677,34 +678,32 @@ impl Session {
         }
     }
 
-    /// Fill the gradient (p0=a → p1=b) into `buf`, clipped to the selection. Used for both the live
-    /// pointer-drag preview and the draft preview.
-    fn render_gradient_preview(&self, buf: &mut RgbaBuffer, a: Point, b: Point) {
-        let spec = &self.settings.gradient;
-        // The gradient is canvas-only; bound the preview fill to the canvas window (storage coords).
-        let cr = self.doc.canvas_rect();
-        // Sort stops once (not per pixel); a selection bounds the fill to its bbox. [audit F-14/F-15]
-        let mut stops = spec.stops.clone();
-        stops.sort_by(|p, q| p.t.total_cmp(&q.t));
-        let (x0, y0, x1, y1) = match self.doc.selection.as_ref().and_then(|m| m.bounds()) {
-            Some(bb) => (
-                bb.x.max(cr.x),
-                bb.y.max(cr.y),
-                (bb.x + bb.w as i32).min(cr.right()),
-                (bb.y + bb.h as i32).min(cr.bottom()),
-            ),
-            None => (cr.x, cr.y, cr.right(), cr.bottom()),
-        };
-        for y in y0..y1 {
-            for x in x0..x1 {
-                if let Some(m) = &self.doc.selection {
-                    if !m.get(x, y) {
-                        continue;
-                    }
-                }
-                buf.set(x, y, tool::gradient_eval_sorted(spec.kind, &stops, a, b, x, y, spec.smoothstep));
-            }
+    /// Live gradient preview: composite a clone of the active frame with the gradient blended onto
+    /// the active layer — pixel-exact against what Commit will produce, even under layer opacity,
+    /// blend modes, or layers above (unlike the shape previews' blend-over-the-display shortcut).
+    /// Covers both the pending draft (`shape_draft`) and a live pointer drag (`stroke`).
+    fn gradient_preview_frame(&self) -> Option<Frame> {
+        if self.tool != ToolKind::Gradient {
+            return None;
         }
+        let (a, b) = self
+            .shape_draft
+            .or_else(|| self.stroke.as_ref().map(|st| (st.start, st.last)))?;
+        if !self.active_editable() {
+            return None;
+        }
+        let mut frame = self.doc.active_frame().clone();
+        let li = frame.active_layer;
+        let sel = self.selection_clone();
+        tool::apply_gradient(
+            &mut frame.layers[li].pixels,
+            sel.as_ref(),
+            self.paint_clip(),
+            &self.settings.gradient,
+            a,
+            b,
+        );
+        Some(frame)
     }
 
     /// Preview a paste draft: the clip's pixels dimmed (alpha ~60%) and washed with a cyan tint so
@@ -786,15 +785,12 @@ impl Session {
             return;
         }
         // A pending draft (the forgiving draw → adjust → commit flow) renders on its own,
-        // independent of any pointer stroke. Shared by the figure tools and the gradient.
+        // independent of any pointer stroke. (The Gradient's draft previews as a composited
+        // preview frame instead — see `gradient_preview_frame`.)
         if let Some((a, b)) = self.shape_draft {
             match self.tool {
                 ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse | ToolKind::Triangle => {
                     self.render_shape_preview(buf, a, b);
-                    return;
-                }
-                ToolKind::Gradient => {
-                    self.render_gradient_preview(buf, a, b);
                     return;
                 }
                 _ => {}
@@ -809,7 +805,6 @@ impl Session {
             // Legacy immediate-draw previews (CLI / DSL pointer drags); the shell uses the draft
             // path above. Selection-tool outlines are not baked in (the shell draws marching ants).
             ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse | ToolKind::Triangle => self.render_shape_preview(buf, a, b),
-            ToolKind::Gradient => self.render_gradient_preview(buf, a, b),
             ToolKind::Move => {
                 if let (Some(float), Some(sel)) = (&stroke.floating, &self.doc.selection) {
                     if let Some(bb) = sel.bounds() {
@@ -5659,6 +5654,53 @@ mod tests {
         assert!(s.shape_draft().is_none());
         assert!(s.doc.undo()); // a single undo step
         assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::TRANSPARENT);
+    }
+
+    #[test]
+    fn gradient_blends_over_content_and_previews_the_composite() {
+        // A yellow→transparent gradient over existing content must composite source-over (not
+        // overwrite), and the draft preview must show exactly what Commit produces.
+        let mut s = Session::new(16, 1);
+        let red = Rgba8::rgb(255, 0, 0);
+        let o = s.doc.origin(); // layer buffers are storage-indexed: canvas (x,y) = storage (x+o.x, y+o.y)
+        {
+            let buf = &mut s.doc.active_frame_mut().active_layer_mut().pixels;
+            buf.set(o.x + 8, o.y, red);
+            buf.set(o.x + 15, o.y, red);
+        }
+        s.tool = ToolKind::Gradient;
+        s.settings.gradient = tool::GradientSpec {
+            kind: GradientKind::Linear,
+            stops: vec![Stop::new(Rgba8::new(255, 255, 0, 255), 0.0), Stop::new(Rgba8::new(255, 255, 0, 0), 1.0)],
+            smoothstep: false,
+        };
+        s.shape_set(0, 0, 15, 0); // opaque yellow at x=0 fading to fully transparent at x=15
+
+        // Mid-ramp expectation: the gradient color at x=8, source-over the red underneath.
+        let g8 = tool::gradient_eval(
+            GradientKind::Linear,
+            &s.settings.gradient.stops,
+            Point::new(0, 0),
+            Point::new(15, 0),
+            8,
+            0,
+            false,
+        );
+        let blended = crate::color::over(g8, red);
+
+        // The draft preview composites gradient-over-content…
+        let disp = s.display_bytes(false, false, false);
+        assert_eq!(&disp[0..4], &[255, 255, 0, 255], "opaque end is pure yellow");
+        assert_eq!(&disp[8 * 4..9 * 4], &[blended.r, blended.g, blended.b, 255], "mid-ramp blends over the red");
+        assert_eq!(&disp[15 * 4..16 * 4], &[255, 0, 0, 255], "content shows through the transparent end");
+        // …while the document stays untouched until Commit.
+        assert_eq!(s.pixel(0, 0, 8, 0), red);
+        assert!(!s.doc.can_undo());
+
+        s.shape_commit();
+        assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::new(255, 255, 0, 255));
+        assert_eq!(s.pixel(0, 0, 8, 0), blended, "commit matches the preview per pixel");
+        assert_eq!(s.pixel(0, 0, 15, 0), red, "the fully transparent end leaves content untouched");
     }
 
     #[test]
