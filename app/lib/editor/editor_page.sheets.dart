@@ -144,6 +144,61 @@ extension _EditorSheets on _EditorPageState {
 
   // ── the layer sheet ───────────────────────────────────────────────────────
 
+  // The live mini-stack: a read-only mirror of the layers film strip inside the layer sheet,
+  // so Up/Down reordering stays visible while the sheet covers the real strip (portrait puts
+  // it at the bottom of the screen, exactly where every bottom sheet rises). Index order
+  // left→right = bottom→top of stack, matching the strip. Blue border = the sheet's layer,
+  // amber = move-group members, dimmed = hidden. Built lazily so big stacks only regenerate
+  // the thumbnails actually on screen.
+  Widget _sheetLayerStrip({
+    required List<dynamic> layers,
+    required int cur,
+    required int frame,
+    required ScrollController controller,
+    required double tileW,
+    required VoidCallback refresh,
+  }) =>
+      SizedBox(
+        height: 44,
+        child: ListView.builder(
+          controller: controller,
+          scrollDirection: Axis.horizontal,
+          itemExtent: tileW + 4,
+          itemCount: layers.length,
+          itemBuilder: (_, i) {
+            final l = layers[i] as Map<String, dynamic>;
+            final hash = engine.layerHash(frame, i);
+            final cached = _layerThumbs[_layerKey(frame, i)];
+            if (cached == null || cached.hash != hash) {
+              _genLayerThumb(frame, i, hash).then((_) => refresh());
+            }
+            final sel = i == cur;
+            final inGroup = _selLayers.contains(i);
+            return Container(
+              margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                color: const Color(0xFF101214),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(
+                  color: sel ? const Color(0xFF4080C0) : (inGroup ? Colors.amber : Colors.black26),
+                  width: (sel || inGroup) ? 2 : 1,
+                ),
+              ),
+              child: Opacity(
+                opacity: l['visible'] == true ? 1 : 0.35,
+                child: CustomPaint(
+                  painter: const CheckerPainter(),
+                  child: cached != null
+                      ? RawImage(image: cached.img, fit: BoxFit.contain, filterQuality: FilterQuality.none)
+                      : const SizedBox.shrink(),
+                ),
+              ),
+            );
+          },
+        ),
+      );
+
   // Long-press menu of a layer tile. State-zone controls (chips, opacity, Up/Down) keep the
   // sheet open and update the canvas live; structural actions dismiss it. `cur` tracks the
   // layer as Up/Down move it through the stack, and each rebuild re-reads the layer's state
@@ -152,6 +207,26 @@ extension _EditorSheets on _EditorPageState {
     if (_playing) _pause();
     int cur = initial;
     int? dragOpacity; // non-null while the opacity slider is being dragged
+    // Mini-stack scroll state. The fixed tile extent keeps offsets computable without layout
+    // queries (the _ensureActiveFrameVisible precedent); showCur centers the sheet's layer.
+    final (tw, th) = _thumbSize();
+    final stripTileW = (40.0 * tw / th).clamp(26.0, 72.0);
+    final stripCtrl = ScrollController();
+    var stripScrolledIn = false;
+    void showCur({bool animate = true}) {
+      if (!stripCtrl.hasClients) return;
+      final pos = stripCtrl.position;
+      final ext = stripTileW + 4;
+      final target =
+          (cur * ext - (pos.viewportDimension - ext) / 2).clamp(0.0, pos.maxScrollExtent);
+      if (animate) {
+        stripCtrl.animateTo(target,
+            duration: const Duration(milliseconds: 150), curve: Curves.easeOut);
+      } else {
+        stripCtrl.jumpTo(target);
+      }
+    }
+
     showAppSheet(
       context: context,
       showDragHandle: true,
@@ -179,7 +254,25 @@ extension _EditorSheets on _EditorPageState {
           });
         }
 
+        if (!stripScrolledIn) {
+          stripScrolledIn = true; // open already scrolled to the pressed layer's tile
+          WidgetsBinding.instance.addPostFrameCallback((_) => showCur(animate: false));
+        }
+
         return _sheetScaffold(ctx, [
+          if (count > 1) ...[
+            _sheetLayerStrip(
+              layers: layers,
+              cur: cur,
+              frame: frame,
+              controller: stripCtrl,
+              tileW: stripTileW,
+              refresh: () {
+                if (ctx.mounted) setS(() {});
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
           _sheetHeader(
             thumb: cached, // stale-while-revalidate: old thumb beats a checkerboard flash
             title: '${l['name']}',
@@ -292,12 +385,14 @@ extension _EditorSheets on _EditorPageState {
                 ? () {
                     _reorderLayerTracked(cur, cur + 1);
                     setS(() => cur++);
+                    showCur();
                   }
                 : null),
             _sheetBtn(Icons.arrow_downward, 'Down', cur > 0
                 ? () {
                     _reorderLayerTracked(cur, cur - 1);
                     setS(() => cur--);
+                    showCur();
                   }
                 : null),
             _sheetBtn(Icons.call_merge, 'Merge down', (cur > 0 && !belowLocked)
@@ -344,7 +439,7 @@ extension _EditorSheets on _EditorPageState {
               : null),
         ]);
       }),
-    );
+    ).whenComplete(stripCtrl.dispose);
   }
 
   // Grouped blend-mode picker, apply-on-close: taps preview live via PreviewLayerBlend (a
