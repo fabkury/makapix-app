@@ -184,7 +184,8 @@ through C3 plus most of C4. Verified against the code 2026-07-26:
    Bindings (hybrid Primary-chord + tool-letter map), Hold bindings (Space-pan · Alt-eyedrop),
    broad Shift-constrain on every directional drag, the hold-Primary cheat-sheet overlay + the
    ☰ → Keyboard page, and the 6.B-ready stored-bindings loader. The rebinding UI (6.B) remains
-   open. Android keyboard device pass pending; iPad ships best-effort by decision.
+   open. Android + keyboard: light device pass OK 2026-08-16 (including hold-Shift constrain);
+   iPad ships best-effort by decision.
 7. **Preferences screen** (§28.5) — individual settings persist ad-hoc via `shared_preferences`; no
    preferences UI (default canvas size, grid/onion defaults, theme, autosave interval, haptics,
    confirm-before-destructive).
