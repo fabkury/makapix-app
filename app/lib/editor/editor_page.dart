@@ -375,6 +375,12 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // panDelta + a re-anchored zoom drifts — the pinch fights its own pan component).
   double _trackpadStartZoom = 1;
   Offset _trackpadStartPan = Offset.zero, _trackpadStartFocal = Offset.zero;
+  // Last mouse hover position over the canvas, in canvas-local coords — the pinch focal point.
+  // The PanZoom events' own position is NOT trusted: on Windows, DirectManipulation gesture
+  // events don't carry the cursor point (it can arrive as the window origin), which sent the
+  // canvas flying sideways on pinch. Hover events are the same local space the wheel zoom
+  // anchors with, which is verified correct.
+  Offset? _canvasHoverPos;
   // configurable bottom toolbar
   List<String> _toolOrder = tools.map((t) => t.dsl).toList();
   // ☰ → View → 3-row toolbar: the row-3 grid reflows to 3 rows (3 tiles per row in landscape) and

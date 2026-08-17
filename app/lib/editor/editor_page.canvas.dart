@@ -207,6 +207,7 @@ extension _EditorCanvas on _EditorPageState {
           },
           onPointerUp: (e) => _endTouch(e.pointer, cancel: false),
           onPointerCancel: (e) => _endTouch(e.pointer, cancel: true),
+          onPointerHover: (e) => _canvasHoverPos = e.localPosition,
           // Bare mouse wheel = zoom around the cursor (pixel-editor convention; the canvas never
           // scrolls). Ignored while a stroke or pinch is in flight so an established gesture's
           // screen→canvas mapping never shifts under the pointer.
@@ -226,7 +227,8 @@ extension _EditorCanvas on _EditorPageState {
           onPointerPanZoomStart: (e) {
             _trackpadStartZoom = _zoom;
             _trackpadStartPan = _pan;
-            _trackpadStartFocal = e.localPosition;
+            // Anchor on the tracked hover position, not the event's (see _canvasHoverPos).
+            _trackpadStartFocal = _canvasHoverPos ?? e.localPosition;
           },
           onPointerPanZoomUpdate: (e) {
             if (_drawPointer != null || _pinching) return;
