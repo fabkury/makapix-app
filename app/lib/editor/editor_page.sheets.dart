@@ -205,10 +205,11 @@ extension _EditorSheets on _EditorPageState {
         ),
       );
 
-  // Long-press menu of a layer tile. State-zone controls (chips, opacity, Up/Down) keep the
-  // sheet open and update the canvas live; structural actions dismiss it. `cur` tracks the
-  // layer as Up/Down move it through the stack, and each rebuild re-reads the layer's state
-  // from the engine (the captured map would go stale while the sheet stays open).
+  // Long-press menu of a layer tile. Everything except rename and Copy to all frames keeps the
+  // sheet open so repeated taps chain: `cur` tracks the layer as Up/Down move it through the
+  // stack, follows a duplicate/new layer/merge result, and the builder's clamp catches it after
+  // a delete. Each rebuild re-reads the layer's state from the engine (the captured map would
+  // go stale while the sheet stays open).
   void _layerOptions(int initial) {
     if (_playing) _pause();
     int cur = initial;
@@ -410,23 +411,33 @@ extension _EditorSheets on _EditorPageState {
                 : null),
             _sheetBtn(Icons.call_merge, 'Merge down', (cur > 0 && !belowLocked)
                 ? () {
-                    Navigator.pop(ctx);
                     _clearLayerGroup(); // the engine collapses its group to the merged layer
                     _act('MergeDown($cur)');
+                    setS(() => cur--); // follow the merged result below
+                    // Post-frame: the strip must relayout its shrunken roll first.
+                    WidgetsBinding.instance.addPostFrameCallback((_) => showCur());
                   }
                 : null),
           ]),
           _sheetSection('Create'),
           _sheetBtnRow([
             _sheetBtn(Icons.control_point_duplicate, 'Duplicate', () {
-              Navigator.pop(ctx);
               _clearLayerGroup(); // focus moves to the copy; the engine resets its group too
               _act('DuplicateLayer($cur)');
+              // Follow the copy (the engine made it active) — unless the layer cap
+              // made the verb a silent no-op.
+              setS(() {
+                if (_layerList().length > count) cur++;
+              });
+              WidgetsBinding.instance.addPostFrameCallback((_) => showCur());
             }),
             _sheetBtn(Icons.add_box_outlined, 'New layer above', () {
-              Navigator.pop(ctx);
               _clearLayerGroup();
               _act('AddLayerAt(${cur + 1})');
+              setS(() {
+                if (_layerList().length > count) cur++;
+              });
+              WidgetsBinding.instance.addPostFrameCallback((_) => showCur());
             }),
           ]),
           const SizedBox(height: 8),
@@ -445,9 +456,10 @@ extension _EditorSheets on _EditorPageState {
           const SizedBox(height: 4),
           _sheetDelete('Delete layer', count > 1
               ? () {
-                  Navigator.pop(ctx);
                   _remapLayerGroupRemoved(cur); // matches the engine's own remap
                   _act('RemoveLayer($cur)');
+                  setS(() => cur = cur.clamp(0, count - 2)); // count-1 layers remain
+                  WidgetsBinding.instance.addPostFrameCallback((_) => showCur());
                 }
               : null),
         ]);
