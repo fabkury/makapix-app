@@ -340,7 +340,8 @@ class _EditorPageState extends ConsumerState<EditorPage>
   int? _paintLastCx, _paintLastCy;
   int _lastLifecycleFlushMs = 0; // debounces the background-walk autosave flush [battery F11]
   // Canvas view transform: _zoom is relative to fit-to-screen (1.0 = fit), _pan is an extra
-  // screen-pixel offset. Two fingers pan/zoom; the app-bar Fit button resets both.
+  // screen-pixel offset. Two fingers, the mouse wheel, and trackpad gestures pan/zoom; the
+  // app-bar Fit button resets both.
   double _zoom = 1.0;
   Offset _pan = Offset.zero;
   // Last laid-out canvas box (cached by _buildCanvas): the keyboard zoom Commands need the
@@ -368,6 +369,9 @@ class _EditorPageState extends ConsumerState<EditorPage>
   bool _pinching = false;
   double _pinchStartDist = 1, _pinchStartZoom = 1;
   Offset _pinchStartMid = Offset.zero, _pinchStartPan = Offset.zero;
+  // Desktop trackpad gesture (PointerPanZoomEvent stream): two-finger scroll pans, pinch zooms
+  // around the cursor. The event's scale is cumulative from gesture start, hence the anchor zoom.
+  double _trackpadStartZoom = 1;
   // configurable bottom toolbar
   List<String> _toolOrder = tools.map((t) => t.dsl).toList();
   // ☰ → View → 3-row toolbar: the row-3 grid reflows to 3 rows (3 tiles per row in landscape) and

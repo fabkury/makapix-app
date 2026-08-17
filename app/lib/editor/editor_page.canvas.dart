@@ -217,6 +217,15 @@ extension _EditorCanvas on _EditorPageState {
                 math.pow(_kWheelZoomStep, -e.scrollDelta.dy / _kWheelNotchDelta).toDouble();
             _zoomAt(box, e.localPosition, _zoom * factor);
           },
+          // Desktop trackpads (Windows precision touchpads): two-finger scroll pans the view,
+          // pinch zooms around the cursor. Both arrive on this pan/zoom event stream, distinct
+          // from wheel PointerScrollEvents and from touch-screen pointers.
+          onPointerPanZoomStart: (e) => _trackpadStartZoom = _zoom,
+          onPointerPanZoomUpdate: (e) {
+            if (_drawPointer != null || _pinching) return;
+            if (e.panDelta != Offset.zero) setState(() => _pan += e.panDelta);
+            if (e.scale != 1.0) _zoomAt(box, e.localPosition, _trackpadStartZoom * e.scale);
+          },
           child: Stack(fit: StackFit.expand, children: [
             // The image repaints from the notifier (so playback updates it without rebuilding the
             // rest of the tree); a RepaintBoundary keeps that repaint isolated to the canvas.
