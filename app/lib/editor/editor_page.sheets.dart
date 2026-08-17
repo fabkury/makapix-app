@@ -503,9 +503,11 @@ extension _EditorSheets on _EditorPageState {
 
   // ── the frame sheet ───────────────────────────────────────────────────────
 
-  // Long-press menu of a film-roll frame, mirroring the layer sheet's zones. Move left/right
-  // keep the sheet open and `cur` tracks the frame across reorders; duration lives in the
-  // state zone (tap opens the existing duration dialog for this frame).
+  // Long-press menu of a film-roll frame, mirroring the layer sheet's zones. Every action keeps
+  // the sheet open so repeated taps chain (move-move-move, duplicate-duplicate, delete-delete):
+  // `cur` tracks the frame across reorders, follows a new duplicate/blank, and the builder's
+  // clamp catches it after a delete. Duration lives in the state zone (tap opens the existing
+  // duration dialog for this frame).
   void _frameMenu(int initial) {
     if (_playing) _pause();
     int cur = initial;
@@ -559,14 +561,20 @@ extension _EditorSheets on _EditorPageState {
           _sheetSection('Create'),
           _sheetBtnRow([
             _sheetBtn(Icons.control_point_duplicate, 'Duplicate', () {
-              Navigator.pop(ctx);
               _clearLayerGroup(); // a different frame becomes active
               _act('DuplicateFrame($cur)');
+              // Follow the copy (the engine made it active) — unless the frame cap
+              // made the verb a silent no-op.
+              setS(() {
+                if (engine.frameCount > count) cur++;
+              });
             }),
             _sheetBtn(Icons.add_box_outlined, 'New frame after', () {
-              Navigator.pop(ctx);
               _clearLayerGroup();
               _act('AddFrameAt(${cur + 1})');
+              setS(() {
+                if (engine.frameCount > count) cur++;
+              });
             }),
           ]),
           const SizedBox(height: 8),
@@ -574,9 +582,9 @@ extension _EditorSheets on _EditorPageState {
           const SizedBox(height: 4),
           _sheetDelete('Delete frame', count > 1
               ? () {
-                  Navigator.pop(ctx);
                   _clearLayerGroup(); // a different frame (with its own layer stack) may become active
                   _act('RemoveFrame($cur)');
+                  setS(() {}); // the builder clamps cur to the shrunken roll
                 }
               : null),
         ]);
