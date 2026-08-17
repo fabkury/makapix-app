@@ -207,6 +207,16 @@ extension _EditorCanvas on _EditorPageState {
           },
           onPointerUp: (e) => _endTouch(e.pointer, cancel: false),
           onPointerCancel: (e) => _endTouch(e.pointer, cancel: true),
+          // Bare mouse wheel = zoom around the cursor (pixel-editor convention; the canvas never
+          // scrolls). Ignored while a stroke or pinch is in flight so an established gesture's
+          // screen→canvas mapping never shifts under the pointer.
+          onPointerSignal: (e) {
+            if (e is! PointerScrollEvent) return;
+            if (_drawPointer != null || _pinching) return;
+            final factor =
+                math.pow(_kWheelZoomStep, -e.scrollDelta.dy / _kWheelNotchDelta).toDouble();
+            _zoomAt(box, e.localPosition, _zoom * factor);
+          },
           child: Stack(fit: StackFit.expand, children: [
             // The image repaints from the notifier (so playback updates it without rebuilding the
             // rest of the tree); a RepaintBoundary keeps that repaint isolated to the canvas.

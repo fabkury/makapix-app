@@ -187,23 +187,15 @@ extension _EditorKeyboardOps on _EditorPageState {
     _send('SetBrushSize($_brushSize)');
   }
 
-  // Keyboard zoom steps around the canvas-center focal point (the pinch math with the box
-  // center as the fixed point). Falls back to a bare zoom change before the first layout.
+  // Keyboard zoom steps around the canvas-center focal point. Falls back to a bare zoom
+  // change before the first layout.
   void _zoomTo(double target) {
-    final z = target.clamp(_kMinZoom, _kMaxZoom).toDouble();
     final box = _lastCanvasBox;
     if (box == null) {
-      setState(() => _zoom = z);
+      setState(() => _zoom = target.clamp(_kMinZoom, _kMaxZoom).toDouble());
       return;
     }
-    final (s0, off0) = _view(box);
-    final center = Offset(box.width / 2, box.height / 2);
-    final focal = (center - off0) / s0; // canvas point currently at the box center
-    final s1 = _fitScale(box) * z;
-    setState(() {
-      _zoom = z;
-      _pan = (center - focal * s1) - _centeredOffset(box, s1);
-    });
+    _zoomAt(box, Offset(box.width / 2, box.height / 2), target);
   }
 
   void _zoomStep(double factor) => _zoomTo(_zoom * factor);

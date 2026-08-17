@@ -886,6 +886,20 @@ extension _EditorEngine on _EditorPageState {
     });
   }
 
+  // Focal-point zoom: the canvas point under [focalScreen] stays put while the zoom moves to
+  // [targetZoom] (clamped). The keyboard zoom steps aim at the box center; the mouse wheel and
+  // trackpad pinch aim at the cursor. Pan is left unclamped, matching the pinch.
+  void _zoomAt(Size box, Offset focalScreen, double targetZoom) {
+    final z = targetZoom.clamp(_kMinZoom, _kMaxZoom).toDouble();
+    final (s0, off0) = _view(box);
+    final c = (focalScreen - off0) / s0; // focal point in canvas space
+    final s1 = _fitScale(box) * z;
+    setState(() {
+      _zoom = z;
+      _pan = (focalScreen - c * s1) - _centeredOffset(box, s1);
+    });
+  }
+
   // One vsync tick of the playback preview: send the MEASURED elapsed ms to the engine's
   // virtual clock (real time never enters the engine — the shell picks the deltas), then
   // decode only when there is something new to show. Frames shorter than a vsync period

@@ -8,6 +8,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -74,6 +75,10 @@ part 'editor_page.replay.dart';
 part 'editor_page.keyboard.dart';
 
 const double _kMinZoom = 0.25, _kMaxZoom = 32.0;
+// One mouse-wheel notch zooms by this factor. The notch delta is what the Windows embedder
+// delivers per notch (20 logical px per line × the default 3-line wheel setting); high-resolution
+// wheels and free-spinning flicks send other magnitudes, which the exponent scales smoothly.
+const double _kWheelZoomStep = 1.2, _kWheelNotchDelta = 60.0;
 const _prefsKey = 'tool_order_v1';
 const _prefs3RowKey = 'toolbar_3row_v1'; // ☰ → View → 3-row toolbar (row-3 grid in 3 rows, Play pinned)
 const _prefsPinnedThirdKey = 'toolbar_pinned3_v1'; // 3-row mode: which tool is pinned in the 3rd slot (long-press to change)
