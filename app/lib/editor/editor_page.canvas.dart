@@ -219,12 +219,25 @@ extension _EditorCanvas on _EditorPageState {
           },
           // Desktop trackpads (Windows precision touchpads): two-finger scroll pans the view,
           // pinch zooms around the cursor. Both arrive on this pan/zoom event stream, distinct
-          // from wheel PointerScrollEvents and from touch-screen pointers.
-          onPointerPanZoomStart: (e) => _trackpadStartZoom = _zoom,
+          // from wheel PointerScrollEvents and from touch-screen pointers. Each update applies
+          // the touch pinch math from gesture-start state: the canvas point under the start
+          // cursor stays under the cursor shifted by the cumulative pan (a pure scroll is the
+          // scale==1 case, a pure pinch the pan==0 case; mixtures compose drift-free).
+          onPointerPanZoomStart: (e) {
+            _trackpadStartZoom = _zoom;
+            _trackpadStartPan = _pan;
+            _trackpadStartFocal = e.localPosition;
+          },
           onPointerPanZoomUpdate: (e) {
             if (_drawPointer != null || _pinching) return;
-            if (e.panDelta != Offset.zero) setState(() => _pan += e.panDelta);
-            if (e.scale != 1.0) _zoomAt(box, e.localPosition, _trackpadStartZoom * e.scale);
+            final newZoom = (_trackpadStartZoom * e.scale).clamp(_kMinZoom, _kMaxZoom);
+            final (s0, off0) = _view(box, zoom: _trackpadStartZoom, pan: _trackpadStartPan);
+            final c = (_trackpadStartFocal - off0) / s0; // focal point in canvas space
+            final s1 = _fitScale(box) * newZoom;
+            setState(() {
+              _zoom = newZoom;
+              _pan = (_trackpadStartFocal + e.pan) - c * s1 - _centeredOffset(box, s1);
+            });
           },
           child: Stack(fit: StackFit.expand, children: [
             // The image repaints from the notifier (so playback updates it without rebuilding the

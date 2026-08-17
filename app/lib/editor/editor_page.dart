@@ -370,8 +370,11 @@ class _EditorPageState extends ConsumerState<EditorPage>
   double _pinchStartDist = 1, _pinchStartZoom = 1;
   Offset _pinchStartMid = Offset.zero, _pinchStartPan = Offset.zero;
   // Desktop trackpad gesture (PointerPanZoomEvent stream): two-finger scroll pans, pinch zooms
-  // around the cursor. The event's scale is cumulative from gesture start, hence the anchor zoom.
+  // around the cursor. The event's pan and scale are cumulative from gesture start, so each
+  // update recomputes the whole transform from this start state (incremental application of
+  // panDelta + a re-anchored zoom drifts — the pinch fights its own pan component).
   double _trackpadStartZoom = 1;
+  Offset _trackpadStartPan = Offset.zero, _trackpadStartFocal = Offset.zero;
   // configurable bottom toolbar
   List<String> _toolOrder = tools.map((t) => t.dsl).toList();
   // ☰ → View → 3-row toolbar: the row-3 grid reflows to 3 rows (3 tiles per row in landscape) and
