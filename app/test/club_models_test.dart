@@ -241,5 +241,35 @@ void main() {
       expect(n.actorPublicSqid, 'aB3d');
       expect(n.asRead().actorPublicSqid, 'aB3d');
     });
+
+    // new-post-ux message 0001: post_approved is post-bearing (tap opens the
+    // post), trust_granted ships all content fields null (tile stays inert).
+    test('post_approved parses as a post-bearing notification', () {
+      final n = ClubNotification.fromJson({
+        'id': 'x',
+        'notification_type': 'post_approved',
+        'is_read': false,
+        'actor_handle': 'modkate',
+        'content_title': 'Sunset',
+        'content_sqid': 'eDfc',
+        'created_at': '2026-08-19T00:00:00Z',
+      });
+      expect(n.type, 'post_approved');
+      expect(n.hasContentLink, isTrue);
+    });
+
+    test('trust_granted parses with null content (no tap target)', () {
+      final n = ClubNotification.fromJson({
+        'id': 'x',
+        'notification_type': 'trust_granted',
+        'is_read': false,
+        'actor_handle': 'modkate',
+        'actor_public_sqid': 'aB3d',
+        'created_at': '2026-08-19T00:00:00Z',
+      });
+      expect(n.type, 'trust_granted');
+      expect(n.hasContentLink, isFalse);
+      expect(n.actorPublicSqid, 'aB3d');
+    });
   });
 }

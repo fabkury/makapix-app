@@ -83,7 +83,15 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
 
   // Moderation/report types are presented impersonally (a shield avatar), never
   // an acting moderator's identity, keeping both tile halves consistent.
-  static const _shieldTypes = {'mod_hashtags_updated', 'new_report', 'report_resolved'};
+  // post_approved mirrors the website's choice to not name the approving
+  // moderator (new-post-ux message 0001); trust_granted is deliberately NOT
+  // here — the website names the granting moderator for that one.
+  static const _shieldTypes = {
+    'mod_hashtags_updated',
+    'new_report',
+    'report_resolved',
+    'post_approved',
+  };
 
   Widget _tile(ClubNotification x) {
     final hasThumb = x.contentArtUrl != null && x.contentArtUrl!.isNotEmpty;
@@ -137,6 +145,17 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
             '${x.contentTitle != null ? ': "${x.contentTitle}"' : ''}';
       case 'post_promoted':
         return 'Your post was promoted${x.contentTitle != null ? ': ${x.contentTitle}' : ''}';
+      case 'post_approved':
+        return 'Your artwork${x.contentTitle != null ? ' "${x.contentTitle}"' : ''} '
+            'was approved by a moderator and is now publicly released';
+      case 'trust_granted':
+        // No tap target by contract (post_id and content_* are null); the
+        // avatar still links to the granting moderator's profile.
+        return x.actorHandle != null
+            ? '${x.actorHandle} granted you Trust — your posts are now '
+                'auto-approved for public release'
+            : 'You were granted Trust — your posts are now auto-approved '
+                'for public release';
       case 'mod_hashtags_updated':
         // The +tag −tag diff arrives pre-formatted in comment_preview (contract §7).
         return 'A moderator changed the hashtags on ${x.contentTitle ?? 'your artwork'}'
