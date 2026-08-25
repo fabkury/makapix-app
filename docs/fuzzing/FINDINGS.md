@@ -18,6 +18,13 @@ release gates until the fix lands.
 | 2026-08-25 | 8 workers, 10 min (mutator + dict + boundary seeds) | 534k execs, **2173 edges**, 0 crashes | — |
 | 2026-08-25 | 14 workers, 12.5 min/target (post-fix) | 1.12M execs, **2234 edges**, 0 crashes | 2.08M execs, **6935 edges**, **0 crashes** |
 | 2026-08-25 | 14 workers, 10 min/target (FZ-2 close, stale-mask guard live) | 1.00M execs, 2287 edges, 0 crashes | 1.47M execs, 6940 edges, 0 crashes |
+| 2026-08-25 | 14 workers, 5 min/target (all findings closed) | 451k execs, 2289 edges, 0 crashes | 656k execs, 6940 edges, 0 crashes |
+
+Coverage on both targets has plateaued (loader 2287→2289, actions 6940→6940) with no
+new findings across ~3.6M post-fix executions: the saturation the analysis doc predicts
+(§1.6). Further short bursts on the current targets are low-yield; the next real gains
+are new surface — the WebP differential and codec-import targets (§3.2 items 3–4) — or
+much longer runs.
 
 The last row is the validation that FZ-1 and FZ-3 are actually closed: the actions
 target previously produced its first artifact within ~60 seconds at 8 workers, and now
