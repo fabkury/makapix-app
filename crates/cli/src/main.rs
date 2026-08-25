@@ -27,7 +27,12 @@
 //!   stats:F:L            pixel:F:L:X:Y         ramp:x0:y0:x1:y1:N
 //!   thumb:F:L:W:H        render:F:OUT.png[:S]  composite:F:OUT.png[:S]
 //!   assert.undo          assert.gradient:TOL   assert.roundtrip
-//!   mem                  mem.os                usedcolors            hash.doc
+//!   assert.roundtrip.bytes                     hash.doc
+//!   mem                  mem.os                usedcolors
+//!
+//! `assert.roundtrip` compares content hashes after save→load; `assert.roundtrip.bytes`
+//! additionally demands the RESAVE be byte-identical (the stronger `.mkpx` determinism
+//! promise — a chunk the loader drops keeps the hash equal but shrinks the file).
 //!
 //! `load --run <script|->` replays a script onto the loaded document — the replay-Journal
 //! validation path (chapter base + prefix-stripped action tail; `#` lines pass through).
@@ -370,6 +375,40 @@ fn main() {
                 let ok = s2.load_bytes(&bytes).is_ok()
                     && s2.doc.content_hash() == session.doc.content_hash();
                 println!("# assert.roundtrip VERDICT: {}", verdict(ok));
+                failed |= !ok;
+            }
+            // Strictly stronger than `assert.roundtrip`: the content hash covers document
+            // CONTENT, so a chunk the loader drops (a stale selection, say) leaves the hash
+            // equal while the resave shrinks. Only a byte compare sees that. [fuzz FZ-2]
+            "assert.roundtrip.bytes" => {
+                let first = session.save_bytes();
+                let mut s2 = Session::empty();
+                let ok = match s2.load_bytes(&first) {
+                    Ok(()) => {
+                        let second = s2.save_bytes();
+                        if first != second {
+                            let at = first
+                                .iter()
+                                .zip(second.iter())
+                                .position(|(a, b)| a != b)
+                                .unwrap_or(first.len().min(second.len()));
+                            println!(
+                                "# resave differs: {} vs {} bytes, first diff at byte {}",
+                                first.len(),
+                                second.len(),
+                                at
+                            );
+                            false
+                        } else {
+                            true
+                        }
+                    }
+                    Err(e) => {
+                        println!("# reload failed: {:?}", e);
+                        false
+                    }
+                };
+                println!("# assert.roundtrip.bytes VERDICT: {}", verdict(ok));
                 failed |= !ok;
             }
             other => {

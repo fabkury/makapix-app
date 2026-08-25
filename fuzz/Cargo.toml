@@ -45,3 +45,7 @@ bench = false
 [profile.release]
 debug = 1
 overflow-checks = true
+# Make `debug_assert!` invariants live oracles while fuzzing — e.g. the stale-selection
+# guard in `io::save_to_bytes` (fuzz FZ-2) aborts with a named message instead of the
+# fuzzer having to notice an 18-byte difference downstream.
+debug-assertions = true

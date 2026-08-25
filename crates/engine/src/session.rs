@@ -5539,6 +5539,74 @@ mod tests {
     }
 
     #[test]
+    fn save_load_resave_is_byte_identical() {
+        // [fuzz FZ-2] save→load→save must be byte-for-byte identical. This is STRICTER than
+        // `assert.roundtrip` (content hashes), which stayed green while the resave lost 18
+        // bytes: a selection mask left over from a different canvas geometry serialized
+        // fine, then `decode_selection`'s out-of-range guard dropped it on load.
+        // FZ-2 was a symptom of the FZ-1 root cause (absolute snapshots restoring a mask
+        // from geometry A onto a document at geometry B), so these scripts pair selection
+        // work with canvas geometry — including the two original fuzzer reproducers.
+        let scripts: &[&str] = &[
+            "InvertSelection()\nRotateLayer(191)\nPointerDown(-111,111)\nRotate(191)\nResizeCanvas(1,1)\nPointerUp()",
+            "PointerDown(21,-1)\nInvertSelection()\nSelectTool(Rectangle)\nPointerDown(1114011,267782262)\nResizeCanvas(12,12)\nSelectTool(Pencil)\nPointerUp()",
+            "InvertSelection()",
+            "InvertSelection()\nRotate(3)",
+            "InvertSelection()\nResizeCanvas(12,12)",
+            "InvertSelection()\nCropToSelection()",
+            "InvertSelection()\nFlipCanvasH()",
+            "SelectAll()\nRotate(3)",
+            "SelectTool(SelectRect)\nPointerDown(2,2)\nPointerMove(20,20)\nPointerUp()\nRotate(3)",
+            "SelectTool(SelectRect)\nPointerDown(2,2)\nPointerMove(20,20)\nPointerUp()\nResizeCanvas(8,8)",
+            "SelectTool(SelectRect)\nPointerDown(2,2)\nPointerMove(20,20)\nPointerUp()\nScaleFrame(200,200)",
+            "SelectTool(SelectRect)\nPointerDown(2,2)\nPointerMove(20,20)\nPointerUp()\nCropToSelection()",
+            // Undo/redo across a geometry change is how the stale mask used to be restored.
+            "SelectTool(SelectRect)\nPointerDown(2,2)\nPointerMove(20,20)\nPointerUp()\nResizeCanvas(8,8)\nUndo()",
+            "SelectTool(SelectRect)\nPointerDown(2,2)\nPointerMove(20,20)\nPointerUp()\nRotate(1)\nUndo()\nRedo()",
+            "InvertSelection()\nResizeCanvas(64,64)\nUndo()\nRedo()\nUndo()",
+        ];
+        for s in scripts {
+            let mut sess = Session::new(32, 32);
+            let _ = sess.run_script(s);
+            let first = sess.save_bytes();
+            let mut re = Session::empty();
+            assert!(re.load_bytes(&first).is_ok(), "load failed for script:\n{s}");
+            let second = re.save_bytes();
+            assert!(
+                first == second,
+                "resave not byte-identical ({} vs {} bytes) for script:\n{s}",
+                first.len(),
+                second.len()
+            );
+        }
+    }
+
+    /// [fuzz FZ-2] Pins the save-time guard itself: a selection mask sized for a different
+    /// geometry must trip the `debug_assert!` in `io::save_to_bytes` rather than silently
+    /// serialize. Without the guard this state produces FZ-2's exact signature — content
+    /// hashes equal (so `assert.roundtrip` stays green) while the resave is 18 bytes
+    /// shorter, because `decode_selection`'s out-of-range guard drops the SELC chunk.
+    /// The state is manufactured directly: no session op produces it any more.
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "selection mask outside storage")]
+    fn stale_selection_mask_trips_the_save_guard() {
+        use crate::geom::Size;
+        use crate::selection::Mask;
+        let mut s = Session::new(8, 8);
+        let st = s.doc.storage();
+        let big = Size::new(st.w * 3, st.h * 3);
+        let mut m = Mask::new(big.w as u32, big.h as u32);
+        for y in (st.h as i32)..(big.h as i32) {
+            for x in (st.w as i32)..(big.w as i32) {
+                m.set(x, y, true);
+            }
+        }
+        s.doc.selection = Some(Arc::new(m));
+        let _ = s.save_bytes();
+    }
+
+    #[test]
     fn rename_layer_via_dsl_and_undo() {
         let mut s = Session::new(16, 16);
         // DSL: index, then free-text name (which may itself contain commas).

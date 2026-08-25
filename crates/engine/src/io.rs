@@ -635,6 +635,23 @@ pub fn save_to_bytes(doc: &Document) -> Vec<u8> {
         }
     }
     if let Some(mask) = &doc.selection {
+        // Invariant: the live selection always fits the current storage. A mask left over
+        // from a different canvas geometry serializes fine but is DROPPED by
+        // `decode_selection`'s out-of-range guard, so save→load→save silently loses the
+        // SELC chunk and stops being byte-identical — the byte-determinism promise, and
+        // invisible to any content-hash comparison. [fuzz FZ-2, docs/fuzzing/FINDINGS.md]
+        debug_assert!(
+            {
+                let st = doc.storage();
+                mask.bounds().is_none_or(|b| {
+                    b.x >= 0
+                        && b.y >= 0
+                        && b.x as u32 + b.w <= st.w as u32
+                        && b.y as u32 + b.h <= st.h as u32
+                })
+            },
+            "selection mask outside storage at save time (stale geometry)"
+        );
         write_chunk(&mut w, b"SELC", false, &encode_selection(mask));
     }
 

@@ -17,6 +17,7 @@ release gates until the fix lands.
 | 2026-08-25 | 8 workers, 10 min/target (pre-fix) | 18.4M execs, 1618 edges, 0 crashes | 97k execs, 5337 edges, **8 crashes** → FZ-1/FZ-2/FZ-3 |
 | 2026-08-25 | 8 workers, 10 min (mutator + dict + boundary seeds) | 534k execs, **2173 edges**, 0 crashes | — |
 | 2026-08-25 | 14 workers, 12.5 min/target (post-fix) | 1.12M execs, **2234 edges**, 0 crashes | 2.08M execs, **6935 edges**, **0 crashes** |
+| 2026-08-25 | 14 workers, 10 min/target (FZ-2 close, stale-mask guard live) | 1.00M execs, 2287 edges, 0 crashes | 1.47M execs, 6940 edges, 0 crashes |
 
 The last row is the validation that FZ-1 and FZ-3 are actually closed: the actions
 target previously produced its first artifact within ~60 seconds at 8 workers, and now
@@ -80,7 +81,36 @@ already-painted pixels unrecoverably (`parse.rs` `Undo =>` does no stroke handli
 The shell may or may not be able to send that today (Ctrl+Z while the pointer is
 down); the engine-level contract question is open.
 
-## FZ-2 — save→load→resave is not byte-identical (OPEN)
+## FZ-2 — save→load→resave is not byte-identical (FIXED 2026-08-25, by the FZ-1 fix)
+
+**Root cause: FZ-2 was a *symptom* of FZ-1, surfacing through a different oracle.** The
+document carried a selection mask belonging to a *different canvas geometry* — the
+FZ-1 disease (absolute history snapshots restoring a mask from geometry A onto a
+document at geometry B, via untracked stroke pixels and Undo/Redo across a
+resize/rotate). Such a mask serializes fine, but `decode_selection`'s out-of-range
+guard (`io.rs:446`) legitimately DROPS it on load, so the resave omits the 18-byte
+`SELC` chunk: 221 → 203 bytes, first divergence at byte 40. Content hashes stayed
+equal throughout, which is exactly why `assert.roundtrip` never saw it.
+
+**Verification (both original reproducers plus 13 selection×geometry variants now
+byte-identical), and three new guards so the class cannot return silently:**
+
+1. `debug_assert!` in `io::save_to_bytes`: the live selection must fit current storage.
+   Pinned by `stale_selection_mask_trips_the_save_guard` (a `#[should_panic]` test that
+   manufactures the state directly — no session op produces it any more), and enabled
+   during fuzzing via `debug-assertions = true` in the fuzz profile, making it a live
+   oracle rather than an 18-byte difference the fuzzer has to notice downstream.
+2. `save_load_resave_is_byte_identical` — 15 scripts pairing selection work with canvas
+   geometry, including Undo/Redo across a geometry change (how the stale mask used to be
+   restored).
+3. New CLI probe **`assert.roundtrip.bytes`** — save→load→save byte equality, scriptable
+   and gate-able (exit 1). `assert.roundtrip` keeps its existing hash meaning.
+
+Measured against a deliberately manufactured stale-mask document, the split is exact:
+hashes equal, bytes 279 vs 261 (18 short — FZ-2's signature); `assert.roundtrip` PASSES
+while `assert.roundtrip.bytes` FAILS.
+
+Original report follows.
 
 **Found:** 2026-08-25, `fuzz_session_actions`, first session.
 **Oracle:** byte-determinism of the resave.
