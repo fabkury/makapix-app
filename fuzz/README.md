@@ -11,7 +11,13 @@ too slow), and results sync back here automatically.
 
 - **`fuzz_load_mkpx`** — raw bytes → strict + tolerant `.mkpx` load → FFI read pokes →
   round-trip (content hash + byte-identical resave). Runs with `-rss_limit_mb=512` so
-  the Android ~1 GiB allocator wall is an oracle on the workstation.
+  the Android ~1 GiB allocator wall is an oracle on the workstation. Ships a **custom
+  CRC re-signing mutator**: the loader verifies a whole-file CRC-32C before touching the
+  body, so naive mutants all die at one branch (18.4M executions stuck at 1618 edges).
+  The mutator restores the signature and rebuilds a correct INTG trailer after each
+  mutation — what a real attacker does, since CRC-32C is not cryptographic — while
+  leaving 1 in 8 mutants unsigned so the reject paths stay covered. With the
+  `mkpx.dict` container dictionary and the boundary seeds this reached 2173 edges.
 - **`fuzz_session_actions`** — structure-aware (`arbitrary`): random sequences of valid
   editor actions rendered to DSL text → `run_script` → compound oracle (no panic; Undo/
   Redo restores the content hash; save→load round-trip; byte-deterministic resave).
@@ -46,10 +52,21 @@ back. Both scripts take `-Hours`, `-Workers`, and `-Targets` overrides.
 
 ## Corpus policy
 
-`fuzz/corpus/` **is committed** (post-`cmin` runs replace it with the minimized set —
-the overnight script does this). The corpus is the distilled asset: future runs start
-deep inside the parser instead of rediscovering the format. `fuzz/artifacts/` and
-`fuzz/logs/` are git-ignored operational output.
+`fuzz/corpus/` **is committed, but only entries ≤ 64 KiB** (`CORPUS_COMMIT_MAX` in
+`run_fuzz.sh`). The corpus is the distilled asset — future runs start deep inside the
+parser instead of rediscovering the format — but fuzzing the boundary seeds breeds
+multi-hundred-KB descendants (one 10-minute run made 45 MB of them), and git is the
+wrong home for those. Large entries stay in the WSL work tree (`~/makapix-fuzz`), and
+`make_seeds` regenerates the large boundary seeds deterministically anywhere.
+Post-`cmin` runs replace the committed set with the minimized one (the overnight script
+does this). `fuzz/artifacts/` and `fuzz/logs/` are git-ignored operational output.
+
+`make_seeds` writes format-diverse small seeds (empty / drawing / noise / palette /
+selection) plus **boundary seeds** that mutation reaches only by luck: a 256×256
+16-layer noise document, 200 duplicate frames (tile-dictionary dedup at scale), and 60
+distinct noise frames (widest legal dictionary index space). It runs automatically when
+the corpus is empty; run it by hand (`cd fuzz && cargo +nightly run --release --bin
+make_seeds`) to top an existing corpus back up.
 
 ## One-time WSL setup
 

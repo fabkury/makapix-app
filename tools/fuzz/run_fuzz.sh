@@ -85,9 +85,17 @@ for T in $TARGETS; do
   # Actions: the RSS check is process-wide and allocator retention accumulates over
   # thousands of inputs per worker (false oom-* artifacts, 2026-08-25); a high rss cap
   # plus malloc_limit=512 keeps the genuine single-allocation-bomb oracle instead.
+  # The loader's max_len must clear the largest boundary seed (a 256x256x16-layer noise
+  # document), or libFuzzer silently truncates it out of the corpus. The loader also gets
+  # the container dictionary; the actions target's inputs are Arbitrary-decoded, so a
+  # byte dictionary means nothing there.
+  DICT=()
   case "$T" in
-    fuzz_load_mkpx) MAXLEN=65536; RSSLIM=512;  MALLOCLIM=512 ;;
-    *)              MAXLEN=4096;  RSSLIM=4096; MALLOCLIM=512 ;;
+    fuzz_load_mkpx)
+      MAXLEN=4194304; RSSLIM=512;  MALLOCLIM=512
+      DICT=(-dict=fuzz/mkpx.dict)
+      ;;
+    *)  MAXLEN=4096;  RSSLIM=4096; MALLOCLIM=512 ;;
   esac
   ARTIFACTS_BEFORE=$(ls "$WORK/fuzz/artifacts/$T" 2>/dev/null || true)
   LOG="$WORK/fuzz/logs/$STAMP-$LABEL-$T.log"
@@ -96,7 +104,7 @@ for T in $TARGETS; do
   nice -n 19 cargo +nightly fuzz run "$T" "fuzz/corpus/$T" -- \
     -workers="$WORKERS" -jobs="$WORKERS" -max_total_time="$SECS_PER" \
     -rss_limit_mb="$RSSLIM" -malloc_limit_mb="$MALLOCLIM" \
-    -timeout=10 -max_len="$MAXLEN" -print_final_stats=1 \
+    -timeout=10 -max_len="$MAXLEN" -print_final_stats=1 "${DICT[@]}" \
     >"$LOG" 2>&1 &
   FPID=$!
   wait "$FPID"
@@ -124,10 +132,15 @@ fi
 
 # ---- Sync results back into the repo ------------------------------------------------
 mkdir -p "$REPO/fuzz/artifacts" "$REPO/fuzz/logs"
+# Only entries <= CORPUS_COMMIT_MAX are mirrored into the repo. Fuzzing the boundary
+# seeds breeds multi-hundred-KB descendants (a 10-minute run produced 45 MB of them);
+# git is the wrong home for that. The big entries live on in the WSL work tree, and
+# `make_seeds` regenerates the large boundary seeds deterministically on any machine.
+CORPUS_COMMIT_MAX=65536
 if [[ $CMIN == 1 && $INTERRUPTED == 0 ]]; then
-  rsync -a --delete "$WORK/fuzz/corpus/" "$REPO/fuzz/corpus/"
+  rsync -a --delete --max-size=$CORPUS_COMMIT_MAX "$WORK/fuzz/corpus/" "$REPO/fuzz/corpus/"
 else
-  rsync -a "$WORK/fuzz/corpus/" "$REPO/fuzz/corpus/"
+  rsync -a --max-size=$CORPUS_COMMIT_MAX "$WORK/fuzz/corpus/" "$REPO/fuzz/corpus/"
 fi
 rsync -a "$WORK/fuzz/artifacts/" "$REPO/fuzz/artifacts/"
 rsync -a "$WORK/fuzz/logs/" "$REPO/fuzz/logs/"

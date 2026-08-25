@@ -12,8 +12,60 @@
 //! allocator wall acts as an oracle on the workstation: an allocation bomb that would
 //! SIGABRT a phone shows up here as an RSS-limit finding.
 
-use libfuzzer_sys::fuzz_target;
+use libfuzzer_sys::{fuzz_mutator, fuzz_target, fuzzer_mutate};
 use makapix_engine::Session;
+
+// ---- CRC re-signing custom mutator (docs/fuzzing/ANALYSIS.md §1.6/§3.3) ----
+//
+// The loader verifies a whole-file CRC-32C BEFORE trusting any body byte
+// (`io.rs::load_from_bytes_tolerant_budgeted`), so every naively-mutated input dies at
+// that one branch: a 2026-08-25 run did 18.4M executions and never moved past 1618
+// edges. This is the §1.6 "semantic wall".
+//
+// The countermeasure re-signs after mutating: restore the signature, rebuild the fixed
+// 13-byte INTG trailer, and store a correct CRC over the new body. That models exactly
+// what a real attacker does (CRC-32C is not cryptographic — a crafted hostile file
+// simply carries a valid checksum), and it keeps the shipped verification path IN the
+// fuzzed build, unlike a skip-verification feature flag.
+//
+// A share of mutations is deliberately left unsigned so the reject paths (bad magic,
+// missing/short trailer, CRC mismatch) stay reachable rather than becoming dead code.
+
+const SIGNATURE: [u8; 8] = [0x89, b'M', b'K', b'P', b'X', 0x0D, 0x0A, 0x1A];
+/// fourcc(4) + flags(1) + length(4) + crc32c payload(4) — `io.rs::INTG_LEN`.
+const INTG_LEN: usize = 13;
+
+/// CRC-32C (Castagnoli, reflected poly 0x82F63B78) — mirrors `io.rs::crc32c`. Duplicated
+/// rather than exported: the fuzz harness must not widen the engine's public API.
+fn crc32c(bytes: &[u8]) -> u32 {
+    let mut crc = 0xFFFF_FFFFu32;
+    for &b in bytes {
+        crc ^= b as u32;
+        for _ in 0..8 {
+            crc = if crc & 1 != 0 { (crc >> 1) ^ 0x82F6_3B78 } else { crc >> 1 };
+        }
+    }
+    crc ^ 0xFFFF_FFFF
+}
+
+fuzz_mutator!(|data: &mut [u8], size: usize, max_size: usize, seed: u32| {
+    let new_size = fuzzer_mutate(data, size, max_size);
+
+    // Leave 1 in 8 mutants unsigned so container-rejection paths stay covered.
+    if seed % 8 == 0 || new_size < SIGNATURE.len() + INTG_LEN {
+        return new_size;
+    }
+
+    data[..SIGNATURE.len()].copy_from_slice(&SIGNATURE);
+    let body_end = new_size - INTG_LEN;
+    let crc = crc32c(&data[..body_end]);
+    let trailer = &mut data[body_end..new_size];
+    trailer[..4].copy_from_slice(b"INTG");
+    trailer[4] = 1; // bit0 = critical
+    trailer[5..9].copy_from_slice(&4u32.to_le_bytes()); // payload length
+    trailer[9..13].copy_from_slice(&crc.to_le_bytes());
+    new_size
+});
 
 /// Exercise the read paths that cross the FFI, with deliberately stale indices
 /// (same pattern as `crates/engine/tests/fuzz_inputs.rs::poke_reads`).

@@ -1,0 +1,73 @@
+# libFuzzer dictionary for the .mkpx container (docs/mkpx-format/, crates/engine/src/io.rs).
+# Tokens the mutator can splice in wholesale instead of having to discover byte by byte.
+# Used by tools/fuzz/run_fuzz.sh for fuzz_load_mkpx (-dict=fuzz/mkpx.dict).
+
+# File signature (\x89 M K P X CR LF SUB)
+signature="\x89MKPX\x0d\x0a\x1a"
+
+# Chunk fourccs: critical (must parse) ...
+chunk_head="HEAD"
+chunk_tile="TILE"
+chunk_frms="FRMS"
+chunk_intg="INTG"
+# ... and ancillary (skippable, so unknown ones must be tolerated)
+chunk_upal="UPAL"
+chunk_upcn="UPCN"
+chunk_selc="SELC"
+chunk_meta="META"
+chunk_thmb="THMB"
+chunk_unknown="ZZZZ"
+
+# Chunk header tails: flags byte + a u32 LE length. Critical/ancillary with small lengths,
+# plus the lengths that sit on overflow and bounds-check edges.
+hdr_critical_0="\x01\x00\x00\x00\x00"
+hdr_ancillary_0="\x00\x00\x00\x00\x00"
+hdr_len_4="\x01\x04\x00\x00\x00"
+hdr_len_max="\x01\xff\xff\xff\xff"
+hdr_len_2g="\x01\x00\x00\x00\x80"
+
+# Format version (u16 LE): current, one below, one above, absurd.
+ver_10="\x0a\x00"
+ver_9="\x09\x00"
+ver_11="\x0b\x00"
+ver_max="\xff\xff"
+
+# Tile codec tags (io.rs::decode_tile): 0 RAW, 1 RLE, 2 INDEXED, 3 invalid.
+codec_raw="\x00"
+codec_rle="\x01"
+codec_indexed="\x02"
+codec_bad="\x03"
+
+# Canonical LEB128 varints: zero, one, the multi-byte boundaries, non-minimal and
+# overflowing encodings (both rejected by io.rs::Reader::varint).
+varint_0="\x00"
+varint_1="\x01"
+varint_127="\x7f"
+varint_128="\x80\x01"
+varint_16384="\x80\x80\x01"
+varint_nonminimal="\x80\x00"
+varint_overflow="\xff\xff\xff\xff\xff"
+varint_5byte_max="\xff\xff\xff\xff\x0f"
+
+# Structural bounds (document.rs): canvas 1..=256, frames <=1024, layers <=64 — the
+# values just inside/outside each cap, as u16 LE.
+dim_1="\x01\x00"
+dim_256="\x00\x01"
+dim_257="\x01\x01"
+dim_768="\x00\x03"
+frames_1024="\x00\x04"
+frames_1025="\x01\x04"
+layers_64="\x40\x00"
+layers_65="\x41\x00"
+
+# Tile-dictionary index space (io.rs::MAX_DICT_TILES = 1<<24) and the 1-based/empty
+# sentinels that cross-reference tiles.
+dict_0="\x00\x00\x00\x00"
+dict_1="\x01\x00\x00\x00"
+dict_max="\x00\x00\x00\x01"
+dict_overflow="\xff\xff\xff\xff"
+
+# Common pixel words: fully transparent, opaque black, opaque white.
+px_clear="\x00\x00\x00\x00"
+px_black="\x00\x00\x00\xff"
+px_white="\xff\xff\xff\xff"
