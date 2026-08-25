@@ -26,9 +26,15 @@ tools/uploads/
 
 # ---- Fuzzing operational output (fuzz/README.md) ----
 # Crash artifacts get distilled into crates/engine/tests/fuzz_inputs.rs, not committed
-# raw; logs are per-run. The corpus (fuzz/corpus/) IS committed by policy.
+# raw; logs are per-run.
 fuzz/artifacts/
 fuzz/logs/
+# Corpus policy: only fuzz_load_mkpx's corpus is committed — it encodes hard-won
+# CRC-valid container structure that a fresh machine would take a while to rediscover.
+# Every other corpus is thousands of tiny files that churn on every cmin (6k+ files per
+# run) while regenerating locally in minutes, so they stay out of git.
+fuzz/corpus/*
+!fuzz/corpus/fuzz_load_mkpx/
 
 # ---- Replay-appraisal lab: generated DSL corpus (rebuilt by gen_replay_script.py) ----
 tools/replaylab/out/

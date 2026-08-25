@@ -1,10 +1,12 @@
 # Fuzzing for Makapix — analysis and recommended approach
 
 **Date:** 2026-08-16
-**Status:** IMPLEMENTED 2026-08-25 — targets 1 and 2 live in `fuzz/` with day/night run
-scripts in `tools/fuzz/` (operations: `fuzz/README.md`; confirmed findings:
-`docs/fuzzing/FINDINGS.md`). Targets 3 (WebP differential) and 4 (codec import) remain
-future work. The analysis below is preserved as written.
+**Status:** FULLY IMPLEMENTED 2026-08-25 — all four §3.2 targets live in `fuzz/` with
+day/night run scripts in `tools/fuzz/` (operations: `fuzz/README.md`; findings and run
+log: `docs/fuzzing/FINDINGS.md`). Targets 1–2 found three real engine bugs (FZ-1/FZ-2/
+FZ-3, all fixed with regressions); targets 3–4 came up clean on first contact. The
+differential uses libwebp (the C reference) as the independent decoder, per §2.3.
+The analysis below is preserved as written.
 
 **Verdict up front:** fuzzing is not merely "useful" here — the Makapix engine is unusually
 *pre-adapted* to it (deterministic, zero-dep, headless, DSL-driven, oracle-rich) while

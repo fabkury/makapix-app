@@ -14,6 +14,20 @@ arbitrary = { version = "1", features = ["derive"] }
 [dependencies.makapix-engine]
 path = "../crates/engine"
 
+[dependencies.makapix-codec]
+path = "../crates/codec"
+
+# libwebp — Google's C reference implementation, vendored and statically linked — as the
+# INDEPENDENT decoder for the animated-WebP differential. Our muxer is hand-written pure
+# Rust, so checking it against the reference decoder is a genuine two-implementation
+# comparison rather than a round-trip through our own code. This is fuzz-only dev tooling
+# (the engine's no-native-crates rule guards the shipped cross-compiled build, which this
+# never enters).
+[dependencies.webp-animation]
+version = "0.10"
+default-features = false
+features = ["static"]
+
 [[bin]]
 name = "fuzz_load_mkpx"
 path = "fuzz_targets/fuzz_load_mkpx.rs"
@@ -30,6 +44,28 @@ bench = false
 
 # Seed-corpus generator; a plain binary, run with `cargo run --release --bin make_seeds`
 # from this directory (NOT through `cargo fuzz`).
+[[bin]]
+name = "fuzz_webp_differential"
+path = "fuzz_targets/fuzz_webp_differential.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_codec_import"
+path = "fuzz_targets/fuzz_codec_import.rs"
+test = false
+doc = false
+bench = false
+
+# Verifies the differential oracle itself (positive + negative); run by hand, not fuzzed.
+[[bin]]
+name = "webp_check"
+path = "src/bin/webp_check.rs"
+test = false
+doc = false
+bench = false
+
 [[bin]]
 name = "make_seeds"
 path = "src/bin/make_seeds.rs"

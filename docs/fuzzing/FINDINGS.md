@@ -26,6 +26,25 @@ new findings across ~3.6M post-fix executions: the saturation the analysis doc p
 are new surface — the WebP differential and codec-import targets (§3.2 items 3–4) — or
 much longer runs.
 
+### New surface, 2026-08-25 — §3.2 items 3 and 4 implemented
+
+| Date | Config | `fuzz_webp_differential` | `fuzz_codec_import` |
+|---|---|---|---|
+| 2026-08-25 | 14 workers, 10 min/target | 4.41M execs, 847 edges, 0 findings | 7.48M execs, 4894 edges, 0 findings |
+
+Both came up clean on first contact. For the differential that is a **meaningful
+negative result, not an empty one**: 4.4M animations went through our hand-written
+VP8X/ANIM/ANMF muxer and back through libwebp's decoder with pixel-exact agreement
+every time, which is real evidence for the delta-frame container (halved ANMF offsets,
+changed-rect bounds, chunk lengths) that previously rested on one manual spot-check.
+The oracle is proven non-vacuous by `webp_check` (positive: 6 shapes match exactly;
+negative: a frame shifted 2 px inside a still-valid container is caught).
+
+`fuzz_codec_import`'s 4894 edges are mostly the upstream `image` decoders, as expected
+(§2.3) — its value is the wrapper invariants it pins: every import either commits or
+registers a memory refusal, and any document an import produces saves, reloads, and
+resaves byte-identically.
+
 The last row is the validation that FZ-1 and FZ-3 are actually closed: the actions
 target previously produced its first artifact within ~60 seconds at 8 workers, and now
 survives 12.5 minutes at 14 workers (2.08M executions) while reaching 30% more coverage

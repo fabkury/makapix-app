@@ -21,12 +21,30 @@ too slow), and results sync back here automatically.
 - **`fuzz_session_actions`** — structure-aware (`arbitrary`): random sequences of valid
   editor actions rendered to DSL text → `run_script` → compound oracle (no panic; Undo/
   Redo restores the content hash; save→load round-trip; byte-deterministic resave).
+- **`fuzz_webp_differential`** — our hand-muxed animated WebP (VP8X/ANIM/ANMF with
+  changed-rect delta frames) decoded by **libwebp**, Google's C reference, vendored and
+  statically linked via `webp-animation`. Because the encoder is lossless and every ANMF
+  is blend=overwrite / dispose=none, the reference decoder's composited canvas at frame
+  *i* must equal our input frame *i* **exactly** — no tolerance. Catches halved-offset
+  mistakes, too-small delta rects, bad chunk lengths, mis-sized canvases. Mechanizes what
+  was a one-time manual check ("libwebp-verified lossless", 2026-08-09).
+  Verify the oracle itself with `cargo +nightly run --release --bin webp_check`: it
+  proves equality on correct output AND that a frame shifted 2 px (a still-valid
+  container) is detected — a differential that cannot fail is not a test.
+- **`fuzz_codec_import`** — the import path *we* own: `codec::decode` → `import_decoded`
+  with a structured config (canvas size, scale mode, anchor, as-layer, start frame, crop
+  rect). Oracles: no panic; every import either commits or registers a memory refusal;
+  the resulting document saves, reloads, and resaves byte-identically. The `image`
+  decoders underneath are fuzzed upstream by OSS-Fuzz, so their bugs are a bonus, not the
+  target.
 
 ## Running (from PowerShell, repo root)
 
 ```powershell
 ./tools/fuzz/fuzz-day.ps1     # daytime companion: 8 workers, 4 h, quiet-ish, Ctrl+C safe
 ./tools/fuzz/fuzz-night.ps1   # overnight burst: 14 workers, 9 h, cmin + morning summary
+# pick targets explicitly (default is the two engine targets):
+./tools/fuzz/fuzz-night.ps1 -Targets "fuzz_webp_differential fuzz_codec_import"
 ```
 
 Both print and save a summary (`fuzz/logs/summary-*.md`): executions, coverage, corpus
@@ -52,14 +70,17 @@ back. Both scripts take `-Hours`, `-Workers`, and `-Targets` overrides.
 
 ## Corpus policy
 
-`fuzz/corpus/` **is committed, but only entries ≤ 64 KiB** (`CORPUS_COMMIT_MAX` in
-`run_fuzz.sh`). The corpus is the distilled asset — future runs start deep inside the
-parser instead of rediscovering the format — but fuzzing the boundary seeds breeds
-multi-hundred-KB descendants (one 10-minute run made 45 MB of them), and git is the
-wrong home for those. Large entries stay in the WSL work tree (`~/makapix-fuzz`), and
-`make_seeds` regenerates the large boundary seeds deterministically anywhere.
-Post-`cmin` runs replace the committed set with the minimized one (the overnight script
-does this). `fuzz/artifacts/` and `fuzz/logs/` are git-ignored operational output.
+**Only `fuzz_load_mkpx`'s corpus is committed, and only entries ≤ 64 KiB**
+(`CORPUS_COMMIT_MAX` in `run_fuzz.sh`). That one is worth keeping: it encodes hard-won
+CRC-valid container structure, so a fresh machine starts deep inside the parser instead
+of rediscovering the format. The size cap exists because fuzzing the boundary seeds
+breeds multi-hundred-KB descendants (one 10-minute run made 45 MB of them).
+
+Every **other** corpus is git-ignored. They run to thousands of tiny files that `cmin`
+rewrites wholesale on each run — one burst churned 6,600 files — while regenerating
+locally in minutes, so git is the wrong home for them. The WSL work tree
+(`~/makapix-fuzz`) is the real corpus of record; `fuzz/artifacts/` and `fuzz/logs/` are
+git-ignored operational output too.
 
 `make_seeds` writes format-diverse small seeds (empty / drawing / noise / palette /
 selection) plus **boundary seeds** that mutation reaches only by luck: a 256×256

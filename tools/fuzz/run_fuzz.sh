@@ -90,13 +90,25 @@ for T in $TARGETS; do
   # the container dictionary; the actions target's inputs are Arbitrary-decoded, so a
   # byte dictionary means nothing there.
   DICT=()
+  TIMEOUT=   # reset per target: a value set for one target must not leak into the next
   case "$T" in
     fuzz_load_mkpx)
       MAXLEN=4194304; RSSLIM=512;  MALLOCLIM=512
       DICT=(-dict=fuzz/mkpx.dict)
       ;;
+    # Differential encode+decode: each execution does real VP8L compression and a libwebp
+    # decode, so inputs stay small and the timeout is generous.
+    fuzz_webp_differential)
+      MAXLEN=2048;    RSSLIM=4096; MALLOCLIM=512; TIMEOUT=25
+      ;;
+    # Import feeds arbitrary bytes to the `image` decoders; a decoded frame can be far
+    # larger than its compressed input, so this one needs allocation headroom.
+    fuzz_codec_import)
+      MAXLEN=65536;   RSSLIM=4096; MALLOCLIM=2048; TIMEOUT=25
+      ;;
     *)  MAXLEN=4096;  RSSLIM=4096; MALLOCLIM=512 ;;
   esac
+  TIMEOUT=${TIMEOUT:-10}
   ARTIFACTS_BEFORE=$(ls "$WORK/fuzz/artifacts/$T" 2>/dev/null || true)
   LOG="$WORK/fuzz/logs/$STAMP-$LABEL-$T.log"
   echo "== fuzzing $T: $WORKERS workers, $SECS_PER s, max_len=$MAXLEN (log: $(basename "$LOG"))"
@@ -104,7 +116,7 @@ for T in $TARGETS; do
   nice -n 19 cargo +nightly fuzz run "$T" "fuzz/corpus/$T" -- \
     -workers="$WORKERS" -jobs="$WORKERS" -max_total_time="$SECS_PER" \
     -rss_limit_mb="$RSSLIM" -malloc_limit_mb="$MALLOCLIM" \
-    -timeout=10 -max_len="$MAXLEN" -print_final_stats=1 "${DICT[@]}" \
+    -timeout="$TIMEOUT" -max_len="$MAXLEN" -print_final_stats=1 "${DICT[@]}" \
     >"$LOG" 2>&1 &
   FPID=$!
   wait "$FPID"
@@ -132,15 +144,22 @@ fi
 
 # ---- Sync results back into the repo ------------------------------------------------
 mkdir -p "$REPO/fuzz/artifacts" "$REPO/fuzz/logs"
-# Only entries <= CORPUS_COMMIT_MAX are mirrored into the repo. Fuzzing the boundary
-# seeds breeds multi-hundred-KB descendants (a 10-minute run produced 45 MB of them);
-# git is the wrong home for that. The big entries live on in the WSL work tree, and
-# `make_seeds` regenerates the large boundary seeds deterministically on any machine.
+# Corpus mirroring is deliberately narrow (fuzz/README.md):
+#   * only fuzz_load_mkpx's corpus goes back to the repo — the others are thousands of
+#     tiny files that churn wholesale on every cmin and regenerate locally in minutes;
+#   * only entries <= CORPUS_COMMIT_MAX, because fuzzing the boundary seeds breeds
+#     multi-hundred-KB descendants (one 10-minute run produced 45 MB of them).
+# Everything else stays in the WSL work tree, which is the real corpus of record.
 CORPUS_COMMIT_MAX=65536
-if [[ $CMIN == 1 && $INTERRUPTED == 0 ]]; then
-  rsync -a --delete --max-size=$CORPUS_COMMIT_MAX "$WORK/fuzz/corpus/" "$REPO/fuzz/corpus/"
-else
-  rsync -a --max-size=$CORPUS_COMMIT_MAX "$WORK/fuzz/corpus/" "$REPO/fuzz/corpus/"
+if [[ -d "$WORK/fuzz/corpus/fuzz_load_mkpx" ]]; then
+  mkdir -p "$REPO/fuzz/corpus/fuzz_load_mkpx"
+  if [[ $CMIN == 1 && $INTERRUPTED == 0 ]]; then
+    rsync -a --delete --max-size=$CORPUS_COMMIT_MAX \
+      "$WORK/fuzz/corpus/fuzz_load_mkpx/" "$REPO/fuzz/corpus/fuzz_load_mkpx/"
+  else
+    rsync -a --max-size=$CORPUS_COMMIT_MAX \
+      "$WORK/fuzz/corpus/fuzz_load_mkpx/" "$REPO/fuzz/corpus/fuzz_load_mkpx/"
+  fi
 fi
 rsync -a "$WORK/fuzz/artifacts/" "$REPO/fuzz/artifacts/"
 rsync -a "$WORK/fuzz/logs/" "$REPO/fuzz/logs/"
