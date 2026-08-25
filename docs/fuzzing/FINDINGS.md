@@ -18,6 +18,11 @@ release gates until the fix lands.
 **Oracle:** undo coherence (SPEC §10 — do→undo→redo must restore the content hash).
 **Status:** reproduces 10/10 via `mkpx run <script> assert.undo` (exit 1).
 
+**2026-08-25 day-run update:** 6 more variants; the class is broader than "Add*" — it
+also triggers with `ResizeCanvas(...)` mid-stroke and with `SelectTool(...)`
+(tool switch) mid-stroke. Any fix must cover *every* structural/mode change that can
+land between PointerDown and PointerUp, not just frame/layer insertion.
+
 Minimal reproducer (one of several; 5 of the first 6 artifacts are this class):
 
 ```
@@ -62,3 +67,39 @@ at byte 40. The loader normalizes something the saver preserved (suspect: the
 selection from `InvertSelection` left stale by `ResizeCanvas(1,1)`). Violates the
 "byte-deterministic `.mkpx`" doctrine (docs/mkpx-format/); also means a re-saved
 document changes hash identity without a content change.
+
+**2026-08-25 day-run update:** a second, independent reproducer with the *identical*
+byte signature (221 → 203, first diff at byte 40): `PointerDown(21,-1)` /
+`InvertSelection()` / `SelectTool(Rectangle)` / `PointerDown(1114011,267782262)` /
+`ResizeCanvas(12,12)` / `SelectTool(Pencil)`. Common core of both scripts:
+`InvertSelection` + `ResizeCanvas` — strengthens the stale-selection hypothesis.
+
+## FZ-3 — undo/redo incoherence without any open stroke (OPEN)
+
+**Found:** 2026-08-25, `fuzz_session_actions`, 20-minute day run
+(artifact `crash-4174706f…`).
+**Oracle:** undo coherence. **Status:** deterministic via `hash.doc` comparison
+(script vs script+`Undo()` vs script+`Undo()`+`Redo()`); distinct from FZ-1 — no
+PointerDown/PointerUp interleaving involved, plain sequential actions.
+
+```
+InvertSelection()
+RotateLayer(85)
+SetLayerLocked(0,true)
+ApplyBrightnessContrast()
+```
+
+After the sequence the doc hash reflects the locked layer. `Undo()` *removes the
+lock* (hash returns to the unlocked empty doc); `Redo()` is then a no-op — the lock
+is never restored. Minimization facts (all verified 2026-08-25):
+
+- Every proper subset tried is an undo no-op: `SetLayerLocked(0,true)` alone,
+  `lock+ApplyBrightnessContrast`, `InvertSelection+lock+ApplyBC`,
+  `InvertSelection+RotateLayer(85)`, `lock+ApplyLevels/ApplyHsvShift/Invert/FlipH` —
+  so lock toggles are (by themselves) not history-tracked, yet the full sequence
+  produces an undo entry whose undo reverts the lock and whose redo restores nothing.
+- `SetLayerVisible(0,false)` + `ApplyBrightnessContrast()` is fully COHERENT — the
+  visibility flag does not exhibit this.
+- Suspicion: a refused/degenerate apply on a locked layer pushes a malformed history
+  entry whose before-state snapshot predates the lock. Root cause not yet located.
+
