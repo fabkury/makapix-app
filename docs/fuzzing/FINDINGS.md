@@ -10,6 +10,19 @@ open** — that suite asserts never-panic only, and these are *semantic* finding
 proper regression (e.g. an `assert.undo`-style check) would fail `cargo test` and the
 release gates until the fix lands.
 
+## Run log
+
+| Date | Config | Loader | Actions |
+|---|---|---|---|
+| 2026-08-25 | 8 workers, 10 min/target (pre-fix) | 18.4M execs, 1618 edges, 0 crashes | 97k execs, 5337 edges, **8 crashes** → FZ-1/FZ-2/FZ-3 |
+| 2026-08-25 | 8 workers, 10 min (mutator + dict + boundary seeds) | 534k execs, **2173 edges**, 0 crashes | — |
+| 2026-08-25 | 14 workers, 12.5 min/target (post-fix) | 1.12M execs, **2234 edges**, 0 crashes | 2.08M execs, **6935 edges**, **0 crashes** |
+
+The last row is the validation that FZ-1 and FZ-3 are actually closed: the actions
+target previously produced its first artifact within ~60 seconds at 8 workers, and now
+survives 12.5 minutes at 14 workers (2.08M executions) while reaching 30% more coverage
+than the run that found the bugs.
+
 ---
 
 ## FZ-1 — mid-stroke structural change breaks the undo invariant (FIXED 2026-08-25)

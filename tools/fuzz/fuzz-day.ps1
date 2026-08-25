@@ -20,7 +20,15 @@ $wslRepo = (wsl -d $Distro -- wslpath -a ($repo -replace '\\', '/')) | Select-Ob
 if (-not $wslRepo) { Write-Error "could not resolve the repo path inside WSL distro '$Distro'"; exit 2 }
 $minutes = [int][math]::Round($Hours * 60)
 
+# Explicitly-typed array, splatted — see the note in fuzz-night.ps1 about why a string
+# must never be splatted into a native command.
+[string[]]$wslArgs = @(
+    '--label', 'day',
+    '--workers', "$Workers",
+    '--minutes', "$minutes",
+    '--targets', "$Targets"
+)
+
 Write-Host "Daytime fuzz: $Workers workers, $Hours h, targets: $Targets" -ForegroundColor Cyan
-wsl -d $Distro -- bash "$wslRepo/tools/fuzz/run_fuzz.sh" `
-    --label day --workers $Workers --minutes $minutes --targets "$Targets"
+wsl -d $Distro -- bash "$wslRepo/tools/fuzz/run_fuzz.sh" @wslArgs
 exit $LASTEXITCODE

@@ -21,8 +21,19 @@ $wslRepo = (wsl -d $Distro -- wslpath -a ($repo -replace '\\', '/')) | Select-Ob
 if (-not $wslRepo) { Write-Error "could not resolve the repo path inside WSL distro '$Distro'"; exit 2 }
 $minutes = [int][math]::Round($Hours * 60)
 
-$cminArg = if ($NoCmin) { @() } else { @('--cmin') }
+# Build the argument list as an explicitly-typed array. Do NOT write
+# `$a = if (...) { @('--cmin') }` and splat it: an `if` returns its single-element array
+# through the pipeline, which unwraps it to a STRING, and splatting a string passes it one
+# character at a time (`-` `-` `c` `m` `i` `n` — run_fuzz.sh then dies on "unknown
+# argument: -"). Typing the variable [string[]] keeps it an array.
+[string[]]$wslArgs = @(
+    '--label', 'night',
+    '--workers', "$Workers",
+    '--minutes', "$minutes",
+    '--targets', "$Targets"
+)
+if (-not $NoCmin) { $wslArgs += '--cmin' }
+
 Write-Host "Overnight fuzz: $Workers workers, $Hours h, targets: $Targets" -ForegroundColor Cyan
-wsl -d $Distro -- bash "$wslRepo/tools/fuzz/run_fuzz.sh" `
-    --label night --workers $Workers --minutes $minutes --targets "$Targets" @cminArg
+wsl -d $Distro -- bash "$wslRepo/tools/fuzz/run_fuzz.sh" @wslArgs
 exit $LASTEXITCODE
