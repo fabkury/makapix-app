@@ -793,9 +793,14 @@ extension _EditorControls on _EditorPageState {
       height: 48,
       width: double.infinity, // span full width so narrow content doesn't expose the black background on each side
       color: const Color(0xFF202327),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(children: [const SizedBox(width: 4), ...children, const SizedBox(width: 8)]),
+      child: StripScroller(
+        axis: Axis.horizontal,
+        controller: _optionsRowCtrl,
+        child: SingleChildScrollView(
+          controller: _optionsRowCtrl,
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [const SizedBox(width: 4), ...children, const SizedBox(width: 8)]),
+        ),
       ),
     );
   }
@@ -830,21 +835,27 @@ extension _EditorControls on _EditorPageState {
         ]),
       ),
     );
-    // Long-press the empty area near the swatches → "Add current color" (swatches keep
-    // their own long-press menu, which wins as the deeper gesture).
+    // Long-press (or right-click) the empty area near the swatches → "Add current color"
+    // (swatches keep their own long-press/right-click menu, which wins as the deeper gesture).
     final strip = GestureDetector(
       behavior: HitTestBehavior.translucent,
       onLongPress: _addColorMenu,
-      child: ListView.builder(
-        scrollDirection: axis,
-        itemCount: pairs,
-        itemBuilder: (_, pair) => Flex(
-          direction: vertical ? Axis.horizontal : Axis.vertical,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _paletteSwatch(pair * 2, vertical: vertical),
-            _paletteSwatch(pair * 2 + 1, vertical: vertical),
-          ],
+      onSecondaryTap: _addColorMenu,
+      child: StripScroller(
+        axis: axis,
+        controller: _paletteStripCtrl,
+        child: ListView.builder(
+          controller: _paletteStripCtrl,
+          scrollDirection: axis,
+          itemCount: pairs,
+          itemBuilder: (_, pair) => Flex(
+            direction: vertical ? Axis.horizontal : Axis.vertical,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _paletteSwatch(pair * 2, vertical: vertical),
+              _paletteSwatch(pair * 2 + 1, vertical: vertical),
+            ],
+          ),
         ),
       ),
     );
@@ -874,6 +885,7 @@ extension _EditorControls on _EditorPageState {
     Widget swatch = GestureDetector(
       onTap: () => _setPrimary(c),
       onLongPress: () => _paletteSwatchMenu(i, c, vertical: vertical),
+      onSecondaryTap: () => _paletteSwatchMenu(i, c, vertical: vertical),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
         // diagonal: translucent palette colors read as a dual indicator (opaque top-left

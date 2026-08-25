@@ -56,6 +56,7 @@ import 'makapix_icon.dart';
 import 'tools.dart';
 import 'thumbnail.dart';
 import 'widgets/painters.dart';
+import 'widgets/strip_scroller.dart';
 import 'dialogs/crop_dialog.dart';
 import 'dialogs/color_picker_dialog.dart';
 import 'dialogs/rename_drawing_dialog.dart';
@@ -407,6 +408,13 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // by _buildFilmRoll so _ensureActiveFrameVisible can compute tile offsets without layout queries.
   final ScrollController _filmCtrl = ScrollController();
   double _filmTileExtent = 0;
+  // Controllers for the strips StripScroller's wheel remap drives (the film roll reuses
+  // _filmCtrl above; the layer-sheet mini-stack owns its controller in the sheet). Like
+  // _filmCtrl, each serves both orientations — only one instance is ever mounted.
+  final ScrollController _layerStripCtrl = ScrollController();
+  final ScrollController _optionsRowCtrl = ScrollController();
+  final ScrollController _paletteStripCtrl = ScrollController();
+  final ScrollController _toolGridCtrl = ScrollController();
   // layers film-strip thumbnails, keyed by (frame,layer) and invalidated by per-layer content hash
   final Map<int, ThumbCache> _layerThumbs = {};
   final Set<int> _layerThumbInFlight = {};
@@ -628,6 +636,10 @@ class _EditorPageState extends ConsumerState<EditorPage>
     _imageVN.dispose();
     _overlayVN.dispose();
     _filmCtrl.dispose();
+    _layerStripCtrl.dispose();
+    _optionsRowCtrl.dispose();
+    _paletteStripCtrl.dispose();
+    _toolGridCtrl.dispose();
     if (_engineReady) engine.dispose();
     super.dispose();
   }

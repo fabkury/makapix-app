@@ -161,47 +161,51 @@ extension _EditorSheets on _EditorPageState {
   }) =>
       SizedBox(
         height: 44,
-        child: ListView.builder(
+        child: StripScroller(
+          axis: Axis.horizontal,
           controller: controller,
-          scrollDirection: Axis.horizontal,
-          itemExtent: tileW + 4,
-          itemCount: layers.length,
-          itemBuilder: (_, i) {
-            final l = layers[i] as Map<String, dynamic>;
-            final hash = engine.layerHash(frame, i);
-            final cached = _layerThumbs[_layerKey(frame, i)];
-            if (cached == null || cached.hash != hash) {
-              _genLayerThumb(frame, i, hash).then((_) => refresh());
-            }
-            final sel = i == cur;
-            final inGroup = _selLayers.contains(i);
-            return GestureDetector(
-              // Retarget the sheet only (like long-pressing the tile on the real strip):
-              // the engine's active layer stays put, so no side effect survives the sheet.
-              onTap: () => onTap(i),
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-                padding: const EdgeInsets.all(2),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF101214),
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(
-                    color: sel ? const Color(0xFF4080C0) : (inGroup ? Colors.amber : Colors.black26),
-                    width: (sel || inGroup) ? 2 : 1,
+          child: ListView.builder(
+            controller: controller,
+            scrollDirection: Axis.horizontal,
+            itemExtent: tileW + 4,
+            itemCount: layers.length,
+            itemBuilder: (_, i) {
+              final l = layers[i] as Map<String, dynamic>;
+              final hash = engine.layerHash(frame, i);
+              final cached = _layerThumbs[_layerKey(frame, i)];
+              if (cached == null || cached.hash != hash) {
+                _genLayerThumb(frame, i, hash).then((_) => refresh());
+              }
+              final sel = i == cur;
+              final inGroup = _selLayers.contains(i);
+              return GestureDetector(
+                // Retarget the sheet only (like long-pressing the tile on the real strip):
+                // the engine's active layer stays put, so no side effect survives the sheet.
+                onTap: () => onTap(i),
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF101214),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: sel ? const Color(0xFF4080C0) : (inGroup ? Colors.amber : Colors.black26),
+                      width: (sel || inGroup) ? 2 : 1,
+                    ),
+                  ),
+                  child: Opacity(
+                    opacity: l['visible'] == true ? 1 : 0.35,
+                    child: CustomPaint(
+                      painter: const CheckerPainter(),
+                      child: cached != null
+                          ? RawImage(image: cached.img, fit: BoxFit.contain, filterQuality: FilterQuality.none)
+                          : const SizedBox.shrink(),
+                    ),
                   ),
                 ),
-                child: Opacity(
-                  opacity: l['visible'] == true ? 1 : 0.35,
-                  child: CustomPaint(
-                    painter: const CheckerPainter(),
-                    child: cached != null
-                        ? RawImage(image: cached.img, fit: BoxFit.contain, filterQuality: FilterQuality.none)
-                        : const SizedBox.shrink(),
-                  ),
-                ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         ),
       );
 

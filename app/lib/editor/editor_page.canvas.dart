@@ -176,6 +176,13 @@ extension _EditorCanvas on _EditorPageState {
         child: Listener(
           behavior: HitTestBehavior.opaque,
           onPointerDown: (e) {
+            // Mouse downs without the primary button are never strokes: right-click picks the
+            // color under the cursor (the Eyedropper convention), middle/other buttons are
+            // inert. Touch and pen pointers keep the untouched path below.
+            if (e.kind == PointerDeviceKind.mouse && (e.buttons & kPrimaryButton) == 0) {
+              if ((e.buttons & kSecondaryButton) != 0) _secondaryPick(e.localPosition, box);
+              return;
+            }
             _touchPos[e.pointer] = e.localPosition;
             if (_touchPos.length >= 2) {
               // a second finger → pan/zoom; abort any single-finger draw in progress
@@ -357,6 +364,33 @@ extension _EditorCanvas on _EditorPageState {
         ),
       );
     });
+  }
+
+  // Right-click (secondary-button) pick: sample the color under the cursor with the engine's
+  // Eyedropper — honoring its Frame/Layer source toggle — without changing the active shell
+  // tool. The engine tool is swapped for the one sample and restored, all through normal
+  // journaled verbs, so replay stays faithful. Inert mid-stroke/pinch/draft (a tool swap
+  // would corrupt them, mirroring the hold-Alt spring's guards), while precision pen-down
+  // holds an open cursor stroke, and during playback (the vsync clock owns the engine).
+  void _secondaryPick(Offset pos, Size box) {
+    if (_drawPointer != null || _pinching || _hasAnyDraft || _penDown || _playing) return;
+    final p = _toCanvas(pos, box);
+    if (p.dx < 0 || p.dy < 0) return; // gutter click: nothing to pick
+    final x = p.dx.toInt(), y = p.dy.toInt();
+    if (x >= engine.width || y >= engine.height) return;
+    // UI-only shell tools (transform groups, Play, Ruler) have no engine draw tool to restore;
+    // any non-preview tool serves (the Select Layer exit idiom) — their canvas is inert anyway.
+    final restore = _engineToolName ?? 'Move';
+    if (restore == 'Eyedropper') {
+      _send('PointerDown($x,$y); PointerUp()');
+    } else {
+      _send('SelectTool(Eyedropper); PointerDown($x,$y); PointerUp()');
+      _send('SelectTool($restore)');
+    }
+    _syncPickedPrimary(); // mirror the pick into the swatch
+    // Select Layer is the one tool that paints tool-dependent content (its cyan overlay) into
+    // the composite; re-render so the momentary Eyedropper round-trip leaves it intact.
+    if (_tool == 'SelectLayer') _redraw();
   }
 
   // A finger left the canvas (lifted or canceled). End the pinch or the draw as appropriate; once

@@ -46,54 +46,61 @@ extension _EditorTimeline on _EditorPageState {
         vertical ? (46.0 * s * th / tw).clamp(28.0 * s, 84.0 * s) + 12 : (46.0 * s * tw / th).clamp(28.0 * s, 84.0 * s);
     _filmTileExtent = tileMain + 10; // container (tileMain + 6) + 2+2 main-axis margins, both axes
     final strip = GestureDetector(
-      // Long-press the empty area near the frames → "Add animation frame" (the thumbnails keep
-      // their own long-press menu, which wins as the deeper gesture).
+      // Long-press (or right-click) the empty area near the frames → "Add animation frame"
+      // (the thumbnails keep their own long-press/right-click menu, which wins as the deeper
+      // gesture).
       behavior: HitTestBehavior.translucent,
       onLongPress: _addFrameMenu,
-      child: ListView.builder(
+      onSecondaryTap: _addFrameMenu,
+      child: StripScroller(
+        axis: axis,
         controller: _filmCtrl,
-        scrollDirection: axis,
-        itemCount: count,
-        padding: vertical ? const EdgeInsets.symmetric(vertical: 4) : const EdgeInsets.symmetric(horizontal: 4),
-        itemBuilder: (_, i) {
-          final hash = engine.frameHash(i);
-          final cached = _frameThumbs[i];
-          if (cached == null || cached.hash != hash) _genFrameThumb(i, hash);
-          final sel = i == active;
-          return GestureDetector(
-            onTap: () {
-              if (i != active) _clearLayerGroup(); // the group indexed the previous frame's layers
-              _act('SetActiveFrame($i)');
-            },
-            onLongPress: () => _frameMenu(i),
-            child: Container(
-              width: vertical ? null : tileMain + 6,
-              height: vertical ? tileMain + 6 : null,
-              margin: vertical
-                  ? const EdgeInsets.symmetric(horizontal: 5, vertical: 2)
-                  : const EdgeInsets.symmetric(horizontal: 2, vertical: 5),
-              decoration: BoxDecoration(
-                color: const Color(0xFF101214),
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: sel ? const Color(0xFF4080C0) : Colors.black26, width: sel ? 2 : 1),
-              ),
-              child: Column(children: [
-                Expanded(
-                  child: Container(
-                    width: double.infinity,
-                    margin: const EdgeInsets.all(2),
-                    color: const Color(0xFF3A3D42),
-                    alignment: Alignment.center,
-                    child: cached != null
-                        ? RawImage(image: cached.img, fit: BoxFit.contain, filterQuality: FilterQuality.none)
-                        : const SizedBox.shrink(),
-                  ),
+        child: ListView.builder(
+          controller: _filmCtrl,
+          scrollDirection: axis,
+          itemCount: count,
+          padding: vertical ? const EdgeInsets.symmetric(vertical: 4) : const EdgeInsets.symmetric(horizontal: 4),
+          itemBuilder: (_, i) {
+            final hash = engine.frameHash(i);
+            final cached = _frameThumbs[i];
+            if (cached == null || cached.hash != hash) _genFrameThumb(i, hash);
+            final sel = i == active;
+            return GestureDetector(
+              onTap: () {
+                if (i != active) _clearLayerGroup(); // the group indexed the previous frame's layers
+                _act('SetActiveFrame($i)');
+              },
+              onLongPress: () => _frameMenu(i),
+              onSecondaryTap: () => _frameMenu(i),
+              child: Container(
+                width: vertical ? null : tileMain + 6,
+                height: vertical ? tileMain + 6 : null,
+                margin: vertical
+                    ? const EdgeInsets.symmetric(horizontal: 5, vertical: 2)
+                    : const EdgeInsets.symmetric(horizontal: 2, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF101214),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: sel ? const Color(0xFF4080C0) : Colors.black26, width: sel ? 2 : 1),
                 ),
-                Text('${i + 1}', style: TextStyle(fontSize: 9, color: sel ? Colors.white : Colors.white54)),
-              ]),
-            ),
-          );
-        },
+                child: Column(children: [
+                  Expanded(
+                    child: Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.all(2),
+                      color: const Color(0xFF3A3D42),
+                      alignment: Alignment.center,
+                      child: cached != null
+                          ? RawImage(image: cached.img, fit: BoxFit.contain, filterQuality: FilterQuality.none)
+                          : const SizedBox.shrink(),
+                    ),
+                  ),
+                  Text('${i + 1}', style: TextStyle(fontSize: 9, color: sel ? Colors.white : Colors.white54)),
+                ]),
+              ),
+            );
+          },
+        ),
       ),
     );
     final children = [
@@ -469,103 +476,109 @@ extension _EditorTimeline on _EditorPageState {
             icon: const Icon(Icons.add_box)),
         Container(width: vertical ? null : 1, height: vertical ? 1 : null, color: Colors.black26),
         Expanded(
-          child: ListView.builder(
-            scrollDirection: axis,
-            itemCount: layers.length,
-            padding: vertical ? const EdgeInsets.symmetric(vertical: 4) : const EdgeInsets.symmetric(horizontal: 4),
-            itemBuilder: (_, i) {
-              final l = layers[i] as Map<String, dynamic>;
-              final sel = i == activeLayer;
-              final inGroup = _selLayers.contains(i);
-              final visible = l['visible'] == true;
-              final hash = engine.layerHash(frame, i);
-              final key = _layerKey(frame, i);
-              final cached = _layerThumbs[key];
-              if (cached == null || cached.hash != hash) _genLayerThumb(frame, i, hash);
-              return GestureDetector(
-                onTap: () { setState(() => _selLayers.clear()); _act('SetActiveLayer($i)'); },
-                onLongPress: () => _layerOptions(i),
-                child: Container(
-                  width: vertical ? null : tileMain + 6,
-                  height: vertical ? tileMain + 6 : null,
-                  margin: vertical
-                      ? const EdgeInsets.symmetric(horizontal: 5, vertical: 2)
-                      : const EdgeInsets.symmetric(horizontal: 2, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF101214),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(
-                      // active layer always shows blue (it stays put while grouped); other
-                      // grouped layers show amber.
-                      color: sel ? const Color(0xFF4080C0) : (inGroup ? Colors.amber : Colors.black26),
-                      width: (sel || inGroup) ? 2 : 1,
-                    ),
-                  ),
-                  child: Stack(fit: StackFit.expand, children: [
-                    Padding(
-                      padding: const EdgeInsets.all(2),
-                      child: Opacity(
-                        opacity: visible ? 1 : 0.35,
-                        child: CustomPaint(
-                          painter: const CheckerPainter(),
-                          child: cached != null
-                              ? RawImage(image: cached.img, fit: BoxFit.contain, filterQuality: FilterQuality.none)
-                              : const SizedBox.shrink(),
-                        ),
+          child: StripScroller(
+            axis: axis,
+            controller: _layerStripCtrl,
+            child: ListView.builder(
+              controller: _layerStripCtrl,
+              scrollDirection: axis,
+              itemCount: layers.length,
+              padding: vertical ? const EdgeInsets.symmetric(vertical: 4) : const EdgeInsets.symmetric(horizontal: 4),
+              itemBuilder: (_, i) {
+                final l = layers[i] as Map<String, dynamic>;
+                final sel = i == activeLayer;
+                final inGroup = _selLayers.contains(i);
+                final visible = l['visible'] == true;
+                final hash = engine.layerHash(frame, i);
+                final key = _layerKey(frame, i);
+                final cached = _layerThumbs[key];
+                if (cached == null || cached.hash != hash) _genLayerThumb(frame, i, hash);
+                return GestureDetector(
+                  onTap: () { setState(() => _selLayers.clear()); _act('SetActiveLayer($i)'); },
+                  onLongPress: () => _layerOptions(i),
+                  onSecondaryTap: () => _layerOptions(i),
+                  child: Container(
+                    width: vertical ? null : tileMain + 6,
+                    height: vertical ? tileMain + 6 : null,
+                    margin: vertical
+                        ? const EdgeInsets.symmetric(horizontal: 5, vertical: 2)
+                        : const EdgeInsets.symmetric(horizontal: 2, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF101214),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        // active layer always shows blue (it stays put while grouped); other
+                        // grouped layers show amber.
+                        color: sel ? const Color(0xFF4080C0) : (inGroup ? Colors.amber : Colors.black26),
+                        width: (sel || inGroup) ? 2 : 1,
                       ),
                     ),
-                    // quick visibility toggle (top-left)
-                    Positioned(
-                      left: 0,
-                      top: 0,
-                      child: GestureDetector(
-                        onTap: () => _act('SetLayerVisible($i, ${!visible})'),
-                        child: Container(
-                          padding: const EdgeInsets.all(1),
-                          color: const Color(0xCC000000),
-                          child: Icon(visible ? Icons.visibility : Icons.visibility_off, size: 13, color: Colors.white70),
-                        ),
-                      ),
-                    ),
-                    // top-right badges: in-move-group (amber move icon, ~ the size of the top-left
-                    // visibility icon) and locked. A Row keeps them from overlapping.
-                    if (inGroup || l['locked'] == true)
-                      Positioned(
-                        right: 1,
-                        top: 1,
-                        child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          if (inGroup)
-                            Container(
-                              padding: const EdgeInsets.all(1),
-                              color: const Color(0xCC000000),
-                              child: const Icon(Icons.open_with, size: 13, color: Colors.amber),
-                            ),
-                          if (l['locked'] == true)
-                            const Padding(
-                              padding: EdgeInsets.only(left: 1),
-                              child: Icon(Icons.lock, size: 12, color: Colors.white54),
-                            ),
-                        ]),
-                      ),
-                    // bottom-right: two-letter blend-mode badge, only when non-Normal
-                    if (blendBadge('${l['blend'] ?? 'Normal'}').isNotEmpty)
-                      Positioned(
-                        right: 1,
-                        bottom: 1,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
-                          color: const Color(0xCC000000),
-                          child: Text(
-                            blendBadge('${l['blend'] ?? 'Normal'}'),
-                            style: const TextStyle(
-                                fontSize: 8, color: Colors.white70, fontWeight: FontWeight.w600),
+                    child: Stack(fit: StackFit.expand, children: [
+                      Padding(
+                        padding: const EdgeInsets.all(2),
+                        child: Opacity(
+                          opacity: visible ? 1 : 0.35,
+                          child: CustomPaint(
+                            painter: const CheckerPainter(),
+                            child: cached != null
+                                ? RawImage(image: cached.img, fit: BoxFit.contain, filterQuality: FilterQuality.none)
+                                : const SizedBox.shrink(),
                           ),
                         ),
                       ),
-                  ]),
-                ),
-              );
-            },
+                      // quick visibility toggle (top-left)
+                      Positioned(
+                        left: 0,
+                        top: 0,
+                        child: GestureDetector(
+                          onTap: () => _act('SetLayerVisible($i, ${!visible})'),
+                          child: Container(
+                            padding: const EdgeInsets.all(1),
+                            color: const Color(0xCC000000),
+                            child: Icon(visible ? Icons.visibility : Icons.visibility_off, size: 13, color: Colors.white70),
+                          ),
+                        ),
+                      ),
+                      // top-right badges: in-move-group (amber move icon, ~ the size of the top-left
+                      // visibility icon) and locked. A Row keeps them from overlapping.
+                      if (inGroup || l['locked'] == true)
+                        Positioned(
+                          right: 1,
+                          top: 1,
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            if (inGroup)
+                              Container(
+                                padding: const EdgeInsets.all(1),
+                                color: const Color(0xCC000000),
+                                child: const Icon(Icons.open_with, size: 13, color: Colors.amber),
+                              ),
+                            if (l['locked'] == true)
+                              const Padding(
+                                padding: EdgeInsets.only(left: 1),
+                                child: Icon(Icons.lock, size: 12, color: Colors.white54),
+                              ),
+                          ]),
+                        ),
+                      // bottom-right: two-letter blend-mode badge, only when non-Normal
+                      if (blendBadge('${l['blend'] ?? 'Normal'}').isNotEmpty)
+                        Positioned(
+                          right: 1,
+                          bottom: 1,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+                            color: const Color(0xCC000000),
+                            child: Text(
+                              blendBadge('${l['blend'] ?? 'Normal'}'),
+                              style: const TextStyle(
+                                  fontSize: 8, color: Colors.white70, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ),
+                    ]),
+                  ),
+                );
+              },
+            ),
           ),
         ),
       ]),

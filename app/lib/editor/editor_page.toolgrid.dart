@@ -165,6 +165,7 @@ extension _EditorToolgrid on _EditorPageState {
     return GestureDetector(
       onTap: () => isAction ? _doToolAction(dsl) : _selectTool(dsl),
       onLongPress: _pinnedThirdConfigSheet,
+      onSecondaryTap: _pinnedThirdConfigSheet,
       child: _tileVisual(t, selected: selected, active: active, enabled: enabled),
     );
   }
@@ -234,9 +235,14 @@ extension _EditorToolgrid on _EditorPageState {
         if (_threeRowToolbar) _pinnedThirdTile(),
       ],
     );
-    final grid = SingleChildScrollView(
-      scrollDirection: axis,
-      child: Column(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: gridRows),
+    final grid = StripScroller(
+      axis: axis,
+      controller: _toolGridCtrl,
+      child: SingleChildScrollView(
+        controller: _toolGridCtrl,
+        scrollDirection: axis,
+        child: Column(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: gridRows),
+      ),
     );
     // Band size derives from the (possibly tablet-scaled) tile size: tile + 3px margin each side,
     // plus 4px of band padding in the fixed dimension.

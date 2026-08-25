@@ -441,6 +441,7 @@ class _PalettePageState extends State<PalettePage> {
           Navigator.of(context).pop(); // load-and-return
         },
         onLongPress: () => _paletteActions(i),
+        onSecondaryTap: () => _paletteActions(i),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 4, 4, 12),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
