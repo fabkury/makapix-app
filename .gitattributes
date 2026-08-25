@@ -1,0 +1,7 @@
+# Shell scripts must keep LF endings — they run inside WSL (bash rejects CRLF).
+*.sh text eol=lf
+
+# Fuzz corpus entries are raw byte strings (and .mkpx is a binary container):
+# any line-ending normalization corrupts them.
+fuzz/corpus/** binary
+*.mkpx binary

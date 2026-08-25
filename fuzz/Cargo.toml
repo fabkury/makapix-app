@@ -1,0 +1,47 @@
+[package]
+name = "makapix-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+
+[dependencies.makapix-engine]
+path = "../crates/engine"
+
+[[bin]]
+name = "fuzz_load_mkpx"
+path = "fuzz_targets/fuzz_load_mkpx.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_session_actions"
+path = "fuzz_targets/fuzz_session_actions.rs"
+test = false
+doc = false
+bench = false
+
+# Seed-corpus generator; a plain binary, run with `cargo run --release --bin make_seeds`
+# from this directory (NOT through `cargo fuzz`).
+[[bin]]
+name = "make_seeds"
+path = "src/bin/make_seeds.rs"
+test = false
+doc = false
+bench = false
+
+# Detached from the root workspace on purpose: the workspace ships panic = "abort",
+# but libFuzzer must observe panics through its own handler, and the fuzz build wants
+# overflow checks (integer exactness is engine doctrine — a silent wraparound is a bug).
+[workspace]
+
+[profile.release]
+debug = 1
+overflow-checks = true

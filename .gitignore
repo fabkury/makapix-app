@@ -24,6 +24,12 @@ app/android/app/src/main/jniLibs/
 # ---- Mock Makapix Club server output ----
 tools/uploads/
 
+# ---- Fuzzing operational output (fuzz/README.md) ----
+# Crash artifacts get distilled into crates/engine/tests/fuzz_inputs.rs, not committed
+# raw; logs are per-run. The corpus (fuzz/corpus/) IS committed by policy.
+fuzz/artifacts/
+fuzz/logs/
+
 # ---- Replay-appraisal lab: generated DSL corpus (rebuilt by gen_replay_script.py) ----
 tools/replaylab/out/
 
