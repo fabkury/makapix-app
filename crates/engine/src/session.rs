@@ -45,6 +45,12 @@ struct EditScope {
 /// In-progress gesture state.
 struct Stroke {
     before: EditScope,
+    /// The tool that STARTED the stroke. Every stroke decision — mid-stroke painting, the
+    /// tool-specific pointer_up ending, the commit gate — keys off this, never off the live
+    /// `self.tool`, which a journaled mid-stroke `SelectTool` may have changed: keying the
+    /// commit off the live tool left painted pixels untracked when the switch landed on a
+    /// non-committing tool. [fuzz FZ-1, ADR 0007's coat rule generalized]
+    tool: ToolKind,
     start: Point,
     last: Point,
     path: Vec<Point>,
@@ -1170,7 +1176,13 @@ impl Session {
 
     // ---- undo-recording helpers ----
 
-    fn begin_edit(&self) -> EditScope {
+    fn begin_edit(&mut self) -> EditScope {
+        // A recorded edit beginning while a stroke/segment is still open first commits that
+        // stroke: its painted pixels are untracked until commit, so letting another record
+        // snapshot them (or letting a later cancel restore over them) breaks the undo
+        // invariant. No-op when nothing is open — including for the stroke's own scope,
+        // which is created before `self.stroke` is set. [fuzz FZ-1]
+        self.settle_open_edits();
         let f = self.doc.active_frame();
         let l = f.active_layer();
         EditScope {
@@ -1229,7 +1241,57 @@ impl Session {
         }
     }
 
+    /// Resolve a frozen (frame id, layer id) pair to its pixel buffer; None if either was
+    /// deleted. Stroke painting and stroke-end commits go through this — never through the
+    /// CURRENT active frame/layer, which the DSL may retarget mid-stroke. Painting the live
+    /// active layer would leave pixels no undo record tracks, breaking the undo invariant
+    /// (history records store absolute snapshots). [audit F-29, fuzz FZ-1]
+    fn buf_by_ids_mut(&mut self, fid: u32, lid: u32) -> Option<&mut crate::buffer::RgbaBuffer> {
+        let fi = self.doc.frame_index_by_id(fid)?;
+        let li = self.doc.frames[fi].layer_index_by_id(lid)?;
+        Some(&mut self.doc.frames[fi].layers[li].pixels)
+    }
+
+    /// Editability (visible && !locked) of a frozen target layer; false if it was deleted.
+    fn layer_editable_by_ids(&self, fid: u32, lid: u32) -> bool {
+        self.doc
+            .frame_index_by_id(fid)
+            .and_then(|fi| self.doc.frames[fi].layer_index_by_id(lid).map(|li| (fi, li)))
+            .map(|(fi, li)| {
+                let l = &self.doc.frames[fi].layers[li];
+                l.visible && !l.locked
+            })
+            .unwrap_or(false)
+    }
+
+    /// The frozen (frame id, layer id) of the open pointer stroke or pen segment, if any.
+    fn frozen_paint_ids(&self) -> Option<(u32, u32)> {
+        self.stroke
+            .as_ref()
+            .map(|s| (s.before.fid, s.before.lid))
+            .or_else(|| self.pen_segment.as_ref().map(|s| (s.before.fid, s.before.lid)))
+    }
+
+    /// The buffer live painting writes into: the frozen stroke/segment target when one is
+    /// open (None if it no longer exists), the active layer otherwise. [fuzz FZ-1]
+    fn paint_buf_mut(&mut self) -> Option<&mut crate::buffer::RgbaBuffer> {
+        match self.frozen_paint_ids() {
+            Some((fid, lid)) => self.buf_by_ids_mut(fid, lid),
+            None => Some(&mut self.doc.active_frame_mut().active_layer_mut().pixels),
+        }
+    }
+
+    /// Editability of the layer live painting targets: the frozen stroke/segment layer when
+    /// one is open, the active layer otherwise. [fuzz FZ-1]
+    fn paint_target_editable(&self) -> bool {
+        match self.frozen_paint_ids() {
+            Some((fid, lid)) => self.layer_editable_by_ids(fid, lid),
+            None => self.active_editable(),
+        }
+    }
+
     fn edit_frame<R>(&mut self, f: impl FnOnce(&mut Session) -> R) -> R {
+        self.settle_open_edits(); // absolute snapshots must not absorb untracked stroke pixels [fuzz FZ-1]
         let fi = self.doc.active_frame;
         let before = self.doc.frames[fi].clone();
         let fid = self.doc.frames[fi].id;
@@ -1254,6 +1316,7 @@ impl Session {
     /// roll the whole thing back and register a refusal. `pub(crate)` so sibling modules
     /// (`import`) go through the same chokepoint instead of hand-rolling the record. [audit P-0]
     pub(crate) fn edit_doc<R>(&mut self, label: &str, f: impl FnOnce(&mut Session) -> R) -> R {
+        self.settle_open_edits(); // absolute snapshots must not absorb untracked stroke pixels [fuzz FZ-1]
         let before = self.doc.frames.clone();
         let before_active = self.doc.active_frame;
         let before_size = self.doc.size;
@@ -1408,7 +1471,8 @@ impl Session {
                 }
             });
         }
-        self.stroke = Some(Stroke { before, start: p, last: p, path: vec![p], floating, pp, coat });
+        self.stroke =
+            Some(Stroke { before, tool: self.tool, start: p, last: p, path: vec![p], floating, pp, coat });
     }
 
     /// Freeze the paint settings into a fresh coat for a single-coat stroke of `tool` (ADR 0007:
@@ -1480,8 +1544,8 @@ impl Session {
             return;
         }
         let p = self.clamp_pointer(Point::new(x, y)); // bound off-canvas input [F-6]
-        let last = match &self.stroke {
-            Some(s) => s.last,
+        let (last, stool) = match &self.stroke {
+            Some(s) => (s.last, s.tool),
             None => return,
         };
         // Move tool in layer-move mode (no selection at drag start → move_before is set): re-blit
@@ -1504,7 +1568,19 @@ impl Session {
                     dy = cy;
                 }
             }
-            let fi = self.doc.active_frame;
+            // Re-blit into the drag's OWN frame (by id): the DSL may have changed the active
+            // frame mid-drag, and the commit/cancel paths restore this frame. [fuzz FZ-1]
+            let Some(fi) = self
+                .move_before
+                .as_ref()
+                .and_then(|(fid, _)| self.doc.frame_index_by_id(*fid))
+            else {
+                if let Some(s) = self.stroke.as_mut() {
+                    s.last = p;
+                    s.path.push(p);
+                }
+                return;
+            };
             let cr = self.doc.canvas_rect();
             for idx in 0..self.move_layers.len() {
                 let li = self.move_layers[idx].0;
@@ -1526,7 +1602,7 @@ impl Session {
             }
             return;
         }
-        if self.active_editable() {
+        if self.paint_target_editable() {
             // A single-coat stroke paints into its coat under the ctx FROZEN at stroke start —
             // dispatch keys off the coat's presence, never off `self.tool`, so a journaled
             // mid-stroke `SelectTool` can neither reroute nor strand the stroke (ADR 0007).
@@ -1536,7 +1612,9 @@ impl Session {
                     c.segment(sel.as_deref(), last, p);
                 }
             } else {
-                match self.tool {
+                // Key off the stroke's OWN tool: a mid-stroke SelectTool must neither stop a
+                // Pencil stroke's dabs nor start painting inside a selection stroke. [fuzz FZ-1]
+                match stool {
                     ToolKind::Pencil if self.pixel_perfect_active() => self.pencil_perfect_step(last, p),
                     ToolKind::Pencil => self.stroke_active(last, p, PaintMode::Replace, self.settings.primary),
                     _ => {}
@@ -1559,11 +1637,14 @@ impl Session {
         if self.move_before.is_some() {
             if let Some((fid, before)) = self.move_before.take() {
                 if stroke.start != stroke.last {
-                    let fi = self.doc.active_frame;
-                    let after = self.doc.frames[fi].clone();
-                    // A layer move leaves the selection untouched, so before == after (free record).
-                    let sel_before = self.doc.selection.clone();
-                    self.doc.record_frame_content(fid, before, after, sel_before);
+                    // Pair `after` with the drag's OWN frame (by id) — the DSL may have
+                    // changed the active frame mid-drag. [fuzz FZ-1]
+                    if let Some(fi) = self.doc.frame_index_by_id(fid) {
+                        let after = self.doc.frames[fi].clone();
+                        // A layer move leaves the selection untouched, so before == after (free record).
+                        let sel_before = self.doc.selection.clone();
+                        self.doc.record_frame_content(fid, before, after, sel_before);
+                    }
                 }
             }
             self.move_layers.clear();
@@ -1571,21 +1652,24 @@ impl Session {
             return;
         }
         let (start, last) = (stroke.start, stroke.last);
+        // The stroke's frozen target (the stroke was just taken off `self.stroke`, so the
+        // paint_* helpers can't see it): stroke-end painting and the editability gate resolve
+        // these ids, never the current active frame/layer. [fuzz FZ-1]
+        let (sfid, slid) = (stroke.before.fid, stroke.before.lid);
 
-        if self.active_editable() {
-            match self.tool {
+        if self.layer_editable_by_ids(sfid, slid) {
+            // The stroke ends as the tool that started it — a mid-stroke SelectTool must not
+            // swap in another tool's ending (or skip this one's). [fuzz FZ-1]
+            match stroke.tool {
                 ToolKind::Gradient => {
                     let spec = self.settings.gradient.clone();
                     let clip = self.paint_clip();
                     let sel = self.selection_clone();
-                    let (fi, li) = (self.doc.active_frame, self.doc.active_frame().active_layer);
-                    {
-                        let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
+                    if let Some(buf) = self.buf_by_ids_mut(sfid, slid) {
                         tool::apply_gradient(buf, sel.as_ref(), clip, &spec, start, last);
+                        self.last_gradient =
+                            Some((spec.kind, spec.stops.clone(), start, last, spec.smoothstep, sfid, slid));
                     }
-                    let (fid, lid) = (self.doc.frames[fi].id, self.doc.frames[fi].layers[li].id);
-                    self.last_gradient =
-                        Some((spec.kind, spec.stops.clone(), start, last, spec.smoothstep, fid, lid));
                 }
                 ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse | ToolKind::Triangle => {
                     let color = self.settings.primary;
@@ -1593,16 +1677,16 @@ impl Session {
                     let aa = self.settings.aa;
                     let clip = self.paint_clip();
                     let sel = self.selection_clone();
-                    let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-                    tool::draw_shape(buf, sel.as_ref(), clip, kind, start, last, 0.0, 0.0, color, fill, lw, PaintMode::Over, aa);
+                    if let Some(buf) = self.buf_by_ids_mut(sfid, slid) {
+                        tool::draw_shape(buf, sel.as_ref(), clip, kind, start, last, 0.0, 0.0, color, fill, lw, PaintMode::Over, aa);
+                    }
                 }
                 ToolKind::Move => {
                     if let (Some(float), Some(sel)) = (stroke.floating, self.selection_clone()) {
                         let (dx, dy) = (last.x - start.x, last.y - start.y);
                         let wrap = self.settings.wrap;
                         let cr = self.doc.canvas_rect();
-                        if let Some(bb) = sel.bounds() {
-                            let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
+                        if let (Some(bb), Some(buf)) = (sel.bounds(), self.buf_by_ids_mut(sfid, slid)) {
                             // erase originals
                             for j in 0..bb.h as i32 {
                                 for i in 0..bb.w as i32 {
@@ -1634,9 +1718,9 @@ impl Session {
         // Selection tools: build the shape mask and combine it into the selection as one undo step
         // (selection changes are now undoable + serialized; see Document::selection).
         let (sw, sh) = { let s = self.doc.storage(); (s.w as u32, s.h as u32) };
-        match self.tool {
+        match stroke.tool {
             ToolKind::SelectRect | ToolKind::SelectEllipse | ToolKind::SelectCircle => {
-                let kind = self.tool;
+                let kind = stroke.tool;
                 let shape = Mask::from_plot(sw, sh, |plot| match kind {
                     ToolKind::SelectRect => crate::raster::rect_filled(start, last, plot),
                     ToolKind::SelectEllipse => crate::raster::ellipse_filled(start, last, plot),
@@ -1668,19 +1752,56 @@ impl Session {
         }
 
         // Commit pixel changes as one undo record (single source of truth). [audit F-20]
-        if self.tool.commits_stroke() {
+        // Gate on the stroke's OWN tool: keying off the live tool let a mid-stroke switch to
+        // a non-committing tool strand the painted pixels untracked. [fuzz FZ-1]
+        if stroke.tool.commits_stroke() {
             self.commit_edit(stroke.before);
         }
+    }
+
+    /// Force-commit any open pointer stroke, move-layer drag, or pen segment WITHOUT the
+    /// tool-end side effects of a real pointer_up (no gradient/shape rasterization, no
+    /// selection combine). Called before operations that rebuild the storage geometry
+    /// (canvas resize/crop/rotate): an open stroke's before-snapshot describes the OLD
+    /// geometry, so a later commit would diff across the rebuild and drop painted pixels
+    /// from the undo record. [fuzz FZ-1]
+    pub(super) fn settle_open_edits(&mut self) {
+        if let Some(mut stroke) = self.stroke.take() {
+            if self.move_before.is_some() {
+                // Move-layer drag: commit the translation exactly like pointer_up's move branch.
+                if let Some((fid, before)) = self.move_before.take() {
+                    if stroke.start != stroke.last {
+                        if let Some(fi) = self.doc.frame_index_by_id(fid) {
+                            let after = self.doc.frames[fi].clone();
+                            let sel_before = self.doc.selection.clone();
+                            self.doc.record_frame_content(fid, before, after, sel_before);
+                        }
+                    }
+                }
+                self.move_layers.clear();
+                self.move_bbox = None;
+            } else {
+                // A dropped `floating` is a clean cancel: a selection move touches no pixels
+                // until pointer_up, so there is nothing to commit or restore.
+                if let Some(coat) = stroke.coat.take() {
+                    self.flatten_coat(&coat);
+                }
+                self.commit_edit(stroke.before);
+            }
+        }
+        self.cursor_stroke_end(); // commits an open pen segment the same way
     }
 
     /// Abort the in-progress stroke/drag, discarding its changes WITHOUT recording an undo step.
     /// Used when a multi-finger gesture interrupts a nascent single-finger stroke, so the gesture
     /// leaves no stray marks behind.
     pub fn cancel_stroke(&mut self) {
-        // Move-layer drag: restore the whole pre-drag frame snapshot.
-        if let Some((_fid, before)) = self.move_before.take() {
-            let fi = self.doc.active_frame;
-            self.doc.frames[fi] = before;
+        // Move-layer drag: restore the whole pre-drag frame snapshot — into the drag's OWN
+        // frame (by id), never the current active one. [fuzz FZ-1]
+        if let Some((fid, before)) = self.move_before.take() {
+            if let Some(fi) = self.doc.frame_index_by_id(fid) {
+                self.doc.frames[fi] = before;
+            }
             self.move_layers.clear();
             self.move_bbox = None;
             self.stroke = None;
@@ -1810,7 +1931,7 @@ impl Session {
         let (size, shape) = (self.settings.brush_size, self.settings.brush_shape);
         let clip = self.paint_clip();
         let sel = self.selection_arc(); // [C-2]
-        let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
+        let Some(buf) = self.paint_buf_mut() else { return }; // frozen target [fuzz FZ-1]
         tool::stroke_segment(buf, sel.as_deref(), clip, a, b, size, shape, color, mode);
     }
 
@@ -1847,7 +1968,7 @@ impl Session {
         let mut pts = Vec::new();
         crate::raster::line(a, b, |x, y| pts.push(Point::new(x, y)));
         {
-            let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
+            let Some(buf) = self.paint_buf_mut() else { return }; // frozen target [fuzz FZ-1]
             for c in pts {
                 // Successive segments share an endpoint (`line(a,b)` then `line(b,c)` both yield `b`);
                 // skip a repeat so it isn't mistaken for a step.
@@ -3086,6 +3207,7 @@ impl Session {
         if self.move_draft.is_some() || !self.active_editable() {
             return;
         }
+        self.settle_open_edits(); // the lift must not absorb untracked stroke pixels [fuzz FZ-1]
         let fi = self.doc.active_frame;
         let fid = self.doc.frames[fi].id;
         let sel_before = self.doc.selection.clone();
@@ -3236,10 +3358,16 @@ impl Session {
             self.edit_frame(|s| s.doc.active_frame_mut().layers[i].visible = v);
         }
     }
+    /// Set a layer's locked flag — one undo step, no-op change records nothing. The lock is
+    /// persisted document state, and history records store absolute frame snapshots, so an
+    /// UNtracked lock would be silently reverted by undoing any earlier record and never
+    /// restored by redo. [fuzz FZ-3, docs/fuzzing/FINDINGS.md]
     pub fn set_layer_locked(&mut self, i: usize, v: bool) {
-        if i < self.doc.active_frame().layers.len() {
-            self.doc.active_frame_mut().layers[i].locked = v;
+        let layers = &self.doc.active_frame().layers;
+        if i >= layers.len() || layers[i].locked == v {
+            return;
         }
+        self.edit_frame(|s| s.doc.active_frame_mut().layers[i].locked = v);
     }
     /// Set a layer's blend mode — one undo step. Re-selecting the current mode records nothing
     /// (the blend picker's apply-on-close commit would otherwise push a no-op step).
@@ -3250,9 +3378,8 @@ impl Session {
         }
         self.edit_frame(|s| s.doc.active_frame_mut().layers[i].blend = b);
     }
-    /// UI-preview-only direct mutation, no undo record (the `set_layer_locked` idiom): the
-    /// blend picker previews live and always restores the original before committing via
-    /// [`Self::set_layer_blend`].
+    /// UI-preview-only direct mutation, no undo record: the blend picker previews live and
+    /// always restores the original before committing via [`Self::set_layer_blend`].
     pub fn preview_layer_blend(&mut self, i: usize, b: BlendMode) {
         if i < self.doc.active_frame().layers.len() {
             self.doc.active_frame_mut().layers[i].blend = b;
@@ -5335,6 +5462,80 @@ mod tests {
         assert_eq!(s.layer_sel, vec![1]);
         s.run_script("Undo()").unwrap(); // layer 1 is gone again
         assert_eq!(s.layer_sel, vec![0], "a dangling index must collapse to the active layer");
+    }
+
+    #[test]
+    fn layer_lock_is_undoable_and_survives_neighbor_undo_redo() {
+        // [fuzz FZ-3] The lock is persisted state and records store absolute snapshots, so an
+        // untracked lock toggle is destroyed by undoing any earlier record and never redone.
+        let mut s = Session::new(16, 16);
+        s.run_script("SetLayerLocked(0,true)").unwrap();
+        assert!(s.doc.active_frame().layers[0].locked);
+        assert!(s.assert_undo_restores(), "a lock toggle must be one coherent undo step");
+        // Re-setting the current value records nothing (the set_layer_blend idiom).
+        s.run_script("SetLayerLocked(0,true)").unwrap();
+        let depth = s.doc.history.undo.len();
+        s.set_layer_locked(0, true);
+        assert_eq!(s.doc.history.undo.len(), depth, "no-op lock must not push a record");
+        // The original FZ-3 reproducer stays coherent end to end.
+        let mut s = Session::new(32, 32);
+        s.run_script(
+            "InvertSelection()\nRotateLayer(85)\nSetLayerLocked(0,true)\nApplyBrightnessContrast()",
+        )
+        .unwrap();
+        assert!(s.assert_undo_restores(), "FZ-3 reproducer: undo/redo must restore the doc");
+    }
+
+    #[test]
+    fn mid_stroke_structural_changes_keep_undo_coherent() {
+        // [fuzz FZ-1] Dabs and stroke-end commits must target the layer frozen at stroke
+        // start: a structural action mid-stroke (AddFrame/AddLayer/AddFrameAt/ResizeCanvas/
+        // SelectTool/RemoveLayer) must neither reroute the paint nor leave untracked pixels.
+        // Scripts are the captured fuzzing reproducers (docs/fuzzing/FINDINGS.md).
+        let scripts: &[&str] = &[
+            "PointerDown(-5,-1)\nAddFrame()\nAddFrame()\nAddFrame()\nAddFrame()\nPointerMove(0,0)\nPointerUp()",
+            "AddLayer()\nPointerDown(1532713775,1531693907)\nAddLayer()\nPointerMove(-75,0)\nPointerUp()",
+            "PointerDown(-104,77)\nAddFrameAt(111)\nPointerMove(33667,0)\nPointerUp()",
+            "PointerDown(39,75)\nPointerMove(-1734701979,2088600450)\nResizeCanvas(64,64)\nPointerMove(7,47)\nPointerUp()",
+            "PointerDown(15,91)\nResizeCanvas(12,12)\nSelectTool(Pencil)\nSetLayerLocked(0,true)\nRemoveLayer(110)\nSelectTool(Pencil)\nPointerUp()",
+            "InvertSelection()\nInvert()\nPointerDown(7,7)\nSelectTool(SelectFree)\nShapeCancel()\nInvert()\nCancelStroke()\nPointerUp()",
+            "SetBrushSize(48)\nSelectNone()\nPointerDown(0,25)\nSetBrightnessContrast(56,-114)\nRemovePaletteColor(255)\nResizeCanvas(64,64)\nPointerMove(0,0)\nPointerUp()",
+            "AddLayer()\nSetLineWidth(227)\nPointerDown(0,-1)\nSetBrushSize(7)\nAddLayer()\nSetBrushSize(7)\nPointerMove(-53,83)\nSetLineWidth(1)\nPointerUp()",
+            // Mid-stroke switch to a NON-COMMITTING tool: the commit gate must key off the
+            // stroke's own tool or the painted pixels are stranded untracked.
+            "AddFrameAt(73)\nPointerDown(0,25)\nSelectTool(BrightnessContrast)\nPointerUp()",
+            "FillNoise(43007)\nSetBrushSize(49)\nPointerDown(4,0)\nSelectTool(CopyPaste)\nRemovePaletteColor(15)\nPointerUp()",
+            "NudgeLayers(50,51)\nTap(27,27)\nPointerDown(0,27)\nSetBrushSize(51)\nSelectTool(Eyedropper)\nTap(27,27)\nSelectTool(Pencil)\nPointerUp()",
+            "SetBrushSize(48)\nSelectNone()\nPointerDown(0,25)\nRotateLayer(255)\nRemovePaletteColor(255)\nRemovePaletteColor(204)\nCancelStroke()\nPointerUp()",
+            "ResizeCanvas(36,16)\nDuplicateLayer(50)\nPointerDown(15,15)\nSelectTool(SelectLayer)\nCropToSelection()\nPointerUp()",
+            // Undo()/repeated PointerDown() while a stroke is open: both settle the stroke
+            // first instead of churning absolute snapshots under untracked pixels.
+            "PointerDown(5,5)\nUndo()\nPointerUp()",
+            "SetShapeFill(false)\nSelectTool(Triangle)\nFillNoise(2304)\nPointerDown(7,7)\nPointerDown(7,7)\nUndo()\nRemovePaletteColor(255)\nPointerDown(7,7)\nPointerDown(7,7)\nPointerUp()",
+            "FillNoise(44975)\nRotateLayer(49)\nInvert()\nFillNoise(65535)\nPointerDown(127,127)\nUndo()\nPointerDown(9,9)\nFillNoise(65535)\nUndo()\nUndo()\nSetActiveFrame(82)\nPointerUp()",
+        ];
+        for s in scripts {
+            let mut sess = Session::new(32, 32);
+            let _ = sess.run_script(s);
+            // The fuzz oracle: if Undo changes the document, Redo must restore the exact hash.
+            let after = sess.doc.content_hash();
+            let _ = sess.run_script("Undo()");
+            if sess.doc.content_hash() != after {
+                let _ = sess.run_script("Redo()");
+                assert!(
+                    sess.doc.content_hash() == after,
+                    "undo/redo incoherent for script:\n{s}"
+                );
+            }
+            // And the document must still round-trip.
+            let saved = sess.save_bytes();
+            let mut s2 = Session::empty();
+            assert!(s2.load_bytes(&saved).is_ok(), "reload failed for script:\n{s}");
+            assert!(
+                s2.doc.content_hash() == sess.doc.content_hash(),
+                "round-trip hash mismatch for script:\n{s}"
+            );
+        }
     }
 
     #[test]

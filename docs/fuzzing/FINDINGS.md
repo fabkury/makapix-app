@@ -12,7 +12,28 @@ release gates until the fix lands.
 
 ---
 
-## FZ-1 — mid-stroke structural change breaks the undo invariant (OPEN)
+## FZ-1 — mid-stroke structural change breaks the undo invariant (FIXED 2026-08-25)
+
+**Root cause (three related leaks, all one disease — untracked pixels vs. the
+absolute-snapshot history):** live-painting dabs and stroke-end commits resolved the
+*current* active frame/layer while the stroke's one undo record diffs only the layer
+frozen at PointerDown; ops that rebuild storage geometry (resize/crop/rotate) or lift
+pixels (transform drafts) snapshotted half-painted strokes; and the commit gate keyed
+off the live `self.tool`, so a mid-stroke `SelectTool` onto a non-committing tool
+stranded painted pixels untracked.
+
+**Fix:** (1) painting + stroke-end paths resolve the frozen (fid, lid)
+(`buf_by_ids_mut`/`paint_buf_mut`); (2) `Stroke` freezes its starting tool and every
+stroke decision keys off it (ADR 0007's coat rule generalized); (3) `settle_open_edits`
+force-commits any open stroke at every chokepoint that pushes records or rebuilds
+geometry: `begin_edit`, `edit_frame`, `edit_doc`, resize/crop/canvas-rotate, the five
+draft-begins, and the `Undo`/`Redo` verbs (undo mid-stroke now pops the just-drawn
+pixels — standard editor semantics). Regression: `mid_stroke_structural_changes_keep_
+undo_coherent` (16 reproducer scripts) + `layer_lock_is_undoable_…` in
+`session.rs` tests. Post-fix fuzzing: all 25 accumulated artifacts pass; further
+bursts produce no logic crashes.
+
+Original report follows.
 
 **Found:** 2026-08-25, `fuzz_session_actions`, first session (within minutes).
 **Oracle:** undo coherence (SPEC §10 — do→undo→redo must restore the content hash).
@@ -74,7 +95,19 @@ byte signature (221 → 203, first diff at byte 40): `PointerDown(21,-1)` /
 `ResizeCanvas(12,12)` / `SelectTool(Pencil)`. Common core of both scripts:
 `InvertSelection` + `ResizeCanvas` — strengthens the stale-selection hypothesis.
 
-## FZ-3 — undo/redo incoherence without any open stroke (OPEN)
+## FZ-3 — undo/redo incoherence without any open stroke (FIXED 2026-08-25)
+
+**Root cause:** `set_layer_locked` mutated persisted, hashed document state with NO
+history record (the deliberate "set_layer_locked idiom"), while `visible`/`opacity`/
+`blend`/`rename` all record. History records store absolute frame snapshots, so
+undoing any earlier record (here: the RotateLayer record) silently reverted the
+untracked lock, and redo re-applied a snapshot that never contained it.
+
+**Fix:** `set_layer_locked` records one undo step via `edit_frame` like its siblings
+(no-op re-set records nothing, the `set_layer_blend` idiom). Regression:
+`layer_lock_is_undoable_and_survives_neighbor_undo_redo` in `session.rs` tests.
+
+Original report follows.
 
 **Found:** 2026-08-25, `fuzz_session_actions`, 20-minute day run
 (artifact `crash-4174706f…`).

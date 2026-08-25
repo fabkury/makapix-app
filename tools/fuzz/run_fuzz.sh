@@ -81,9 +81,13 @@ done
 
 for T in $TARGETS; do
   [[ $INTERRUPTED == 1 ]] && break
+  # Loader: rss_limit=512 is the Android-allocator-wall oracle (one load = one input).
+  # Actions: the RSS check is process-wide and allocator retention accumulates over
+  # thousands of inputs per worker (false oom-* artifacts, 2026-08-25); a high rss cap
+  # plus malloc_limit=512 keeps the genuine single-allocation-bomb oracle instead.
   case "$T" in
-    fuzz_load_mkpx) MAXLEN=65536 ;;
-    *)              MAXLEN=4096 ;;
+    fuzz_load_mkpx) MAXLEN=65536; RSSLIM=512;  MALLOCLIM=512 ;;
+    *)              MAXLEN=4096;  RSSLIM=4096; MALLOCLIM=512 ;;
   esac
   ARTIFACTS_BEFORE=$(ls "$WORK/fuzz/artifacts/$T" 2>/dev/null || true)
   LOG="$WORK/fuzz/logs/$STAMP-$LABEL-$T.log"
@@ -91,7 +95,8 @@ for T in $TARGETS; do
   rm -f "$WORK"/fuzz-*.log
   nice -n 19 cargo +nightly fuzz run "$T" "fuzz/corpus/$T" -- \
     -workers="$WORKERS" -jobs="$WORKERS" -max_total_time="$SECS_PER" \
-    -rss_limit_mb=512 -timeout=10 -max_len="$MAXLEN" -print_final_stats=1 \
+    -rss_limit_mb="$RSSLIM" -malloc_limit_mb="$MALLOCLIM" \
+    -timeout=10 -max_len="$MAXLEN" -print_final_stats=1 \
     >"$LOG" 2>&1 &
   FPID=$!
   wait "$FPID"

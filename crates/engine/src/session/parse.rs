@@ -372,11 +372,17 @@ impl Session {
             SortPalette => self.sort_palette(),
             SortPaletteAt(i) => self.sort_palette_at(i),
             Undo => {
+                // An open stroke settles (commits) first, so Undo pops the just-drawn pixels
+                // instead of churning absolute snapshots under untracked ones. [fuzz FZ-1]
+                self.settle_open_edits();
                 self.doc.undo();
                 self.mem_recalibrate();
                 self.sanitize_layer_sel(); // undo can shrink the active frame's layer stack
             }
             Redo => {
+                // Settling mid-stroke pushes a record, which clears the redo stack — standard
+                // editor semantics: new drawing kills the redoable branch. [fuzz FZ-1]
+                self.settle_open_edits();
                 self.doc.redo();
                 self.mem_recalibrate();
                 self.sanitize_layer_sel();

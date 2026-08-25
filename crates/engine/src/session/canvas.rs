@@ -100,6 +100,7 @@ impl Session {
         if q == 0 {
             return;
         }
+        self.settle_open_edits(); // the rebuild invalidates an open stroke's snapshot [fuzz FZ-1]
         let old = self.doc.size;
         let new_size = if q == 2 { old } else { Size::new(old.h, old.w) };
         // Rotate the whole storage grid (canvas + gutter); the centered canvas rotates onto the new
@@ -241,6 +242,7 @@ impl Session {
         if new_size == self.doc.size {
             return;
         }
+        self.settle_open_edits(); // the rebuild invalidates an open stroke's snapshot [fuzz FZ-1]
         self.shape_draft = None; // endpoints reference the old dimensions
         let old = self.doc.size;
         // Work in storage coords: shift the whole old storage (canvas + gutter) so the old canvas
@@ -286,6 +288,7 @@ impl Session {
             Some(b) => b,
             None => return,
         };
+        self.settle_open_edits(); // the rebuild invalidates an open stroke's snapshot [fuzz FZ-1]
         let nw = (bounds.w as u16).clamp(MIN_DIM, MAX_DIM);
         let nh = (bounds.h as u16).clamp(MIN_DIM, MAX_DIM);
         let new_size = Size::new(nw, nh);
@@ -350,6 +353,7 @@ impl Session {
         if self.rotate_draft.is_some() || self.scale_draft.is_some() || !self.active_editable() {
             return;
         }
+        self.settle_open_edits(); // the lift must not absorb untracked stroke pixels [fuzz FZ-1]
         let fi = self.doc.active_frame;
         let fid = self.doc.frames[fi].id;
         let lid = self.doc.frames[fi].active_layer().id;
@@ -421,6 +425,7 @@ impl Session {
         if self.rotate_draft.is_some() || self.scale_draft.is_some() {
             return;
         }
+        self.settle_open_edits(); // the lift must not absorb untracked stroke pixels [fuzz FZ-1]
         let fi = self.doc.active_frame;
         let fid = self.doc.frames[fi].id;
         // Rotate over the whole storage about its center (= the canvas center for a centered gutter),
@@ -619,6 +624,7 @@ impl Session {
         if self.scale_draft.is_some() || self.rotate_draft.is_some() || !self.active_editable() {
             return;
         }
+        self.settle_open_edits(); // the lift must not absorb untracked stroke pixels [fuzz FZ-1]
         let fi = self.doc.active_frame;
         let fid = self.doc.frames[fi].id;
         let lid = self.doc.frames[fi].active_layer().id;
@@ -691,6 +697,7 @@ impl Session {
         if self.scale_draft.is_some() || self.rotate_draft.is_some() {
             return;
         }
+        self.settle_open_edits(); // the lift must not absorb untracked stroke pixels [fuzz FZ-1]
         let fi = self.doc.active_frame;
         let fid = self.doc.frames[fi].id;
         let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
