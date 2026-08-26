@@ -32,6 +32,15 @@ Alternatives rejected:
 
 Consequences: the marker is deliberately inert — a future maintainer will find a version bump that
 nothing reads and must not "clean it up"; it exists so the *next* fork has a boundary to point at.
-Rust goldens that encode active-frame-after-delete or reorder behavior will move, and by repo
-doctrine a moved pin is normally *the bug* — these re-pins are the documented exception and must be
-called out in the commit that makes them.
+Rust goldens that encode active-frame-after-delete or reorder behavior were expected to move, and by
+repo doctrine a moved pin is normally *the bug* — such re-pins would have been the documented
+exception. **In the event, none moved:** implementing ADR 0013 (commit `66675fe`) left
+`aa_off_pins` and `replay_checkpoint` untouched and the whole workspace suite green, because no
+golden encodes which frame is active after a delete or reorder. The exception was never needed —
+but the reasoning stands for the next fork.
+
+One implementation hazard is worth recording because it is invisible until it destroys data:
+`parseJournal` and `JournalRecorder.attachResume` both gated on **exact** equality with the
+version-header constant, and attachResume renames a header it cannot recognize aside. Bumping the
+constant alone would therefore have set aside every existing user's entire replay history on first
+open. Header recognition must always accept every past epoch; there is a test pinning that.
