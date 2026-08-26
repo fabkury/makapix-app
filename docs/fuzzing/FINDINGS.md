@@ -19,6 +19,12 @@ release gates until the fix lands.
 | 2026-08-25 | 14 workers, 12.5 min/target (post-fix) | 1.12M execs, **2234 edges**, 0 crashes | 2.08M execs, **6935 edges**, **0 crashes** |
 | 2026-08-25 | 14 workers, 10 min/target (FZ-2 close, stale-mask guard live) | 1.00M execs, 2287 edges, 0 crashes | 1.47M execs, 6940 edges, 0 crashes |
 | 2026-08-25 | 14 workers, 5 min/target (all findings closed) | 451k execs, 2289 edges, 0 crashes | 656k execs, 6940 edges, 0 crashes |
+| 2026-08-26 | 14 workers, 22.5 min/target (night burst) | 2.53M execs, **2292 edges**, 0 crashes | 2.98M execs, **6947 edges**, **8 crashes** → FZ-4 |
+
+The 2026-08-26 burst broke that plateau on both targets (loader 2289→2292, actions
+6940→6947) and produced FZ-4 — the "low-yield" verdict below held only for the
+*short* bursts it was written about; a 22.5 min/target run was long enough to reach
+new surface.
 
 Coverage on both targets has plateaued (loader 2287→2289, actions 6940→6940) with no
 new findings across ~3.6M post-fix executions: the saturation the analysis doc predicts
@@ -205,3 +211,114 @@ is never restored. Minimization facts (all verified 2026-08-25):
 - Suspicion: a refused/degenerate apply on a locked layer pushes a malformed history
   entry whose before-state snapshot predates the lock. Root cause not yet located.
 
+## FZ-4 — a layer-move drag can mutate the document without recording it (OPEN)
+
+**Found:** 2026-08-26, `fuzz_session_actions`, 45-minute night burst (14 workers,
+22.5 min/target). **Eight** artifacts, all the same oracle and, after reduction, the
+same root cause.
+**Oracle:** 2 — undo coherence (`Undo()` changed the document but `Redo()` did not
+restore it).
+**Status:** OPEN. Deterministic, reduced, root cause located. **Not a 1.6.0
+regression** — all eight reproduce unchanged on the engine at `90835314` (the last
+commit before the two 1.6.0 engine commits), so this is long-standing surface the
+earlier short bursts never reached.
+**User-reachable:** yes. It reproduces with a plain `PointerUp()` as the only settle
+step, i.e. the exact sequence a finger or mouse produces — no fuzz-only teardown verb
+is involved.
+
+**Root cause** — `crates/engine/src/session.rs:1643`, the layer-move commit in
+`pointer_up`:
+
+```rust
+if self.move_before.is_some() {
+    if let Some((fid, before)) = self.move_before.take() {
+        if stroke.start != stroke.last {          // <-- pointer coords as a proxy
+            ...
+            self.doc.record_frame_content(fid, before, after, sel_before);
+        }
+    }
+    ...
+}
+```
+
+Layer-move mode re-blits into the document **live** on every `pointer_move`
+(`session.rs:1559-1600`: `clear_in_place()` then `blit_wrapped` / `blit_over`), and
+defers the undo record to `pointer_up`. The guard above then decides whether that
+already-applied mutation gets recorded by comparing **pointer coordinates**, not
+content. When the coordinates match but the pixels changed, `move_before` is dropped
+via `.take()` — and unlike `cancel_stroke` (`session.rs:1805`), which restores the
+snapshot, this path neither records the change nor reverts it. The document is left
+holding a mutation no history record covers.
+
+That is the FZ-1 doctrine violated again, from the other side: history records store
+absolute snapshots, so *every persisted mutation must be tracked*. Here an untracked
+one survives, and the next `Undo()`/`Redo()` pair replays a snapshot that predates it,
+silently discarding the pixels.
+
+Two ways the fuzzer reached it:
+
+**(a) zero-delta drag with `wrap` on.** `PointerDown(7,7)` then `PointerMove(7,7)`
+gives `dx = dy = 0`, so `start == last` and nothing is recorded — but
+`blit_wrapped(snap, 0, 0, cr)` is *not* the identity once the layer holds pixels
+outside the canvas rect (here left behind by shrinking 32x32 to 18x45): the
+out-of-canvas columns fold back into view. Minimal reproducer, every line necessary
+(ddmin-verified — dropping any one line makes the oracle pass):
+
+```
+SelectTool(Move)
+FillNoise(28079)
+SetWrap(true)
+ResizeCanvas(18,45)
+PointerDown(7,7)
+PointerMove(7,7)
+```
+
+Line-by-line trace at HEAD (`*` = this line changed the document):
+
+```
+FillNoise(28079)      *  canvas=32x32  doc=9c6efaf8
+ResizeCanvas(18,45)   *  canvas=18x45  doc=4036a639
+PointerDown(7,7)         canvas=18x45  doc=4036a639
+PointerMove(7,7)      *  canvas=18x45  doc=947125b7   <-- untracked mutation
+PointerUp()              canvas=18x45  doc=947125b7   <-- records nothing
+Undo()                *  canvas=32x32  doc=9c6efaf8   (pops the ResizeCanvas record)
+Redo()                *  canvas=18x45  doc=4036a639   <-- 947125b7 lost for good
+```
+
+It repeats on every subsequent Undo/Redo round, and `SetWrap(true)` is required:
+without wrap, `blit_over(snap, (0,0))` really is the identity.
+
+**(b) a drag superseded by a second `PointerDown`.** A new `PointerDown` while a
+layer-move drag is still open mutates the document (visible as `*` on the
+`PointerDown` line) and re-snapshots `move_before`; the superseded drag's mutation is
+never recorded. Two reduced scripts of this shape, neither needing `wrap`:
+
+```
+Tap(29,29)                    ResizeCanvas(1,2)
+InvertSelection()             FillNoise(57260)
+SelectTool(Move)              InvertSelection()
+PointerDown(27,96)            SelectTool(Move)
+PointerMove(44,5)             PointerDown(7,46)
+PointerDown(27,96)   *        PointerMove(-1526700545,1537189028)
+PointerMove(-125,5)           PointerDown(58,27)     *
+PointerDown(5,5)     *        PointerMove(27,63)     *
+PointerMove(5,5)     *
+```
+
+**Suggested fix direction** (not implemented — engine fixes are separate sessions):
+replace the coordinate proxy with a content test, or make the not-recorded branch
+restore `before` the way `cancel_stroke` does. A content comparison is the safer of
+the two: it also covers shape (b), where the pixels genuinely did change and the
+right answer is to record, not to revert. Note `move_draft_commit`
+(`session.rs:3304`) carries the *same* `if d.offset == Point::new(0, 0) { return; }`
+proxy with the same "nothing moved -> no document change" comment; it is safe today
+only because that path leaves the document untouched while the draft is open, but the
+assumption is the same one that fails here.
+
+**Regression test:** deliberately NOT added to `crates/engine/tests/fuzz_inputs.rs`
+while this is open — a failing semantic check there breaks the release gates
+(`release_android.ps1` runs `cargo test`). Add it with the fix.
+
+**Artifacts:** `fuzz/artifacts/fuzz_session_actions/crash-{2193f3e4, 2f8595d0,
+475ec510, 4904768f, 4e48dc6f, 58a9683d, e6dfc2ac, f91ff3be}...` (8, git-ignored),
+plus `minimized-from-7a6acc12...` from `cargo fuzz tmin`.
