@@ -377,7 +377,8 @@ impl Session {
                 self.settle_open_edits();
                 self.doc.undo();
                 self.mem_recalibrate();
-                self.sanitize_layer_sel(); // undo can shrink the active frame's layer stack
+                // No Move-group repair needed: it is held by layer id (ADR 0013), so a layer
+                // stack that undo shrank simply stops resolving the ids it no longer has.
             }
             Redo => {
                 // Settling mid-stroke pushes a record, which clears the redo stack — standard
@@ -385,7 +386,6 @@ impl Session {
                 self.settle_open_edits();
                 self.doc.redo();
                 self.mem_recalibrate();
-                self.sanitize_layer_sel();
             }
             ClearHistory => self.doc.history = crate::history::History::new(),
             SetMemBudget(soft, hard) => self.set_mem_budgets(soft as usize, hard as usize),

@@ -256,7 +256,12 @@ pub struct Session {
     /// itself now lives on [`Document`] (`doc.selection`) so it is undoable and serialized.
     pub selection_mode: CombineMode,
     /// Layers (within the active frame) selected to move/transform together (SPEC §15).
-    pub layer_sel: Vec<usize>,
+    /// The Move group: layer **ids** (not indices) in the active frame that translate
+    /// together. Empty means "no group" — Move and nudge fall back to the active layer, which
+    /// is what makes a one-member group a real, distinguishable state (ADR 0013). Held by id
+    /// so reorder/remove cannot make it stale; transient — cleared on frame change, on layer
+    /// activation, and on document change. Session-only: never persisted, never named in the DSL.
+    pub move_group: Vec<u32>,
     /// Precision-pencil reticle position + active pen stroke (draw-by-button, off-finger).
     cursor: Point,
     /// The open precision drag segment — the pen path's stroke unit (ADR 0007: in precision
@@ -348,7 +353,7 @@ impl Session {
             tool: ToolKind::Pencil,
             settings: ToolSettings::default(),
             selection_mode: CombineMode::Replace,
-            layer_sel: vec![0],
+            move_group: Vec::new(),
             cursor: Point::new(w as i32 / 2, h as i32 / 2),
             pen_segment: None,
             pen_held: false,
@@ -1445,9 +1450,8 @@ impl Session {
                 li < f.layers.len() && f.layers[li].visible && !f.layers[li].locked
             };
             let mut sel: Vec<usize> = self
-                .layer_sel
-                .iter()
-                .copied()
+                .move_group_indices()
+                .into_iter()
                 .filter(|&li| editable(li, &self.doc.frames[fi]))
                 .collect();
             sel.sort_unstable();
@@ -2776,7 +2780,7 @@ impl Session {
             s.doc.frames.push(Frame { id, duration_us: dur, layers, active_layer: 0 });
             s.doc.active_frame = s.doc.frames.len() - 1;
         });
-        self.reset_layer_sel(); // the move-group indexes the active frame's layers — a new frame is active
+        self.clear_move_group(); // a new frame is active; the group does not follow
     }
 
     pub fn duplicate_frame(&mut self, i: usize) {
@@ -2792,7 +2796,7 @@ impl Session {
             s.doc.frames.insert(i + 1, copy);
             s.doc.active_frame = i + 1;
         });
-        self.reset_layer_sel();
+        self.clear_move_group();
     }
 
     /// Insert a fresh blank frame at index `at` (clamped to the end), making it active. Used by the
@@ -2809,7 +2813,7 @@ impl Session {
             s.doc.frames.insert(at, Frame { id, duration_us: dur, layers, active_layer: 0 });
             s.doc.active_frame = at;
         });
-        self.reset_layer_sel();
+        self.clear_move_group();
     }
 
     pub fn remove_frame(&mut self, i: usize) {
@@ -2819,14 +2823,15 @@ impl Session {
         let before = self.doc.active_frame().id;
         self.edit_doc("remove_frame", |s| {
             s.doc.frames.remove(i);
-            s.doc.active_frame = s.doc.active_frame.min(s.doc.frames.len() - 1);
+            // Keep the SAME frame active by identity, not by index (ADR 0013): removing a frame
+            // below the active one used to slide the active target onto its neighbor [G-35].
+            s.doc.active_frame = match s.doc.frames.iter().position(|f| f.id == before) {
+                Some(k) => k,
+                None => s.doc.active_frame.min(s.doc.frames.len() - 1),
+            };
         });
-        // A different frame may now be active (its layer stack too); keep the group only when the
-        // active frame survived as-is.
         if self.doc.active_frame().id != before {
-            self.reset_layer_sel();
-        } else {
-            self.sanitize_layer_sel();
+            self.clear_move_group(); // the active frame itself was the one removed
         }
     }
 
@@ -2835,17 +2840,20 @@ impl Session {
         if from >= n || to >= n || from == to {
             return;
         }
+        let before = self.doc.active_frame().id;
         self.edit_doc("reorder_frame", |s| {
             let f = s.doc.frames.remove(from);
             s.doc.frames.insert(to, f);
-            s.doc.active_frame = to;
+            // Reordering is not activation (ADR 0013): the same frame stays active wherever it
+            // landed, so moving the active frame follows it and moving another leaves it be [G-31].
+            s.doc.active_frame = s.doc.frames.iter().position(|f| f.id == before).unwrap_or(to);
         });
     }
 
     pub fn set_active_frame(&mut self, i: usize) {
         if i < self.doc.frames.len() && i != self.doc.active_frame {
             self.doc.active_frame = i;
-            self.reset_layer_sel(); // the move-group indexed the previous frame's layer stack
+            self.clear_move_group(); // the Move group is transient: it does not cross frames
         }
     }
 
@@ -2881,7 +2889,7 @@ impl Session {
             let n = s.doc.active_frame().layers.len();
             s.doc.active_frame_mut().active_layer = n - 1;
         });
-        self.reset_layer_sel(); // focus moved to the new layer; a stale group would drag the old one
+        self.clear_move_group(); // focus moved to a new layer; creation dissolves the group
     }
 
     /// Insert a fresh blank layer at index `at` (clamped) in the active frame, making it active. Used
@@ -2898,20 +2906,26 @@ impl Session {
             s.doc.active_frame_mut().layers.insert(at, layer);
             s.doc.active_frame_mut().active_layer = at;
         });
-        self.reset_layer_sel();
+        self.clear_move_group();
     }
 
     pub fn remove_layer(&mut self, i: usize) {
         if self.doc.active_frame().layers.len() <= 1 || i >= self.doc.active_frame().layers.len() {
             return;
         }
+        let before = self.doc.active_frame().layers[self.doc.active_frame().active_layer].id;
         self.edit_frame(|s| {
             s.doc.active_frame_mut().layers.remove(i);
+            // The same layer stays active by identity (ADR 0013): removing a layer below the
+            // active one no longer slides the active target [G-35]. The Move group is held by id,
+            // so it needs no repair here.
             let n = s.doc.active_frame().layers.len();
-            let a = s.doc.active_frame().active_layer.min(n - 1);
+            let a = match s.doc.active_frame().layers.iter().position(|l| l.id == before) {
+                Some(k) => k,
+                None => s.doc.active_frame().active_layer.min(n - 1),
+            };
             s.doc.active_frame_mut().active_layer = a;
         });
-        self.remap_layer_sel_removed(i);
     }
 
     pub fn duplicate_layer(&mut self, i: usize) {
@@ -2928,7 +2942,7 @@ impl Session {
             s.doc.active_frame_mut().layers.insert(i + 1, copy);
             s.doc.active_frame_mut().active_layer = i + 1;
         });
-        self.reset_layer_sel();
+        self.clear_move_group();
     }
 
     /// Merge layer `i` down onto the layer below it: composite `i`'s pixels — with its opacity
@@ -2963,7 +2977,7 @@ impl Session {
             }
             f.active_layer = i - 1;
         });
-        self.reset_layer_sel();
+        self.clear_move_group();
     }
 
     pub fn reorder_layer(&mut self, from: usize, to: usize) {
@@ -2971,18 +2985,21 @@ impl Session {
         if from >= n || to >= n || from == to {
             return;
         }
+        let before = self.doc.active_frame().layers[self.doc.active_frame().active_layer].id;
         self.edit_frame(|s| {
             let l = s.doc.active_frame_mut().layers.remove(from);
             s.doc.active_frame_mut().layers.insert(to, l);
-            s.doc.active_frame_mut().active_layer = to;
+            // Reordering is not activation (ADR 0013): arranging from a retargeted sheet cannot
+            // steal the drawing target [G-34].
+            let a = s.doc.active_frame().layers.iter().position(|l| l.id == before).unwrap_or(to);
+            s.doc.active_frame_mut().active_layer = a;
         });
-        self.remap_layer_sel_reorder(from, to);
     }
 
     pub fn set_active_layer(&mut self, i: usize) {
         if i < self.doc.active_frame().layers.len() {
             self.doc.active_frame_mut().active_layer = i;
-            self.layer_sel = vec![i];
+            self.clear_move_group(); // explicit activation dissolves any group
         }
     }
 
@@ -2995,74 +3012,47 @@ impl Session {
             v.push(self.doc.active_frame().active_layer.min(n - 1));
         }
         self.doc.active_frame_mut().active_layer = v[0];
-        self.layer_sel = v;
+        let ids: Vec<u32> = v.iter().map(|&i| self.doc.active_frame().layers[i].id).collect();
+        self.move_group = ids;
     }
 
-    /// Set the move-group (layers that translate together) WITHOUT changing which layer is active,
-    /// so the active layer stays put while grouped. Falls back to the active layer if empty.
+    /// Set the Move group (layers that translate together) WITHOUT changing which layer is
+    /// active, so the active layer stays put while grouped. An EMPTY set now means "no group"
+    /// rather than "the active layer" (ADR 0013) — that is what makes a one-member group a
+    /// real, distinguishable state [G-33]. Indices in, ids stored: the DSL surface is unchanged.
     pub fn set_move_group(&mut self, idxs: &[usize]) {
         let n = self.doc.active_frame().layers.len();
         let mut v: Vec<usize> = idxs.iter().copied().filter(|&i| i < n).collect();
         v.sort_unstable();
         v.dedup();
-        if v.is_empty() {
-            v.push(self.doc.active_frame().active_layer.min(n.saturating_sub(1)));
-        }
-        self.layer_sel = v;
+        let ids: Vec<u32> = v.iter().map(|&i| self.doc.active_frame().layers[i].id).collect();
+        self.move_group = ids;
     }
 
-    // ---- move-group consistency ----
-    // `layer_sel` holds layer *indices* into the active frame, so every operation that changes
-    // which frame is active, which layer is active, or the layer list itself must keep it in
-    // sync. A stale group makes the Move tool and nudges act on the wrong layer(s) — AddLayer
-    // used to leave the group on the previous layer, so dragging the freshly added empty layer
-    // moved the old layer's pixels out from under the user.
+    // ---- Move group (ADR 0013) ----
+    // `move_group` holds layer IDS in the active frame, so reorder and remove cannot make it
+    // stale the way index membership did. Empty means "no group": Move and nudge fall back to
+    // the active layer, which is what makes a one-member group a real, distinguishable state
+    // [G-33]. It is transient - cleared whenever the active frame, the active layer, or the
+    // document changes - so the index-remapping helpers this replaced are no longer needed, and
+    // undo/redo need no separate repair pass (ids that vanish simply stop resolving).
 
-    /// Collapse the move-group to just the active layer of the active frame. Used by every
-    /// operation that hands focus to a different layer (add/duplicate/merge) or frame.
-    fn reset_layer_sel(&mut self) {
-        self.layer_sel = vec![self.doc.active_frame().active_layer];
+    /// Drop the Move group entirely. Used by every operation that hands focus to a different
+    /// layer (add/duplicate/merge), changes the active frame, or swaps the document.
+    fn clear_move_group(&mut self) {
+        self.move_group.clear();
     }
 
-    /// Remap the move-group after layer `removed` was deleted from the active frame: drop it,
-    /// shift higher indices down, and collapse to the active layer if the group empties.
-    fn remap_layer_sel_removed(&mut self, removed: usize) {
-        self.layer_sel.retain(|&li| li != removed);
-        for li in &mut self.layer_sel {
-            if *li > removed {
-                *li -= 1;
-            }
-        }
-        if self.layer_sel.is_empty() {
-            self.reset_layer_sel();
-        }
-    }
-
-    /// Remap the move-group across the remove-then-insert permutation `reorder_layer` performs,
-    /// so membership keeps following the same layers through the stack.
-    fn remap_layer_sel_reorder(&mut self, from: usize, to: usize) {
-        for li in &mut self.layer_sel {
-            *li = if *li == from {
-                to
-            } else if from < to && *li > from && *li <= to {
-                *li - 1
-            } else if to < from && *li >= to && *li < from {
-                *li + 1
-            } else {
-                *li
-            };
-        }
-        self.layer_sel.sort_unstable();
-    }
-
-    /// Drop move-group indices the active frame no longer has (undo/redo/load can shrink or swap
-    /// the layer list), collapsing to the active layer if the group empties.
-    pub(crate) fn sanitize_layer_sel(&mut self) {
-        let n = self.doc.active_frame().layers.len();
-        self.layer_sel.retain(|&li| li < n);
-        if self.layer_sel.is_empty() {
-            self.reset_layer_sel();
-        }
+    /// Resolve the Move group to layer indices in the active frame, in stack order. Ids the
+    /// frame no longer has are dropped on the way through.
+    pub(crate) fn move_group_indices(&self) -> Vec<usize> {
+        let f = self.doc.active_frame();
+        f.layers
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| self.move_group.contains(&l.id))
+            .map(|(i, _)| i)
+            .collect()
     }
 
     /// Union of the opaque bounding boxes of the given layers (in the active frame), or `None` if
@@ -3093,10 +3083,12 @@ impl Session {
     /// Translate the content of all selected layers by (dx,dy), together, as one undoable
     /// frame edit (SPEC §15 "move multiple layers as one").
     pub fn nudge_layers(&mut self, dx: i32, dy: i32) {
-        let layers: Vec<usize> = self
-            .layer_sel
-            .iter()
-            .copied()
+        let mut idxs = self.move_group_indices();
+        if idxs.is_empty() {
+            idxs.push(self.doc.active_frame().active_layer); // no group: nudge the active layer
+        }
+        let layers: Vec<usize> = idxs
+            .into_iter()
             .filter(|&i| i < self.doc.active_frame().layers.len() && !self.doc.active_frame().layers[i].locked)
             .collect();
         if layers.is_empty() {
@@ -3242,7 +3234,7 @@ impl Session {
             li < f.layers.len() && f.layers[li].visible && !f.layers[li].locked
         };
         let mut idxs: Vec<usize> =
-            self.layer_sel.iter().copied().filter(|&li| editable(li, &self.doc.frames[fi])).collect();
+            self.move_group_indices().into_iter().filter(|&li| editable(li, &self.doc.frames[fi])).collect();
         idxs.sort_unstable();
         idxs.dedup();
         if idxs.is_empty() {
@@ -3613,7 +3605,7 @@ impl Session {
         self.paste_draft = None;
         self.move_draft = None; // a stale draft would reference the previous document's frame [F-29]
         self.move_sel_before = None; // drop any half-open selection-move drag
-        self.reset_layer_sel(); // the move-group indexed the previous document's layers
+        self.clear_move_group(); // the Move group does not cross documents
     }
 
     // ---- gradient oracle access ----
@@ -5386,7 +5378,21 @@ mod tests {
         assert_eq!(s.doc.active_frame().active_layer, 2);
         s.set_move_group(&[0, 1]); // group two other layers
         assert_eq!(s.doc.active_frame().active_layer, 2); // active stays put
-        assert_eq!(s.layer_sel, vec![0, 1]); // but the move-group is those two
+        assert_eq!(s.move_group_indices(), vec![0, 1]); // but the Move group is those two
+    }
+
+    /// ADR 0013 [G-33]: an empty group means "no group", so a group of exactly one is a real,
+    /// distinguishable state rather than a synonym for "just the active layer".
+    #[test]
+    fn a_one_member_move_group_is_real() {
+        let mut s = Session::new(16, 16);
+        s.add_layer(); // layers 0,1; active 1
+        assert!(s.move_group.is_empty(), "no group by default");
+        s.set_move_group(&[0]); // a lone NON-active layer
+        assert_eq!(s.move_group_indices(), vec![0], "a one-member group survives as itself");
+        assert_eq!(s.doc.active_frame().active_layer, 1, "and does not steal activation");
+        s.set_move_group(&[]); // explicitly no group
+        assert!(s.move_group.is_empty(), "an empty set clears rather than collapsing to active");
     }
 
     // The reported bug: draw on layer 0, AddLayer (new empty layer becomes active), drag with the
@@ -5397,7 +5403,7 @@ mod tests {
         s.settings.primary = Rgba8::WHITE;
         s.tap(3, 3); // the "circle" on layer 0
         s.add_layer(); // new empty layer becomes active
-        assert_eq!(s.layer_sel, vec![1], "the move-group must follow the new active layer");
+        assert!(s.move_group.is_empty(), "creation dissolves the group; Move falls back to active");
         s.tool = ToolKind::Move;
         s.pointer_down(8, 8);
         s.pointer_move(11, 8); // drag +3x
@@ -5406,62 +5412,124 @@ mod tests {
         assert_eq!(s.pixel(0, 0, 6, 3), Rgba8::TRANSPARENT);
     }
 
+    /// Membership is held by layer id (ADR 0013), so it follows the same layers through removals
+    /// with no index remapping pass.
     #[test]
-    fn remove_layer_remaps_move_group() {
+    fn remove_layer_keeps_move_group_membership_by_id() {
         let mut s = Session::new(16, 16);
         s.add_layer();
         s.add_layer(); // layers 0,1,2
         s.set_move_group(&[1, 2]);
-        s.remove_layer(0); // below the group → both indices shift down
-        assert_eq!(s.layer_sel, vec![0, 1]);
-        s.remove_layer(1); // a group member → dropped
-        assert_eq!(s.layer_sel, vec![0]);
+        s.remove_layer(0); // below the group → the same two layers are now 0,1
+        assert_eq!(s.move_group_indices(), vec![0, 1]);
+        s.remove_layer(1); // a group member → its id stops resolving
+        assert_eq!(s.move_group_indices(), vec![0]);
     }
 
     #[test]
-    fn reorder_layer_remaps_move_group_membership() {
+    fn reorder_layer_keeps_move_group_membership_by_id() {
         let mut s = Session::new(16, 16);
         s.add_layer();
         s.add_layer(); // layers 0,1,2
         s.set_move_group(&[0, 2]);
         s.reorder_layer(0, 2); // old 0 → 2; old 1 → 0; old 2 → 1
-        assert_eq!(s.layer_sel, vec![1, 2], "membership follows the same layers through the stack");
+        assert_eq!(s.move_group_indices(), vec![1, 2], "membership follows the same layers");
+    }
+
+    /// ADR 0013 [G-34]: reordering is not activation. Arranging a layer from a retargeted sheet
+    /// must not steal the drawing target.
+    #[test]
+    fn reorder_layer_does_not_steal_the_active_layer() {
+        let mut s = Session::new(16, 16);
+        s.add_layer();
+        s.add_layer(); // layers 0,1,2
+        s.set_active_layer(0);
+        let active_id = s.doc.active_frame().layers[0].id;
+        s.reorder_layer(2, 1); // arrange some OTHER layer
+        assert_eq!(
+            s.doc.active_frame().layers[s.doc.active_frame().active_layer].id,
+            active_id,
+            "the same layer stays active"
+        );
+    }
+
+    /// ADR 0013 [G-35]: removing an item BELOW the active one must not slide the active target
+    /// onto its neighbor — identity, not index.
+    #[test]
+    fn remove_layer_below_active_keeps_the_same_layer_active() {
+        let mut s = Session::new(16, 16);
+        s.add_layer();
+        s.add_layer(); // layers 0,1,2
+        s.set_active_layer(2);
+        let active_id = s.doc.active_frame().layers[2].id;
+        s.remove_layer(0);
+        assert_eq!(s.doc.active_frame().active_layer, 1, "same layer, new index");
+        assert_eq!(s.doc.active_frame().layers[1].id, active_id);
     }
 
     #[test]
-    fn duplicate_and_merge_collapse_move_group_to_active() {
+    fn remove_frame_below_active_keeps_the_same_frame_active() {
+        let mut s = Session::new(16, 16);
+        s.add_frame();
+        s.add_frame(); // frames 0,1,2; frame 2 active
+        let active_id = s.doc.active_frame().id;
+        s.remove_frame(0);
+        assert_eq!(s.doc.active_frame, 1, "same frame, new index");
+        assert_eq!(s.doc.active_frame().id, active_id);
+    }
+
+    /// ADR 0013 [G-31]: reordering a frame is not activation. The previously active frame stays
+    /// active wherever it lands, so the Move group can never point into another frame's stack.
+    #[test]
+    fn reorder_frame_does_not_activate_the_moved_frame() {
+        let mut s = Session::new(16, 16);
+        s.add_frame();
+        s.add_frame(); // frames 0,1,2; frame 2 active
+        s.set_active_frame(0);
+        let active_id = s.doc.active_frame().id;
+        s.reorder_frame(2, 1); // move some OTHER frame
+        assert_eq!(s.doc.active_frame().id, active_id, "activation did not move");
+        s.reorder_frame(0, 2); // now move the ACTIVE frame
+        assert_eq!(s.doc.active_frame().id, active_id, "it follows its own frame");
+        assert_eq!(s.doc.active_frame, 2);
+    }
+
+    #[test]
+    fn duplicate_and_merge_dissolve_the_move_group() {
         let mut s = Session::new(16, 16);
         s.add_layer(); // layers 0,1
         s.set_move_group(&[0, 1]);
-        s.duplicate_layer(0); // the copy (index 1) becomes active
-        assert_eq!(s.layer_sel, vec![1]);
+        s.duplicate_layer(0); // the copy (index 1) becomes active — creation activates
+        assert!(s.move_group.is_empty());
         s.set_move_group(&[0, 2]);
         s.merge_down(2); // the merged layer (index 1) becomes active
-        assert_eq!(s.layer_sel, vec![1]);
+        assert!(s.move_group.is_empty());
     }
 
     #[test]
-    fn frame_switch_resets_move_group_redundant_switch_keeps_it() {
+    fn frame_switch_clears_move_group_redundant_switch_keeps_it() {
         let mut s = Session::new(16, 16);
         s.add_layer(); // frame 0: layers 0,1
         s.set_move_group(&[0, 1]);
         s.add_frame(); // a new (1-layer) frame becomes active
-        assert_eq!(s.layer_sel, vec![0]);
+        assert!(s.move_group.is_empty());
         s.set_active_frame(0);
         s.set_move_group(&[0, 1]);
         s.set_active_frame(0); // no actual switch → the group survives
-        assert_eq!(s.layer_sel, vec![0, 1]);
-        s.set_active_frame(1); // a real switch → reset to the new frame's active layer
-        assert_eq!(s.layer_sel, vec![0]);
+        assert_eq!(s.move_group_indices(), vec![0, 1]);
+        s.set_active_frame(1); // a real switch → the group does not cross frames
+        assert!(s.move_group.is_empty());
     }
 
+    /// Ids that the frame no longer has simply stop resolving, so undo needs no repair pass.
     #[test]
-    fn undo_sanitizes_move_group() {
+    fn undo_drops_move_group_ids_the_frame_no_longer_has() {
         let mut s = Session::new(16, 16);
-        s.run_script("AddLayer()").unwrap();
-        assert_eq!(s.layer_sel, vec![1]);
+        s.run_script("AddLayer()").unwrap(); // layers 0,1; creation cleared the group
+        s.set_move_group(&[0, 1]);
+        assert_eq!(s.move_group_indices(), vec![0, 1]);
         s.run_script("Undo()").unwrap(); // layer 1 is gone again
-        assert_eq!(s.layer_sel, vec![0], "a dangling index must collapse to the active layer");
+        assert_eq!(s.move_group_indices(), vec![0], "the dangling id stops resolving");
     }
 
     #[test]

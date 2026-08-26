@@ -680,8 +680,7 @@ fn tolerant_session_load_matches_strict_on_clean_files() {
     let warnings = t.load_bytes_tolerant(&bytes).unwrap();
     assert!(warnings.is_empty(), "a clean file loads without warnings");
     assert_eq!(t.doc.content_hash(), s.doc.content_hash());
-    let active = t.doc.active_frame().active_layer;
-    assert_eq!(t.layer_sel, vec![active], "the move-group from the previous document was reset");
+    assert!(t.move_group.is_empty(), "the Move group does not cross documents");
 }
 
 #[test]

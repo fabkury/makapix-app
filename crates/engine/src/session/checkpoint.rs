@@ -46,7 +46,7 @@ struct Checkpoint {
     tool: ToolKind,
     settings: ToolSettings,
     selection_mode: CombineMode,
-    layer_sel: Vec<usize>,
+    move_group: Vec<u32>,
     cursor: Point,
     clipboard: Option<(RgbaBuffer, Point)>,
     rng: SeededRng, // private state — clonable only from inside the session module tree
@@ -234,7 +234,7 @@ impl Session {
             tool: self.tool,
             settings: self.settings.clone(),
             selection_mode: self.selection_mode,
-            layer_sel: self.layer_sel.clone(),
+            move_group: self.move_group.clone(),
             cursor: self.cursor,
             clipboard: self.clipboard.clone(),
             rng: self.rng.clone(),
@@ -277,7 +277,7 @@ impl Session {
         self.tool = cp.tool;
         self.settings = cp.settings.clone();
         self.selection_mode = cp.selection_mode;
-        self.layer_sel = cp.layer_sel.clone();
+        self.move_group = cp.move_group.clone();
         self.cursor = cp.cursor;
         self.clipboard = cp.clipboard.clone();
         self.rng = cp.rng.clone();
