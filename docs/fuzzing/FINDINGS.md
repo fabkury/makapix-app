@@ -45,6 +45,7 @@ much longer runs.
 | Date | Config | `fuzz_webp_differential` | `fuzz_codec_import` |
 |---|---|---|---|
 | 2026-08-25 | 14 workers, 10 min/target | 4.41M execs, 847 edges, 0 findings | 7.48M execs, 4894 edges, 0 findings |
+| 2026-08-26 | 14 workers, 35 min, differential only | **15.54M execs**, 848 edges, 0 findings | — |
 
 Both came up clean on first contact. For the differential that is a **meaningful
 negative result, not an empty one**: 4.4M animations went through our hand-written
@@ -53,6 +54,26 @@ every time, which is real evidence for the delta-frame container (halved ANMF of
 changed-rect bounds, chunk lengths) that previously rested on one manual spot-check.
 The oracle is proven non-vacuous by `webp_check` (positive: 6 shapes match exactly;
 negative: a frame shifted 2 px inside a still-valid container is caught).
+
+**2026-08-26, 35 min (the deepest run this target has had).** 15.54M executions,
+0 findings, and coverage moved 847 \u2192 848 edges \u2014 this oracle is saturated in a way
+the actions target is not (which reached a new high the same day, and whose corpus is
+still growing fast). Cumulative: **~20M animations** have now gone through our
+hand-written muxer and back through libwebp with pixel-exact agreement. For a container
+whose delta-frame arithmetic (halved ANMF offsets, changed-rect bounds, chunk lengths)
+once rested on a single manual spot-check, that is about as strong as a negative result
+gets, and further budget here is better spent elsewhere.
+
+Throughput is the tell for why it saturates: ~740k exec/min, roughly 20x the actions
+target. Most inputs bail before doing any work. Measured on random bytes (`arbitrary`
+1.x decode of the `Anim` struct, 20k trials per length): ~50% decode to zero frames and
+~25% to a single frame, so only ~25% reach the differential oracle at all; the rest
+return immediately. Note this is the *from-scratch mutation* distribution \u2014 the live run
+mutates an evolved corpus under coverage feedback, which favors oracle-reaching inputs,
+so the real fraction is higher. Also note `-max_len=2048` is doing nothing for this
+target either way: `arbitrary` decides `Vec` continuation from a probability byte, not
+from remaining buffer size, so the frame-count distribution (mean 1.0) and `scale` are
+identical at every budget from 96 to 2048 bytes. Harmless, but not a knob worth turning.
 
 `fuzz_codec_import`'s 4894 edges are mostly the upstream `image` decoders, as expected
 (§2.3) — its value is the wrapper invariants it pins: every import either commits or
