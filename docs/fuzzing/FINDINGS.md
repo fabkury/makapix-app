@@ -21,6 +21,13 @@ release gates until the fix lands.
 | 2026-08-25 | 14 workers, 5 min/target (all findings closed) | 451k execs, 2289 edges, 0 crashes | 656k execs, 6940 edges, 0 crashes |
 | 2026-08-26 | 14 workers, 22.5 min/target (night burst) | 2.53M execs, **2292 edges**, 0 crashes | 2.98M execs, **6947 edges**, **8 crashes** → FZ-4 |
 | 2026-08-26 | 14 workers, 15 min, actions only (FZ-4 fix verification) | — | 2.35M execs, 6946 edges, **0 crashes** |
+| 2026-08-26 | 14 workers, 30 min, actions only (post-fix soak) | — | 4.41M execs, **6948 edges**, **0 crashes** |
+
+Post-FZ-4, a 30-minute actions soak (4.41M execs) reached a new coverage high for that
+target — 6948 edges, above both the 6947 of the run that found FZ-4 and the 6940 of the
+"plateau" — with no findings. The corpus is still growing fast (13,006 → 18,413 in one
+run), so the actions target is exploring, not saturated; it is simply not producing bugs
+at this depth any more.
 
 The 2026-08-26 burst broke that plateau on both targets (loader 2289→2292, actions
 6940→6947) and produced FZ-4 — the "low-yield" verdict below held only for the
