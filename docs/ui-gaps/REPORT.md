@@ -47,6 +47,36 @@ close most of the catalog with a handful of policies rather than 49 point fixes:
    The replace-the-canvas flows can adopt a corrupt drawing's identity, resurrect an explicitly
    discarded drawing, or clobber strokes drawn during an async restore. *(G-37…G-42.)*
 
+## Decisions (2026-08-26)
+
+A follow-up grilling session turned the five root causes into six adopted policies, each recorded as
+an ADR. Every finding in the catalog below now carries a **Disposition** line.
+
+| Policy | Rule in one line | ADR | Closes |
+|---|---|---|---|
+| Gesture atomicity | A gesture is atomic: competing input finishes it first; Esc/Undo/Redo cancel it instead. In-flight covers canvas drag, pinch, control drags, trackpad gestures, precision pen. | [0010](../adr/0010-gesture-atomicity.md) | 11 |
+| Draft lifecycle | Any context change — tool, frame, layer, document — cancels every open Draft, silently and irrecoverably. | [0011](../adr/0011-draft-lifecycle.md) | 5 |
+| Playback is a mode | Editing intent pauses first, at the `_act` funnel; inertness keys on playback running. The Playhead is a pure preview — pause returns to the Active target. | [0012](../adr/0012-playback-mode-and-playhead.md) | 9 |
+| Explicit activation | The Active target moves only by explicit activation; the shell addresses frames and layers by id, and the move-group is a transient id set. | [0013](../adr/0013-explicit-activation-and-ids.md) | 6 |
+| Load-then-adopt | Identity switches only after a load succeeds; one writer per drawing folder; canvas input gated until restore resolves. | [0014](../adr/0014-load-then-adopt.md) | 4 |
+| Accepted replay fork | Engine semantics are fixed properly and pre-change Journals may replay differently; the header bumps to `#mkpxj 2` and nothing branches on it. | [0015](../adr/0015-replay-semantics-fork.md) | — |
+
+**Coverage:** 35 closed by policy · **1 accepted as designed** (G-18) · **13 point fixes** — G-09,
+G-19, G-23, G-30, G-40 and G-42 from inside the clusters, plus G-43…G-49 from the keyboard and
+palette sections.
+
+**Two sharp edges, chosen deliberately.** A cancelled Draft is irrecoverable *and* silent: the
+refused eyedropper pick is the Editor's only non-silent interaction event, so a minute of Rotate
+positioning can vanish on a stray film-roll tap with no indication (ADR 0011). And accepting the
+replay fork means a Journal containing a frame delete or reorder may replay to a different result
+than the session that produced it — including already-published Timelapses (ADR 0015).
+
+**Delivery.** One branch, a commit per root cause plus one for the point fixes, and no dedicated
+release — the work rides with the next feature. Done means one regression test per policy (Dart for
+the shell rules, Rust scenarios for the engine ones) plus a hand-repro on G-01, G-02, G-13, G-14,
+G-30 and G-21. The new vocabulary — Gesture, Draft, Active target, Move group, Playhead — is in
+`CONTEXT.md`.
+
 ## Priority ladder
 
 Ranked by user damage; severity shown is post-verification (the verifiers corrected two claims and
@@ -73,7 +103,7 @@ the correction is printed — read it, it narrows several findings (e.g. G-01 is
 coat tools are id-pinned end-to-end). The three refuted findings are kept in the appendix because
 each documents a deliberate design that would otherwise get re-flagged.
 
-Nothing has been fixed; this report is the experiment's deliverable. Line numbers refer to the
+Nothing had been fixed when this report was written; it was the experiment's deliverable. The **Disposition** lines added 2026-08-26 record what each finding resolves to (see Decisions above) — the code work itself is still ahead. Line numbers refer to the
 working tree of 2026-08-24 and will drift.
 
 ## Mid-gesture collisions
@@ -83,6 +113,8 @@ The editor has exactly one guard that asks "is a pointer gesture in flight?" —
 ### G-01 · Frame/layer switch mid-stroke splits the stroke and makes its second half permanently un-undoable
 
 **Severity:** high · **Verdict:** confirmed · **Found by:** canvas-gestures
+
+**Disposition (2026-08-26).** Closed by ADR 0010 (gesture atomicity). The tap finishes the stroke before SetActiveFrame/SetActiveLayer reaches the engine, so no pixels land outside the recorded patch.
 
 **Collision.** An in-flight freehand canvas stroke vs. active-frame/active-layer changes (film-roll or layer-strip tap with a second finger, or the frame.prev/frame.next keyboard commands)
 
@@ -102,6 +134,8 @@ The editor has exactly one guard that asks "is a pointer gesture in flight?" —
 
 **Severity:** high · **Verdict:** confirmed · **Found by:** keyboard-dialogs
 
+**Disposition (2026-08-26).** Closed by ADR 0010. Tap Commands finish the gesture first; Esc/Undo/Redo cancel it instead and consume the keystroke.
+
 **Collision.** Keyboard tap Commands (tool mnemonics, frame.prev/next, frame.delete, edit.undo/redo, view.zoomIn/Out, sheet openers) vs. a mouse/touch stroke already in progress on the canvas
 
 **Current behavior.** The dispatcher consults access.pointerActive only for the hold-Alt eyedropper spring (dispatcher.dart:191); the tap-dispatch path (dispatcher.dart:208-231) and every Command's enabled predicate (commands.dart) ignore it. So while a stroke is in flight (mouse button held, PointerDown already sent to the engine): pressing a tool mnemonic runs _selectTool, which sends SelectTool(...) plus the whole _pushToolSettings barrage mid-stroke and never ends or cancels the stroke (_drawPointer is untouched, editor_page.engine.dart:477-567) — subsequent _continueDraw calls then dispatch through the NEW tool's branch, so the stroke changes meaning under the finger and the original stroke never receives PointerUp; pressing ',' or '.' (repeats:true) runs _stepFrame -> SetActiveFrame mid-stroke (editor_page.engine.dart:1000-1008), splitting the remainder of the stroke onto another frame; Ctrl+Backspace deletes the frame currently being painted (editor_page.keyboard.dart:80-85); Ctrl+Z (repeats:true) sends Undo() into an open stroke; and Ctrl+= / Ctrl+- (repeats:true) call _zoomStep -> _zoomAt (editor_page.keyboard.dart:108-110, 192-201), shifting the screen-to-canvas mapping so the in-flight stroke jumps sideways — the exact hazard the mouse-wheel zoom path explicitly guards against with 'if (_drawPointer != null || _pinching) return' (editor_page.canvas.dart:221-227).
@@ -119,6 +153,8 @@ The editor has exactly one guard that asks "is a pointer gesture in flight?" —
 ### G-03 · Tool or Precision/mode switch mid-stroke re-routes _endDraw so PointerUp() is never sent — the engine stroke stays open and its undo step is deferred to the next touch
 
 **Severity:** medium · **Verdict:** confirmed · **Found by:** canvas-gestures
+
+**Disposition (2026-08-26).** Closed by ADR 0010. A gesture always ends under the tool it began with, via the old tool's path.
 
 **Collision.** The begin/continue/end gesture dispatch keying on the CURRENT _tool at each event vs. tool changes landing mid-gesture (keyboard tool commands, enabled unconditionally; a second finger tapping a row-3 tile; the row-1 Precision chip)
 
@@ -138,6 +174,8 @@ The editor has exactly one guard that asks "is a pointer gesture in flight?" —
 
 **Severity:** medium · **Verdict:** confirmed · **Found by:** tools-controls
 
+**Disposition (2026-08-26).** Closed by ADR 0010. Keyboard tool switches take the same finish-first path as every other competing Command.
+
 **Collision.** A canvas stroke in progress vs. the tool-select keyboard Commands (and a second finger tapping a row-3 tile). The dispatcher's hold-Alt spring explicitly refuses to switch tools mid-drag ('the stroke would change meaning under the finger'), but plain tool Commands are enabled unconditionally.
 
 **Current behavior.** commands.dart:143-150 gives every tool Command enabled:_always, and the dispatcher only consults access.pointerActive for the Alt spring (dispatcher.dart:189-195; pointerActive defined at keyboard.dart:36). Pressing a tool key mid-stroke runs the full _selectTool during the drag, and _continueDraw/_endDraw dispatch on the NEW _tool (canvas.dart:511-614, 616-677). Concrete outcomes: for a coat stroke (Brush/Airbrush/Dodge/Burn) the engine deliberately keeps painting the OLD tool until finger-up (session.rs:1529-1544) while the UI already shows the new tool selected; switching to Eyedropper mid-stroke makes the remaining drag pick colors per move (session.rs:1471-1481); switching to Move mid-stroke stops the shell from ever sending PointerUp, leaving the engine stroke open until the NEXT pointer_down finalizes it as a deferred undo record (session.rs:1301-1307).
@@ -156,6 +194,8 @@ The editor has exactly one guard that asks "is a pointer gesture in flight?" —
 
 **Severity:** medium · **Verdict:** confirmed · **Found by:** canvas-gestures
 
+**Disposition (2026-08-26).** Closed by ADR 0010, via its Esc/Undo carve-out: Undo and Redo cancel the in-flight gesture and never reach history mid-stroke.
+
 **Collision.** The always-armed Undo/Redo (pinned row-3 tiles tappable with a second finger; Z/Y keyboard commands gated only on canUndo/canRedo) vs. an open engine stroke edit
 
 **Current behavior.** Mid-stroke, _doToolAction('Undo') sends Undo(), which runs doc.undo() with no stroke finalization — the previous committed action reverts on-screen under the still-painting stroke (wiping any of the stroke's marks that overlapped it). The stroke keeps painting on the reverted document; at PointerUp, commit_edit diffs the layer against the PRE-undo, pre-stroke snapshot, so the recorded patch bundles 'the stroke' together with 'the reversal of the undone action'. Undoing that one step later restores the pre-stroke snapshot — which resurrects the content the user explicitly undid mid-stroke — while the new record has also cleared the redo entry for it.
@@ -172,6 +212,8 @@ The editor has exactly one guard that asks "is a pointer gesture in flight?" —
 
 **Severity:** medium · **Verdict:** confirmed · **Found by:** canvas-gestures
 
+**Disposition (2026-08-26).** Closed by ADR 0010. Keyboard zoom finishes the stroke first, matching the wheel-zoom guard it was modeled on.
+
 **Collision.** The wheel/trackpad zoom guards ('ignored while a stroke or pinch is in flight so an established gesture's screen→canvas mapping never shifts under the pointer') vs. the keyboard view.zoomIn/zoomOut/zoomFit/zoom100 commands, which have no such gate
 
 **Current behavior.** onPointerSignal and onPointerPanZoomUpdate both refuse while _drawPointer != null, but view.zoomIn/zoomOut (repeats: true), view.zoomFit and view.zoom100 are enabled unconditionally and call _zoomAt/_fitView directly. Fired mid-stroke (keys with one hand, mouse drawing with the other), _zoom/_pan change and the very next _continueDraw maps the stationary pointer to a different canvas cell — the stroke teleports and the engine interpolates an unwanted straight line between the old and new cells. The same applies mid selection-drag, mid shape-handle drag, and mid ruler drag (all _drawPointer gestures).
@@ -187,6 +229,8 @@ The editor has exactly one guard that asks "is a pointer gesture in flight?" —
 ### G-07 · Toggling Move's mode mid-mask-drag strands an open MoveSelectionBegin session, making later selection moves silently non-undoable
 
 **Severity:** medium · **Verdict:** confirmed · **Found by:** canvas-gestures, tools-controls
+
+**Disposition (2026-08-26).** Closed by ADR 0010. The Move mode toggle is competing input and ends the mask drag before flipping.
 
 **Collision.** The MoveSelectionBegin/Commit coalescing protocol (Begin at drag start, Commit at drag end) vs. the row-1 'Move layer/pixels ↔ Move selection' toggle being tappable with a second finger while the drag is in flight
 
@@ -206,6 +250,8 @@ The editor has exactly one guard that asks "is a pointer gesture in flight?" —
 
 **Severity:** low · **Verdict:** confirmed · **Found by:** tools-controls
 
+**Disposition (2026-08-26).** Closed by ADR 0010, including its value-gesture rule: a control drag is in-flight state, committing on finish and reverting to the pre-drag value on cancel.
+
 **Collision.** The geared slider's stateful drag (accumulator + live gesture survive rebuilds) vs. per-tool remembered options resolved at setter-call time, when the tool is switched mid-drag by a keyboard tool key or a second finger.
 
 **Current behavior.** Size/Intensity are remembered per tool via maps keyed by the CURRENT _tool at setter execution (editor_page.dart:176-181, 260-261), and the Size closure writes through that setter (controls.dart:233-236). _GearedSlider keeps its drag accumulator and active gesture recognizer in State (toolgrid.dart:562-596), and the row-1 children carry no keys, so when a tool key (commands.dart:143-150, no mid-gesture guard) switches e.g. Pencil->Brush mid-drag, the same slider element continues the drag with the new closure: Pencil's mid-drag size value (plus further travel) is committed into Brush's remembered size, and the engine gets SetBrushSize for the wrong tool's intent. Worse, switching to a tool whose row-1 puts a DIFFERENT slider at that tree position (e.g. Pencil->Bucket, where the slot becomes Threshold, controls.dart:309-313) lets the continuing drag start driving Threshold from the old Size accumulator.
@@ -221,6 +267,8 @@ The editor has exactly one guard that asks "is a pointer gesture in flight?" —
 ### G-09 · Lifting one finger of a 3-finger pinch re-pairs the pinch against the original pair's anchors — the view jumps
 
 **Severity:** low · **Verdict:** confirmed · **Found by:** canvas-gestures
+
+**Disposition (2026-08-26).** Point fix. Pinch-internal rather than a gesture-atomicity case: re-anchor from the current two pointers whenever the touching set changes.
 
 **Collision.** The pinch math (anchored to _pinchStartDist/_pinchStartMid captured at _startPinch from the first two fingers) vs. _endTouch, which keeps _pinching true while ≥2 fingers remain but never re-anchors when the finger PAIR changes
 
@@ -238,6 +286,8 @@ The editor has exactly one guard that asks "is a pointer gesture in flight?" —
 
 **Severity:** low · **Verdict:** confirmed · **Found by:** canvas-gestures
 
+**Disposition (2026-08-26).** Closed by ADR 0010. Trackpad gestures join the in-flight predicate, so one started mid-stroke is never admitted.
+
 **Collision.** The trackpad gesture's cumulative-from-start model vs. the mid-stroke guard being on Update only (Start is unguarded), plus the hover-tracked focal anchor vs. a first gesture that arrives before any hover event
 
 **Current behavior.** onPointerPanZoomStart records _trackpadStartZoom/Pan/Focal even while a stroke or pinch is in flight; onPointerPanZoomUpdate then drops events until the stroke ends, after which the next update applies the ENTIRE accumulated e.pan/e.scale since gesture start in a single frame — a sudden view leap rather than either a clean refusal or a smooth resume. Separately, the anchor falls back to e.localPosition when _canvasHoverPos is null (no hover yet since the canvas mounted), which is exactly the value the adjacent comment documents as unreliable on Windows ('can arrive as the window origin', 'sent the canvas flying sideways').
@@ -254,6 +304,8 @@ The editor has exactly one guard that asks "is a pointer gesture in flight?" —
 
 **Severity:** low · **Verdict:** confirmed · **Found by:** palette-color
 
+**Disposition (2026-08-26).** Closed by ADR 0010. Opening a palette sheet is competing input and finishes the stroke first.
+
 **Collision.** Multi-touch: an in-progress canvas stroke x the row-2 palette sheets (swatch menu / add-color menu), which assume they interrupt interaction
 
 **Current behavior.** The palette strip sits outside the canvas Listener, so a second finger long-pressing a swatch (or the empty strip area) opens a modal bottom sheet mid-stroke (editor_page.controls.dart:885-921). Flutter routes move events to the gesture that won the arena at pointer-down, so the first finger keeps delivering PointerMove strokes to the engine under the sheet's barrier — the user paints blind behind the sheet. The sheets pause playback (906, 941) but nothing ends or suspends the active stroke, and the sheet's palette mutations (Remove/Edit/Swap via _act) interleave with the stroke's PointerMove stream in the journal. By contrast the canvas's own second-finger path deliberately aborts the draw before pinching (editor_page.canvas.dart:186-193), and the right-click pick refuses to run mid-stroke (canvas.dart:376) — the palette sheets are the one surface with no mid-stroke policy.
@@ -269,6 +321,8 @@ The editor has exactly one guard that asks "is a pointer gesture in flight?" —
 ### G-12 · Hold-Primary cheat-sheet overlay can appear over an in-progress stroke
 
 **Severity:** low · **Verdict:** confirmed · **Found by:** keyboard-dialogs
+
+**Disposition (2026-08-26).** Closed by ADR 0010. The cheat-sheet overlay does not arm while a gesture is in flight.
 
 **Collision.** The hold-Ctrl (Primary) 600 ms cheat-sheet overlay vs. a canvas stroke drawn while Ctrl happens to be held
 
@@ -290,6 +344,8 @@ Drafts (Move/Rotate/Scale transforms, shape/gradient figures, HSV/BC/Levels prev
 
 **Severity:** high · **Verdict:** confirmed · **Found by:** tools-controls
 
+**Disposition (2026-08-26).** Closed by ADR 0011 (draft lifecycle). A frame change is a context change and cancels every open Draft.
+
 **Collision.** An open Move/Rotate/Scale draft (engine-side, bound to its frame by fid) vs. frame navigation that does not cancel drafts (film-roll tap, keyboard frame.prev/next). Only a row-3 tool switch cancels drafts.
 
 **Current behavior.** The engine's set_active_frame (crates/engine/src/session.rs:2724-2729) does not touch move_draft/rotate_draft/scale_draft, and the draft-rect reporters the shell's state JSON is built from (move_draft_rect session.rs:3222-3227; rotate_draft_rect canvas.rs:593-597; scale_draft_rect canvas.rs:878-882) report the draft regardless of the active frame, while the previews/washes are fid-gated (move_draft_preview_frame session.rs:3177-3186; rotate_draft_preview_frame canvas.rs:531-543). So after tapping another frame in the film roll (editor_page.timeline.dart:69-72) or pressing keyboard frame-step (commands.dart:152-167 -> _stepFrame, which never cancels drafts) with a draft open: (a) the floating Commit/Cancel pill and the rotate/resize handle stay on screen over the NEW frame with no preview behind them; (b) dragging the canvas or the row-1 nudge arrows (editor_page.canvas.dart:477-487, 561-575; editor_page.timeline.dart:405-418) sends MoveDraftMove/RotateDraftSetAngle with ZERO visual feedback while silently mutating the hidden draft; (c) Commit mutates the ORIGINAL, off-screen frame (move_draft_commit session.rs:3191-3211 and rotate_draft_commit canvas.rs:492-521 resolve the frame by fid); (d) the Move tool is wedged on the new frame because move_draft_begin refuses while a draft is open (session.rs:3085-3088), so drags do nothing until the invisible draft is resolved; (e) the Undo tile lights up and 'cancels' a draft the user cannot see (editor_page.toolgrid.dart:44-45, 55-56).
@@ -305,6 +361,8 @@ Drafts (Move/Rotate/Scale transforms, shape/gradient figures, HSV/BC/Levels prev
 ### G-14 · Undo/Redo while a Rotate/Scale draft is open silently rewinds history and resurrects undone pixels on Commit
 
 **Severity:** high · **Verdict:** confirmed · **Found by:** tools-controls
+
+**Disposition (2026-08-26).** Closed by ADR 0011 with ADR 0010: Undo/Redo cancel the Draft rather than rewinding history underneath it.
 
 **Collision.** The committed undo history vs. an open Rotate/Scale draft that holds stale lifted pixel snapshots. The Undo tile/Ctrl+Z stays enabled mid-draft, but the draft preview masks what undo does.
 
@@ -322,6 +380,8 @@ Drafts (Move/Rotate/Scale transforms, shape/gradient figures, HSV/BC/Levels prev
 
 **Severity:** medium · **Verdict:** confirmed · **Found by:** canvas-gestures
 
+**Disposition (2026-08-26).** Closed by ADR 0011. One rule for both Draft families, so neither commits onto a frame the artist is not looking at.
+
 **Collision.** Draft lifetimes (canceled on tool switch, but not on frame navigation) vs. SetActiveFrame from the film-roll tap or frame.prev/next keys while a draft is open
 
 **Current behavior.** Switching tools cancels every draft (_selectTool), but switching FRAMES cancels none, and the frame commands/film-roll taps are not gated on _hasAnyDraft. A pending Line/Shape/Gradient draft is stored as session-level endpoints and shape_commit rasterizes via begin_edit() on the CURRENT active frame — so a figure drafted over frame 1 silently commits onto frame 2 after a mid-draft frame switch (the preview and handles float over the new frame's pixels). A Rotate/Resize draft is the opposite: its commit is fid-pinned (frame_index_by_id(d.fid)), so after switching frames the handle overlay and commit menu remain live over frame 2 while dragging the handle and pressing Commit mutate frame 1, with no visible preview of what is changing.
@@ -337,6 +397,8 @@ Drafts (Move/Rotate/Scale transforms, shape/gradient figures, HSV/BC/Levels prev
 ### G-16 · Shape/gradient and HSV/BC/Levels drafts retarget to whatever frame/layer is active at Commit time
 
 **Severity:** medium · **Verdict:** confirmed · **Found by:** tools-controls
+
+**Disposition (2026-08-26).** Closed by ADR 0011. A Draft cannot outlive the frame or layer it was made on, so there is nothing left to retarget at Commit.
 
 **Collision.** Pending frame/layer-agnostic drafts (figure draft, selection-shape draft, non-identity HSV/Brightness-Contrast/Levels previews) vs. frame taps, layer taps, and keyboard frame stepping, none of which cancel drafts.
 
@@ -354,6 +416,8 @@ Drafts (Move/Rotate/Scale transforms, shape/gradient figures, HSV/BC/Levels prev
 
 **Severity:** medium · **Verdict:** confirmed · **Found by:** tools-controls
 
+**Disposition (2026-08-26).** Closed by ADR 0011. A document switch is a context change; the adopt/switch funnel cancels every Draft.
+
 **Collision.** Pending drafts (figure draft, selection-shape draft, HSV/BC/Levels previews) vs. the document-switch flows (File > New, File > Open, My Drawings), which release the outgoing drawing but never clear draft state.
 
 **Current behavior.** adopt_loaded_doc clears clipboard/paste/move drafts but NOT shape_draft, rotate_draft, scale_draft, or the pending HSV/BC/Levels settings (session.rs:3478-3490), and the shell never resets _shapeA/_shapeB, _selA/_selB, or the adjust sliders on a switch (_adopt persistence.dart:136-148; _openExistingDrawing 292-306; _switchToNewDrawing 280-288; _newDialog toolgrid.dart:435-453). So: open another drawing from the gallery while a Line draft is pending -> the draft preview and commit pill appear over the just-loaded artwork and Commit rasterizes the stale figure into it; open while HSV sliders are non-zero -> the loaded artwork immediately renders color-shifted with a commit pill floating; a pure shell Select-Shape draft commits a selection onto the new document at the old coordinates. File > New replaces the whole engine session (parse.rs:211-218), so there the shell shows ghost handles plus a commit pill over the fresh canvas whose Commit is an engine no-op (shape_commit returns on a None draft, session.rs:1738-1741) that still clears the shell state.
@@ -369,6 +433,8 @@ Drafts (Move/Rotate/Scale transforms, shape/gradient figures, HSV/BC/Levels prev
 ### G-18 · Right-click canvas color pick is silently dead during any draft - including mere non-zero HSV/BC/Levels sliders - and during playback
 
 **Severity:** low · **Verdict:** confirmed · **Found by:** tools-controls
+
+**Disposition (2026-08-26).** ACCEPTED AS DESIGNED (ADR 0011). The inertness guard stays as broad as the lifecycle - a merely touched Levels slider still blocks the pick - but a refused pick now flashes the commit pill and names the blocker. This is the Editor's only non-silent interaction event.
 
 **Collision.** The desktop right-click eyedropper vs. _hasAnyDraft, which includes the adjust tools' 'a non-identity slider IS a draft' definition, and vs. running playback.
 
@@ -387,6 +453,8 @@ Drafts (Move/Rotate/Scale transforms, shape/gradient figures, HSV/BC/Levels prev
 ### G-19 · 'From artwork colors' extracts from the un-baked document, ignoring any pending draft/preview the user is looking at
 
 **Severity:** low · **Verdict:** confirmed · **Found by:** palette-color
+
+**Disposition (2026-08-26).** Point fix. Pushing the palette page is not a context change, so the Draft rule never fires; warn when extraction would ignore a pending Draft.
 
 **Collision.** Pending drafts (HSV/BC/Levels display-only previews, floating paste, shape drafts) x opening the palette page and extracting the artwork's colors
 
@@ -408,6 +476,8 @@ Playback auto-pause is a per-call-site convention, not a policy: some routes to 
 
 **Severity:** medium · **Verdict:** confirmed · **Found by:** timeline-playback
 
+**Disposition (2026-08-26).** Closed by ADR 0012 (playback is a mode). Undo pauses playback like every other structural mutation, so the clock cannot park.
+
 > Severity note: the sweep's verifier downgraded this from high: the freeze is recoverable in one tap (frame step, Esc, or any tool switch all pause), so no work is lost — but the frozen-animation-with-disabled-Pause state is real and visibly broken until then.
 
 **Collision.** The hybrid playback clock's timer-parking (battery R3) vs Undo/Redo, which stay live during playback and can change the frame count
@@ -428,6 +498,8 @@ Playback auto-pause is a per-call-site convention, not a policy: some routes to 
 
 **Severity:** medium · **Verdict:** confirmed · **Found by:** canvas-gestures, timeline-playback
 
+**Disposition (2026-08-26).** Closed by ADR 0012. Canvas inertness keys on playback running rather than on the Play tool, and a stroke pauses first.
+
 **Collision.** Vsync playback preview (which owns the displayed image: compositeFrame(playFrame)) vs. the canvas draw path, reachable because keyboard playback.toggle starts playback WITHOUT switching to the Play tool
 
 **Current behavior.** Selecting the Play tool makes the canvas inert, and _selectTool pauses playback on any tool change — but pressing Enter (playback.toggle) with e.g. Pencil active starts playback while the canvas stays live: _beginDraw has no _playing guard, so drags send PointerDown/PointerMove that paint the engine's ACTIVE frame while _present shows the animating playFrame composite — the user paints blind (marks flash only when playback passes the active frame). A left-click Eyedropper likewise samples the active frame's composite, not the frame on screen. Meanwhile _secondaryPick explicitly refuses during playback ('the vsync clock owns the engine'), so the two pick routes disagree, and the engine tick handler itself carries a TEMPORARY note that edit-during-playback is still legal.
@@ -446,6 +518,8 @@ Playback auto-pause is a per-call-site convention, not a policy: some routes to 
 
 **Severity:** medium · **Verdict:** confirmed · **Found by:** keyboard-dialogs
 
+**Disposition (2026-08-26).** Closed by ADR 0012. Paste pauses playback, so the Draft is created in the paused editing view where its preview and commit menu are visible.
+
 **Collision.** edit.paste vs. running playback, and the draft pair's registry priority over the playback pair on the shared Enter/Esc chords
 
 **Current behavior.** pasteFromKeyboard only pauses playback indirectly, via _selectTool, and only when the tool is not already CopyPaste (editor_page.keyboard.dart:57-62). With the CopyPaste tool selected and playback running (Enter starts playback without changing tool — _togglePlay, editor_page.keyboard.dart:176-179), Ctrl+V sends PasteDraft() into the playing engine without pausing. The paste preview lives only in the editing display, but while _playing the presenter composites engine.compositeFrame(playFrame) instead (editor_page.engine.dart:285-295), so the draft is completely invisible. hasAnyDraft is now true, which flips the shared bindings: Enter resolves to draft.commit and Esc to draft.cancel ahead of playback.toggle/playback.stop (registry order, commands.dart:64-96; bindings default_bindings.dart:24-27). The user watching their animation presses Enter to stop it — instead an unseen paste is committed onto the (stationary) active frame while playback keeps running; Esc silently discards a paste they never saw.
@@ -461,6 +535,8 @@ Playback auto-pause is a per-call-site convention, not a policy: some routes to 
 ### G-23 · Overscan view + playback: the animating canvas renders displaced by the gutter offset
 
 **Severity:** medium · **Verdict:** confirmed · **Found by:** timeline-playback
+
+**Disposition (2026-08-26).** Point fix. A rendering bug wearing a playback costume: position the canvas-sized composite at vOff while playing.
 
 **Collision.** The overscan display view (storage-sized image, painted at a gutter-shifted origin) vs the playback presenter (canvas-sized composite, painted at the same origin)
 
@@ -478,6 +554,8 @@ Playback auto-pause is a per-call-site convention, not a policy: some routes to 
 
 **Severity:** medium · **Verdict:** confirmed · **Found by:** timeline-playback
 
+**Disposition (2026-08-26).** Closed by ADR 0012. One rule at the _act funnel replaces the per-call-site convention.
+
 **Collision.** Playback's auto-pause contract ('menus/sheets/structural actions pause the preview') vs the direct-action buttons and keyboard commands that bypass it
 
 **Current behavior.** The SAME conceptual action pauses or doesn't depending on route: adding a frame via the film-roll long-press menu pauses (timeline.dart:155-157), but the strip's + button doesn't (timeline.dart:111-118: _act('AddFrame()') with no pause) and neither does keyboard frame.add (keyboard.dart:67-70) - while keyboard frame.duplicate and frame.delete DO pause (keyboard.dart:73-85). Add layer (+ button, timeline.dart:467-476, and keyboard layer.add/layer.up/down, keyboard.dart:88-98) never pauses; Undo/Redo/Onion tiles never pause (toolgrid.dart:50-72). Consequence of the un-paused AddFrame during playback: the engine appends a blank 100 ms frame and makes it ACTIVE (session.rs:2647-2659), so the loop suddenly includes a blank flash and the editing focus has silently moved to the new frame - while the strip menu route would have paused first and landed you calmly on the new frame.
@@ -494,6 +572,8 @@ Playback auto-pause is a per-call-site convention, not a policy: some routes to 
 
 **Severity:** low · **Verdict:** confirmed · **Found by:** keyboard-dialogs
 
+**Disposition (2026-08-26).** Closed by ADR 0012. The keyboard catalog inherits the funnel rule; frame.add and layer.add pause like the rest.
+
 **Collision.** The keyboard Frames/Layers/Edit Commands vs. running playback — inconsistent auto-pause within one catalog
 
 **Current behavior.** In the same host file, duplicateFrame and deleteFrame pause playback first (editor_page.keyboard.dart:73-85) but addFrame does not (editor_page.keyboard.dart:66-70): Shift+N during playback appends a blank frame into the running animation with no pause, so the loop suddenly shows a blank flash and continues. addLayer (editor_page.keyboard.dart:87-91), moveLayer, selectAll, and deselect likewise mutate the document mid-playback without pausing, while every sheet/menu route and the frame-stepping Commands do pause. The on-screen film-strip '+' also doesn't pause (editor_page.timeline.dart:113-117), but its Duplicate equivalent lives only inside the frame sheet, whose opening pauses — the keyboard is the first surface to put paused and un-paused structural verbs side by side under adjacent shortcuts.
@@ -509,6 +589,8 @@ Playback auto-pause is a per-call-site convention, not a policy: some routes to 
 ### G-26 · Frame-navigation routes disagree about auto-pausing playback
 
 **Severity:** low · **Verdict:** confirmed · **Found by:** tools-controls
+
+**Disposition (2026-08-26).** Closed by ADR 0012. Film-roll taps and the + button pause first.
 
 **Collision.** Running playback vs. the several routes to the same conceptual actions 'go to frame' and 'add frame': the Play tool's row-1 controls and keyboard steps auto-pause; film-roll taps and the + button do not.
 
@@ -528,6 +610,8 @@ Playback auto-pause is a per-call-site convention, not a policy: some routes to 
 
 **Severity:** low · **Verdict:** confirmed · **Found by:** timeline-playback
 
+**Disposition (2026-08-26).** Closed by ADR 0012 with ADR 0013. A tap is explicit activation: playback pauses, then the tapped frame becomes the Active target.
+
 **Collision.** The film-roll tile tap (SetActiveFrame, no pause) vs the Play tool's prev/next/Go-to (which pause first) - two routes for 'go to frame' during playback
 
 **Current behavior.** A film-roll tile tap runs _act('SetActiveFrame(i)') with no pause (editor_page.timeline.dart:68-72). During playback the presenter composites the PLAY frame (editor_page.engine.dart:286-295), so the canvas keeps animating unchanged; only the tile border moves. The tap nonetheless changes real state: pause will land on the tapped frame, the layer strip switches to its stack, the move-group is cleared, and the NEXT Play will start from it (session.rs:3426-3431 seeds the clock from active_frame). The Play tool's prev/next/Go-to controls for the same conceptual action pause first and scroll the strip (editor_page.engine.dart:1000-1008, 1012-1039), giving immediate visible confirmation.
@@ -544,6 +628,8 @@ Playback auto-pause is a per-call-site convention, not a policy: some routes to 
 
 **Severity:** low · **Verdict:** confirmed · **Found by:** timeline-playback
 
+**Disposition (2026-08-26).** Closed by ADR 0012. Toggling onion skin is an editing intent and pauses playback.
+
 **Collision.** The Onion action tile / O shortcut (a display-mode toggle, not pause-gated) vs the playback presenter, whose composite path has no onion parameter
 
 **Current behavior.** The Onion tile and its keyboard command flip _onion and _redraw() with no _playing pause (editor_page.toolgrid.dart:68-71, keyboard/commands.dart:149). While playing, _present uses engine.compositeFrame(playFrame) - onion is only passed to engine.display(onion: _onion, ...) on the non-playing branch (editor_page.engine.dart:286-295). So during playback the tile lights amber (a full-tree setState via _doToolAction -> _redraw), the animation is visually unchanged, and the onion ghosting only materializes whenever playback later pauses - an effect detached in time from its cause.
@@ -559,6 +645,8 @@ Playback auto-pause is a per-call-site convention, not a policy: some routes to 
 ### G-29 · The color picker dialog does not auto-pause playback, unlike every other palette surface
 
 **Severity:** low · **Verdict:** confirmed · **Found by:** palette-color
+
+**Disposition (2026-08-26).** Closed by ADR 0012. The color picker pauses playback like every other palette surface.
 
 **Collision.** The menus/sheets-auto-pause-playback convention x the primary/gradient swatch tap opening a dialog instead of a sheet
 
@@ -580,6 +668,8 @@ The stay-open sheets let structural operations chain on arbitrary (non-active) i
 
 **Severity:** high · **Verdict:** confirmed · **Found by:** sheets-layers
 
+**Disposition (2026-08-26).** Point fix, engine-additive. Needs a non-recording opacity preview verb plus one SetLayerOpacity undo step at drag end. The last high-severity finding not closed by a policy.
+
 **Collision.** Continuous Slider.onChanged (fires per pointer move) + the engine's SetLayerOpacity being a full undoable edit per call (edit_frame pushes a Record each time) + the 128-record per-frame history cap that drops the oldest records
 
 **Current behavior.** The layer sheet's opacity slider sends `_send('SetLayerOpacity($cur, ${v.round()})')` on every onChanged tick. Engine-side, set_layer_opacity wraps edit_frame, which clones the frame and pushes one history Record per call with no coalescing. A slow 2-3 s drag emits ~100+ records; past PER_FRAME_CAP (128) the oldest content edits for that frame are silently dropped. Afterwards Undo steps back through every intermediate opacity value, and the user's earlier strokes on that frame may no longer be undoable at all. The typed-entry path right next to it (`_editSliderValue` -> one `_act('SetLayerOpacity...')`) records exactly one step for the same conceptual action, and the sibling blend control was explicitly engineered to avoid this (PreviewLayerBlend = no undo record, one SetLayerBlend commit on close) - the opacity slider never got that treatment.
@@ -595,6 +685,8 @@ The stay-open sheets let structural operations chain on arbitrary (non-active) i
 ### G-31 · Frame sheet 'Move left/right' on a non-active frame activates it and leaves the move-group pointing into the wrong frame's layer stack
 
 **Severity:** medium · **Verdict:** confirmed · **Found by:** sheets-layers, timeline-playback
+
+**Disposition (2026-08-26).** Closed by ADR 0013 (explicit activation). Reordering another frame does not activate it, and the move-group is held by layer id.
 
 **Collision.** The stay-open frame sheet targeting a non-active frame (`cur` != activeFrame) + engine reorder_frame's unconditional `active_frame = to` + the layer move-group, which is a set of indices into the active frame's stack
 
@@ -614,6 +706,8 @@ The stay-open sheets let structural operations chain on arbitrary (non-active) i
 
 **Severity:** medium · **Verdict:** confirmed · **Found by:** sheets-layers
 
+**Disposition (2026-08-26).** Closed by ADR 0013. The move-group is an id set, so a deleted frame cannot leave it pointing into the wrong stack.
+
 **Collision.** The frame sheet's unconditional shell-side _clearLayerGroup() on Delete + the engine's smarter id-guarded policy (keep/sanitize layer_sel when the active frame survived the removal) + the canvas Move drag reading the engine's layer_sel directly without a resync
 
 **Current behavior.** remove_frame only resets layer_sel when the active frame's id changed; deleting a frame AFTER the active one leaves the engine group intact (sanitized). The sheet's Delete button, however, always calls _clearLayerGroup(), wiping the amber badges from the UI. The canvas Move drag path sends MoveDraftBegin() without pushing _syncLayerSel first, so the engine lifts its still-populated layer_sel: multiple layers move together while the layer strip shows no group at all. (The nudge buttons do call _syncLayerSel first, so nudge and drag disagree too.)
@@ -629,6 +723,8 @@ The stay-open sheets let structural operations chain on arbitrary (non-active) i
 ### G-33 · A single-member 'Move group' shows the amber badge but the Move tool moves the active layer instead
 
 **Severity:** medium · **Verdict:** confirmed · **Found by:** sheets-layers
+
+**Disposition (2026-08-26).** Dissolved by ADR 0013. With the move-group held as an id set, a one-member group is simply real.
 
 **Collision.** The layer sheet's per-layer Move-group chip (which can produce a group of exactly one, on a non-active layer) + _syncLayerSel's rule that only groups of 2+ are pushed as SetMoveGroup (a group of <=1 re-sends SetActiveLayer of the CURRENT active layer)
 
@@ -646,6 +742,8 @@ The stay-open sheets let structural operations chain on arbitrary (non-active) i
 
 **Severity:** medium · **Verdict:** confirmed · **Found by:** sheets-layers
 
+**Disposition (2026-08-26).** Closed by ADR 0013. Structural actions preserve the Active target by identity; the sheet is a remote control.
+
 **Collision.** The mini-stack's tap-to-retarget design ('the engine's active layer stays put, so no side effect survives the sheet') + every structural engine verb unconditionally activating its result (reorder_layer: active_layer = to; duplicate_layer/add_layer_at: the copy/new layer; merge_down: i-1; Copy-to-all-frames: an explicit never-restored SetActiveLayer(cur))
 
 **Current behavior.** Tapping a mini-stack tile only retargets the sheet, as promised. But then pressing Up/Down/Duplicate/New/Merge on that retargeted layer changes the engine's active layer to the acted-on layer's result - even though the user never 'selected' it. E.g. active layer 0, sheet retargeted to layer 3, tap 'Up': layer 3 moves to 4 AND becomes the active layer; after closing the sheet the next stroke lands on former-layer-3 instead of layer 0. 'Copy to all frames' does it explicitly (SetActiveLayer(cur)) and pops, leaving the user's brush retargeted with no visual cue beyond the strip border. The same applies frame-side: Duplicate/New/Move on a non-active frame in the frame sheet switches the canvas to that frame under the sheet.
@@ -662,6 +760,8 @@ The stay-open sheets let structural operations chain on arbitrary (non-active) i
 
 **Severity:** medium · **Verdict:** confirmed · **Found by:** sheets-layers
 
+**Disposition (2026-08-26).** Closed by ADR 0013. Identity, not index: removing an item below the active one leaves the same frame or layer active.
+
 **Collision.** The sheets' new ability to delete non-active frames/layers (delete-delete chains on arbitrary indices) + the engine's index-preserving active clamp (`active = active.min(len-1)`), which never decrements when the removed index is below the active one
 
 **Current behavior.** remove_frame keeps the active INDEX, so deleting frame 2 while working on frame 5 makes the active slot point at former frame 6 - the canvas under the sheet silently switches to a different frame's content (the engine's id check notices and resets the move-group, confirming the frame identity changed). remove_layer has the identical drift: with layer 3 active, deleting layer 1 from a retargeted sheet makes former layer 4 the drawing target. Only the sheets can reach this (keyboard and strip delete only the active item).
@@ -677,6 +777,8 @@ The stay-open sheets let structural operations chain on arbitrary (non-active) i
 ### G-36 · 'Edit duration...' permanently switches the active frame even when the dialog is canceled
 
 **Severity:** low · **Verdict:** confirmed · **Found by:** sheets-layers
+
+**Disposition (2026-08-26).** Closed by ADR 0013. Edit duration acts on the named frame without activating it.
 
 **Collision.** The frame sheet targeting a non-active frame + the duration dialog operating only on the ACTIVE frame (so the sheet force-switches before opening it) + dialog cancel having no undo of that switch (SetActiveFrame is not an undoable edit)
 
@@ -698,6 +800,8 @@ The replace-the-canvas flows (gallery open, external Open, Club edit, startup re
 
 **Severity:** medium · **Verdict:** confirmed · **Found by:** persistence-replay
 
+**Disposition (2026-08-26).** Closed by ADR 0014 (load-then-adopt). A failed load never adopts the target identity; the outgoing drawing keeps its own.
+
 **Collision.** The gallery-open flow's release-then-load sequence vs. a load failure, with the always-on autosave and journal attached to the new identity
 
 **Current behavior.** _openExistingDrawing releases the outgoing drawing (keep or discard), then calls _loadDrawingIntoEngine(id); on failure it toasts 'Could not open that drawing' but STILL calls _adopt(id, meta.title, ...) unconditionally (editor_page.persistence.dart:297-301). The engine still holds the previous drawing's content, so: the title bar switches to the target's name while the canvas shows the old drawing; the autosave controller starts serializing the old content under the target's id, so the first user action overwrites the target's doc.mkpx (demoting its possibly-recoverable primary to .bak, destroyed on the second write); and the journal attach re-anchors the TARGET's journal with a chapter base of the OTHER drawing's pixels (attachResume gets _resumeDocBytes == null → reanchorNeeded → cutChapter(engine.saveCompact()) at editor_page.replay.dart:40-49). If the user chose 'Discard' for the outgoing drawing, its 'discarded' content is resurrected under the target's identity.
@@ -715,6 +819,8 @@ The replace-the-canvas flows (gallery open, external Open, Club edit, startup re
 ### G-38 · Discard-then-load-failure resurrects the discarded drawing — differently on each path
 
 **Severity:** medium · **Verdict:** confirmed · **Found by:** persistence-replay
+
+**Disposition (2026-08-26).** Closed by ADR 0014. The discard is deferred until the incoming load succeeds, so there is nothing to resurrect.
 
 **Collision.** The 'Discard it — this cannot be undone' confirmation vs. a subsequent load failure in the three replace-the-canvas flows (external Open, Club edit, gallery open)
 
@@ -734,6 +840,8 @@ The replace-the-canvas flows (gallery open, external Open, Club edit, startup re
 
 **Severity:** medium · **Verdict:** confirmed · **Found by:** persistence-replay
 
+**Disposition (2026-08-26).** Closed by ADR 0014. Canvas input is gated until restore resolves; the boot canvas accepts no stroke it cannot journal.
+
 **Collision.** The immediately-interactive boot canvas vs. the silent async restore of the last drawing (and the not-yet-attached journal)
 
 **Current behavior.** initState creates a live 64×64 engine and the canvas accepts input at once (editor_page.dart:559-577), while _initPersistence resolves the support dir, prefs, keyboard bindings, and then runs engine.load(bytes) inside readDoc's validator (editor_page.persistence.dart:35, 169-184) — replacing the document at an arbitrary moment, including mid-stroke. Strokes drawn before the load are silently discarded; a stroke IN PROGRESS is split: its PointerMove/PointerUp tail lands on the restored drawing (clamped to its size), painting a stray line onto the user's saved artwork, which the next autosave persists. Because _journal is null until _adopt's attach completes, those sends are never recorded — attachResume reconciles against the FNV of the bytes as loaded (stashed pre-mutation, editor_page.persistence.dart:182), returns 'continued', and the stray pixels exist in the document but not in the journal, so the drawing's replay diverges from the artwork permanently (no re-anchor ever heals it). The freshBlank path explicitly handles 'the user outran persistence' (editor_page.replay.dart:19-21, 60-63); the restore path does not.
@@ -749,6 +857,8 @@ The replace-the-canvas flows (gallery open, external Open, Club edit, startup re
 ### G-40 · Post-to-Club builds the publish draft from two different document states
 
 **Severity:** medium · **Verdict:** confirmed · **Found by:** persistence-replay
+
+**Disposition (2026-08-26).** Point fix. Assemble the entire PublishDraft at the same instant as engine.save(), before the first await.
 
 **Collision.** The non-modal WebP encode of Post to Club vs. continued editing (or a drawing switch) in the fully-interactive editor during the encode
 
@@ -766,6 +876,8 @@ The replace-the-canvas flows (gallery open, external Open, Club edit, startup re
 
 **Severity:** medium · **Verdict:** plausible · **Found by:** persistence-replay
 
+**Disposition (2026-08-26).** Closed by ADR 0014. One writer per drawing folder, so teardown and the next mount cannot interleave.
+
 **Collision.** The dispose-time fire-and-forget autosave/journal writes of the unmounting editor vs. the freshly-mounted editor's _initPersistence reading and reconciling the same files
 
 **Current behavior.** Nothing serializes the old instance's async teardown against the new instance's startup: dispose starts flushNow's write and detachSoon's journal drain without awaiting (editor_page.dart:625-631), and the new mount immediately runs _initPersistence → readDoc(curId) (editor_page.persistence.dart:34-35) and attachResume, which may truncate/append the SAME journal file (journal_recorder.dart:106-163) the old drain is appending to. writeDoc's non-atomic window (rename doc→bak, then tmp→doc, drawing_store.dart:51-54) means the new reader can find doc.mkpx absent and silently fall back to doc.mkpx.bak — the PREVIOUS save — restoring the drawing without the user's last edits; the new session's first autosave then demotes the newest bytes to .bak and the second write destroys them. On Windows the new reader holding the file open can instead make the old flush's rename throw, which is swallowed (the unmounted _onAutosaveError only debugPrints), silently dropping the final save. Concurrent journal append + truncate can interleave into a malformed line the scanner then treats as a foreign tail.
@@ -781,6 +893,8 @@ The replace-the-canvas flows (gallery open, external Open, Club edit, startup re
 ### G-42 · Editor dispose defeats the journal's write-ahead marker, so every session end re-anchors
 
 **Severity:** low · **Verdict:** confirmed · **Found by:** persistence-replay
+
+**Disposition (2026-08-26).** Point fix. Write the marker before teardown - stash the recorder for the in-flight preWrite, or detach after the flush drains.
 
 **Collision.** The synchronous dispose teardown (pillar switch to Club) vs. the autosave's async write-ahead journal marker
 
@@ -802,6 +916,8 @@ Modifier-hold behaviors interact with OS focus changes, chords, and input modes 
 
 **Severity:** medium · **Verdict:** confirmed · **Found by:** keyboard-dialogs
 
+**Disposition (2026-08-26).** Point fix. Bare-Alt check plus the secondary-pick guards; the pen-down half is additionally covered by the ADR 0010 in-flight predicate.
+
 **Collision.** The hold-Alt temporary Eyedropper vs. playback, precision pen-down (Hold) mode, Alt-based chords (layer.up/down = Alt+]/Alt+[), and OS-level Alt shortcuts (Alt+Tab)
 
 **Current behavior.** The Alt hold has no modifier, playback, or pen-down guard — only drafts and pointerActive (dispatcher.dart:189-195), unlike Space, which refuses when any other modifier is down (dispatcher.dart:177-181). beginHoldPick calls _selectTool('Eyedropper') (editor_page.keyboard.dart:155-160), which pauses playback (editor_page.engine.dart:482) and sends CursorPenUp() ending an open precision pen line (editor_page.engine.dart:483-486), then journals SelectTool(Eyedropper) plus the full _pushToolSettings barrage; endHoldPick journals the round trip back. Consequences: (1) pressing Alt+] to move a layer up transiently switches the active tool to Eyedropper (row-1 rebuilds to Eyedropper options) and back on release; (2) Alt+Tab away from the app springs the Eyedropper, pauses any running playback, and writes two SelectTool round-trips into the always-on Journal (visible later in Watch-replay/timelapse) — every single time; (3) with precision Hold (pen-down) active, a stray Alt press silently ends the pen line. By contrast the right-click pick — the same conceptual action — explicitly guards _penDown and _playing (editor_page.canvas.dart:375-376: 'if (_drawPointer != null || _pinching || _hasAnyDraft || _penDown || _playing) return'). Additionally, endHoldPick's restore check ('_tool == Eyedropper') means a user who deliberately taps the Eyedropper tile WHILE Alt is held gets their explicit choice reverted on Alt release (editor_page.keyboard.dart:163-169).
@@ -818,6 +934,8 @@ Modifier-hold behaviors interact with OS focus changes, chords, and input modes 
 
 **Severity:** low · **Verdict:** confirmed · **Found by:** keyboard-dialogs
 
+**Disposition (2026-08-26).** Point fix. Re-derive hold states from HardwareKeyboard on focus regain.
+
 **Collision.** The forced release of holds on focus loss (dialog/sheet opens) vs. the physical key still being held when focus returns
 
 **Current behavior.** Opening any route force-releases all holds via onFocusChange (dispatcher.dart:250-254, releaseAllHolds 94-108) — correct, since keyUps stop arriving. But nothing re-reads HardwareKeyboard state on focus regain, so a key held across the dialog behaves three different ways afterward: Shift-constrain self-heals on the next Shift auto-repeat because _trackConstrain is level-triggered on every event (dispatcher.dart:139-147) — on Windows within ~0.5 s, but never on platforms whose modifiers don't auto-repeat (macOS/iPad hardware keyboards); Space-pan can NOT recover: the repeat branch only sustains an existing hold ('(isSpace && _spaceHeld)' at dispatcher.dart:170-175 returns ignored when the hold was cleared) and the arming branch (176-187) requires a fresh KeyDownEvent, so hold-Space silently stops panning until the user fully releases and re-presses Space; hold-Alt likewise never re-springs from repeats (same branch). Meanwhile chord matching still sees the physically-held modifiers via HardwareKeyboard (chords.dart:26-35), so chords behave as if Shift/Alt are held while the constrain/pick effects say they aren't.
@@ -833,6 +951,8 @@ Modifier-hold behaviors interact with OS focus changes, chords, and input modes 
 ### G-45 · Crop dialog: Reset/aspect-lock taps during an active rect drag are silently overridden by the drag's snapshot
 
 **Severity:** low · **Verdict:** confirmed · **Found by:** keyboard-dialogs
+
+**Disposition (2026-08-26).** Point fix. Reset and the aspect-lock toggle clear the active drag state.
 
 **Collision.** CropPage's AppBar Reset (and aspect-lock) buttons vs. an in-progress one-finger drag of the crop rectangle
 
@@ -856,6 +976,8 @@ Smaller inconsistencies where two color surfaces disagree about state.
 
 **Severity:** medium · **Verdict:** confirmed · **Found by:** palette-color
 
+**Disposition (2026-08-26).** Point fix. Apply a valid hex on OK and on focus loss.
+
 **Collision.** The hex field's apply-on-submit contract x the dialog's OK button committing the internal h/s/v/a state
 
 **Current behavior.** The RGB, HSV, and alpha text fields apply live on every keystroke (onChanged, color_picker_dialog.dart:225, 345), but the hex field applies only on onSubmitted (line 363 — there is no onChanged and no apply-on-focus-loss). OK pops with _color, which is built purely from h/s/v/a (lines 121, 374-377). So typing a full hex code and tapping OK (or, on mobile, tapping OK because the number-row keyboard's Done was never pressed) returns the previous color; the typed text is visible in the field at the moment OK is tapped but has no effect. The translucent tap-to-unfocus wrapper (line 550-552) also does not apply the hex — it just dismisses the keyboard.
@@ -874,6 +996,8 @@ Smaller inconsistencies where two color surfaces disagree about state.
 
 **Severity:** medium · **Verdict:** confirmed · **Found by:** palette-color
 
+**Disposition (2026-08-26).** Point fix. Route engine-side picks through the primary setter, or resend gradient stops while the Gradient tool is active.
+
 **Collision.** Desktop right-click color pick (uncommitted mouse-affordances work) x the Gradient tool's rule that the primary color IS the first gradient stop
 
 **Current behavior.** _secondaryPick is reachable with Gradient active (its guard only blocks strokes/pinch/drafts/pen-down/playback). It swaps the engine to Eyedropper, picks, restores SelectTool(Gradient), and calls _syncPickedPrimary(), which only does setState(() => _primary = c). Unlike _setPrimary (editor_page.engine.dart:755-769), it never calls _sendGradientStops(), and SetGradientStops embeds explicit hex values (engine.dart:774-779), so the engine keeps the OLD first stop. Row-1's first gradient swatch renders _primary (editor_page.controls.dart:432), so the UI shows the picked color while the next gradient drag draws starting from the old color. Every other pick route is consistent: tapping a swatch goes through _setPrimary (re-pushes stops), the hold-Alt spring restores via _selectTool which re-sends the stops on Gradient entry (engine.dart:560-563).
@@ -890,6 +1014,8 @@ Smaller inconsistencies where two color surfaces disagree about state.
 
 **Severity:** low · **Verdict:** confirmed · **Found by:** palette-color
 
+**Disposition (2026-08-26).** Point fix. Record the outgoing primary into the previous-primary slot when a picked color differs.
+
 **Collision.** Keyboard shortcut 'swap with previous color' x the eyedropper's engine-side primary update path
 
 **Current behavior.** _previousPrimary is recorded only inside _setPrimary (editor_page.engine.dart:758). All eyedropper pick routes — canvas tap/drag picks (editor_page.canvas.dart:505, 609), the precision Pick button (controls.dart:53 via EyedropCursor + _refreshState), and the right-click pick (canvas.dart:390) — update _primary via _syncPickedPrimary/_refreshState without touching _previousPrimary. So: primary red -> tap swatch blue (previous=red) -> eyedrop green -> press X: primary becomes red, not the blue the user had immediately before the pick. Two input routes for 'change the current color' feed the swap history differently.
@@ -905,6 +1031,8 @@ Smaller inconsistencies where two color surfaces disagree about state.
 ### G-49 · Palette swatch move-arrow sheet captures the strip orientation; rotating the device while it is open mis-maps the arrows
 
 **Severity:** low · **Verdict:** confirmed · **Found by:** palette-color
+
+**Disposition (2026-08-26).** Point fix. Read orientation inside the sheet builder instead of capturing it.
 
 **Collision.** The orientation-transposing row-2 palette strip x the long-lived swatch bottom sheet whose arrows are remapped per orientation
 

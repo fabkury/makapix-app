@@ -83,6 +83,37 @@ stays a single hard pixel even with AA on.
 _Avoid_: smoothing, feathering, soft (those describe the Airbrush's falloff, not AA's crisp
 edge)
 
+### Interaction vocabulary (Editor)
+
+**Gesture**:
+One continuous physical interaction with the Editor, from touch to lift: a canvas Stroke, a
+pinch, a trackpad pan or zoom, a control drag, or a held precision pen. A Gesture is atomic —
+nothing else reaches the engine until it ends (ADR 0010).
+_Avoid_: drag, interaction, input event
+
+**Draft**:
+Editor state the artist can see but has not committed: a shape or gradient figure, a
+Move/Rotate/Scale transform, an HSV/brightness-contrast/Levels preview, or a pending paste. A
+Draft belongs to the context it was made in and dies when that context changes (ADR 0011).
+_Avoid_: preview (that is what a Draft shows), pending edit, uncommitted change
+
+**Active target**:
+The frame and layer the next Stroke will land on. It moves only when the artist activates it;
+acting on another frame or layer through a sheet never relocates it (ADR 0013).
+_Avoid_: current layer, current frame, selection (that word belongs to the mask)
+
+**Move group**:
+The set of layers the Move tool transforms together, held by layer id and badged in the layer
+strip. A transient selection: it clears on frame change and on document change.
+_Avoid_: layer selection, linked layers, multi-select
+
+**Playhead**:
+The frame playback is currently showing — distinct from the Active target, which is where
+Strokes land. Playback starts at the Active target and pause returns to it, so the Playhead
+never moves where the artist is editing (ADR 0012). The Animator's Playhead is a different
+thing: the current moment in Scene time.
+_Avoid_: current frame (ambiguous with the Active target), play cursor
+
 ### Animator vocabulary
 
 **Scene**:
