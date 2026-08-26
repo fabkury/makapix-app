@@ -26,6 +26,11 @@ abstract class ReplayHost {
   /// Non-null when [init] failed (a missing chapter base, an unreadable journal…).
   String? get initError;
 
+  /// The Journal epoch this replay was recorded under (ADR 0015). Below [kJournalEpoch] means it
+  /// predates the interaction-policy semantics change, so playback may differ from the original
+  /// session — the Replay page badges that.
+  int get journalEpoch;
+
   /// 0..1 while [init] replays the journal and builds checkpoints.
   ValueListenable<double> get initProgress;
 
@@ -76,6 +81,7 @@ class EngineReplayHost implements ReplayHost {
   int _pos = 0;
   bool _ready = false;
   String? _error;
+  int _journalEpoch = kJournalEpoch;
   final ValueNotifier<double> _progress = ValueNotifier(0);
   int? _wantPos; // latest-wins seek target
   bool _seeking = false;
@@ -93,6 +99,8 @@ class EngineReplayHost implements ReplayHost {
   @override
   int get position => _pos;
   @override
+  int get journalEpoch => _journalEpoch;
+  @override
   List<int> get endFrameDurationsUs => _endDurations;
   @override
   (int, int) get endSize => _endSize;
@@ -105,6 +113,7 @@ class EngineReplayHost implements ReplayHost {
         _error = 'This drawing has no replayable history yet.';
         return;
       }
+      _journalEpoch = parsed.epoch;
       final flat = FlatJournal.from(parsed);
       for (final base in flat.chapterBaseAt.values) {
         if (!bases.containsKey(base)) {

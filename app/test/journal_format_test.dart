@@ -82,6 +82,29 @@ void main() {
       expect(parseJournal('+0 Tap(1,1)\n'), isNull);
     });
 
+    // ADR 0015. A journal written by an older build MUST still parse: a header this rejects
+    // makes attachResume treat the file as foreign and rename it aside, discarding the
+    // artist's whole replay history. This test is the guard on that landmine.
+    test('every past epoch stays readable, and reports its own epoch', () {
+      for (var e = 1; e <= kJournalEpoch; e++) {
+        final text = '#mkpxj $e\n'
+            '${chapterHeaderLine(1, DateTime.utc(2026), null, 'fresh')}\n'
+            '+0 Tap(1,1)\n';
+        final j = parseJournal(text);
+        expect(j, isNotNull, reason: 'epoch $e must remain readable');
+        expect(j!.epoch, e);
+        expect(j.chapters.single.actions.single.dsl, 'Tap(1,1)');
+      }
+    });
+
+    test('new journals are written at the current epoch', () {
+      expect(kJournalVersionHeader, '#mkpxj $kJournalEpoch');
+      expect(journalEpochOf(kJournalVersionHeader), kJournalEpoch);
+      expect(journalEpochOf('#mkpxj 1'), 1, reason: 'the pre-policy epoch');
+      expect(journalEpochOf('not a header'), isNull);
+      expect(journalEpochOf('#mkpxj 0'), isNull);
+    });
+
     test('multi-statement lines stay verbatim', () {
       final text = '$kJournalVersionHeader\n'
           '${chapterHeaderLine(1, DateTime.utc(2026), null, 'fresh')}\n'

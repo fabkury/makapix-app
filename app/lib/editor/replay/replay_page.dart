@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:makapix_club/editor/widgets/painters.dart' show CanvasPainter;
 import 'package:makapix_club/engine_ffi.dart' show premultiplyRgbaInPlace;
 
+import 'journal_format.dart' show kJournalEpoch;
 import 'replay_host.dart';
 
 /// The remembered sweep-duration choice (15/30/60 s), shared across replay sessions.
@@ -180,7 +181,27 @@ class _ReplayPageState extends State<ReplayPage> with WidgetsBindingObserver {
     return Scaffold(
       backgroundColor: const Color(0xFF141518),
       appBar: AppBar(
-        title: Text('Replay — ${widget.title}', overflow: TextOverflow.ellipsis),
+        title: Row(children: [
+          Flexible(child: Text('Replay — ${widget.title}', overflow: TextOverflow.ellipsis)),
+          // Pre-epoch journals replay under today's engine semantics, which may differ from the
+          // session that recorded them (ADR 0015). Quiet chip, tap for the why.
+          if (host.journalEpoch < kJournalEpoch) ...[
+            const SizedBox(width: 8),
+            Tooltip(
+              message: 'Recorded before an editor update — playback may differ from the '
+                  'original session.',
+              triggerMode: TooltipTriggerMode.tap,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text('Older recording', style: TextStyle(fontSize: 11)),
+              ),
+            ),
+          ],
+        ]),
         actions: [
           if (widget.onShareTimelapse != null)
             IconButton(

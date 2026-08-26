@@ -24,8 +24,28 @@ library;
 import 'dart:convert';
 import 'dart:typed_data';
 
-/// The version header — always the Journal's first line.
-const String kJournalVersionHeader = '#mkpxj 1';
+/// The Journal epoch this build RECORDS under (ADR 0015). Epoch 2 is the interaction-policy
+/// semantics of ADRs 0010-0014: structural verbs preserve the active target by identity, so a
+/// journal recorded under epoch 1 can replay to a different result than the session that produced
+/// it. Nothing branches on the epoch — it exists so the artifact says which semantics made it, and
+/// so the next fork has a boundary to point at.
+const int kJournalEpoch = 2;
+
+/// The version header — always the Journal's first line. This is what new Journals are WRITTEN
+/// with; [journalEpochOf] decides what is READ, and it accepts every past epoch.
+const String kJournalVersionHeader = '#mkpxj $kJournalEpoch';
+
+/// The epoch named by a Journal's first line, or null when the line is not a version header at
+/// all. Every epoch ever written must stay readable here: a header this function rejects makes
+/// [JournalRecorder.attachResume] treat the file as foreign and rename it aside, which would
+/// discard the artist's entire replay history.
+int? journalEpochOf(String firstLine) {
+  final t = firstLine.trim();
+  if (!t.startsWith('#mkpxj ')) return null;
+  final e = int.tryParse(t.substring('#mkpxj '.length).trim());
+  if (e == null || e < 1 || e > kJournalEpoch) return null;
+  return e;
+}
 
 /// The Journal's file name inside a drawing's folder.
 const String kJournalFileName = 'journal.mkpxj';
@@ -67,8 +87,12 @@ class JournalChapter {
 /// A fully parsed Journal (the replay driver's model — offsets and markers are the
 /// scanner's business, not this one's).
 class ParsedJournal {
-  ParsedJournal(this.chapters);
+  ParsedJournal(this.chapters, {this.epoch = kJournalEpoch});
   final List<JournalChapter> chapters;
+
+  /// The epoch its version header named (ADR 0015). Below [kJournalEpoch] means the actions were
+  /// recorded under older engine semantics, so this replay may diverge from the original session.
+  final int epoch;
   int get actionCount => chapters.fold(0, (n, c) => n + c.actions.length);
 }
 
@@ -122,7 +146,9 @@ JournalAction? parseActionLine(String line) {
 /// lines) are skipped — the format is additive.
 ParsedJournal? parseJournal(String text) {
   final lines = const LineSplitter().convert(text);
-  if (lines.isEmpty || lines.first.trim() != kJournalVersionHeader) return null;
+  if (lines.isEmpty) return null;
+  final epoch = journalEpochOf(lines.first);
+  if (epoch == null) return null;
   final chapters = <JournalChapter>[];
   for (final raw in lines.skip(1)) {
     final line = raw.trim();
@@ -138,7 +164,7 @@ ParsedJournal? parseJournal(String text) {
     }
     // Anything else (markers, future directives) is skipped.
   }
-  return ParsedJournal(chapters);
+  return ParsedJournal(chapters, epoch: epoch);
 }
 
 /// A [ParsedJournal] flattened for sequential execution: the actions in journal order plus

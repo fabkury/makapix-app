@@ -114,7 +114,9 @@ class JournalRecorder {
 
     // A structurally foreign file (bad/missing version header) is renamed aside — never
     // overwritten — and a fresh journal starts.
-    if (scan.lines.isEmpty || scan.lines.first.text.trim() != kJournalVersionHeader) {
+    // Any epoch we can still read is ours: an existing header is never rewritten (ADR 0015),
+    // so a pre-2 journal keeps recording under its own header and stays honestly mixed-epoch.
+    if (scan.lines.isEmpty || journalEpochOf(scan.lines.first.text) == null) {
       final aside = '${_file.path}.bad-${_clock().millisecondsSinceEpoch}';
       try {
         await _file.rename(aside);

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:makapix_club/editor/replay/journal_format.dart' show kJournalEpoch;
 import 'package:makapix_club/editor/replay/replay_host.dart';
 import 'package:makapix_club/editor/replay/replay_page.dart';
 import 'package:makapix_club/editor/widgets/painters.dart';
@@ -8,10 +9,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Engine-free host: 4×4 frames whose top-left pixel encodes the position, seeks recorded.
 class FakeReplayHost implements ReplayHost {
-  FakeReplayHost({this.actions = 9000, this.failWith});
+  FakeReplayHost({this.actions = 9000, this.failWith, this.epoch = kJournalEpoch});
 
   final int actions;
   final String? failWith;
+  final int epoch;
   final List<int> seeks = [];
   int _pos = 0;
   bool _ready = false;
@@ -30,6 +32,8 @@ class FakeReplayHost implements ReplayHost {
   ValueListenable<double> get initProgress => _progress;
   @override
   int get position => _pos;
+  @override
+  int get journalEpoch => epoch;
   @override
   List<int> get endFrameDurationsUs => const [100000];
   @override
@@ -114,6 +118,20 @@ void main() {
     expect(find.byType(Slider), findsNothing);
   });
 
+  // ADR 0015: a replay recorded under an older epoch is badged, because today's engine
+  // semantics may render it differently than the session that produced it.
+  testWidgets('a pre-epoch journal is badged', (tester) async {
+    await pumpReplay(tester, FakeReplayHost(actions: 9000, epoch: 1));
+    expect(find.text('Older recording'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.pause)); // stop the sweep timer
+    await tester.pump();
+  });
+  testWidgets('a current-epoch journal is not badged', (tester) async {
+    await pumpReplay(tester, FakeReplayHost(actions: 9000, epoch: kJournalEpoch));
+    expect(find.text('Older recording'), findsNothing);
+    await tester.tap(find.byIcon(Icons.pause));
+    await tester.pump();
+  });
   testWidgets('share action invokes the handler', (tester) async {
     var shared = 0;
     final host = FakeReplayHost(actions: 100);
