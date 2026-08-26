@@ -1052,13 +1052,7 @@ extension _EditorEngine on _EditorPageState {
     if (ms > 0) _send('AdvanceClock($ms)', activity: false);
     _playSeenSendSeq = _sendSeq;
     final (frame, nextUs) = engine.playStatus; // one O(log n) scalar [battery F15]
-    if (frame != _playShownFrame || editsSeen) {
-      _playShownFrame = frame;
-      _playheadVN.value = frame; // row-1's live frame counter (no full-tree rebuild)
-      // Route through the presenter (single _imageVN publisher; no full-tree setState, so
-      // the row-3 tiles stay stable and tappable during playback). [battery R1]
-      _redraw(full: false, refetchSelection: false);
-    }
+    if (frame != _playShownFrame || editsSeen) _showPlayFrame(frame);
     _maybeParkOnTimer(nextUs);
   }
 
@@ -1070,6 +1064,19 @@ extension _EditorEngine on _EditorPageState {
   // The engine's reported wait is a lower bound, so a frame can never show late; at
   // worst the timer fires just before the boundary and re-arms once.
   static const int _kPlayTimerModeUs = 34000; // ≈2×60 Hz frames; >~29 fps content stays vsync
+
+  /// The ONE place a newly displayed Playhead frame is published. Playback advances through two
+  /// paths — the vsync ticker for fast content and a parked timer for anything slower than
+  /// ~29 fps [battery R3] — and ordinary pixel-art timing (100 ms/frame) spends nearly all its
+  /// time on the TIMER path. Wiring row-1's live frame counter into only one of them left the
+  /// counter frozen for every realistic animation, so both now route through here.
+  void _showPlayFrame(int frame) {
+    _playShownFrame = frame;
+    _playheadVN.value = frame; // row-1's live frame counter (no full-tree rebuild)
+    // Route through the presenter (single _imageVN publisher; no full-tree setState, so the
+    // row-3 tiles stay stable and tappable during playback). [battery R1]
+    _redraw(full: false, refetchSelection: false);
+  }
 
   void _maybeParkOnTimer(int nextUs) {
     if (nextUs <= _kPlayTimerModeUs) return;
@@ -1086,10 +1093,7 @@ extension _EditorEngine on _EditorPageState {
     if (ms > 0) _send('AdvanceClock($ms)', activity: false);
     _playSeenSendSeq = _sendSeq;
     final (frame, nextUs) = engine.playStatus;
-    if (frame != _playShownFrame) {
-      _playShownFrame = frame;
-      _redraw(full: false, refetchSelection: false);
-    }
+    if (frame != _playShownFrame) _showPlayFrame(frame);
     if (nextUs > _kPlayTimerModeUs) {
       _playTimer = Timer(Duration(microseconds: nextUs), _onPlayTimerFire);
     } else if (!(_playTicker?.isActive ?? true)) {
