@@ -71,6 +71,14 @@ positioning can vanish on a stray film-roll tap with no indication (ADR 0011). A
 replay fork means a Journal containing a frame delete or reorder may replay to a different result
 than the session that produced it — including already-published Timelapses (ADR 0015).
 
+**Status (2026-08-26): all 49 are implemented** on branch `ui-gaps-policies` — `66675fe`
+(ADR 0013 engine), `c87433f0` (ADR 0015), `22a55766` (ADRs 0010/0011/0012/0014, the ADR 0013 shell
+half, and the 13 point fixes). `cargo test --workspace` and `flutter test` are green and
+`flutter analyze` is clean. Two notes against the plan: **no goldens moved** (ADR 0015 anticipated
+re-pins that were never needed), and **G-43 changed shape** — rather than guarding the Alt spring,
+the hold-pick moved off Alt entirely to bare **S**, because Alt is an OS chord modifier. Nothing
+here has been exercised in a running build yet; the Q14 device pass is the remaining step.
+
 **Delivery.** One branch, a commit per root cause plus one for the point fixes, and no dedicated
 release — the work rides with the next feature. Done means one regression test per policy (Dart for
 the shell rules, Rust scenarios for the engine ones) plus a hand-repro on G-01, G-02, G-13, G-14,
