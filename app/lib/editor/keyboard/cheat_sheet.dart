@@ -4,7 +4,6 @@
 // and Binding table; engine-free.
 import 'package:flutter/material.dart';
 
-import 'chords.dart';
 import 'commands.dart';
 import 'default_bindings.dart';
 
@@ -16,7 +15,7 @@ const _categoryOrder = [
 /// Shift-constrain never will be — they get their own section.
 List<(String, String)> heldKeyRows() => [
       ('Pan canvas', 'hold Space'),
-      ('Pick color', 'hold ${primaryIsMeta() ? '⌥' : 'Alt'}'),
+      ('Pick color', 'hold S'),
       ('Constrain drags', 'hold ⇧ Shift'),
     ];
 

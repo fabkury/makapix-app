@@ -218,6 +218,11 @@ extension _EditorSheets on _EditorPageState {
     if (_playing) _pause();
     int cur = initial;
     int? dragOpacity; // non-null while the opacity slider is being dragged
+    // [G-30] The opacity the drag STARTED from. History records store the frame as it was just
+    // before the recorded edit, and the previews have already moved it — so the pre-drag value is
+    // restored (silently) an instant before the one committing SetLayerOpacity, or Undo would
+    // restore the previewed value and appear to do nothing.
+    int? preDragOpacity;
     // Mini-stack scroll state. The fixed tile extent keeps offsets computable without layout
     // queries (the _ensureActiveFrameVisible precedent); showCur centers the sheet's layer.
     final (tw, th) = _thumbSize();
@@ -348,14 +353,34 @@ extension _EditorSheets on _EditorPageState {
                 value: opacity.toDouble(),
                 max: 255,
                 onChanged: (v) {
+                  if (_controlDragDead) return; // a Command ended this drag [ADR 0010]
+                  // Latch the drag as an in-flight Gesture, with a revert to the pre-drag value.
+                  preDragOpacity ??= opacity;
+                  _beginControlDrag(opacity.toDouble(), (pv) {
+                    _send('SetLayerOpacityPreview($cur, ${pv.round()})');
+                    _redraw();
+                  });
                   setS(() => dragOpacity = v.round());
-                  _send('SetLayerOpacity($cur, ${v.round()})');
+                  // [G-30] Preview only — no undo record, no Journal line. The single
+                  // committing SetLayerOpacity is sent from onChangeEnd below.
+                  _send('SetLayerOpacityPreview($cur, ${v.round()})');
                   _redraw();
                 },
-                onChangeEnd: (_) {
+                onChangeEnd: (v) {
+                  _endControlDrag();
+                  // Rewind the (unrecorded) preview to where the drag began, so the committing
+                  // record snapshots the ORIGINAL opacity as its "before" and Undo really undoes.
+                  final pre = preDragOpacity;
+                  if (pre != null) _send('SetLayerOpacityPreview($cur, $pre)');
+                  // [G-30] ONE undoable step for the whole drag — the same granularity the
+                  // typed-entry path has always had.
+                  _act('SetLayerOpacity($cur, ${v.round()})');
                   _refreshState();
                   setState(() {});
-                  setS(() => dragOpacity = null);
+                  setS(() {
+                    dragOpacity = null;
+                    preDragOpacity = null;
+                  });
                 },
               ),
             ),
@@ -555,9 +580,9 @@ extension _EditorSheets on _EditorPageState {
           const SizedBox(height: 12),
           _sheetBtn(Icons.timer_outlined, 'Edit duration…', () {
             Navigator.pop(ctx);
-            if (cur != engine.activeFrame) _clearLayerGroup(); // frame switch invalidates the group
-            _act('SetActiveFrame($cur)');
-            _editDuration();
+            // [G-36] Act on the named frame; no activation, so cancelling costs nothing and the
+            // artist's drawing target never moves behind a dialog (ADR 0013).
+            _editDuration(frame: cur);
           }),
           _sheetSection('Arrange'),
           _sheetBtnRow([

@@ -152,10 +152,10 @@ void main() {
     await chord(tester, LogicalKeyboardKey.digit1, modifiers: [LogicalKeyboardKey.controlLeft]);
     await chord(tester, LogicalKeyboardKey.keyV, modifiers: [LogicalKeyboardKey.controlLeft]);
     expect(a.calls, [
-      // Pressing Alt springs the hold-pick around each Alt chord — by design, the chord
-      // still fires while the temporary Eyedropper is up.
-      'beginHoldPick', 'moveLayer:1', 'endHoldPick',
-      'beginHoldPick', 'moveLayer:-1', 'endHoldPick',
+      // Alt is no longer a Hold binding, so an Alt chord is just a chord: no transient
+      // Eyedropper spring around it any more [G-43].
+      'moveLayer:1',
+      'moveLayer:-1',
       'brushSizeBy:1',
       'zoomFit',
       'zoom100',
@@ -181,30 +181,46 @@ void main() {
     expect(a.calls, ['setSpacePan:true', 'setSpacePan:false']);
   });
 
-  testWidgets('hold-Alt springs the Eyedropper and restores on release', (tester) async {
+  testWidgets('hold-S springs the Eyedropper and restores on release', (tester) async {
     final a = await pumpKeyboard(tester);
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyS);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyS);
     expect(a.calls, ['beginHoldPick', 'endHoldPick']);
   });
 
-  testWidgets('hold-Alt never fires mid-draft or mid-drag', (tester) async {
+  testWidgets('hold-S never fires mid-draft or mid-Gesture', (tester) async {
     final a = await pumpKeyboard(tester);
     a.hasAnyDraftV = true;
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyS);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyS);
     a
       ..hasAnyDraftV = false
-      ..pointerActiveV = true;
+      ..interactionActiveV = true;
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyS);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyS);
+    expect(a.calls, isEmpty);
+  });
+
+  // The whole point of leaving Alt: it is an OS chord modifier, so Alt+Tab and every Alt chord
+  // used to spring the tool transiently [G-43].
+  testWidgets('Alt no longer springs the Eyedropper', (tester) async {
+    final a = await pumpKeyboard(tester);
     await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
     expect(a.calls, isEmpty);
   });
 
+  // A MODIFIED pick key is a chord, not the hold — Primary+S must still save.
+  testWidgets('Primary+S saves instead of springing the pick', (tester) async {
+    final a = await pumpKeyboard(tester);
+    await chord(tester, LogicalKeyboardKey.keyS, modifiers: [LogicalKeyboardKey.controlLeft]);
+    expect(a.calls, ['save']);
+  });
+
   testWidgets('backgrounding force-releases holds; the late keyUp is inert', (tester) async {
     final a = await pumpKeyboard(tester);
     await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyS);
     expect(a.calls, ['setSpacePan:true', 'beginHoldPick']);
     a.calls.clear();
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
@@ -212,7 +228,7 @@ void main() {
     a.calls.clear();
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyS);
     expect(a.calls, isEmpty);
   });
 
@@ -263,6 +279,64 @@ void main() {
     final a = await pumpKeyboard(tester);
     await chord(tester, LogicalKeyboardKey.slash, modifiers: [LogicalKeyboardKey.shiftLeft]);
     expect(a.calls, ['setConstrain:true', 'openKeyboardHelp', 'setConstrain:false']);
+  });
+
+  // ---- ADR 0010: gesture atomicity -------------------------------------------------------
+
+  testWidgets('mid-Gesture, Esc and Undo/Redo CANCEL the gesture and stop there', (tester) async {
+    for (final k in [
+      LogicalKeyboardKey.escape,
+      LogicalKeyboardKey.keyZ,
+      LogicalKeyboardKey.keyY,
+    ]) {
+      final a = await pumpKeyboard(tester);
+      a.interactionActiveV = true;
+      if (k == LogicalKeyboardKey.escape) {
+        await chord(tester, k);
+      } else {
+        await chord(tester, k, modifiers: [LogicalKeyboardKey.controlLeft]);
+      }
+      expect(a.cancelCount, 1, reason: '\$k must abort the gesture');
+      expect(a.finishCount, 0);
+      expect(a.calls, isEmpty, reason: 'and must not reach the Command itself');
+    }
+  });
+
+  testWidgets('mid-Gesture, every other Command FINISHES the gesture first', (tester) async {
+    final a = await pumpKeyboard(tester);
+    a.interactionActiveV = true;
+    await chord(tester, LogicalKeyboardKey.keyE); // a tool mnemonic
+    expect(a.finishCount, 1);
+    expect(a.cancelCount, 0);
+    expect(a.calls, ['selectTool:Eraser']);
+  });
+
+  // View Commands never reach the engine, so the _act funnel's own gate cannot see them — the
+  // dispatcher has to finish the gesture for them [G-06].
+  testWidgets('view Commands finish the gesture too', (tester) async {
+    final a = await pumpKeyboard(tester);
+    a.interactionActiveV = true;
+    await chord(tester, LogicalKeyboardKey.digit0, modifiers: [LogicalKeyboardKey.controlLeft]);
+    expect(a.finishCount, 1);
+    expect(a.calls, ['zoomFit']);
+  });
+
+  testWidgets('with no Gesture in flight nothing is finished or cancelled', (tester) async {
+    final a = await pumpKeyboard(tester);
+    await chord(tester, LogicalKeyboardKey.keyE);
+    expect(a.finishCount, 0);
+    expect(a.cancelCount, 0);
+    expect(a.calls, ['selectTool:Eraser']);
+  });
+
+  // The reference card is not what the artist is asking for mid-stroke [G-12].
+  testWidgets('the cheat-sheet overlay does not arm mid-Gesture', (tester) async {
+    final a = await pumpKeyboard(tester);
+    a.interactionActiveV = true;
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump(const Duration(milliseconds: 900));
+    expect(find.byType(KeyboardOverlay), findsNothing);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
   });
 
   testWidgets('holds are gated by a focused text field', (tester) async {

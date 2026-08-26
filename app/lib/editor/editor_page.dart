@@ -124,6 +124,17 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // `_resumeDocBytes` stashes the bytes _loadDrawingIntoEngine actually loaded (their FNV is
   // what attachResume reconciles against).
   JournalRecorder? _journal;
+
+  /// The same recorder as [_journal], but deliberately NOT cleared by dispose: the final flush's
+  /// preWrite still has to land its write-ahead marker after dispose has run, and reading the
+  /// nulled [_journal] is why every session end used to re-anchor [G-42]. Cleared on release.
+  JournalRecorder? _journalWriter;
+
+  /// False until _initPersistence has finished restoring (or created) the current drawing.
+  /// ADR 0014 gates canvas input on it: the boot canvas must not accept a stroke it cannot
+  /// journal and that the restore is about to overwrite [G-39]. Silent by design — the drawing
+  /// appearing IS the feedback.
+  bool _persistenceReady = false;
   Future<void>? _journalAttaching;
   Uint8List? _resumeDocBytes;
   // The composited canvas image. A ValueNotifier so playback can repaint just the canvas
@@ -136,6 +147,12 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // per display frame. The old per-publisher _imageGen staleness stamp is gone: with a
   // single-flight presenter, decodes can no longer land out of order by construction.
   bool _presentInFlight = false; // _present() is running (leading edge taken)
+
+  /// Whether the image currently in [_imageVN] is CANVAS-sized (a playback composite) rather
+  /// than storage-sized (the editing display, canvas + overscan gutter). The two need different
+  /// offsets, and painting a canvas-sized composite at the gutter-shifted offset displaced the
+  /// whole animation under the overscan view [G-23].
+  bool _imageIsCanvasSized = false;
   bool _presentBooked = false; // a trailing present is booked on the next frame
   bool _dirtyImage = false; // any presentation request pending
   bool _dirtyFull = false; // pending request wants a full-tree rebuild
@@ -368,6 +385,36 @@ class _EditorPageState extends ConsumerState<EditorPage>
   final Map<int, Offset> _touchPos = {}; // live position of every finger on the canvas
   int? _drawPointer; // the finger that owns the in-progress draw (null = none/suspended)
   bool _pinching = false;
+
+  // ---- ADR 0010: gesture atomicity -------------------------------------------------------
+  // A Gesture is atomic: nothing else reaches the engine until it ends, and competing input ends
+  // it first (finish-then-do). These latch the three gesture families the pointer fields above
+  // do not already cover, so ONE predicate (_interactionActive) knows about all five.
+
+  /// True between onPointerPanZoomStart/End — a trackpad pan/zoom is in flight. Latched at Start
+  /// so an Update can tell whether its gesture BEGAN during a stroke or pinch [G-10].
+  bool _trackpadGesture = false;
+
+  /// The tool that owned a row-1 (or opacity) slider when its drag began; null when no control
+  /// drag is live. Keyed by tool so a mid-drag tool switch cannot write into the new tool's
+  /// per-tool memory [G-08].
+  String? _controlDragTool;
+
+  /// Restores the pre-drag value of the live control drag (ADR 0010: value gestures revert on
+  /// cancel, view gestures only end).
+  VoidCallback? _controlDragRevert;
+
+  /// Set when a competing Command finished or cancelled a control drag: further ticks from the
+  /// still-held slider are ignored until the widget reports onChangeEnd.
+  bool _controlDragDead = false;
+
+  /// Guards the teardown itself against the gate that triggers it (the PointerUp we send to
+  /// finish a stroke must not try to finish it again).
+  bool _endingInteraction = false;
+
+  /// Any Gesture in flight: canvas drag, pinch, precision pen, trackpad gesture, control drag.
+  bool get _interactionActive =>
+      _drawPointer != null || _pinching || _penDown || _trackpadGesture || _controlDragTool != null;
   double _pinchStartDist = 1, _pinchStartZoom = 1;
   Offset _pinchStartMid = Offset.zero, _pinchStartPan = Offset.zero;
   // Desktop trackpad gesture (PointerPanZoomEvent stream): two-finger scroll pans, pinch zooms
@@ -622,13 +669,26 @@ class _EditorPageState extends ConsumerState<EditorPage>
     // (Club switch) AND any later crash. flushNow() serializes + builds metadata SYNCHRONOUSLY (so
     // the async write below never touches the freed engine); stop() then cancels the timer and lets
     // that write complete. Replaces the old in-memory EditorSession snapshot.
-    if (_engineReady) _autosave?.flushNow();
+    // [G-42] The write-ahead marker must land BEFORE the recorder detaches, so the detach is
+    // chained onto the flush's own future rather than racing it. [G-41] The whole teardown runs
+    // under the drawing folder's single-writer lock, so the next editor mount cannot read or
+    // re-anchor underneath these writes.
+    final teardownId = _drawingId;
+    final teardownFlush = _engineReady ? _autosave?.flushNow() : null;
     _autosave?.stop();
     // The journal's lines were captured synchronously as strings at record() time, so this
     // fire-and-forget drain never touches the engine. The flushNow above already routed the
     // final marker through preWrite; this catches lines recorded since the last autosave delta.
-    _journal?.detachSoon();
+    final teardownJournal = _journal;
     _journal = null;
+    if (teardownId != null) {
+      _withFolderLock(teardownId, () async {
+        if (teardownFlush != null) await teardownFlush;
+        teardownJournal?.detachSoon();
+      });
+    } else {
+      teardownJournal?.detachSoon();
+    }
     _antTimer?.cancel();
     _antPhase.dispose();
     _resetThumbCaches();

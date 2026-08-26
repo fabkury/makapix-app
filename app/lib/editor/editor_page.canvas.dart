@@ -171,6 +171,8 @@ extension _EditorCanvas on _EditorPageState {
       // The display image is storage-sized under the overscan view; offset it so the canvas stays
       // put on screen (the gutter extends past the edges). Equals vOff in the normal view.
       final vImgOff = _imageOffset(vScale, vOff);
+      // [G-23] A playback composite is canvas-sized, so it must NOT be shifted by the gutter.
+      final vPaintOff = _imageIsCanvasSized ? vOff : vImgOff;
       return Container(
         color: const Color(0xFF222428),
         child: Listener(
@@ -191,6 +193,10 @@ extension _EditorCanvas on _EditorPageState {
                   _cancelDraw();
                   _drawPointer = null;
                 }
+                _startPinch();
+              } else {
+                // A third finger changes which pair the pinch is measured from, so re-anchor
+                // against the fingers actually on glass — otherwise the view jumps [G-09].
                 _startPinch();
               }
             } else {
@@ -232,12 +238,20 @@ extension _EditorCanvas on _EditorPageState {
           // cursor stays under the cursor shifted by the cumulative pan (a pure scroll is the
           // scale==1 case, a pure pinch the pan==0 case; mixtures compose drift-free).
           onPointerPanZoomStart: (e) {
+            // A trackpad gesture that BEGINS during a stroke or pinch is ignored outright: its
+            // accumulated transform would otherwise land in one jump at stroke end [G-10].
+            if (_drawPointer != null || _pinching) return;
+            _trackpadGesture = true;
             _trackpadStartZoom = _zoom;
             _trackpadStartPan = _pan;
-            // Anchor on the tracked hover position, not the event's (see _canvasHoverPos).
-            _trackpadStartFocal = _canvasHoverPos ?? e.localPosition;
+            // Anchor on the tracked hover position, not the event's — which this code already
+            // distrusts. With no hover, fall back to the canvas center rather than an untrusted
+            // event position [G-10].
+            _trackpadStartFocal = _canvasHoverPos ?? Offset(box.width / 2, box.height / 2);
           },
+          onPointerPanZoomEnd: (e) => _trackpadGesture = false,
           onPointerPanZoomUpdate: (e) {
+            if (!_trackpadGesture) return; // began mid-stroke/pinch, or already ended
             if (_drawPointer != null || _pinching) return;
             final newZoom = (_trackpadStartZoom * e.scale).clamp(_kMinZoom, _kMaxZoom);
             final (s0, off0) = _view(box, zoom: _trackpadStartZoom, pan: _trackpadStartPan);
@@ -254,7 +268,7 @@ extension _EditorCanvas on _EditorPageState {
             ValueListenableBuilder<ui.Image?>(
               valueListenable: _imageVN,
               builder: (_, img, _) => RepaintBoundary(
-                child: CustomPaint(painter: CanvasPainter(img, vScale, vImgOff), size: Size.infinite),
+                child: CustomPaint(painter: CanvasPainter(img, vScale, vPaintOff), size: Size.infinite),
               ),
             ),
             // The pixel grid is a SCREEN-space overlay (thin hairlines on the pixel boundaries), not
@@ -398,7 +412,13 @@ extension _EditorCanvas on _EditorPageState {
   void _endTouch(int pointer, {required bool cancel}) {
     _touchPos.remove(pointer);
     if (_pinching) {
-      if (_touchPos.length < 2) _pinching = false; // back to ≤1 finger: stop pinching, don't draw
+      if (_touchPos.length < 2) {
+        _pinching = false; // back to ≤1 finger: stop pinching, don't draw
+      } else {
+        // Still pinching, but with a DIFFERENT pair of fingers: re-anchor from the current two
+        // and the current zoom/pan, instead of re-pairing against the original anchors [G-09].
+        _startPinch();
+      }
       return;
     }
     if (pointer == _drawPointer) {
@@ -437,6 +457,12 @@ extension _EditorCanvas on _EditorPageState {
   }
 
   void _beginDraw(Offset pos, Size box) {
+    // ADR 0014 [G-39]: the boot canvas accepts no stroke it cannot journal. Silent by decision.
+    if (!_persistenceReady) return;
+    // ADR 0012 (playback is a mode): a stroke is editing intent, so it pauses first. Without
+    // this, keyboard-started playback left the surface live and paint landed on the active
+    // frame while a DIFFERENT frame was on screen — invisibly [G-21].
+    if (_playing) _pause();
     if (_spacePanning) {
       // Hold-Space pan: the whole drag moves the view (screen-space deltas — _pan is in
       // screen pixels). Begin-of-drag decides; releasing Space mid-drag keeps it a pan.

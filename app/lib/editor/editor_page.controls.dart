@@ -929,6 +929,10 @@ extension _EditorControls on _EditorPageState {
       builder: (_) => PalettePage(
         host: EnginePaletteHost(engine,
             onMutated: () => _autosave?.markActivity(),
+            // [G-19] The page warns that extraction reads the committed document, not the
+            // Draft preview on screen. Pushing this page is not a context change (ADR 0011),
+            // so the Draft deliberately survives the trip.
+            pendingDraft: () => _hasAnyDraft,
             onDsl: (dsl) => _journal?.record(dsl)), // palette DSL reaches the Journal [replay]
       ),
     ));
@@ -937,6 +941,9 @@ extension _EditorControls on _EditorPageState {
     _redraw();
   }
 
+  /// [vertical] is the strip orientation AT OPEN; the builder re-reads it from MediaQuery on
+  /// every rebuild so rotating the device while the sheet is up remaps the arrows instead of
+  /// leaving them pointing the way the strip used to run [G-49].
   void _paletteSwatchMenu(int i, Color c, {required bool vertical}) {
     if (_playing) _pause();
     // The sheet follows the swatch as it moves so you can nudge it several steps without
@@ -949,7 +956,8 @@ extension _EditorControls on _EditorPageState {
         final n = _palette.length;
         final color = (cur >= 0 && cur < n) ? _palette[cur] : c;
         final name = (cur >= 0 && cur < _paletteNames.length) ? _paletteNames[cur] : null;
-        final t = paletteMoveTargets(cur, n, vertical: vertical);
+        final live = editorUsesLandscape(MediaQuery.sizeOf(ctx));
+        final t = paletteMoveTargets(cur, n, vertical: live);
         void move(int? partner) {
           if (partner == null) return;
           _act('SwapPaletteColors($cur, $partner)');

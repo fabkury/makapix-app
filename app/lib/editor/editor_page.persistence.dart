@@ -9,6 +9,29 @@ part of 'editor_page.dart';
 // The user's decision for the current drawing when new artwork is about to replace the canvas.
 enum _OutgoingChoice { discard, save }
 
+// ADR 0014: exactly one editor instance may touch a drawing's folder at a time. A fast pillar
+// round-trip mounts the next editor while the previous one's teardown writes are still in flight,
+// and the two raced over the same files [G-41]. The hazard is two instances in ONE process, so an
+// in-process map of in-flight teardowns is the exact scope — no lock file, and therefore no
+// stale-lock recovery to get wrong. Library-private so both editor_page.dart's dispose and this
+// part's mount path can reach it.
+final Map<String, Future<void>> _folderWriters = {};
+
+/// Register [work] as the sole writer of [id]'s folder, queued after any previous writer.
+Future<void> _withFolderLock(String id, Future<void> Function() work) {
+  final prev = _folderWriters[id] ?? Future<void>.value();
+  final next = prev.then((_) => work()).catchError((_) {});
+  _folderWriters[id] = next;
+  next.whenComplete(() {
+    if (identical(_folderWriters[id], next)) _folderWriters.remove(id);
+  });
+  return next;
+}
+
+/// Await whatever teardown is still writing [id]'s folder, so a fresh mount never reads or
+/// re-anchors underneath it.
+Future<void> _awaitFolderIdle(String id) => _folderWriters[id] ?? Future<void>.value();
+
 extension _EditorPersistence on _EditorPageState {
   // ---- startup ----------------------------------------------------------------
 
@@ -32,6 +55,10 @@ extension _EditorPersistence on _EditorPageState {
     if (!mounted) return;
 
     final curId = _prefs?.getString(_kCurrentDrawing);
+    // ADR 0014 [G-41]: a fast pillar round-trip can mount this editor while the previous one's
+    // teardown is still writing the same folder. Wait for it before reading a byte.
+    if (curId != null) await _awaitFolderIdle(curId);
+    if (!mounted) return;
     if (curId != null && await _store!.exists(curId) && await _loadDrawingIntoEngine(curId)) {
       final meta = await _store!.readMeta(curId);
       _restoreProvenance(_resumeDocBytes);
@@ -45,6 +72,10 @@ extension _EditorPersistence on _EditorPageState {
       _refreshState();
       _redraw();
     }
+
+    // ADR 0014 [G-39]: from here on the canvas may accept strokes — before this point a stroke
+    // would have been clobbered by the restore and left pixels in no Journal.
+    _persistenceReady = true;
 
     // Consume any pending Club "Edit in Makapix" request only AFTER the real current drawing is
     // back in the engine, so the replace-ask judges (and can save/discard) the actual document —
@@ -91,9 +122,12 @@ extension _EditorPersistence on _EditorPageState {
       // Journal write-ahead: flush the recorder and append a marker for the exact bytes
       // about to be written, awaiting a still-in-flight attach first so the first marker
       // can never race it. [replay]
+      // [G-42] Reads the WRITER handle, not _journal: dispose nulls _journal immediately, so
+      // the final flush's preWrite used to find nothing and every session end re-anchored. The
+      // writer handle is cleared only by a real release.
       preWrite: (fnv) async {
         await _journalAttaching;
-        await _journal?.markerBeforeSave(fnv);
+        await _journalWriter?.markerBeforeSave(fnv);
       },
     )..start();
   }
@@ -135,6 +169,9 @@ extension _EditorPersistence on _EditorPageState {
   // and would otherwise flash stale for one frame and leak the old ui.Images. [audit]
   void _adopt(String id, String title, DateTime createdAt,
       {_JournalMode journalMode = _JournalMode.resume, String journalReason = 'fresh'}) {
+    // ADR 0011: a document switch is a context change, so no Draft survives it. Without this a
+    // pending figure or transform could commit into an entirely different document [G-17].
+    _cancelDraftsForContextChange();
     _resetThumbCaches();
     _drawingId = id;
     _drawingTitle = title;
@@ -202,6 +239,7 @@ extension _EditorPersistence on _EditorPageState {
     // keep-branch flushNow above already routed the final marker through preWrite. [replay]
     final j = _journal;
     _journal = null;
+    _journalWriter = null; // a real release DOES clear the writer handle [G-42]
     _journalAttaching = null;
     if (j != null) await j.detach();
     final id = _drawingId;
@@ -212,17 +250,14 @@ extension _EditorPersistence on _EditorPageState {
     }
   }
 
-  // Interactive release, for every path that replaces the canvas (Club edit, Open, gallery,
-  // New). A blank canvas has nothing to protect and releases silently (deleted, so empty
-  // Untitled entries never accumulate); otherwise the user chooses: keep the current drawing
-  // in My Drawings, discard it (re-confirmed), or cancel. Returns false when canceled — the
-  // caller must abort.
-  Future<bool> _releaseOutgoingDrawingInteractive(String incoming) async {
-    if (!_engineReady || !mounted) return false;
-    if (_isBlankDocument()) {
-      await _releaseOutgoing(discard: true);
-      return true;
-    }
+  // Ask what should happen to the outgoing drawing WITHOUT acting on it yet (ADR 0014: load,
+  // then adopt). Separating the question from the release is what lets a caller probe the
+  // incoming document first and abandon the whole switch if it will not load — so a corrupt
+  // target can neither take the outgoing drawing's identity [G-37] nor cause it to be released
+  // and then resurrected [G-38]. Returns null when the artist cancels.
+  Future<_OutgoingChoice?> _askOutgoingChoice(String incoming) async {
+    if (!_engineReady || !mounted) return null;
+    if (_isBlankDocument()) return _OutgoingChoice.discard; // nothing to protect, never asked
     final choice = await showDialog<_OutgoingChoice>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -250,9 +285,9 @@ extension _EditorPersistence on _EditorPageState {
         ],
       ),
     );
-    if (choice == null) return false;
+    if (choice == null) return null;
     if (choice == _OutgoingChoice.discard) {
-      if (!mounted) return false;
+      if (!mounted) return null;
       final sure = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -268,8 +303,16 @@ extension _EditorPersistence on _EditorPageState {
           ],
         ),
       );
-      if (sure != true) return false; // declined → the whole load is canceled
+      if (sure != true) return null; // declined → the whole load is canceled
     }
+    return choice;
+  }
+
+  // Ask AND release, for the callers whose incoming content cannot fail to load (New, and the
+  // byte-carrying paths that already hold their content in hand).
+  Future<bool> _releaseOutgoingDrawingInteractive(String incoming) async {
+    final choice = await _askOutgoingChoice(incoming);
+    if (choice == null) return false;
     await _releaseOutgoing(discard: choice == _OutgoingChoice.discard);
     return true;
   }
@@ -293,11 +336,27 @@ extension _EditorPersistence on _EditorPageState {
     if (id == _drawingId) return;
     final meta = await _store?.readMeta(id);
     if (!mounted) return;
-    if (!await _releaseOutgoingDrawingInteractive('"${meta?.title ?? 'Untitled'}"')) return;
+    // ADR 0014, load-then-adopt. Ask first, but do NOT release the outgoing drawing yet: its
+    // identity, journal and autosave only change once the incoming document is proven to load.
+    final choice = await _askOutgoingChoice('"${meta?.title ?? 'Untitled'}"');
+    if (choice == null) return;
+    final outgoingId = _drawingId;
+    await _autosave?.flushNow(); // the outgoing is now on disk, so rollback below is exact
     final ok = await _loadDrawingIntoEngine(id);
-    if (!ok && mounted) _toast('Could not open that drawing (file missing or corrupt)');
+    if (!ok) {
+      // Nothing was released, so the outgoing drawing still owns its identity — put its bytes
+      // back under it and leave the target untouched [G-37, G-38].
+      if (outgoingId != null) await _loadDrawingIntoEngine(outgoingId);
+      if (mounted) {
+        _toast('Could not open that drawing (file missing or corrupt)');
+        _refreshState();
+        _redraw();
+      }
+      return;
+    }
+    await _releaseOutgoing(discard: choice == _OutgoingChoice.discard);
     _clubSource = null;
-    if (ok) _restoreProvenance(_resumeDocBytes);
+    _restoreProvenance(_resumeDocBytes);
     _adopt(id, meta?.title ?? 'Untitled', meta?.createdAt ?? DateTime.now());
     if (mounted) {
       _refreshState();

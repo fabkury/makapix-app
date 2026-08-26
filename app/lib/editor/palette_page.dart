@@ -58,11 +58,23 @@ abstract class PaletteHost {
 
   /// `{"colors":["#RRGGBBAA",...]}` or `{"over_limit":true}` (engine aborts past 256 uniques).
   String usedColorsJson();
+
+  /// True when the editor has an uncommitted Draft. Opening this page is NOT a context change
+  /// under ADR 0011, so the Draft survives — but extraction reads the COMMITTED document, which
+  /// is not what the artist is looking at. The page warns rather than silently disagreeing, and
+  /// rather than destroying a Draft the artist only meant to glance away from [G-19].
+  bool get hasPendingDraft => false;
 }
 
 class EnginePaletteHost implements PaletteHost {
-  EnginePaletteHost(this.engine, {this.onMutated, this.onDsl});
+  EnginePaletteHost(this.engine, {this.onMutated, this.onDsl, this.pendingDraft});
   final Engine engine;
+
+  /// Supplied by the editor so the page can warn about an uncommitted Draft [G-19].
+  final bool Function()? pendingDraft;
+
+  @override
+  bool get hasPendingDraft => pendingDraft?.call() ?? false;
 
   /// Fired after every mutation so the editor's autosave sees the activity (what `_send` does).
   final VoidCallback? onMutated;
@@ -367,6 +379,11 @@ class _PalettePageState extends State<PalettePage> {
 
   Future<void> _fromArtwork() async {
     if (!_belowCap()) return;
+    // [G-19] Say so before extracting: the pending Draft is a display-only preview and is not
+    // part of what gets read.
+    if (widget.host.hasPendingDraft) {
+      _toast('Colors come from the saved artwork — your pending edit is not included');
+    }
     Map<String, dynamic> r;
     try {
       r = json.decode(widget.host.usedColorsJson()) as Map<String, dynamic>;

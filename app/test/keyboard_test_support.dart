@@ -16,7 +16,9 @@ class FakeEditorAccess implements EditorAccess {
   int activeLayerV = 0;
   String activeToolV = 'Pencil';
   bool brushSizeAppliesV = true;
-  bool pointerActiveV = false;
+  bool interactionActiveV = false;
+  int finishCount = 0;
+  int cancelCount = 0;
 
   @override
   bool get hasAnyDraft => hasAnyDraftV;
@@ -39,7 +41,11 @@ class FakeEditorAccess implements EditorAccess {
   @override
   bool get brushSizeApplies => brushSizeAppliesV;
   @override
-  bool get pointerActive => pointerActiveV;
+  bool get interactionActive => interactionActiveV;
+  @override
+  void finishInteraction() => finishCount++;
+  @override
+  void cancelInteraction() => cancelCount++;
 
   @override
   void selectTool(String dsl) => calls.add('selectTool:$dsl');

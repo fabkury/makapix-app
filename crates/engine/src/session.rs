@@ -3345,6 +3345,18 @@ impl Session {
             self.edit_frame(|s| s.doc.active_frame_mut().layers[i].opacity = o);
         }
     }
+
+    /// Set a layer's opacity WITHOUT recording an undo step — the live preview behind an
+    /// opacity slider drag [G-30]. A drag used to push one absolute frame snapshot per tick,
+    /// evicting the frame's whole 128-record history in a single gesture; the shell now previews
+    /// through here and commits ONE `SetLayerOpacity` when the drag ends. Not journaled either
+    /// (see JournalRecorder), matching the existing rule that draft fiddling is invisible and the
+    /// commit is the visible tick.
+    pub fn set_layer_opacity_preview(&mut self, i: usize, o: u8) {
+        if i < self.doc.active_frame().layers.len() {
+            self.doc.active_frame_mut().layers[i].opacity = o;
+        }
+    }
     pub fn set_layer_visible(&mut self, i: usize, v: bool) {
         if i < self.doc.active_frame().layers.len() {
             self.edit_frame(|s| s.doc.active_frame_mut().layers[i].visible = v);
@@ -5367,6 +5379,24 @@ mod tests {
         assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::TRANSPARENT);
         assert!(s.doc.undo()); // one undoable frame edit
         assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::WHITE);
+    }
+
+    /// [G-30] The preview verb must not touch history. A slider drag used to push one absolute
+    /// frame snapshot PER TICK, evicting the frame's whole 128-record undo history in a single
+    /// gesture; previewing costs nothing and the shell commits exactly one step at drag end.
+    #[test]
+    fn opacity_preview_records_no_undo_step() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(3, 3); // one real record, so there is something to undo back to
+        for o in [10u8, 40, 90, 160, 200] {
+            s.run_script(&format!("SetLayerOpacityPreview(0, {o})")).unwrap();
+        }
+        assert_eq!(s.doc.active_frame().layers[0].opacity, 200, "the preview is applied");
+        // Undo still reaches the stroke — the previews consumed no records at all.
+        assert!(s.doc.undo());
+        assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::TRANSPARENT, "undo reached past the previews");
+        assert!(!s.doc.can_undo(), "the previews pushed nothing of their own");
     }
 
     #[test]

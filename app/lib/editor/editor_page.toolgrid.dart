@@ -273,8 +273,24 @@ extension _EditorToolgrid on _EditorPageState {
       {VoidCallback? onChangeEnd}) {
     return SizedBox(
       width: 120,
+      // ADR 0010: every row-1 control drag is an in-flight Gesture. The first tick latches it
+      // (with a revert to the pre-drag value), so a competing Command finishes it and Esc/Undo
+      // cancel it back. The dead flag is what closes G-08: once a tool switch has ended the drag,
+      // the still-held slider stops writing — into the new tool's memory or anywhere else.
       child: _GearedSlider(
-          value: v, min: min, max: max, onChanged: onChanged, onChangeEnd: onChangeEnd),
+        value: v,
+        min: min,
+        max: max,
+        onChanged: (nv) {
+          if (_controlDragDead) return;
+          _beginControlDrag(v, onChanged);
+          onChanged(nv);
+        },
+        onChangeEnd: () {
+          _endControlDrag();
+          onChangeEnd?.call();
+        },
+      ),
     );
   }
 

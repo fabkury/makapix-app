@@ -391,8 +391,11 @@ extension _EditorTimeline on _EditorPageState {
   // Push the current move-group to the engine's layer selection so both the Move-tool layer drag
   // and the nudge buttons act on the whole group (or just the active layer when none is grouped).
   void _syncLayerSel() {
-    if (_selLayers.length > 1) {
-      // SetMoveGroup sets the move-group without changing the active layer (it stays put).
+    if (_selLayers.isNotEmpty) {
+      // SetMoveGroup sets the Move group without changing the active layer (it stays put).
+      // ANY non-empty set is a real group now, one member included: the engine holds it by
+      // layer id and an empty group means "no group", so a lone badged layer really is what
+      // the Move tool drags [G-33, ADR 0013].
       final list = (_selLayers.toList()..sort()).join(',');
       _send('SetMoveGroup($list)');
     } else {

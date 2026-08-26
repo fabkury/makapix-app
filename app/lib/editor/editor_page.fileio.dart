@@ -251,18 +251,11 @@ extension _EditorFileIo on _EditorPageState {
   Future<void> _postToClub() async {
     if (!_engineReady) return;
     final w = engine.width, h = engine.height, fc = engine.frameCount;
-    // Encode off the UI thread so a multi-frame WebP doesn't jank/ANR. [audit F-12]
-    var docBytes = engine.save();
-    _toast('Rendering WebP…');
-    final (bytes, _) = await Engine.encodeInBackground(docBytes, format: 'webp');
-    // Release the ~document-sized snapshot now — it is not needed past the encode, so it should
-    // not stay resident across the metadata decode + Navigator.push below. [audit #14]
-    docBytes = Uint8List(0);
-    if (!mounted) return;
-    if (bytes.isEmpty) {
-      _toast('Export failed');
-      return;
-    }
+    // [G-40] Every part of the draft is read from ONE document state. The pieces that used to be
+    // gathered AFTER the encode's await are snapshotted here, before it, and the encode itself
+    // now runs behind the same modal progress dialog the other exports use — so the document
+    // cannot change underneath the assembly by any route.
+    //
     // Total loop duration from the document's per-frame durations, under the same
     // clamp rules feeds play by — lets the artist verify a series shares one loop.
     int? totalDurationMs;
@@ -276,6 +269,17 @@ extension _EditorFileIo on _EditorPageState {
         }
       } catch (_) {/* metadata only — never blocks posting */}
     }
+    // The layers file offered by the "Share the layers (.mkpx)" checkbox, taken at the same
+    // instant as everything else.
+    final mkpxBytes = engine.saveCompactWithMeta(_provenance.toMeta());
+    // Encode off the UI thread so a multi-frame WebP doesn't jank/ANR [audit F-12], behind the
+    // progress modal so no edit can land mid-assembly.
+    final (bytes, canceled, _) = await _encodeWithProgress('webp', title: 'Rendering WebP…');
+    if (!mounted || canceled) return;
+    if (bytes.isEmpty) {
+      _toast('Export failed');
+      return;
+    }
     final draft = PublishDraft(
       bytes: bytes,
       format: 'webp',
@@ -285,10 +289,9 @@ extension _EditorFileIo on _EditorPageState {
       frameCount: fc,
       source: _clubSource,
       provenance: _provenance,
-      // The layers file offered by the "Share the layers (.mkpx) file" checkbox —
-      // compact profile, same as user-facing saves. The publish page decides
-      // whether it is actually sent.
-      mkpxBytes: engine.saveCompactWithMeta(_provenance.toMeta()),
+      // Snapshotted above with the rest of the draft [G-40]; the publish page decides whether
+      // it is actually sent.
+      mkpxBytes: mkpxBytes,
       totalDurationMs: totalDurationMs,
     );
     if (!mounted) return;
@@ -652,11 +655,16 @@ extension _EditorFileIo on _EditorPageState {
     );
   }
 
-  Future<void> _editDuration() async {
+  /// [frame] defaults to the active one. Passing it explicitly is what lets the frame sheet
+  /// edit ANOTHER frame's duration without activating it — the dialog used to switch the active
+  /// frame permanently even when it was cancelled [G-36], which ADR 0013 forbids: only the
+  /// artist activates.
+  Future<void> _editDuration({int? frame}) async {
     final frames = (_state['frame_detail'] as List?);
+    final fi = frame ?? engine.activeFrame;
     int curUs = 100000;
-    if (frames != null && engine.activeFrame < frames.length) {
-      curUs = frames[engine.activeFrame]['duration_us'] ?? 100000;
+    if (frames != null && fi < frames.length) {
+      curUs = frames[fi]['duration_us'] ?? 100000;
     }
     double ms = curUs / 1000.0;
     // The text field is the source of truth while typing (never rewritten mid-edit, so a
@@ -667,7 +675,7 @@ extension _EditorFileIo on _EditorPageState {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setS) => AlertDialog(
-          title: Text('Frame ${engine.activeFrame + 1} duration'),
+          title: Text('Frame ${fi + 1} duration'),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
             Row(children: [
               SizedBox(
@@ -709,7 +717,7 @@ extension _EditorFileIo on _EditorPageState {
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
             TextButton(
                 onPressed: () {
-                  _act('SetFrameDuration(${engine.activeFrame}, ${ms.toStringAsFixed(2)})');
+                  _act('SetFrameDuration($fi, ${ms.toStringAsFixed(2)})');
                   Navigator.pop(ctx);
                 },
                 child: const Text('This frame')),

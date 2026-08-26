@@ -4,11 +4,16 @@ import 'package:makapix_club/editor/palette_io.dart';
 import 'package:makapix_club/editor/palette_page.dart';
 
 class FakePaletteHost implements PaletteHost {
-  FakePaletteHost(this.palettes, {this.active = 0, this.usedColors = '{"colors":[]}'});
+  FakePaletteHost(this.palettes,
+      {this.active = 0, this.usedColors = '{"colors":[]}', this.pendingDraft = false});
   List<PaletteInfo> palettes;
   int active;
   String usedColors;
+  bool pendingDraft;
   final List<String> scripts = [];
+
+  @override
+  bool get hasPendingDraft => pendingDraft;
 
   @override
   ({List<PaletteInfo> palettes, int active}) readPalettes() => (palettes: palettes, active: active);

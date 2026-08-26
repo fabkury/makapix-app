@@ -33,7 +33,12 @@ class _EditorKeyboardHost implements EditorAccess {
   @override
   bool get brushSizeApplies => _kBrushSizeTools.contains(_s._tool);
   @override
-  bool get pointerActive => _s._drawPointer != null || _s._pinching;
+  @override
+  bool get interactionActive => _s._interactionActive;
+  @override
+  void finishInteraction() => _s._finishInteraction();
+  @override
+  void cancelInteraction() => _s._cancelInteraction();
 
   @override
   void selectTool(String dsl) => _s._selectTool(dsl);

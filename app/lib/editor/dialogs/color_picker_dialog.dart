@@ -355,6 +355,9 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
       Expanded(
         child: TextField(
           controller: _hexCtrl,
+          // [G-46] Losing focus applies too, so tapping OK straight from the field keeps the
+          // typed value instead of silently discarding it. Unparseable text is still ignored.
+          onTapOutside: (_) => _applyHex(_hexCtrl.text),
           decoration: const InputDecoration(
             isDense: true,
             border: OutlineInputBorder(),
@@ -372,7 +375,12 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
       child: const Text('Cancel'),
     ),
     FilledButton(
-      onPressed: () => Navigator.pop(context, _color),
+      // [G-46] Apply whatever is typed in the hex field before returning: pressing OK without
+      // Enter used to discard it silently. Unparseable text leaves _color as it is.
+      onPressed: () {
+        _applyHex(_hexCtrl.text);
+        Navigator.pop(context, _color);
+      },
       child: const Text('OK'),
     ),
   ];

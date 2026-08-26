@@ -15,6 +15,21 @@ import 'commands.dart';
 import 'default_bindings.dart';
 import 'editor_access.dart';
 
+/// The Hold binding that springs the temporary Eyedropper. Deliberately a BARE LETTER rather
+/// than Alt: Alt is an OS chord modifier, so Alt+Tab and every Alt chord transiently sprang the
+/// tool [G-43]. S is home row under the left hand while the right hand draws — the same
+/// ergonomics that make Space the pan hold — and Primary+S (Save) still reaches the tap table
+/// because a modified pick key is not the hold.
+const LogicalKeyboardKey kHoldPickKey = LogicalKeyboardKey.keyS;
+
+/// Commands that ABORT an in-flight Gesture instead of finishing it (ADR 0010).
+const Set<String> kCancelGestureCommands = {
+  'draft.cancel',
+  'playback.stop',
+  'edit.undo',
+  'edit.redo',
+};
+
 class EditorKeyboard extends StatefulWidget {
   const EditorKeyboard({
     super.key,
@@ -113,6 +128,30 @@ class _EditorKeyboardState extends State<EditorKeyboard> with WidgetsBindingObse
     if (_overlayVisible && mounted) setState(() => _overlayVisible = false);
   }
 
+  static bool _anyModifierDown() =>
+      HardwareKeyboard.instance.isShiftPressed ||
+      HardwareKeyboard.instance.isAltPressed ||
+      HardwareKeyboard.instance.isControlPressed ||
+      HardwareKeyboard.instance.isMetaPressed;
+
+  /// Re-derive the hold states from the physical keyboard when focus comes back with a key
+  /// still down — otherwise each hold recovered differently, or not at all [G-44]. Space is not
+  /// readable this way; its KeyRepeat re-arms it instead.
+  void _rederiveHolds() {
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    final shift = pressed.contains(LogicalKeyboardKey.shiftLeft) ||
+        pressed.contains(LogicalKeyboardKey.shiftRight);
+    if (shift != _constrainHeld) {
+      _constrainHeld = shift;
+      widget.access.setConstrain(shift);
+    }
+    final pick = pressed.contains(kHoldPickKey) && !_anyModifierDown();
+    if (pick && !_pickHeld && !widget.access.hasAnyDraft && !widget.access.interactionActive) {
+      _pickHeld = true;
+      widget.access.beginHoldPick();
+    }
+  }
+
   bool _isPrimaryModifierKey(LogicalKeyboardKey k) => primaryIsMeta()
       ? k == LogicalKeyboardKey.metaLeft || k == LogicalKeyboardKey.metaRight
       : k == LogicalKeyboardKey.controlLeft || k == LogicalKeyboardKey.controlRight;
@@ -120,7 +159,9 @@ class _EditorKeyboardState extends State<EditorKeyboard> with WidgetsBindingObse
   // The overlay arm/disarm machine. Never consumes anything — Primary keeps being a modifier.
   void _trackOverlay(KeyEvent event, {required bool gated}) {
     if (_isPrimaryModifierKey(event.logicalKey)) {
-      if (event is KeyDownEvent && !gated) {
+      // Never over an in-progress Gesture — the reference card is not what the artist is
+      // asking for while a stroke is live [G-12].
+      if (event is KeyDownEvent && !gated && !widget.access.interactionActive) {
         _overlayTimer ??= Timer(_kOverlayDelay, () {
           if (mounted) setState(() => _overlayVisible = true);
         });
@@ -150,16 +191,20 @@ class _EditorKeyboardState extends State<EditorKeyboard> with WidgetsBindingObse
   // not a hold key. KeyUps release even when the gates have changed since the press.
   KeyEventResult? _handleHolds(KeyEvent event, {required bool gated}) {
     final key = event.logicalKey;
-    final isAlt = key == LogicalKeyboardKey.altLeft || key == LogicalKeyboardKey.altRight;
+    final isPick = key == kHoldPickKey;
     final isSpace = key == LogicalKeyboardKey.space;
-    if (!isAlt && !isSpace) return null;
+    if (!isPick && !isSpace) return null;
+    // A MODIFIED pick key is not the hold — it is a chord (Primary+S is Save), so hand it to
+    // the tap table. Mirrors the bare-modifier check Space has always had. Moving off Alt is
+    // what removes the Alt+Tab / Alt-chord spring entirely rather than papering it [G-43].
+    if (isPick && event is! KeyUpEvent && _anyModifierDown()) return null;
     if (event is KeyUpEvent) {
       if (isSpace && _spaceHeld) {
         _spaceHeld = false;
         widget.access.setSpacePan(false);
         return KeyEventResult.handled;
       }
-      if (isAlt && _pickHeld) {
+      if (isPick && _pickHeld) {
         _pickHeld = false;
         widget.access.endHoldPick();
         return KeyEventResult.handled;
@@ -169,15 +214,12 @@ class _EditorKeyboardState extends State<EditorKeyboard> with WidgetsBindingObse
     if (gated) return KeyEventResult.ignored; // text field / covered route: keys pass through
     if (event is KeyRepeatEvent) {
       // A held hold-key auto-repeats; the hold is level-triggered, so swallow the chatter.
-      return (isSpace && _spaceHeld) || (isAlt && _pickHeld)
+      return (isSpace && _spaceHeld) || (isPick && _pickHeld)
           ? KeyEventResult.handled
           : KeyEventResult.ignored;
     }
     if (isSpace) {
-      if (HardwareKeyboard.instance.isShiftPressed ||
-          HardwareKeyboard.instance.isAltPressed ||
-          HardwareKeyboard.instance.isControlPressed ||
-          HardwareKeyboard.instance.isMetaPressed) {
+      if (_anyModifierDown()) {
         return KeyEventResult.ignored; // modified Space is not the pan hold
       }
       if (!_spaceHeld) {
@@ -186,9 +228,10 @@ class _EditorKeyboardState extends State<EditorKeyboard> with WidgetsBindingObse
       }
       return KeyEventResult.handled;
     }
-    // Alt down: spring the temporary Eyedropper — but never mid-draft (the tool switch would
-    // cancel the draft) and never mid-drag (the stroke would change meaning under the finger).
-    if (!_pickHeld && !widget.access.hasAnyDraft && !widget.access.pointerActive) {
+    // Pick key down: spring the temporary Eyedropper — but never mid-draft (the tool switch
+    // would cancel the draft) and never mid-Gesture (the stroke would change meaning under the
+    // finger; the predicate now covers the pen too, so a precision line survives [G-43]).
+    if (!_pickHeld && !widget.access.hasAnyDraft && !widget.access.interactionActive) {
       _pickHeld = true;
       widget.access.beginHoldPick();
     }
@@ -220,8 +263,19 @@ class _EditorKeyboardState extends State<EditorKeyboard> with WidgetsBindingObse
     if (chord == null) return KeyEventResult.ignored;
     final candidates = _byChord[chord];
     if (candidates == null) return KeyEventResult.ignored;
+    // ADR 0010. Mid-Gesture, Esc and Undo/Redo abort the Gesture and stop there — one keystroke
+    // undoes one thing, and mid-stroke the thing you mean is the stroke [G-05]. This runs BEFORE
+    // the enabled filter on purpose: "abort this gesture" is meaningful even when nothing is
+    // drafted, nothing is playing, and there is nothing to undo.
+    if (widget.access.interactionActive &&
+        candidates.any((c) => kCancelGestureCommands.contains(c.id))) {
+      widget.access.cancelInteraction();
+      return KeyEventResult.handled;
+    }
     for (final cmd in candidates) {
       if (!cmd.enabled(widget.access)) continue;
+      // Every other Command finishes the Gesture first, then runs [G-02, G-04, G-06].
+      if (widget.access.interactionActive) widget.access.finishInteraction();
       // A bound Chord is consumed even when the key repeat is unwanted, so held keys
       // never leak (e.g. a held P must not type into anything beneath).
       if (event is! KeyRepeatEvent || cmd.repeats) cmd.invoke(widget.access);
@@ -250,7 +304,11 @@ class _EditorKeyboardState extends State<EditorKeyboard> with WidgetsBindingObse
         onKeyEvent: _onKeyEvent,
         // Losing focus (a dialog/sheet took over) means keyUps stop arriving — force-release.
         onFocusChange: (has) {
-          if (!has) releaseAllHolds();
+          if (!has) {
+            releaseAllHolds();
+          } else {
+            _rederiveHolds(); // a key may still be down from before the route took focus [G-44]
+          }
         },
         child: Stack(fit: StackFit.passthrough, children: [
           widget.child,

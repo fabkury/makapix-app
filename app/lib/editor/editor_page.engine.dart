@@ -299,6 +299,7 @@ extension _EditorEngine on _EditorPageState {
         return;
       }
       final old = _imageVN.value;
+      _imageIsCanvasSized = playing; // [G-23] the painter picks its offset from this
       _imageVN.value = img;
       old?.dispose(); // release the previous composited image (was leaked every redraw) [audit F-10]
       if (full) {
@@ -445,7 +446,14 @@ extension _EditorEngine on _EditorPageState {
   // gated on an actual color change so uniform areas don't rebuild the strips per move event.
   void _syncPickedPrimary() {
     final c = _colorFromPacked(engine.primaryColor);
-    if (c != _primary) setState(() => _primary = c);
+    if (c == _primary) return;
+    // [G-48] An engine-side pick IS a primary change: record the outgoing color, so the swap
+    // Command restores what the artist was actually using rather than a stale earlier color.
+    _previousPrimary = _primary;
+    setState(() => _primary = c);
+    // [G-47] The Gradient tool keeps its stops in the engine. A pick changed the first swatch,
+    // so push them again or the gradient keeps drawing the colour that was replaced.
+    if (_tool == 'Gradient') _sendGradientStops();
   }
 
   Future<ui.Image> _decode(Uint8List bytes, int w, int h) {
@@ -468,10 +476,129 @@ extension _EditorEngine on _EditorPageState {
     }
   }
 
+  /// The single funnel every Command's DSL passes through — and therefore where two policies
+  /// live (ADR 0010 gesture atomicity, ADR 0012 playback-as-a-mode) instead of at ~40 call sites.
+  ///
+  ///  * an in-flight Gesture is FINISHED first, as if the artist lifted, and only then does the
+  ///    Command run (Esc/Undo/Redo take _cancelInteraction instead — see the dispatcher);
+  ///  * playback pauses before any editing intent, so nothing lands on a frame that is not the
+  ///    one on screen. Transport and pure-view verbs are the only exemptions.
+  ///
+  /// Gesture traffic itself uses [_send] directly and so never re-enters this gate.
   void _act(String dsl) {
+    _finishInteraction();
+    if (_isContextChangeVerb(dsl)) _cancelDraftsForContextChange();
+    if (_playing && !_isTransportOrViewVerb(dsl)) _pause();
     _send(dsl);
     _refreshState();
     _redraw();
+  }
+
+  /// Verbs that may run while playback is running (ADR 0012). Everything else is editing intent
+  /// and pauses first; the default direction is deliberately "pauses", so a new verb is safe.
+  static bool _isTransportOrViewVerb(String dsl) {
+    for (final part in dsl.split(';')) {
+      final t = part.trim();
+      if (t.isEmpty) continue;
+      final name = t.split('(').first.trim();
+      if (name != 'Play' && name != 'Pause' && name != 'AdvanceClock' && name != 'Stop') {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// Verbs that move the artist to another frame or layer. ADR 0011 makes those context
+  /// changes, so every open Draft dies with them — nothing can commit onto a surface the artist
+  /// is no longer looking at [G-13, G-15, G-16]. The layer-strip RESYNC deliberately uses _send,
+  /// not _act, so it is not a context change.
+  static bool _isContextChangeVerb(String dsl) {
+    for (final part in dsl.split(';')) {
+      final name = part.trim().split('(').first.trim();
+      if (name == 'SetActiveFrame' || name == 'SetActiveLayer') return true;
+    }
+    return false;
+  }
+
+  /// ADR 0011: cancel whatever Draft is open — silently and irrecoverably. Tool switches have
+  /// always done this in _selectTool; this is the same contract extended to frame, layer, and
+  /// document changes. At most one Draft can exist at a time, so one call is enough.
+  void _cancelDraftsForContextChange() {
+    if (_hasAnyDraft) _cancelActiveDraft();
+  }
+
+  /// ADR 0010: end an in-flight Gesture as if the artist lifted. Value gestures (control drags)
+  /// commit where they are; view gestures (pinch, trackpad) simply end; a stroke gets its
+  /// PointerUp so the engine records one undo step for it.
+  void _finishInteraction() {
+    if (_endingInteraction || !_interactionActive) return;
+    _endingInteraction = true;
+    try {
+      if (_drawPointer != null) _endDraw();
+      if (_pinching) {
+        _pinching = false;
+        _touchPos.clear();
+      }
+      if (_penDown) {
+        _send('CursorPenUp()');
+        _penDown = false;
+      }
+      _trackpadGesture = false;
+      if (_controlDragTool != null) {
+        _controlDragTool = null;
+        _controlDragRevert = null;
+        _controlDragDead = true; // ignore the rest of the still-held drag
+      }
+    } finally {
+      _endingInteraction = false;
+    }
+  }
+
+  /// ADR 0010: abort an in-flight Gesture — Esc and Undo/Redo mean "not this", so they discard
+  /// the stroke, revert a control drag to its pre-drag value, and consume the keystroke rather
+  /// than reaching the engine's history. View gestures have nothing to revert and just end.
+  void _cancelInteraction() {
+    if (_endingInteraction || !_interactionActive) return;
+    _endingInteraction = true;
+    try {
+      if (_drawPointer != null) {
+        _send('CancelStroke()');
+        _drawPointer = null;
+      }
+      if (_pinching) {
+        _pinching = false;
+        _touchPos.clear();
+      }
+      if (_penDown) {
+        _send('CursorPenUp()');
+        _penDown = false;
+      }
+      _trackpadGesture = false;
+      if (_controlDragTool != null) {
+        _controlDragRevert?.call();
+        _controlDragTool = null;
+        _controlDragRevert = null;
+        _controlDragDead = true;
+      }
+      _refreshState();
+      _redraw();
+    } finally {
+      _endingInteraction = false;
+    }
+  }
+
+  // ---- control-drag latch (ADR 0010) -----------------------------------------------------
+
+  void _beginControlDrag(double pre, ValueChanged<double> onChanged) {
+    if (_controlDragTool != null || _controlDragDead) return;
+    _controlDragTool = _tool;
+    _controlDragRevert = () => onChanged(pre);
+  }
+
+  void _endControlDrag() {
+    _controlDragTool = null;
+    _controlDragRevert = null;
+    _controlDragDead = false;
   }
 
   void _selectTool(String t) {

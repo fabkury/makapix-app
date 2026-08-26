@@ -15,13 +15,25 @@ abstract class EditorAccess {
   int get activeLayer;
   String get activeTool; // the shell tool name (tools.dart dsl)
   bool get brushSizeApplies; // the active tool uses the brush-size setting
-  bool get pointerActive; // a canvas drag (or pinch) is in flight
+  /// ADR 0010: ANY Gesture is in flight — canvas drag, pinch, precision pen, trackpad
+  /// gesture, or a control drag. A gate that knew only about two of the five just relocated
+  /// the drift, so this is the single predicate the whole keyboard layer asks.
+  bool get interactionActive;
+
+  /// End an in-flight Gesture as if the artist lifted, then let the Command run (finish-then-do).
+  /// Invoked for every Command EXCEPT the cancel pair below — including view Commands, which
+  /// never reach the engine and so would otherwise slip past the funnel's own gate [G-06].
+  void finishInteraction();
+
+  /// Abort an in-flight Gesture: Esc and Undo/Redo mean "not this". They discard the stroke,
+  /// revert a control drag, and consume the keystroke instead of reaching history [G-05].
+  void cancelInteraction();
 
   // ---- Hold bindings (DESIGN.md §2.3): act while the Chord is held, revert on release.
   // The dispatcher owns the key state machine and guarantees begin/end pairing (including
   // forced release on focus loss and app backgrounding); the host owns the effect.
   void setSpacePan(bool held); // hold-Space: canvas drags pan the view while held
-  void beginHoldPick(); // hold-Alt: temporary Eyedropper, remembering the current tool
+  void beginHoldPick(); // hold-S: temporary Eyedropper, remembering the current tool
   void endHoldPick(); // restore the remembered tool (no-op if the user switched meanwhile)
   void setConstrain(bool held); // hold-Shift: directional drags snap/lock (fixed grammar)
 

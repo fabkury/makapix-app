@@ -241,9 +241,16 @@ class JournalRecorder {
     if (_pendingBytes > 64 * 1024) unawaited(flush()); // preview-heavy safety valve
   }
 
+  /// Verbs the Journal deliberately drops. Playback chatter (up to 120/s) never described an
+  /// edit, and `SetLayerOpacityPreview` is the live preview behind an opacity drag — its commit
+  /// arrives as one `SetLayerOpacity`, so a Replay shows the value landing once instead of
+  /// replaying every tick of the drag [G-30]. Same rule visible_index already applies to drafts.
   static bool _isPlaybackVerb(String s) {
     final t = s.trim();
-    return t == 'Play()' || t == 'Pause()' || t.startsWith('AdvanceClock(');
+    return t == 'Play()' ||
+        t == 'Pause()' ||
+        t.startsWith('AdvanceClock(') ||
+        t.startsWith('SetLayerOpacityPreview(');
   }
 
   /// Close the current chapter and open the next, anchored on [baseBytes]. The header is

@@ -337,12 +337,21 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
           IconButton(
             tooltip: _geo.aspectLocked ? 'Aspect locked to canvas' : 'Lock to canvas aspect',
             icon: Icon(_geo.aspectLocked ? Icons.lock : Icons.lock_open),
-            onPressed: () => setState(() => _geo.toggleAspectLock()),
+            // [G-45] Kill any live drag first: an in-flight corner/move drag would otherwise
+            // keep writing geometry derived from before the toggle.
+            onPressed: () => setState(() {
+              _dragCorner = null;
+              _dragMove = false;
+              _geo.toggleAspectLock();
+            }),
           ),
           IconButton(
             tooltip: 'Reset crop',
             icon: const Icon(Icons.restart_alt),
             onPressed: () => setState(() {
+              // [G-45] Same here: without this the still-held drag resurrects the pre-reset rect.
+              _dragCorner = null;
+              _dragMove = false;
               final fresh = CropGeometry(
                   srcW: widget.srcW, srcH: widget.srcH, canvasW: widget.canvasW, canvasH: widget.canvasH);
               _geo

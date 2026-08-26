@@ -43,7 +43,7 @@ extension _EditorReplay on _EditorPageState {
           final fnv = docBytes == null ? null : AutosaveController.fnv1a64(docBytes);
           final outcome = await j.attachResume(docFnv: fnv);
           if (!mounted || !_engineReady) return;
-          _journal = j;
+          _journal = _journalWriter = j;
           if (outcome == JournalAttachOutcome.reanchorNeeded) {
             await j.cutChapter(engine.saveCompact(), reason: 'reanchor');
           }
@@ -52,7 +52,7 @@ extension _EditorReplay on _EditorPageState {
           if (!mounted || !_engineReady) return;
           if (_isBlankDocument()) {
             await j.attachFresh();
-            _journal = j;
+            _journal = _journalWriter = j;
             // From-empty chapter: the recorded NewDocument is the replay's origin. The live
             // engine takes the same (blank→blank) reset so both worlds share it.
             _send('NewDocument(${engine.width},${engine.height})');
@@ -60,19 +60,19 @@ extension _EditorReplay on _EditorPageState {
           } else {
             // The user outran persistence init and already drew — anchor on reality.
             await j.attachFreshWithBase(engine.saveCompact(), reason: 'fresh');
-            _journal = j;
+            _journal = _journalWriter = j;
           }
           _emitReplayBaseline();
         case _JournalMode.freshFromBytes:
           if (!mounted || !_engineReady) return;
           await j.attachFreshWithBase(engine.saveCompact(), reason: reason);
-          _journal = j;
+          _journal = _journalWriter = j;
           _emitReplayBaseline();
       }
     } catch (e) {
       // A journal failure must never break editing; the next attach self-heals.
       debugPrint('journal attach failed: $e');
-      _journal = j;
+      _journal = _journalWriter = j;
     }
   }
 
