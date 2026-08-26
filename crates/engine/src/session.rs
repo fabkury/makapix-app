@@ -1640,10 +1640,20 @@ impl Session {
         // (or discard it if nothing actually moved, e.g. a tap).
         if self.move_before.is_some() {
             if let Some((fid, before)) = self.move_before.take() {
-                if stroke.start != stroke.last {
-                    // Pair `after` with the drag's OWN frame (by id) — the DSL may have
-                    // changed the active frame mid-drag. [fuzz FZ-1]
-                    if let Some(fi) = self.doc.frame_index_by_id(fid) {
+                // Gate the record on CONTENT, never on pointer coordinates. `pointer_move`
+                // re-blits into the document LIVE, so by the time we get here the mutation has
+                // already happened — and a drag whose start and end coincide can still have
+                // changed pixels: `blit_wrapped` at zero offset folds out-of-canvas pixels back
+                // into view once the canvas has shrunk under them. The old `start != last` proxy
+                // dropped such a change without recording OR reverting it (unlike `cancel_stroke`,
+                // this path does not restore `before`), leaving the document holding a mutation no
+                // history record covers — so the next Undo/Redo replayed a snapshot predating it
+                // and the pixels were lost. [fuzz FZ-4]
+                //
+                // Pair `after` with the drag's OWN frame (by id) — the DSL may have
+                // changed the active frame mid-drag. [fuzz FZ-1]
+                if let Some(fi) = self.doc.frame_index_by_id(fid) {
+                    if self.doc.frames[fi].content_hash() != before.content_hash() {
                         let after = self.doc.frames[fi].clone();
                         // A layer move leaves the selection untouched, so before == after (free record).
                         let sel_before = self.doc.selection.clone();
@@ -3300,26 +3310,36 @@ impl Session {
     }
 
     /// Commit the move draft: materialize the relocation into the document as one undo step (carrying
-    /// the selection transition). This is the ONLY path that makes the move permanent. A zero-offset
-    /// draft (no movement) commits nothing.
+    /// the selection transition). This is the ONLY path that makes the move permanent. A draft that
+    /// changes neither the pixels nor the marquee commits nothing.
     pub fn move_draft_commit(&mut self) {
         let d = match self.move_draft.take() {
             Some(d) => d,
             None => return,
         };
-        if d.offset == Point::new(0, 0) {
-            return; // nothing moved → no document change, no undo step
-        }
         let fi = match self.doc.frame_index_by_id(d.fid) {
             Some(fi) => fi,
             None => return,
         };
         let cr = self.doc.canvas_rect();
         let before = self.doc.frames[fi].clone();
+        let sel_at_entry = self.doc.selection.clone();
         let translated = move_draft_paint(&d, &mut self.doc.frames[fi], self.settings.wrap, cr);
         if let Some(m) = translated {
             // The marquee moves with the committed pixels; fully off-canvas ⇒ empty ⇒ None.
             self.doc.selection = m.nonempty().map(Arc::new);
+        }
+        // Decide from CONTENT, not from `d.offset`. This used to early-return on a zero offset
+        // ("nothing moved → no document change"), which is the same coordinate-proxy assumption
+        // that produced FZ-4 in the layer-move commit: `move_draft_paint` wraps, so at offset zero
+        // it still folds out-of-canvas pixels back into view once the canvas has shrunk. Painting
+        // first and comparing afterwards makes the no-op case provable rather than assumed — and
+        // the marquee is compared too, so a mask transition on its own is never left untracked.
+        // [fuzz FZ-4]
+        if self.doc.frames[fi].content_hash() == before.content_hash()
+            && self.doc.selection == sel_at_entry
+        {
+            return; // provably nothing changed → no undo step
         }
         let after = self.doc.frames[fi].clone();
         self.doc.record_frame_content(d.fid, before, after, d.sel_before);
@@ -5634,6 +5654,71 @@ mod tests {
                 "round-trip hash mismatch for script:\n{s}"
             );
         }
+    }
+
+    #[test]
+    fn layer_move_records_from_content_not_pointer_coordinates() {
+        // [fuzz FZ-4] The layer-move commit gated its undo record on `stroke.start != stroke.last`
+        // — pointer coordinates as a proxy for "the document changed". But `pointer_move` re-blits
+        // into the document LIVE, and `blit_wrapped` at zero offset is NOT the identity once the
+        // layer holds pixels outside the canvas rect (e.g. after a shrink): it folds them back into
+        // view. So a zero-delta drag mutated the document, recorded nothing, and — unlike
+        // `cancel_stroke` — did not restore the snapshot either. Undo/Redo then replayed a snapshot
+        // predating the mutation and the pixels were lost for good.
+        // Scripts are the reduced fuzzing reproducers (docs/fuzzing/FINDINGS.md FZ-4).
+        let scripts: &[&str] = &[
+            // Zero-delta drag with wrap on, after a shrink leaves out-of-canvas pixels.
+            "SelectTool(Move)\nFillNoise(28079)\nSetWrap(true)\nResizeCanvas(18,45)\nPointerDown(7,7)\nPointerMove(7,7)",
+            "SelectTool(Move)\nFillNoise(44461)\nResizeCanvas(4,64)\nSetWrap(true)\nPointerDown(10,9)\nPointerMove(9,9)",
+            "SetBrushSize(97)\nPointerDown(15,89)\nResizeCanvas(28,57)\nSelectTool(Move)\nSetWrap(true)\nPointerDown(7,7)\nPointerMove(7,7)",
+            // A drag superseded by a second PointerDown (which settles the first via pointer_up),
+            // reached without wrap once the marquee moves off-canvas and the Move falls back to
+            // layer-move mode.
+            "Tap(29,29)\nInvertSelection()\nSelectTool(Move)\nPointerDown(27,96)\nPointerMove(44,5)\nPointerDown(27,96)\nPointerMove(-125,5)\nPointerDown(5,5)\nPointerMove(5,5)",
+            "ResizeCanvas(1,2)\nFillNoise(57260)\nInvertSelection()\nSelectTool(Move)\nPointerDown(7,46)\nPointerMove(-1526700545,1537189028)\nPointerDown(58,27)\nPointerMove(27,63)",
+        ];
+        for s in scripts {
+            let mut sess = Session::new(32, 32);
+            let _ = sess.run_script(s);
+            let _ = sess.run_script("PointerUp()"); // settle the open drag, as a finger would
+            let after = sess.doc.content_hash();
+            let _ = sess.run_script("Undo()");
+            if sess.doc.content_hash() != after {
+                let _ = sess.run_script("Redo()");
+                assert!(
+                    sess.doc.content_hash() == after,
+                    "undo/redo incoherent for script:\n{s}"
+                );
+            }
+        }
+
+        // The mechanism directly: a zero-delta wrapped drag over a layer with out-of-canvas
+        // pixels IS a document change, and must be exactly one undoable, redoable step.
+        let mut s = Session::new(32, 32);
+        let _ = s.run_script("FillNoise(28079)\nSetWrap(true)\nResizeCanvas(18,45)");
+        let before_move = s.doc.content_hash();
+        let _ = s.run_script("SelectTool(Move)\nPointerDown(7,7)\nPointerMove(7,7)\nPointerUp()");
+        let after_move = s.doc.content_hash();
+        assert_ne!(after_move, before_move, "a zero-delta wrapped move does change the document");
+        assert!(s.doc.undo(), "that change must be undoable");
+        assert_eq!(s.doc.content_hash(), before_move, "undo restores the pre-move content");
+        assert!(s.doc.redo(), "and redoable");
+        assert_eq!(s.doc.content_hash(), after_move, "redo restores the moved content exactly");
+
+        // The other side of the gate: a drag that genuinely changes nothing must still record
+        // NOTHING. The content test must not start pushing empty records for a tap on the Move
+        // tool — the first Undo has to pop the TAP, not an empty move step.
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(4, 4);
+        let painted = s.doc.content_hash();
+        s.tool = ToolKind::Move; // no selection → layer move
+        s.pointer_down(8, 8);
+        s.pointer_move(8, 8); // zero delta, no wrap, nothing outside the canvas
+        s.pointer_up();
+        assert_eq!(s.doc.content_hash(), painted, "the no-op drag changed nothing");
+        assert!(s.doc.undo(), "undo pops the tap, not an empty move record");
+        assert_eq!(s.pixel(0, 0, 4, 4), Rgba8::TRANSPARENT, "the tap itself was undone");
     }
 
     #[test]

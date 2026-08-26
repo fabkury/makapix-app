@@ -20,6 +20,7 @@ release gates until the fix lands.
 | 2026-08-25 | 14 workers, 10 min/target (FZ-2 close, stale-mask guard live) | 1.00M execs, 2287 edges, 0 crashes | 1.47M execs, 6940 edges, 0 crashes |
 | 2026-08-25 | 14 workers, 5 min/target (all findings closed) | 451k execs, 2289 edges, 0 crashes | 656k execs, 6940 edges, 0 crashes |
 | 2026-08-26 | 14 workers, 22.5 min/target (night burst) | 2.53M execs, **2292 edges**, 0 crashes | 2.98M execs, **6947 edges**, **8 crashes** → FZ-4 |
+| 2026-08-26 | 14 workers, 15 min, actions only (FZ-4 fix verification) | — | 2.35M execs, 6946 edges, **0 crashes** |
 
 The 2026-08-26 burst broke that plateau on both targets (loader 2289→2292, actions
 6940→6947) and produced FZ-4 — the "low-yield" verdict below held only for the
@@ -211,17 +212,37 @@ is never restored. Minimization facts (all verified 2026-08-25):
 - Suspicion: a refused/degenerate apply on a locked layer pushes a malformed history
   entry whose before-state snapshot predates the lock. Root cause not yet located.
 
-## FZ-4 — a layer-move drag can mutate the document without recording it (OPEN)
+## FZ-4 — a layer-move drag can mutate the document without recording it (FIXED 2026-08-26)
 
 **Found:** 2026-08-26, `fuzz_session_actions`, 45-minute night burst (14 workers,
 22.5 min/target). **Eight** artifacts, all the same oracle and, after reduction, the
 same root cause.
 **Oracle:** 2 — undo coherence (`Undo()` changed the document but `Redo()` did not
 restore it).
-**Status:** OPEN. Deterministic, reduced, root cause located. **Not a 1.6.0
+**Status:** FIXED. Deterministic, reduced, root cause located. **Not a 1.6.0
 regression** — all eight reproduce unchanged on the engine at `90835314` (the last
 commit before the two 1.6.0 engine commits), so this is long-standing surface the
 earlier short bursts never reached.
+
+**Fix:** the layer-move commit gates its record on **content** — the drag's frame
+compared against the `move_before` snapshot by `content_hash` — instead of on pointer
+coordinates. `Buffer::content_hash` hashes the whole storage, off-canvas tiles
+included, so it is a complete "did anything change" test rather than another proxy.
+Recording (not reverting) is the right answer here: in both shapes below the pixels
+genuinely did move, and the user's edit should survive. Regression:
+`layer_move_records_from_content_not_pointer_coordinates` in `session.rs` tests —
+five reduced scripts under the fuzz oracle, plus a direct assertion that a zero-delta
+wrapped move is one undoable/redoable step, plus the other side of the gate (a true
+no-op drag must still record nothing, so the first Undo pops the preceding tap rather
+than an empty move record). Verified to fail against the old coordinate guard.
+
+`move_draft_commit` was hardened the same way in the same pass (defense-in-depth: it
+is reached only by the `MoveDraftCommit` verb, which none of the eight scripts use).
+Its `if d.offset == Point::new(0, 0) { return; }` was the identical assumption; it now
+paints first and returns early only when the frame content *and* the marquee are
+provably unchanged, so a zero-offset wrapped draft cannot strand a fold-in either.
+
+Original report follows.
 **User-reachable:** yes. It reproduces with a plain `PointerUp()` as the only settle
 step, i.e. the exact sequence a finger or mouse produces — no fuzz-only teardown verb
 is involved.
@@ -315,9 +336,9 @@ proxy with the same "nothing moved -> no document change" comment; it is safe to
 only because that path leaves the document untouched while the draft is open, but the
 assumption is the same one that fails here.
 
-**Regression test:** deliberately NOT added to `crates/engine/tests/fuzz_inputs.rs`
-while this is open — a failing semantic check there breaks the release gates
-(`release_android.ps1` runs `cargo test`). Add it with the fix.
+**Regression test:** lives in `session.rs`'s inline tests (the FZ-1/FZ-3 precedent),
+not `crates/engine/tests/fuzz_inputs.rs` — that suite asserts never-panic only, and
+FZ-4 never panicked the engine at all; the panic was the fuzz target's own oracle.
 
 **Artifacts:** `fuzz/artifacts/fuzz_session_actions/crash-{2193f3e4, 2f8595d0,
 475ec510, 4904768f, 4e48dc6f, 58a9683d, e6dfc2ac, f91ff3be}...` (8, git-ignored),
