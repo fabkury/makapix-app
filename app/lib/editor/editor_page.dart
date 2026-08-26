@@ -332,6 +332,12 @@ class _EditorPageState extends ConsumerState<EditorPage>
   final Stopwatch _playStopwatch = Stopwatch();
   final PlaybackClock _playClock = PlaybackClock();
   int _playShownFrame = -1; // playFrame at the last decode; -1 forces the first-tick decode
+
+  /// The Playhead frame, republished every time the displayed composite changes. Row-1's
+  /// "Frame X / Y" listens to THIS rather than rebuilding the whole tree each tick: the play tick
+  /// deliberately avoids a full-tree setState so the row-3 tiles stay stable and tappable
+  /// [battery R1], and a live frame counter must not undo that.
+  final ValueNotifier<int> _playheadVN = ValueNotifier<int>(0);
   int _sendSeq = 0; // bumped by every _send — the tick handler's "did anything change" stamp
   int _playSeenSendSeq = 0; // _sendSeq snapshot taken after the tick's own AdvanceClock send
   Map<String, dynamic> _state = {};
@@ -695,6 +701,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
     _imageVN.value?.dispose(); // release the composited canvas image before the notifier [F-10]
     _imageVN.dispose();
     _overlayVN.dispose();
+    _playheadVN.dispose();
     _filmCtrl.dispose();
     _layerStripCtrl.dispose();
     _optionsRowCtrl.dispose();

@@ -1054,6 +1054,7 @@ extension _EditorEngine on _EditorPageState {
     final (frame, nextUs) = engine.playStatus; // one O(log n) scalar [battery F15]
     if (frame != _playShownFrame || editsSeen) {
       _playShownFrame = frame;
+      _playheadVN.value = frame; // row-1's live frame counter (no full-tree rebuild)
       // Route through the presenter (single _imageVN publisher; no full-tree setState, so
       // the row-3 tiles stay stable and tappable during playback). [battery R1]
       _redraw(full: false, refetchSelection: false);
@@ -1105,6 +1106,7 @@ extension _EditorEngine on _EditorPageState {
       ..reset()
       ..start(); // the run's single time source, across ticker AND timer modes [battery R3]
     _playShownFrame = -1; // force the first tick to decode the starting frame's composite
+    _playheadVN.value = engine.playFrame; // starts at the Active target (engine contract)
     _playSeenSendSeq = _sendSeq; // the Play() send itself is not an "edit"
     _playTicker ??= createTicker(_onPlayTick);
     _playTicker!

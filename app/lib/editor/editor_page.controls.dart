@@ -782,7 +782,20 @@ extension _EditorControls on _EditorPageState {
       // Prev / Next frame — pressing either auto-pauses playback first (see _stepFrame), with the
       // current "Frame X / N" between them.
       children.add(IconButton(iconSize: 22, tooltip: 'Previous frame', onPressed: () => _stepFrame(-1), icon: const Icon(Icons.skip_previous)));
-      label('Frame ${active + 1} / $n');
+      // While playing this counts the PLAYHEAD — the frame actually on screen — which is a
+      // different thing from the Active target the strokes land on (ADR 0012; CONTEXT.md
+      // "Playhead"). Pausing returns to the Active target, so the number snaps back with it.
+      // Scoped to a ValueListenableBuilder so the per-tick update repaints this label alone.
+      children.add(Padding(
+        padding: const EdgeInsets.only(left: 8, right: 4),
+        child: ValueListenableBuilder<int>(
+          valueListenable: _playheadVN,
+          builder: (_, playhead, _) => Text(
+            'Frame ${(_playing ? playhead : active) + 1} / $n',
+            style: const TextStyle(fontSize: 11, color: Colors.white60),
+          ),
+        ),
+      ));
       children.add(IconButton(iconSize: 22, tooltip: 'Next frame', onPressed: () => _stepFrame(1), icon: const Icon(Icons.skip_next)));
       children.add(const SizedBox(width: 6));
       // Go to… — type a frame number and jump to it (also auto-pauses playback first).
