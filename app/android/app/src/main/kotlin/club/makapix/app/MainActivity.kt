@@ -23,5 +23,10 @@ class MainActivity : FlutterActivity() {
         // isolate, hardware H.264 via MediaCodec, muxed to MP4. See TimelapseEncoder.kt.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "club.makapix.app/timelapse")
             .setMethodCallHandler(timelapse::handle)
+        // Zero-Tap Sign-In (Play requirement, April 2027): Android Restore Credentials, so a
+        // migrated device signs the user back in silently. Needs an Activity, hence the `this`.
+        // See RestoreCredentials.kt and docs/zero-tap-signin/DESIGN.md.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "club.makapix.app/restore_credentials")
+            .setMethodCallHandler(RestoreCredentials(this)::handle)
     }
 }

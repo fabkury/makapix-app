@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 
 import '../config/club_config.dart';
@@ -84,6 +86,41 @@ class ClubSession {
         'given_name': ?givenName,
         'family_name': ?familyName,
         'email': ?email,
+      });
+
+  /// `POST /auth/restore/challenge` — **unauthenticated**. Returns the server's WebAuthn
+  /// `PublicKeyCredentialRequestOptionsJSON` (challenge, `rp.id`, empty `allowCredentials`) as a
+  /// raw JSON string to hand straight to Credential Manager.
+  ///
+  /// Lives here, on the interceptor-free Dio, for the same reason the grants do: it runs while
+  /// signed out, and must never touch the authed client's 401→refresh machinery. (That matters
+  /// beyond tidiness — with a stale refresh token present, a 401 on the authed client would
+  /// trigger a refresh and retry the call with a bearer attached.)
+  /// Returned re-encoded, because Credential Manager wants the options as a JSON *string* while
+  /// the server sends an object. Key order is irrelevant — the platform parses it.
+  Future<String> restoreChallenge() async {
+    try {
+      final resp = await _dio.post('/auth/restore/challenge');
+      return jsonEncode(resp.data);
+    } on DioException catch (e) {
+      throw ClubError.fromDio(e);
+    }
+  }
+
+  /// Zero-Tap Sign-In grant: exchange a Restore Credential assertion for a session.
+  /// [assertionJson] is passed through verbatim — the server verifies challenge, origin, RP ID
+  /// hash and signature, and identifies the account from the assertion's `userHandle` (the get
+  /// leg is userless by design).
+  ///
+  /// `restore_credential_unknown` means "no such credential" and is an ordinary signed-out
+  /// start, not a failure; callers should treat it as such.
+  ///
+  /// The assertion is **decoded** before sending: Credential Manager hands us a JSON string, but
+  /// `TokenRequest.assertion` is typed as an object in the server's OpenAPI contract — sending
+  /// the raw string would embed JSON inside a JSON string and fail validation.
+  Future<AuthTokens> loginRestoreCredential(String assertionJson) => _grant({
+        'grant_type': 'restore_credential',
+        'assertion': jsonDecode(assertionJson),
       });
 
   /// Single-flight refresh. Returns false (and clears tokens) on failure so the

@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/club_api_client.dart';
 import '../auth/apple_oauth.dart';
 import '../auth/club_session.dart';
 import '../auth/github_oauth.dart';
+import '../auth/restore_credential_service.dart';
 import '../config/club_config.dart';
 import '../models/club_error.dart';
 import '../models/club_user.dart';
@@ -23,12 +26,20 @@ final githubOAuthProvider =
 
 final appleOAuthProvider = Provider<AppleOAuth>((_) => const AppleOAuth());
 
+/// Zero-Tap Sign-In (Play requirement, April 2027). Self-disables off Android.
+final restoreCredentialServiceProvider = Provider<RestoreCredentialService>((ref) =>
+    RestoreCredentialService(
+      session: ref.watch(clubSessionProvider),
+      api: ref.watch(clubApiClientProvider),
+    ));
+
 final authControllerProvider = StateNotifierProvider<AuthController, AuthState>((ref) {
   return AuthController(
     session: ref.watch(clubSessionProvider),
     api: ref.watch(clubApiClientProvider),
     oauth: ref.watch(githubOAuthProvider),
     apple: ref.watch(appleOAuthProvider),
+    restore: ref.watch(restoreCredentialServiceProvider),
   )..init();
 });
 
@@ -88,11 +99,16 @@ class AuthController extends StateNotifier<AuthState> {
   final GithubOAuth oauth;
   final AppleOAuth apple;
 
+  /// Zero-Tap Sign-In (Android Restore Credentials). Nullable so tests and non-Android builds can
+  /// leave it out entirely — every call site is null-safe and the feature simply doesn't run.
+  final RestoreCredentialService? restore;
+
   AuthController({
     required this.session,
     required this.api,
     required this.oauth,
     this.apple = const AppleOAuth(),
+    this.restore,
   }) : super(const AuthState.loading()) {
     // A background refresh failure clears tokens but can't drive our state directly; listen for it
     // so we leave the signed-in UI instead of becoming a zombie session with no token. [audit F-4b]
@@ -125,8 +141,17 @@ class AuthController extends StateNotifier<AuthState> {
       return;
     }
     if (!session.isSignedIn) {
-      state = const AuthState.signedOut();
-      return;
+      // Zero-Tap Sign-In: no tokens may mean a clean install *or* a device migration, which
+      // cannot carry the token store (its Keystore key is non-exportable). Try a silent restore
+      // before routing to the welcome screen. We are still in AuthStatus.loading here, which the
+      // UI already renders as a full-screen spinner, so no new splash state is needed; the
+      // attempt is hard-bounded by RestoreCredentialService.attemptTimeout so it cannot strand
+      // the app there. Any failure falls through to exactly today's behavior.
+      final restored = await restore?.tryRestore() ?? false;
+      if (!restored) {
+        state = const AuthState.signedOut();
+        return;
+      }
     }
     await _loadMe();
   }
@@ -137,9 +162,18 @@ class AuthController extends StateNotifier<AuthState> {
   Future<void> reloadMe() => _loadMe();
 
   Future<void> _loadMe() async {
+    final wasSignedIn = state.status == AuthStatus.signedIn;
     try {
       final me = ClubMe.fromJson(await api.me());
       state = AuthState.signedIn(me);
+      // Zero-Tap Sign-In: register this device's restore credential on the *transition* into
+      // signed-in. Hooked here rather than in the login methods because RegistrationController and
+      // the email-OTP verify flow call ClubSession.loginPassword directly, bypassing
+      // AuthController.loginPassword — hooking those would silently miss every new account.
+      // Gating on the transition also avoids re-registering on every reloadMe() (profile edits,
+      // onboarding), which would be harmless but wasteful. Deliberately not awaited: registration
+      // must never delay the UI reaching the signed-in state.
+      if (!wasSignedIn) unawaited(restore?.register() ?? Future.value());
     } on ClubError catch (e) {
       if (e.isAuth) {
         await session.clear();
@@ -206,6 +240,11 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   Future<void> logout() async {
+    // Zero-Tap Sign-In: drop the restore credential only on *explicit* sign-out. The involuntary
+    // clears (corrupt storage, 401 on /auth/me, failed refresh) deliberately keep it — those are
+    // recoverable, and discarding it there would cost the user their next silent sign-in for no
+    // security gain. Best-effort: it must not be able to block signing out.
+    await restore?.clear();
     await session.logout();
     state = const AuthState.signedOut();
   }

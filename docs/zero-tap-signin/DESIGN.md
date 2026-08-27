@@ -215,8 +215,10 @@ Club unit tests must keep running without the engine binary or network; the chan
   server explicitly asked for that confirmation in 0004. If it fails, this is the first thing to
   look at — a UV mismatch surfaces as a generic verification error that reads like a signature or
   origin problem.
-- `androidx.credentials` was at `1.7.0-alpha03` when this was written. Verify the stable version and
-  confirm the minSdk implications before committing; we inherit minSdk from Flutter.
+- ~~Verify the `androidx.credentials` stable version and its minSdk implications.~~ **Resolved
+  2026-08-27:** stable is **1.6.0** (April 2026) — no need for the `1.7.0-alpha03` the Android guide
+  suggests. Its **minSdk is 23**, below our 24, so no bump and no compatibility issue. Restore
+  Credentials has been present since 1.5.0-alpha03.
 - Adding `credentials` + `credentials-play-services-auth` will grow the DEX. Currently 1.81 MiB against
   a 10 MB trigger, so there is ample headroom, but re-measure after the dependency lands.
 - Interaction with the AGP 8.11.1 / Gradle 8.14 / Kotlin 2.2.20 pinning is unknown; `androidx.credentials`

@@ -60,6 +60,15 @@ android {
     }
 }
 
+dependencies {
+    // Zero-Tap Sign-In (Play requirement, April 2027): Android Restore Credentials via Credential
+    // Manager — see RestoreCredentials.kt and docs/zero-tap-signin/DESIGN.md.
+    // 1.6.0 is the current STABLE line; the Android guide still suggests a 1.7.0 alpha, which we
+    // deliberately don't use. Its minSdk is 23, below our 24, so no minSdk bump is needed.
+    implementation("androidx.credentials:credentials:1.6.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.6.0")
+}
+
 kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17

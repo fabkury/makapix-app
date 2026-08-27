@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io' show HttpClient;
 
 import 'package:dio/dio.dart';
@@ -95,6 +96,24 @@ class ClubApiClient {
   Future<Map<String, dynamic>> me() => guard(() async {
         final resp = await dio.get('/auth/me');
         return (resp.data as Map).cast<String, dynamic>();
+      });
+
+  // ---- Zero-Tap Sign-In: Restore Credentials registration (authenticated) ----
+  // The unauthenticated halves (challenge + the restore_credential grant) live on [ClubSession],
+  // which owns the interceptor-free Dio. See docs/zero-tap-signin/DESIGN.md.
+
+  /// `POST /auth/restore/options` → WebAuthn creation options, re-encoded as a JSON string
+  /// because that is what Credential Manager takes. The server picks `rp.id` per environment,
+  /// so nothing here branches on dev vs prod.
+  Future<String> restoreOptions() => guard(() async {
+        final resp = await dio.post('/auth/restore/options');
+        return jsonEncode(resp.data);
+      });
+
+  /// `POST /auth/restore/register` → 204. [responseJson] is the platform's registration response;
+  /// it is decoded because the contract types `response` as an object, not a string.
+  Future<void> restoreRegister(String responseJson) => guard(() async {
+        await dio.post('/auth/restore/register', data: {'response': jsonDecode(responseJson)});
       });
 
   // ---- account management (authenticated; SPEC-CLUB §6 / C0b) ----
