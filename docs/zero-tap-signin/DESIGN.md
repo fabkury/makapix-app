@@ -128,9 +128,14 @@ Because the credential is WebAuthn, **the server must implement passkey registra
 issue `PublicKeyCredentialCreationOptions`, store the resulting public key against the account, issue
 challenges, and verify assertions — then mint our normal access/refresh pair on success.
 
-Makapix's server does OAuth brokering today, not WebAuthn. This is the long pole. It is a server-repo
-ask and should be raised through the established `docs/<topic>/messages` convention well before the
-app-side work starts.
+Makapix's server does OAuth brokering today, not WebAuthn. This is the long pole.
+
+**Raised 2026-08-27** as `docs/zero-tap-signin/messages/0001-app-zero-tap-signin-kickoff.md` in the
+server repo (`reference/makapix-club`, commit `38140f6` on `develop`). It carries the proposed
+endpoint shapes, the discoverable-credential constraint, the RP ID split (prod `makapix.club`, dev
+`app-dev.makapix.club`), the Digital Asset Links prerequisite with exact JSON, and four open
+questions. No date was proposed — the deadline was stated and scheduling left to them. Awaiting
+reply 0002; fetch the clone before assuming silence.
 
 There is **no Flutter plugin** for Restore Credentials (pub.dev search, 2026-08-27, returned nothing).
 
