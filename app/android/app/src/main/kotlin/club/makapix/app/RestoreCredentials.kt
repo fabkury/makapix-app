@@ -135,9 +135,19 @@ class RestoreCredentials(private val activity: Activity) {
                 }
 
                 override fun onError(e: GetCredentialException) {
-                    // "No credential" is the normal path on a clean install, not a failure.
-                    if (e.javaClass.simpleName == "NoCredentialException") ok(result, null)
-                    else fail(result, "get_failed", e)
+                    // "Nothing to restore" is the NORMAL path — a clean install, or a device whose
+                    // restore blob was never written. It must come back as null, not an error, or
+                    // every ordinary launch logs a failure.
+                    //
+                    // Play Services signals it in more than one shape: a `NoCredentialException`,
+                    // and (observed on a Pixel 10, Android 16) a generic exception carrying
+                    // "The device does not contain a restore credential." So match the library's
+                    // stable `type` string and the class name, and keep the message as a last
+                    // resort. Anything genuinely unexpected still surfaces as `get_failed`.
+                    val noCredential = e.javaClass.simpleName == "NoCredentialException" ||
+                        e.type.contains("NO_CREDENTIAL", ignoreCase = true) ||
+                        e.message?.contains("does not contain a restore credential", true) == true
+                    if (noCredential) ok(result, null) else fail(result, "get_failed", e)
                 }
             },
         )

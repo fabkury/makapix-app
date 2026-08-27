@@ -208,13 +208,21 @@ Club unit tests must keep running without the engine binary or network; the chan
 
 - ~~Server WebAuthn support is a prerequisite and is not scheduled.~~ **Resolved** — delivered and
   live on dev and prod, 2026-08-27. See section 4.
-- **The UV assumption is still unconfirmed on real hardware.** We reasoned from mechanism (restore
-  assertions are silent → the UV flag is unset), and the server set `discouraged` /
-  `require_user_verification=False` on that basis, but Android's guide never pins these fields and
-  their tests use a software authenticator. **The M3 device run is the empirical check**, and the
-  server explicitly asked for that confirmation in 0004. If it fails, this is the first thing to
-  look at — a UV mismatch surfaces as a generic verification error that reads like a signature or
-  origin problem.
+- **The UV assumption is still unconfirmed, and our harness cannot confirm it** — see the
+  limitation below. We reasoned from mechanism (restore assertions are silent → the UV flag is
+  unset), and the server set `discouraged` / `require_user_verification=False` on that basis, but
+  Android's guide never pins these fields and their tests use a software authenticator. A UV
+  mismatch would surface as a generic verification error that reads like a signature or origin
+  problem, so it is the first thing to suspect if a real migration ever fails.
+
+- **⚠️ The `bmgr` harness cannot test the restore leg.** Measured 2026-08-27: the restore key lives
+  in **GMS Blockstore**, not in the app's data backup. Uninstalling purges it
+  (`[DataStoreImpl] No block data associated with key for package`), and `bmgr restore` restores
+  app data only. So backup → uninstall → reinstall → restore proves the *token loss* faithfully but
+  can never produce a credential to assert with. **Only a genuine device-setup restore or a D2D USB
+  transfer exercises the assertion path** — i.e. a second physical device, or a factory reset.
+  Registration *is* verifiable locally (GMS `Folsom` E2EE escrow is observable in logcat on the
+  create path); the assertion half is not.
 - ~~Verify the `androidx.credentials` stable version and its minSdk implications.~~ **Resolved
   2026-08-27:** stable is **1.6.0** (April 2026) — no need for the `1.7.0-alpha03` the Android guide
   suggests. Its **minSdk is 23**, below our 24, so no bump and no compatibility issue. Restore
