@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Auto Backup / device-transfer rules for API 31+ (android:dataExtractionRules).
+  The API 24-30 equivalent is backup_rules.xml (android:fullBackupContent) — keep the two in sync.
+
+  ONLY <exclude> rules appear here, deliberately. Adding a single <include> flips these files to
+  allowlist semantics, which would silently drop the drawing library from backup. Everything not
+  named below stays backed up — that is the intent: local artwork, autosave, replay journals and
+  checkpoints all migrate to a new device correctly (verified 2026-08-27 on a Pixel 10 Pro XL).
+
+  What we drop is flutter_secure_storage's two SharedPreferences files, which cannot survive a
+  migration by construction:
+
+    FlutterSecureKeyStorage.xml  an AES key, RSA-wrapped by a key in the Android Keystore
+    FlutterSecureStorage.xml     the auth tokens, AES-encrypted under that key
+
+  The Keystore private key is hardware-backed and non-exportable, so it never transfers. On restore
+  the unwrap fails ("StorageCipher18Impl: unwrap key failed") and the plugin quietly generates a
+  fresh key — leaving the restored token ciphertext permanently undecryptable, and orphaned on disk
+  forever. Backing these up transfers nothing but a guaranteed error, so we don't.
+
+  Consequence, by design: a migrated user lands signed out. Closing that gap is the Android Restore
+  Credentials work — see docs/zero-tap-signin/DESIGN.md (Play requires it by April 2027).
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="FlutterSecureStorage.xml"/>
+        <exclude domain="sharedpref" path="FlutterSecureKeyStorage.xml"/>
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="FlutterSecureStorage.xml"/>
+        <exclude domain="sharedpref" path="FlutterSecureKeyStorage.xml"/>
+    </device-transfer>
+</data-extraction-rules>

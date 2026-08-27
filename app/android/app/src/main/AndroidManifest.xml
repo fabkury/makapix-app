@@ -1,11 +1,19 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Club upload uses HTTPS. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Backup stays ON: the drawing library, autosave and replay data are meant to follow the user
+         to a new device. The two rule files below exclude ONLY flutter_secure_storage's prefs files,
+         whose Keystore-wrapped key can never migrate. Rationale in
+         res/xml/data_extraction_rules.xml; docs/zero-tap-signin/DESIGN.md covers the
+         signed-out-after-migration gap this leaves and the API that closes it.
+         fullBackupContent = API 24-30, dataExtractionRules = API 31+. Keep both in sync. -->
     <application
         android:label="Makapix Club"
         android:name="${applicationName}"
         android:usesCleartextTraffic="false"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules">
         <activity
             android:name=".MainActivity"
             android:exported="true"

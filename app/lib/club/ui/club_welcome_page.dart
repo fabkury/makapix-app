@@ -21,10 +21,24 @@ class ClubWelcomePage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final promoted = ref.watch(feedProvider(FeedKind.promoted));
     final n = ref.read(feedProvider(FeedKind.promoted).notifier);
+    // The hint below takes its intrinsic width, so on a narrow phone the title is what would
+    // ellipsize. Drop it instead — the body heading two lines down already names the app.
+    final showTitle = MediaQuery.sizeOf(context).width >= 380;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Makapix Club'),
+        title: showTitle ? const Text('Makapix Club') : null,
         actions: [
+          // The brush icon alone doesn't say that drawing needs no account, so spell it out.
+          // Caption only; the icon beside it is the button.
+          const Flexible(
+            child: Text(
+              'No login needed to draw →',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.end,
+              style: TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+          ),
           // The editor stays reachable without signing in (mirrors the design's no-login Create).
           IconButton(
             tooltip: 'Contribute (open the editor)',

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Auto Backup rules for API 24-30 (android:fullBackupContent). minSdk is 24, so these devices are
+  still in scope; API 31+ uses data_extraction_rules.xml instead. Keep the exclude lists identical —
+  the rationale lives in that file.
+
+  <full-backup-content> has no cloud/device-transfer split; one list covers both.
+  Excludes only: everything unnamed stays backed up, drawing library included.
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="FlutterSecureStorage.xml"/>
+    <exclude domain="sharedpref" path="FlutterSecureKeyStorage.xml"/>
+</full-backup-content>
