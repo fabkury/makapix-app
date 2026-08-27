@@ -122,20 +122,61 @@ Constraints that shape the design:
 
 ---
 
-## 4. The dominant cost is server-side, not app-side
+## 4. The server leg — DELIVERED 2026-08-27
 
-Because the credential is WebAuthn, **the server must implement passkey registration and assertion**:
-issue `PublicKeyCredentialCreationOptions`, store the resulting public key against the account, issue
-challenges, and verify assertions — then mint our normal access/refresh pair on success.
+This was expected to be the long pole (the server did OAuth brokering, not WebAuthn). It was
+scoped, built, tested and deployed the same day. **The app is now the only remaining work.**
 
-Makapix's server does OAuth brokering today, not WebAuthn. This is the long pole.
+Exchange: `docs/zero-tap-signin/messages/` in the server repo (`reference/makapix-club`) —
+0001 app kickoff, 0002 server decisions, 0003 app confirmation + notes, 0004 endpoints live.
+The server's own `PLAN.md` / `PROGRESS.md` sit beside them.
 
-**Raised 2026-08-27** as `docs/zero-tap-signin/messages/0001-app-zero-tap-signin-kickoff.md` in the
-server repo (`reference/makapix-club`, commit `38140f6` on `develop`). It carries the proposed
-endpoint shapes, the discoverable-credential constraint, the RP ID split (prod `makapix.club`, dev
-`app-dev.makapix.club`), the Digital Asset Links prerequisite with exact JSON, and four open
-questions. No date was proposed — the deadline was stated and scheduling left to them. Awaiting
-reply 0002; fetch the clone before assuming silence.
+### The live contract
+
+```
+POST /api/v1/auth/restore/options     (authenticated)   → creation options JSON
+POST /api/v1/auth/restore/register    (authenticated)   → 204
+POST /api/v1/auth/restore/challenge   (unauthenticated) → request options JSON
+POST /api/v1/auth/token  { "grant_type": "restore_credential", "assertion": … }
+                                      (unauthenticated) → standard token envelope
+
+GET    /api/v1/auth/restore/credentials                 (authenticated)
+DELETE /api/v1/auth/restore/credentials/{credential_id} (authenticated; id base64url)
+```
+
+Errors use the standard v1 envelope: `restore_credential_invalid` (verification failed, including
+a replayed challenge) and `restore_credential_unknown` (no such credential/account — **treat as an
+ordinary signed-out start, not an error**).
+
+### Settled parameters
+
+| | |
+|---|---|
+| `rp.id` | prod `makapix.club` · dev `app-dev.makapix.club` — **server-chosen**, sent inside `requestJson`; the app passes it through verbatim and needs no `CLUB_ENV` branching |
+| `residentKey` | `required` (discoverable — the get leg is userless) |
+| `userVerification` | `discouraged`, and verified with `require_user_verification=False` |
+| `attestation` | `none`, and not required on verify |
+| `userHandle` | 32 random bytes, minted on first `/restore/options`, stable after |
+| Challenges | single-use, 5-minute TTL |
+| Re-registration | upserts on `credential_id`, so the `E2eeUnavailableException` retry is safe |
+| Rate limit | `/restore/challenge` has its own bucket (30/5min/IP), separate from login, so a probing migrated device can't lock out the sign-in that follows |
+
+**Origins.** Verified: the server's three `apk-key-hash` values are exactly
+`base64url(SHA-256(cert))`, unpadded, of our assetlinks fingerprints. **Prod accepts only the
+upload and Play app-signing origins; dev additionally accepts debug.** So a `flutter run` build
+authenticates against dev and is refused by prod — which matches how we test, but means a
+debug-signed build can never be used to smoke-test prod.
+
+**Assetlinks are live** on both `app-dev.makapix.club` (additive `get_login_creds`, `handle_all_urls`
+untouched) and the apex `makapix.club`. The server rode the Caddy change to main and restarted caddy
+*before* announcing, so the endpoints and the association became usable at the same moment.
+
+**Prod is already deployed.** Nothing asserts against it until we ship, so the planned "joint flip"
+reduces to our app release.
+
+Note there is **no attestation check** on register — deliberately, since `attestation: "none"`
+means there is no attestation statement. Verification covers challenge, origin, RP ID hash and
+signature.
 
 There is **no Flutter plugin** for Restore Credentials (pub.dev search, 2026-08-27, returned nothing).
 
@@ -165,7 +206,15 @@ Club unit tests must keep running without the engine binary or network; the chan
 
 ## 6. Risks and open questions
 
-- **Server WebAuthn support is a prerequisite** and is not scheduled. Raise it early.
+- ~~Server WebAuthn support is a prerequisite and is not scheduled.~~ **Resolved** — delivered and
+  live on dev and prod, 2026-08-27. See section 4.
+- **The UV assumption is still unconfirmed on real hardware.** We reasoned from mechanism (restore
+  assertions are silent → the UV flag is unset), and the server set `discouraged` /
+  `require_user_verification=False` on that basis, but Android's guide never pins these fields and
+  their tests use a software authenticator. **The M3 device run is the empirical check**, and the
+  server explicitly asked for that confirmation in 0004. If it fails, this is the first thing to
+  look at — a UV mismatch surfaces as a generic verification error that reads like a signature or
+  origin problem.
 - `androidx.credentials` was at `1.7.0-alpha03` when this was written. Verify the stable version and
   confirm the minSdk implications before committing; we inherit minSdk from Flutter.
 - Adding `credentials` + `credentials-play-services-auth` will grow the DEX. Currently 1.81 MiB against
