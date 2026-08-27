@@ -37,10 +37,16 @@ class RestoreCredentialService {
     bool? enabled,
   }) : enabled = enabled ?? Platform.isAndroid;
 
-  /// Register (or refresh) this device's restore credential. Call after a successful sign-in.
+  /// Register this device's restore credential. Call **once per interactive sign-in**, wired via
+  /// [ClubSession.onInteractiveSignIn].
   ///
-  /// Fire-and-forget: callers should not await this on the sign-in path. Re-registration is safe —
-  /// the server upserts on `credential_id`.
+  /// Fire-and-forget: callers should not await this on the sign-in path.
+  ///
+  /// Do **not** call it on every launch. Credential Manager mints a *new* credential each time, so
+  /// `credential_id` differs on every call and the server's upsert-on-`credential_id` never fires —
+  /// it inserts. Android keeps only one restore key per app per device, so every extra call
+  /// permanently orphans the previous row (server message 0007 observed exactly that). The
+  /// `E2eeUnavailableException` retry below is the one legitimate double-registration.
   Future<void> register() async {
     if (!enabled) return;
     try {

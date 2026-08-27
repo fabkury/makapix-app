@@ -113,6 +113,16 @@ class AuthController extends StateNotifier<AuthState> {
     // A background refresh failure clears tokens but can't drive our state directly; listen for it
     // so we leave the signed-in UI instead of becoming a zombie session with no token. [audit F-4b]
     session.onSessionInvalidated = _onSessionInvalidated;
+    // Zero-Tap Sign-In: register this device's restore credential once per interactive sign-in.
+    //
+    // NOT on every cold start, which is what an earlier revision did: Credential Manager mints a
+    // NEW credential on each call, so `credential_id` differs every time and the server's upsert
+    // never fires — it inserts. Android keeps only one restore key per app per device, so each
+    // launch orphaned the previous row permanently (server message 0007 found three dead rows from
+    // three test launches). Anchoring on the grant means one row per sign-in instead.
+    //
+    // Not awaited: registration must never delay the UI reaching the signed-in state.
+    session.onInteractiveSignIn = () => unawaited(restore?.register() ?? Future.value());
   }
 
   void _onSessionInvalidated() {
@@ -124,6 +134,7 @@ class AuthController extends StateNotifier<AuthState> {
   @override
   void dispose() {
     session.onSessionInvalidated = null;
+    session.onInteractiveSignIn = null;
     super.dispose();
   }
 
@@ -162,18 +173,9 @@ class AuthController extends StateNotifier<AuthState> {
   Future<void> reloadMe() => _loadMe();
 
   Future<void> _loadMe() async {
-    final wasSignedIn = state.status == AuthStatus.signedIn;
     try {
       final me = ClubMe.fromJson(await api.me());
       state = AuthState.signedIn(me);
-      // Zero-Tap Sign-In: register this device's restore credential on the *transition* into
-      // signed-in. Hooked here rather than in the login methods because RegistrationController and
-      // the email-OTP verify flow call ClubSession.loginPassword directly, bypassing
-      // AuthController.loginPassword — hooking those would silently miss every new account.
-      // Gating on the transition also avoids re-registering on every reloadMe() (profile edits,
-      // onboarding), which would be harmless but wasteful. Deliberately not awaited: registration
-      // must never delay the UI reaching the signed-in state.
-      if (!wasSignedIn) unawaited(restore?.register() ?? Future.value());
     } on ClubError catch (e) {
       if (e.isAuth) {
         await session.clear();

@@ -40,6 +40,16 @@ class ClubSession {
   /// rendering as signed-in with no token (a "zombie" session). [audit F-4b]
   void Function()? onSessionInvalidated;
 
+  /// Fired after a successful **interactive** sign-in — i.e. any grant except `refresh_token`
+  /// (routine token rotation) and `restore_credential` (Zero-Tap itself, which must not
+  /// re-register the credential it just used).
+  ///
+  /// Hooked here rather than on the [AuthController] login methods because
+  /// `RegistrationController` and the email-OTP verify flow call [loginPassword] on this class
+  /// directly, bypassing the controller — anchoring on the controller would silently exclude every
+  /// newly created account. `_grant` is the one funnel all sign-ins pass through.
+  void Function()? onInteractiveSignIn;
+
   /// Load persisted tokens into memory (call once at startup).
   Future<void> load() async {
     _tokens = await store.read();
@@ -52,6 +62,10 @@ class ClubSession {
       final tokens = AuthTokens.fromJson(data);
       _tokens = tokens;
       await store.write(tokens);
+      final grantType = body['grant_type'];
+      if (grantType != 'refresh_token' && grantType != 'restore_credential') {
+        onInteractiveSignIn?.call();
+      }
       return tokens;
     } on DioException catch (e) {
       throw ClubError.fromDio(e);
