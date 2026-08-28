@@ -272,9 +272,11 @@ class _EditorPageState extends ConsumerState<EditorPage>
   int _dispW = 0, _dispH = 0;
   bool _radial = false;
   bool _gradSmooth = false; // Gradient: ease each color transition with the smoothstep curve
-  // Airbrush spray density vs Dodge/Burn strength want different starting points: a 50 spray reads
-  // as a gentle airbrush, while 25 keeps the first Dodge/Burn stroke subtle.
-  int get _intensity => _intensityByTool[_tool] ?? (_tool == 'Airbrush' ? 50 : 25);
+  // Per-tool starting points for the Intensity slider (until the user moves it): a 50 spray reads
+  // as a gentle airbrush; Dodge/Burn open at the 128 midpoint so the first stroke visibly
+  // lightens/darkens; anything else keeps 25.
+  int get _intensity =>
+      _intensityByTool[_tool] ?? switch (_tool) { 'Airbrush' => 50, 'Dodge' || 'Burn' => 128, _ => 25 };
   set _intensity(int v) => _intensityByTool[_tool] = v;
   String _selMode = 'Replace';
   int _alphaCutoff = 0; // Sel Lyr: alpha cutoff (0..254); pixels with alpha > this (opaque) are "selected"
