@@ -492,6 +492,30 @@ extension _EditorEngine on _EditorPageState {
     _send(dsl);
     _refreshState();
     _redraw();
+    // A frame-structure verb may move the active frame (or leave it partially scrolled out of the
+    // film-roll, e.g. a frame inserted at the strip's trailing edge). Reveal it once the roll has
+    // laid out the new tile count — the same ease/snap rule the Play tool's frame jumps use.
+    if (_isFrameStructureVerb(dsl)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _ensureActiveFrameVisible();
+      });
+    }
+  }
+
+  /// Verbs that add, duplicate, remove, or reorder animation frames — after any of these the
+  /// film-roll scrolls just enough to keep the active frame fully visible.
+  static bool _isFrameStructureVerb(String dsl) {
+    for (final part in dsl.split(';')) {
+      final name = part.trim().split('(').first.trim();
+      if (name == 'AddFrame' ||
+          name == 'AddFrameAt' ||
+          name == 'DuplicateFrame' ||
+          name == 'RemoveFrame' ||
+          name == 'ReorderFrame') {
+        return true;
+      }
+    }
+    return false;
   }
 
   /// Verbs that may run while playback is running (ADR 0012). Everything else is editing intent
@@ -510,12 +534,30 @@ extension _EditorEngine on _EditorPageState {
 
   /// Verbs that move the artist to another frame or layer. ADR 0011 makes those context
   /// changes, so every open Draft dies with them — nothing can commit onto a surface the artist
-  /// is no longer looking at [G-13, G-15, G-16]. The layer-strip RESYNC deliberately uses _send,
-  /// not _act, so it is not a context change.
+  /// is no longer looking at [G-13, G-15, G-16]. Besides the explicit activations, every verb
+  /// that creates, duplicates, removes, or merges a frame/layer counts: the engine activates the
+  /// new frame/layer (or retargets after a removal), so a Draft would otherwise survive onto a
+  /// surface the artist never drew it on. Reorders keep the same content active and are not
+  /// context changes. The layer-strip RESYNC deliberately uses _send, not _act, so it is not a
+  /// context change either.
   static bool _isContextChangeVerb(String dsl) {
     for (final part in dsl.split(';')) {
       final name = part.trim().split('(').first.trim();
-      if (name == 'SetActiveFrame' || name == 'SetActiveLayer') return true;
+      if (const {
+        'SetActiveFrame',
+        'SetActiveLayer',
+        'AddFrame',
+        'AddFrameAt',
+        'DuplicateFrame',
+        'RemoveFrame',
+        'AddLayer',
+        'AddLayerAt',
+        'DuplicateLayer',
+        'RemoveLayer',
+        'MergeDown',
+      }.contains(name)) {
+        return true;
+      }
     }
     return false;
   }

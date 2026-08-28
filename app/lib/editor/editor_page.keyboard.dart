@@ -71,7 +71,7 @@ class _EditorKeyboardHost implements EditorAccess {
   @override
   void addFrame() {
     _s._clearLayerGroup();
-    _s._act('AddFrame()');
+    _s._act('AddFrameAt(${_s.engine.activeFrame + 1})'); // right after the active frame
   }
 
   @override

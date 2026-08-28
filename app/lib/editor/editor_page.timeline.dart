@@ -113,7 +113,7 @@ extension _EditorTimeline on _EditorPageState {
           tooltip: 'Add frame',
           onPressed: () {
             _clearLayerGroup();
-            _act('AddFrame()');
+            _act('AddFrameAt(${engine.activeFrame + 1})'); // right after the active frame, not at the end
           },
           icon: const Icon(Icons.add_box)),
     ];
@@ -151,7 +151,7 @@ extension _EditorTimeline on _EditorPageState {
   }
 
   // Long-pressing the empty film-strip area surfaces the "Add animation frame" option (same action
-  // as the + button at the end of the strip).
+  // as the + button at the end of the strip: a blank frame right after the active one).
   void _addFrameMenu() {
     if (_playing) _pause();
     showAppSheet(
@@ -164,7 +164,7 @@ extension _EditorTimeline on _EditorPageState {
             onTap: () {
               Navigator.pop(ctx);
               _clearLayerGroup();
-              _act('AddFrame()');
+              _act('AddFrameAt(${engine.activeFrame + 1})');
             },
           ),
         ]),
