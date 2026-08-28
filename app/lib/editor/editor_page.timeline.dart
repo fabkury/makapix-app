@@ -90,8 +90,17 @@ extension _EditorTimeline on _EditorPageState {
                       margin: const EdgeInsets.all(2),
                       color: const Color(0xFF3A3D42),
                       alignment: Alignment.center,
+                      // Transparent pixels read as transparent, like the layer strip — but the
+                      // checker is confined to the artwork's own rect (the tile's aspect follows
+                      // the artwork, so any letterbox left by rounding stays the flat gray).
                       child: cached != null
-                          ? RawImage(image: cached.img, fit: BoxFit.contain, filterQuality: FilterQuality.none)
+                          ? AspectRatio(
+                              aspectRatio: cached.img.width / cached.img.height,
+                              child: CustomPaint(
+                                painter: const CheckerPainter(),
+                                child: RawImage(image: cached.img, fit: BoxFit.fill, filterQuality: FilterQuality.none),
+                              ),
+                            )
                           : const SizedBox.shrink(),
                     ),
                   ),

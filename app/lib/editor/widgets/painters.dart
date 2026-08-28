@@ -639,8 +639,8 @@ class GridPainter extends CustomPainter {
       o.cols != cols || o.rows != rows || o.scale != scale || o.off != off;
 }
 
-/// A small two-tone checkerboard, used behind layer thumbnails so transparent areas read as
-/// transparent (the layers film-strip shows each layer against a transparent background).
+/// A small two-tone checkerboard, used behind layer and frame thumbnails so transparent areas read as
+/// transparent (the layer and frame film-strips show their thumbnails against a transparent background).
 class CheckerPainter extends CustomPainter {
   const CheckerPainter();
   static const double cell = 5;
