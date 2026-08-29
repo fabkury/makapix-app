@@ -45,6 +45,8 @@ too slow), and results sync back here automatically.
 ./tools/fuzz/fuzz-night.ps1   # overnight burst: 14 workers, 9 h, cmin + morning summary
 # pick targets explicitly (default is the two engine targets):
 ./tools/fuzz/fuzz-night.ps1 -Targets "fuzz_webp_differential fuzz_codec_import"
+# weight the budget per target with a `name:minutes` suffix (unsuffixed targets share the rest):
+./tools/fuzz/fuzz-night.ps1 -Hours 10 -Targets "fuzz_session_actions:240 fuzz_load_mkpx:180 fuzz_webp_differential fuzz_codec_import"
 ```
 
 Both print and save a summary (`fuzz/logs/summary-*.md`): executions, coverage, corpus

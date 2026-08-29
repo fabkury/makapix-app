@@ -4,6 +4,11 @@
 # Invoked by tools/fuzz/fuzz-day.ps1 / fuzz-night.ps1, or by hand from WSL:
 #   bash tools/fuzz/run_fuzz.sh --label night --workers 14 --minutes 540 --cmin
 #
+# The time budget is split equally across --targets unless a target carries its own
+# budget as a `name:minutes` suffix, e.g.
+#   --targets "fuzz_session_actions:240 fuzz_load_mkpx:180 fuzz_webp_differential:90"
+# (targets without a suffix share whatever --minutes leaves over, equally).
+#
 # Design: /mnt/c is slow for builds, so sources are rsynced into ~/makapix-fuzz on the
 # ext4 filesystem, built and fuzzed there, and corpus + crash artifacts + logs are
 # synced back into the repo afterwards (also on Ctrl+C). The corpus merges both ways;
@@ -28,6 +33,27 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Split `name:minutes` suffixes off the target list. Targets without a suffix share the
+# remainder of --minutes equally; if everything is explicit, --minutes is ignored.
+declare -A TMIN
+PLAIN=""; FIXED_MIN=0; NPLAIN=0
+for SPEC in $TARGETS; do
+  T=${SPEC%%:*}
+  if [[ "$SPEC" == *:* ]]; then
+    TMIN[$T]=${SPEC#*:}; FIXED_MIN=$(( FIXED_MIN + TMIN[$T] ))
+  else
+    NPLAIN=$(( NPLAIN + 1 ))
+  fi
+  PLAIN="$PLAIN $T"
+done
+TARGETS=${PLAIN# }
+if (( NPLAIN > 0 )); then
+  REMAIN=$(( MINUTES - FIXED_MIN )); (( REMAIN < 0 )) && REMAIN=0
+  for T in $TARGETS; do [[ -z "${TMIN[$T]:-}" ]] && TMIN[$T]=$(( REMAIN / NPLAIN )); done
+else
+  MINUTES=$FIXED_MIN
+fi
+
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 WORK="$HOME/makapix-fuzz"
 STAMP="$(date +%Y%m%d-%H%M)"
@@ -36,7 +62,7 @@ STAMP="$(date +%Y%m%d-%H%M)"
 source "$HOME/.cargo/env"
 
 echo "== makapix fuzz: label=$LABEL workers=$WORKERS minutes=$MINUTES cmin=$CMIN"
-echo "== targets: $TARGETS"
+echo "== targets: $(for T in $TARGETS; do printf '%s:%smin ' "$T" "${TMIN[$T]}"; done)"
 echo "== repo: $REPO"
 echo "== work: $WORK"
 
@@ -66,8 +92,6 @@ if [[ -z "$(ls -A "$WORK/fuzz/corpus/fuzz_load_mkpx" 2>/dev/null)" ]]; then
 fi
 
 # ---- Run each target for an equal share of the time budget --------------------------
-NTARGETS=$(wc -w <<<"$TARGETS")
-SECS_PER=$(( MINUTES * 60 / NTARGETS ))
 INTERRUPTED=0
 FPID=
 trap 'INTERRUPTED=1; [[ -n "$FPID" ]] && kill -TERM "$FPID" 2>/dev/null' INT TERM
@@ -109,6 +133,7 @@ for T in $TARGETS; do
     *)  MAXLEN=4096;  RSSLIM=4096; MALLOCLIM=512 ;;
   esac
   TIMEOUT=${TIMEOUT:-10}
+  SECS_PER=$(( TMIN[$T] * 60 ))
   ARTIFACTS_BEFORE=$(ls "$WORK/fuzz/artifacts/$T" 2>/dev/null || true)
   LOG="$WORK/fuzz/logs/$STAMP-$LABEL-$T.log"
   echo "== fuzzing $T: $WORKERS workers, $SECS_PER s, max_len=$MAXLEN (log: $(basename "$LOG"))"
@@ -169,7 +194,7 @@ SUMMARY="$REPO/fuzz/logs/summary-$STAMP-$LABEL.md"
 {
   echo "# Fuzz run $STAMP ($LABEL)"
   echo
-  echo "Workers: $WORKERS · budget: $MINUTES min ($SECS_PER s/target) · cmin: $CMIN · interrupted: $INTERRUPTED"
+  echo "Workers: $WORKERS · budget: $MINUTES min · cmin: $CMIN · interrupted: $INTERRUPTED"
   echo
   for T in $TARGETS; do
     EXECS=$(grep -h 'stat::number_of_executed_units' "$REPO/fuzz/logs/$STAMP-$LABEL-$T".fuzz-*.log 2>/dev/null \
@@ -179,7 +204,7 @@ SUMMARY="$REPO/fuzz/logs/summary-$STAMP-$LABEL.md"
     NCRASH=$(wc -w <<<"${CRASH_NEW[$T]}" | tr -d ' ')
     echo "## $T"
     echo
-    echo "- executions: ${EXECS:-?} · peak cov: ${COV:-?} edges"
+    echo "- budget: ${TMIN[$T]} min · executions: ${EXECS:-?} · peak cov: ${COV:-?} edges"
     echo "- corpus: ${BEFORE[$T]} -> ${AFTER[$T]} entries"
     if [[ "$NCRASH" != 0 ]]; then
       echo "- **NEW CRASH ARTIFACTS: $NCRASH** (fuzz/artifacts/$T/)"
