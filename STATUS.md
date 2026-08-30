@@ -99,7 +99,7 @@ Gate B are deliberately parked with pickup notes in the RECOMMENDATIONS ledger.
 | **Ruler** (distance + **Angle** mode) | ✅ | pure-Dart canvas overlay (no engine): draggable endpoints with a px readout; Angle mode adds a third point C — 0–180° readout, cyan arc, smart chip flip, whole-cell snapping (2026-07-19) |
 | **Resize tool** (scale layer/selection) | ✅ | engine `Scale` verb; draft-adjust-commit like Rotate; per-tool **cleanEdge** resampling (upscale-only gate), 0.1×–8× (2026-07-14) |
 | **Eyedropper**: drag-pick + Frame/Layer source | ✅ | continuous picking while the finger drags; source toggle — composited frame (default) or the active layer's raw pixels (1.0.18) |
-| Selected pixels move / copy / cut / paste | ✅ | |
+| Selected pixels move / copy / cut / paste | ✅ | row-1 clipboard swatch (2026-08-30): live 30×30 checker-backed preview left of Copy ("×" when empty); tap → view-only zoom dialog (pinch 0.5–32×, nearest-neighbor). New FFI `mkpx_clipboard_rgba` + `clipboard_gen`/`clipboard_size` in the state probe |
 | Copy pixels frame→frame | ✅ | `PasteToFrame` in engine/DSL (UI pastes to active frame) |
 | Move/Duplicate layers from 1 frame → N frames | ✅ | layer options sheet → "Copy to all frames" (`DuplicateLayerToFrames`) |
 | Merge down (layer onto the one below) | ✅ | layer options sheet → "Merge down" (`MergeDown`): compositor-exact blend with the source's opacity **and blend mode** (baked Photoshop-style), merged layer keeps the below layer's settings; one undo step; bottom/locked-below guarded |

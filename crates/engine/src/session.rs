@@ -306,6 +306,9 @@ pub struct Session {
     /// [`Stroke`], so its tail lives here (see `Stroke::pp` for the pointer-stroke twin).
     pen_pp: Vec<(Point, Rgba8)>,
     clipboard: Option<(RgbaBuffer, Point)>,
+    /// Bumped on every clipboard write (copy/cut) and on the load-time clear — the shell's
+    /// clipboard-swatch cache key (cheaper than hashing the pixels; the probe exposes it).
+    clipboard_gen: u32,
     // A pending paste: the clipboard pixels floating at a top-left position, previewed semi-
     // transparently and movable until committed (Copy & Paste tool). Editor state, not undoable
     // until commit.
@@ -394,6 +397,7 @@ impl Session {
             pen_held: false,
             pen_pp: Vec::new(),
             clipboard: None,
+            clipboard_gen: 0,
             paste_draft: None,
             rng: SeededRng::default(),
             clock: VirtualClock::default(),
@@ -1050,8 +1054,13 @@ impl Session {
         let st = self.doc.storage();
         let og = self.doc.origin();
         let extra = format!(
-            ",\"has_clipboard\":{},\"paste\":{},\"move_draft\":{},\"rotate_draft\":{},\"scale_draft\":{},\"storage\":[{},{}],\"origin\":[{},{}],\"overscan\":{},\"can_repeat\":{},\"repeat_label\":{}",
+            ",\"has_clipboard\":{},\"clipboard_gen\":{},\"clipboard_size\":{},\"paste\":{},\"move_draft\":{},\"rotate_draft\":{},\"scale_draft\":{},\"storage\":[{},{}],\"origin\":[{},{}],\"overscan\":{},\"can_repeat\":{},\"repeat_label\":{}",
             self.clipboard.is_some(),
+            self.clipboard_gen,
+            match self.clipboard_size() {
+                Some((w, h)) => format!("[{},{}]", w, h),
+                None => "null".to_string(),
+            },
             rect(self.paste_draft_rect()),
             rect(self.move_draft_rect()),
             rotate_draft,
@@ -2440,6 +2449,7 @@ impl Session {
                     }
                 }
                 self.clipboard = Some((clip, Point::new(bb.x, bb.y)));
+                self.clipboard_gen = self.clipboard_gen.wrapping_add(1);
             }
         }
     }
@@ -2538,6 +2548,34 @@ impl Session {
     /// Discard the pending paste draft without drawing anything.
     pub fn paste_cancel(&mut self) {
         self.paste_draft = None;
+    }
+
+    /// The clipboard's pixel dimensions, if any — the selection bbox `copy()` captured.
+    pub fn clipboard_size(&self) -> Option<(u32, u32)> {
+        self.clipboard.as_ref().map(|(b, _)| (b.width(), b.height()))
+    }
+
+    /// The clipboard's pixels as straight RGBA at native size (row-major, w·h·4 bytes) — the
+    /// shell's clipboard swatch + tap-to-view dialog. Empty when the clipboard is empty.
+    /// Mirrors `layer_rgba_bytes`' export convention; the buffer starts at (0,0), no gutter.
+    pub fn clipboard_rgba_bytes(&self) -> Vec<u8> {
+        let clip = match &self.clipboard {
+            Some((b, _)) => b,
+            None => return Vec::new(),
+        };
+        let (w, h) = (clip.width(), clip.height());
+        let mut out = vec![0u8; (w * h * 4) as usize];
+        for y in 0..h {
+            for x in 0..w {
+                let c = clip.get(x as i32, y as i32);
+                let o = ((y * w + x) * 4) as usize;
+                out[o] = c.r;
+                out[o + 1] = c.g;
+                out[o + 2] = c.b;
+                out[o + 3] = c.a;
+            }
+        }
+        out
     }
 
     // ---- Repeat (ADR 0017): re-execute the last repeatable committed op on the live target ----
@@ -3777,6 +3815,7 @@ impl Session {
         self.mem_recalibrate();
         self.play_cache_dirty = true; // new frames/durations [battery F15]
         self.clipboard = None;
+        self.clipboard_gen = self.clipboard_gen.wrapping_add(1); // the swatch cache must drop too
         self.paste_draft = None;
         self.repeat_record = None; // Repeat does not cross documents (ADR 0017)
         self.move_draft = None; // a stale draft would reference the previous document's frame [F-29]
@@ -3901,6 +3940,27 @@ mod tests {
         // structural ops are undoable
         assert!(s.doc.undo());
         assert_eq!(s.doc.frames.len(), 3);
+    }
+
+    #[test]
+    fn clipboard_rgba_bytes_exports_the_copied_bbox() {
+        let mut s = Session::new(8, 8);
+        assert_eq!(s.clipboard_size(), None);
+        assert!(s.clipboard_rgba_bytes().is_empty());
+        let gen0 = s.clipboard_gen;
+        s.settings.primary = Rgba8::rgb(255, 0, 0);
+        s.tap(2, 2); // red at (2,2)
+        s.tool = ToolKind::SelectRect;
+        s.stroke_path(&[(2, 2), (3, 3)]); // select the 2×2 bbox at (2,2)
+        s.run_script("Copy()").unwrap();
+        assert_eq!(s.clipboard_size(), Some((2, 2)));
+        assert!(s.clipboard_gen != gen0, "copy bumps the swatch generation");
+        let b = s.clipboard_rgba_bytes();
+        assert_eq!(b.len(), 2 * 2 * 4);
+        assert_eq!(&b[0..4], &[255, 0, 0, 255], "the copied pixel, at the bbox origin");
+        assert_eq!(b[7], 0, "unselected bbox cells stay transparent");
+        s.run_script("NewDocument(8,8)").unwrap();
+        assert_eq!(s.clipboard_size(), None, "the clipboard does not cross documents");
     }
 
     // ---- Repeat (ADR 0017) ----

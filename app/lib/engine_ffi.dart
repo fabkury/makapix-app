@@ -54,6 +54,8 @@ typedef _FrameHashC = Uint64 Function(Pointer<Void>, Uint32);
 typedef _FrameHashD = int Function(Pointer<Void>, int);
 typedef _FrameThumbC = Int32 Function(Pointer<Void>, Uint32, Uint32, Uint32, Pointer<Uint8>, IntPtr);
 typedef _FrameThumbD = int Function(Pointer<Void>, int, int, int, Pointer<Uint8>, int);
+typedef _ClipRgbaC = Int32 Function(Pointer<Void>, Pointer<Uint8>, IntPtr);
+typedef _ClipRgbaD = int Function(Pointer<Void>, Pointer<Uint8>, int);
 typedef _LayerThumbC = Int32 Function(Pointer<Void>, Uint32, Uint32, Uint32, Uint32, Pointer<Uint8>, IntPtr);
 typedef _LayerThumbD = int Function(Pointer<Void>, int, int, int, int, Pointer<Uint8>, int);
 typedef _LayerHashC = Uint64 Function(Pointer<Void>, Uint32, Uint32);
@@ -270,6 +272,7 @@ class Engine {
   late final _U64D _playStatusRaw = _lib.lookupFunction<_U64C, _U64D>('mkpx_play_status');
   late final _FrameHashD _frameHash = _lib.lookupFunction<_FrameHashC, _FrameHashD>('mkpx_frame_hash');
   late final _FrameThumbD _frameThumb = _lib.lookupFunction<_FrameThumbC, _FrameThumbD>('mkpx_frame_thumb');
+  late final _ClipRgbaD _clipboardRgba = _lib.lookupFunction<_ClipRgbaC, _ClipRgbaD>('mkpx_clipboard_rgba');
   late final _LayerThumbD _layerThumb = _lib.lookupFunction<_LayerThumbC, _LayerThumbD>('mkpx_layer_thumb');
   late final _LayerHashD _layerHash = _lib.lookupFunction<_LayerHashC, _LayerHashD>('mkpx_layer_hash');
   late final _SaveD _save = _lib.lookupFunction<_SaveC, _SaveD>('mkpx_save');
@@ -418,6 +421,19 @@ class Engine {
     final cap = tw * th * 4;
     final out = malloc<Uint8>(cap);
     final n = _frameThumb(_s, frame, tw, th, out, cap);
+    final bytes = n > 0 ? Uint8List.fromList(out.asTypedList(n)) : Uint8List(0);
+    malloc.free(out);
+    return bytes;
+  }
+
+  /// The clipboard's pixels at native `w`×`h` (straight RGBA bytes) — the caller reads the
+  /// dimensions from the state probe's `clipboard_size`. Empty when the clipboard is empty
+  /// (or the size is stale).
+  Uint8List clipboardRgba(int w, int h) {
+    final cap = w * h * 4;
+    if (cap <= 0) return Uint8List(0);
+    final out = malloc<Uint8>(cap);
+    final n = _clipboardRgba(_s, out, cap);
     final bytes = n > 0 ? Uint8List.fromList(out.asTypedList(n)) : Uint8List(0);
     malloc.free(out);
     return bytes;

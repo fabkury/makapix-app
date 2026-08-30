@@ -6,6 +6,115 @@ part of 'editor_page.dart';
 
 // Row-1 tool options (per-tool sliders/toggles) and the row-2 palette manager.
 extension _EditorControls on _EditorPageState {
+  // ---- clipboard swatch (row-1, Copy tool): live clipboard preview + tap-to-view ----
+
+  // The engine's clipboard as a 30×30 checker-backed square left of Copy — or an "×" while
+  // empty. Cached as a ui.Image keyed by the engine's clipboard_gen; a stale gen refetches the
+  // native-size pixels over FFI and decodes off-thread (the row repaints when the decode lands).
+  Widget _clipboardSwatch() {
+    final size = _state['clipboard_size'];
+    final gen = _state['clipboard_gen'];
+    final has = size is List && size.length == 2;
+    if (has && gen is int && gen != _clipImageGen) {
+      _fetchClipImage(gen, (size[0] as num).toInt(), (size[1] as num).toInt());
+    }
+    final img = has ? _clipImage : null;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 3),
+      child: GestureDetector(
+        onTap: img == null ? null : () => _showClipboardViewer(img),
+        child: Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.white54),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: img == null
+              ? const Center(child: Icon(Icons.close, size: 16, color: Colors.white38))
+              : CustomPaint(
+                  painter: const CheckerPainter(),
+                  child: RawImage(image: img, fit: BoxFit.contain, filterQuality: FilterQuality.none),
+                ),
+        ),
+      ),
+    );
+  }
+
+  // Refetch + decode the clipboard pixels for a new generation. The in-flight guard keeps one
+  // decode outstanding; a generation that lands stale is simply refetched by the next build.
+  void _fetchClipImage(int gen, int w, int h) {
+    if (_clipFetchInFlight || w <= 0 || h <= 0) return;
+    final bytes = engine.clipboardRgba(w, h);
+    if (bytes.length != w * h * 4) return; // emptied/resized between probe and fetch — retry later
+    _clipFetchInFlight = true;
+    ui.decodeImageFromPixels(bytes, w, h, ui.PixelFormat.rgba8888, (img) {
+      _clipFetchInFlight = false;
+      if (!mounted) {
+        img.dispose();
+        return;
+      }
+      setState(() {
+        _clipImage?.dispose();
+        _clipImage = img;
+        _clipImageGen = gen;
+      });
+    });
+  }
+
+  // Tap-to-view (user decision 2026-08-30): a view-only dialog — the clipboard at native
+  // resolution over the editor checker, pinch/scroll to zoom, drag to pan, nearest-neighbor
+  // crisp. Paste stays on row-1; the dialog is modal, so the image can't be swapped under it.
+  void _showClipboardViewer(ui.Image img) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: const Color(0xFF202327),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 4, 0),
+              child: Row(
+                children: [
+                  Text('Clipboard ${img.width}×${img.height}',
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                  const Spacer(),
+                  IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.of(ctx).pop()),
+                ],
+              ),
+            ),
+            Flexible(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: SizedBox(
+                    width: double.maxFinite,
+                    height: 320,
+                    child: CustomPaint(
+                      painter: const CheckerPainter(),
+                      child: InteractiveViewer(
+                        minScale: 0.5,
+                        maxScale: 32,
+                        child: Center(
+                          child: RawImage(
+                              image: img, fit: BoxFit.contain, filterQuality: FilterQuality.none),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildToolOptions() {
     final children = <Widget>[];
     void label(String s) => children.add(Padding(
@@ -529,6 +638,7 @@ extension _EditorControls on _EditorPageState {
       }
     }
     if (_tool == 'CopyPaste') {
+      children.add(_clipboardSwatch());
       children.add(_miniBtn('Copy', () => _act('Copy()')));
       children.add(_miniBtn('Cut', () => _act('Cut()')));
       children.add(_miniBtn('Paste', () => _act('PasteDraft()')));

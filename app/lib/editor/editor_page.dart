@@ -537,6 +537,11 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // Copy & Paste tool: hosts clipboard ops; a pending paste floats as a movable, semi-transparent
   // draft until committed. `_hasPasteDraft` comes from the engine state JSON.
   bool get _isCopyPaste => _tool == 'CopyPaste';
+  // Clipboard swatch (row-1, Copy tool): the clipboard rendered as a ui.Image, cached by the
+  // engine's clipboard_gen (bumped on every copy/cut and on document load). -1 = nothing cached.
+  ui.Image? _clipImage;
+  int _clipImageGen = -1;
+  bool _clipFetchInFlight = false;
   bool _hasPasteDraft = false;
   Offset? _pasteDragLast; // last canvas position while dragging the paste draft
 
@@ -675,6 +680,11 @@ class _EditorPageState extends ConsumerState<EditorPage>
     }
     _layerThumbs.clear();
     _layerThumbInFlight.clear();
+    // The clipboard swatch cache follows the same lifecycle (the engine bumps clipboard_gen on
+    // load, so a stale image would be refetched anyway — this just frees it promptly).
+    _clipImage?.dispose();
+    _clipImage = null;
+    _clipImageGen = -1;
   }
 
   @override

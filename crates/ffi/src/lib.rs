@@ -230,6 +230,27 @@ pub extern "C" fn mkpx_frame_thumb(
     bytes.len() as c_int
 }
 
+/// Fill `out` with the clipboard's pixels at native size (straight RGBA, row-major) — the
+/// shell's clipboard swatch + tap-to-view dialog. The dimensions come from the state probe's
+/// `clipboard_size`. Returns bytes written, 0 for an empty clipboard, or -1 if the buffer is
+/// too small.
+#[no_mangle]
+pub extern "C" fn mkpx_clipboard_rgba(ptr: *mut Session, out: *mut u8, cap: usize) -> c_int {
+    let s = match session(ptr) {
+        Some(s) => s,
+        None => return -1,
+    };
+    let bytes = s.clipboard_rgba_bytes();
+    if bytes.is_empty() {
+        return 0;
+    }
+    if bytes.len() > cap || out.is_null() {
+        return -1;
+    }
+    unsafe { slice::from_raw_parts_mut(out, bytes.len()).copy_from_slice(&bytes) };
+    bytes.len() as c_int
+}
+
 /// Content hash (low 64 bits) of a single layer — for caching layer film-strip thumbnails.
 #[no_mangle]
 pub extern "C" fn mkpx_layer_hash(ptr: *mut Session, frame: u32, layer: u32) -> u64 {
