@@ -181,9 +181,19 @@ class SelectionDraftPainter extends CustomPainter {
       old.edges != edges || old.scale != scale || old.off != off; // phase repaints via the notifier
 }
 
-/// Draggable endpoint markers for an uncommitted figure (Line/Rect/Ellipse). Drawn in SCREEN
-/// space as a ringed target at each endpoint so it stays a constant on-screen size and frames the
-/// pixel without hiding it.
+/// Screen-px radius of a figure/marquee endpoint handle's ring at the given zoom. Sized for a
+/// fingertip, not a cursor (2026-08-30 — was 11–22 px and too easy to miss on a phone); the
+/// lower clamp is the working size at pixel-scale zooms, the upper one stops it swallowing small
+/// figures when zoomed far in.
+double handleRadius(double scale) => (scale * 1.4).clamp(20.0, 32.0);
+
+/// Grab radius for the same handle: the ring plus a little slack, so what the artist sees is
+/// what they can grab. Used by every handle hit-test, so the ring and the hit zone never drift.
+double handleGrabRadius(double scale) => handleRadius(scale) + 8.0;
+
+/// Draggable endpoint markers for an uncommitted figure (Line/Rect/Ellipse/Gradient) or Select
+/// marquee. Drawn in SCREEN space as a ringed target at each endpoint so it stays a constant
+/// on-screen size and frames the pixel without hiding it.
 class HandlePainter extends CustomPainter {
   final List<Offset> points; // endpoint positions in canvas-pixel coords (cell top-left)
   final double scale; // screen px per canvas px
@@ -193,16 +203,16 @@ class HandlePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (scale <= 0) return;
-    final r = (scale * 0.95).clamp(11.0, 22.0);
+    final r = handleRadius(scale);
     final halo = Paint()
       ..color = Colors.black
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 4
+      ..strokeWidth = 4.5
       ..isAntiAlias = true;
     final ring = Paint()
       ..color = const Color(0xFF4DA3FF)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5
+      ..strokeWidth = 3
       ..isAntiAlias = true;
     final dot = Paint()..color = Colors.white;
     for (final p in points) {

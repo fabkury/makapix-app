@@ -791,6 +791,7 @@ extension _EditorCanvas on _EditorPageState {
   void _beginShape(Offset pos, Size box) {
     final p = _toCanvas(pos, box);
     _newShapeStart = null;
+    _shapeGrabOffset = Offset.zero; // only a handle grab (below) sets it
     if (_hasShapeDraft) {
       final (s, off) = _view(box);
       Offset screenOf(Offset c) => Offset(off.dx + (c.dx + 0.5) * s, off.dy + (c.dy + 0.5) * s);
@@ -808,21 +809,23 @@ extension _EditorCanvas on _EditorPageState {
       // base corner at the extremes.
       if (_hasTipHandle && (pos - screenOf(_triApex())).distance <= 28.0) {
         _shapeDrag = 6;
+        // The apex is fractional (it rides the rotated top edge), so its offset is sub-pixel.
+        _shapeGrabOffset = _triApex() - _toCanvasRaw(pos, box);
         _redraw();
         return;
       }
-      // A bit larger than the drawn reticle so the ends are easy to grab.
-      final tol = (s * 1.1).clamp(30.0, 56.0);
+      // The ring plus a little slack: what the artist sees is what they can grab.
+      final tol = handleGrabRadius(s);
       final dA = (pos - screenOf(_shapeA!)).distance;
       final dB = (pos - screenOf(_shapeB!)).distance;
       if (dA <= tol && dA <= dB) {
         _shapeDrag = 1;
-        _shapeA = p;
-        _pushShape();
+        // Keep the endpoint where it is; remember the finger→endpoint offset for the drag, so the
+        // handle stays visible beside the finger instead of snapping under it.
+        _shapeGrabOffset = _shapeA! - p;
       } else if (dB <= tol) {
         _shapeDrag = 2;
-        _shapeB = p;
-        _pushShape();
+        _shapeGrabOffset = _shapeB! - p;
       } else {
         // Off the handles → reposition the whole draft (the move happens on drag in _continueShape).
         _shapeDrag = 4;
@@ -863,7 +866,7 @@ extension _EditorCanvas on _EditorPageState {
     if (_shapeDrag == 6) {
       // Apex skew: project the finger onto the triangle's (rotated) top-edge axis and map it to
       // tip ∈ [-1, 1]. The height is fixed (set by the size handles); only x along the edge moves.
-      final raw = _toCanvasRaw(pos, box);
+      final raw = _toCanvasRaw(pos, box) + _shapeGrabOffset; // the apex rides beside the finger
       final c = (_shapeA! + _shapeB!) / 2;
       final cs = math.cos(_shapeRot), sn = math.sin(_shapeRot);
       final lx = cs * (raw.dx - c.dx) + sn * (raw.dy - c.dy);
@@ -875,7 +878,9 @@ extension _EditorCanvas on _EditorPageState {
     }
     // Constrained snapping works on raw (sub-pixel) input, rounded once inside _ratioed, so
     // the snap decision never jitters near the 22.5° boundaries at low zoom.
-    final p = _constrainHeld ? _toCanvasRaw(pos, box) : _toCanvas(pos, box);
+    // A grabbed endpoint keeps its finger offset (integer in the unconstrained path, since the
+    // offset was taken from the floored press; _ratioed rounds the constrained one).
+    final p = (_constrainHeld ? _toCanvasRaw(pos, box) : _toCanvas(pos, box)) + _shapeGrabOffset;
     if (_shapeDrag == 4) {
       _moveWholeDraft(_toCanvas(pos, box)); // rigid move: unconstrained, integer input
       return;
@@ -970,18 +975,19 @@ extension _EditorCanvas on _EditorPageState {
   void _beginSelDraft(Offset pos, Size box) {
     final p = _toCanvas(pos, box);
     _newSelStart = null;
+    _selGrabOffset = Offset.zero; // only a corner grab (below) sets it
     if (_hasSelDraft) {
       final (s, off) = _view(box);
       Offset screenOf(Offset c) => Offset(off.dx + (c.dx + 0.5) * s, off.dy + (c.dy + 0.5) * s);
-      final tol = (s * 1.1).clamp(30.0, 56.0); // generous grab radius so the ends are easy to hit
+      final tol = handleGrabRadius(s); // the ring plus slack, as the figure handles
       final dA = (pos - screenOf(_selA!)).distance;
       final dB = (pos - screenOf(_selB!)).distance;
       if (dA <= tol && dA <= dB) {
         _selDrag = 1;
-        _selA = p;
+        _selGrabOffset = _selA! - p; // corner stays put, rides beside the finger (_beginShape)
       } else if (dB <= tol) {
         _selDrag = 2;
-        _selB = p;
+        _selGrabOffset = _selB! - p;
       } else {
         _selDrag = 4;
         _selMoveAnchor = p;
@@ -1002,7 +1008,7 @@ extension _EditorCanvas on _EditorPageState {
   void _continueSelDraft(Offset pos, Size box) {
     if (_selDrag == 0) return;
     // Raw input under constrain, as in _continueShape (rounded once inside _ratioed).
-    final p = _constrainHeld ? _toCanvasRaw(pos, box) : _toCanvas(pos, box);
+    final p = (_constrainHeld ? _toCanvasRaw(pos, box) : _toCanvas(pos, box)) + _selGrabOffset;
     if (_selDrag == 4) {
       _moveWholeSelDraft(_toCanvas(pos, box));
       return;
@@ -1037,6 +1043,7 @@ extension _EditorCanvas on _EditorPageState {
   void _endSelDraft() {
     _selDrag = 0;
     _newSelStart = null;
+    _selGrabOffset = Offset.zero;
     _selMoveAnchor = _selMoveOrigA = _selMoveOrigB = null;
     setState(() {});
   }
@@ -1195,6 +1202,7 @@ extension _EditorCanvas on _EditorPageState {
   void _endShape() {
     _shapeDrag = 0;
     _newShapeStart = null;
+    _shapeGrabOffset = Offset.zero;
     _shapeMoveAnchor = _shapeMoveOrigA = _shapeMoveOrigB = null;
     setState(() {});
   }

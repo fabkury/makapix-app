@@ -224,6 +224,10 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // Whole-draft reposition (drag off the handles): the canvas point where the move began and the
   // two endpoints at that moment, so each move is a rigid translation from the originals.
   Offset? _shapeMoveAnchor, _shapeMoveOrigA, _shapeMoveOrigB;
+  // Canvas-space offset from the finger to the grabbed handle (endpoint or Triangle apex), kept for
+  // the whole drag so the handle stays visible beside the finger instead of snapping under it —
+  // the Ruler's _rulerGrabOffset convention.
+  Offset _shapeGrabOffset = Offset.zero;
   // Shape-tool rotation (radians, around the box center) + the rotate-handle drag origin.
   double _shapeRot = 0;
   Offset? _rotOrigA, _rotOrigB;
@@ -244,6 +248,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   int _selDrag = 0;
   Offset? _newSelStart; // deferred start of a not-yet-materialized new draft (a stray tap leaves any draft intact)
   Offset? _selMoveAnchor, _selMoveOrigA, _selMoveOrigB; // whole-draft reposition origins
+  Offset _selGrabOffset = Offset.zero; // finger→grabbed-corner offset, as _shapeGrabOffset
   // Cached distinct marching-ants boundary segments of the draft (the exact rect/ellipse pixels it
   // would select), rebuilt only when the draft changes — NOT on every animation tick. Each segment
   // is [x1,y1,x2,y2,t] in canvas-corner coords, mirroring _selectionEdges.
