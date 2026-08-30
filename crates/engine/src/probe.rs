@@ -577,7 +577,7 @@ mod tests {
         d.palettes.push(two);
         let s = state_json(&d);
         // The full-preview array: every palette with its colors, not just the active one.
-        assert!(s.contains("\"palettes\":[{\"name\":\"Default\",\"colors\":[\"#140C1CFF\""), "{s}");
+        assert!(s.contains("\"palettes\":[{\"name\":\"Default\",\"colors\":[\"#000000FF\",\"#FFFFFFFF\""), "{s}");
         assert!(s.contains("{\"name\":\"Two\",\"colors\":[\"#FF0000FF\"],\"names\":[\"Red\"]}"), "{s}");
         // The active palette's names, aligned with "palette" ("" = unnamed).
         assert!(s.contains("\"palette_color_names\":[\"\",\"\""), "{s}");
