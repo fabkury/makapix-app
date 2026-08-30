@@ -483,10 +483,11 @@ class RulerPainter extends CustomPainter {
     }
     _label(canvas, '${b.dx.toInt()}, ${b.dy.toInt()}', pb + const Offset(lbl, lbl));
     if (pc != null) _label(canvas, '${c!.dx.toInt()}, ${c!.dy.toInt()}', pc + const Offset(lbl, lbl));
-    // The headline degree chip goes LAST, on top of everything at the vertex.
+    // The headline degree chip goes LAST, on top of everything at the vertex — in the arc's cyan,
+    // so an angle number can never be mistaken for a pixel count (which stays white).
     if (dir != null && deg != null) {
       _label(canvas, '${deg.toStringAsFixed(1)}°', pa + dir * (kRulerAngleArcRadius + 18.0),
-          centerX: true, centerY: true);
+          centerX: true, centerY: true, color: kRulerAngleArcColor);
     }
   }
 
@@ -556,15 +557,22 @@ class RulerPainter extends CustomPainter {
 
   /// `faint` renders the semitransparent style of the triangle legs; `centerX`/`centerY` center
   /// the text on `at`; `alignRight` puts the text's right edge at `at` (for labels that must
-  /// grow away from the vertical leg).
+  /// grow away from the vertical leg); `color` overrides the text color (the degree chip's cyan —
+  /// pixel numbers stay on the white default).
   void _label(Canvas canvas, String text, Offset at,
-      {bool faint = false, bool centerX = false, bool centerY = false, bool alignRight = false}) {
+      {bool faint = false,
+      bool centerX = false,
+      bool centerY = false,
+      bool alignRight = false,
+      Color? color}) {
     final tp = TextPainter(
       text: TextSpan(
         text: ' $text ',
         style: faint
-            ? const TextStyle(fontSize: 11, color: Colors.white70, backgroundColor: Color(0x66000000))
-            : const TextStyle(fontSize: 11, color: Colors.white, backgroundColor: Color(0xCC000000)),
+            ? TextStyle(
+                fontSize: 11, color: color ?? Colors.white70, backgroundColor: const Color(0x66000000))
+            : TextStyle(
+                fontSize: 11, color: color ?? Colors.white, backgroundColor: const Color(0xCC000000)),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
