@@ -422,11 +422,33 @@ extension _EditorControls on _EditorPageState {
           },
         ),
       ));
-      // Number of evenly-spaced colors in the gradient (2..6); the swatch count follows.
-      children.add(_toggle(['2', '3', '4', '5', '6'], _gradCount - 2, (i) {
-        setState(() => _gradCount = i + 2);
+      // Number of evenly-spaced colors in the gradient (2 up to the swatch roster); the swatch
+      // count follows. A compact − N + stepper, not a segmented toggle — seven segments would
+      // crowd the row (user decision, 2026-08-30). The buttons gray out at the bounds.
+      Widget step(String s, VoidCallback? onTap) => Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 3),
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(0, 30),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                backgroundColor: const Color(0xFF2E3237),
+              ),
+              onPressed: onTap,
+              child: Text(s, style: const TextStyle(fontSize: 11)),
+            ),
+          );
+      void setGradCount(int n) {
+        setState(() => _gradCount = n);
         _sendGradientStops();
-      }));
+      }
+
+      final maxGrad = _gradExtra.length + 1;
+      children.add(step('−', _gradCount > 2 ? () => setGradCount(_gradCount - 1) : null));
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: Text('$_gradCount', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+      ));
+      children.add(step('+', _gradCount < maxGrad ? () => setGradCount(_gradCount + 1) : null));
       // First color = the primary (same as the row-2 primary swatch); tapping it changes the
       // primary color. The rest are independent gradient colors.
       children.add(_swatchButton(_primary, () => _pickColor(initial: _primary, onPick: _setPrimary)));

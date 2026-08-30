@@ -286,7 +286,9 @@ class _EditorPageState extends ConsumerState<EditorPage>
   String _selMode = 'Replace';
   int _alphaCutoff = 0; // Sel Lyr: alpha cutoff (0..254); pixels with alpha > this (opaque) are "selected"
   // Gradient: the first color is ALWAYS the primary color; the remaining (count-1) colors are
-  // independent (_gradExtra). _gradCount is the total number of evenly-spaced colors (2..6).
+  // independent (_gradExtra). _gradCount is the total number of evenly-spaced colors, 2 up to
+  // _gradExtra.length + 1 (the engine's SetGradientStops has no cap of its own — the swatch
+  // roster is the limit).
   int _gradCount = 2;
   final List<Color> _gradExtra = [
     const Color(0xFFFFFFFF),
@@ -294,6 +296,8 @@ class _EditorPageState extends ConsumerState<EditorPage>
     const Color(0xFF0080FF),
     const Color(0xFFFF00FF),
     const Color(0xFF00C040),
+    const Color(0xFFFFD000),
+    const Color(0xFFE02020),
   ];
   // HSV-shift sliders: zero = no change, so entering the tool previews the document as-is.
   double _hsvH = 0, _hsvS = 0, _hsvV = 0;
