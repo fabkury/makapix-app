@@ -169,6 +169,36 @@ struct ScaleDraftLayer {
     src: RgbaBuffer,
 }
 
+/// The last repeatable committed operation (ADR 0017): its parameters, snapshotted at commit so
+/// later settings drift can never change what Repeat does. The TARGET is live — `Session::repeat`
+/// re-executes against the active frame/layer/selection at Repeat time. Paste snapshots the
+/// stamped pixels themselves, so re-copying between commit and Repeat can't change the stamp.
+#[derive(Clone)]
+enum RepeatOp {
+    Hsv { dh: f32, ds: f32, dv: f32, frame: bool },
+    Bc { db: i32, cf: f32, frame: bool },
+    Levels { lo: u8, g: i32, hi: u8, frame: bool },
+    Flip { horizontal: bool },
+    Rotate { angle: f32, off: Point, frame_scope: bool, clean_edge: bool, clean_edge_width: f32 },
+    Scale { sx: f32, sy: f32, off: Point, frame_scope: bool, clean_edge: bool, clean_edge_width: f32 },
+    Paste { pixels: RgbaBuffer, pos: Point },
+}
+
+impl RepeatOp {
+    /// Short human label for the shell's Repeat tile ("Repeat: Levels").
+    fn label(&self) -> &'static str {
+        match self {
+            RepeatOp::Hsv { .. } => "HSV",
+            RepeatOp::Bc { .. } => "Brightness/Contrast",
+            RepeatOp::Levels { .. } => "Levels",
+            RepeatOp::Flip { .. } => "Flip",
+            RepeatOp::Rotate { .. } => "Rotate",
+            RepeatOp::Scale { .. } => "Scale",
+            RepeatOp::Paste { .. } => "Paste",
+        }
+    }
+}
+
 /// Apply a move draft's lift+move to `frame` in place: clear the origin (the selected pixels, or the
 /// whole layer for a layer move) and blit the lifted content at the current offset, honoring Wrap.
 /// Shared by the display preview (on a throwaway clone) and `move_draft_commit` (on the real frame),
@@ -344,6 +374,11 @@ pub struct Session {
     /// (the `NewDocument` arm in parse.rs) — any future whole-`*self` replacement must
     /// repeat that carry. See `session/checkpoint.rs`.
     checkpoints: checkpoint::CheckpointStore,
+    /// The last repeatable committed op (ADR 0017), re-executed by `Repeat()` on the live target.
+    /// Survives Undo/Redo (the record is independent of history); dies with the document — the
+    /// `NewDocument` whole-session reset drops it implicitly, `adopt_loaded_doc` explicitly.
+    /// Carried by replay checkpoints so a scrubbed `Repeat()` replays identically.
+    repeat_record: Option<RepeatOp>,
 }
 
 impl Session {
@@ -384,6 +419,7 @@ impl Session {
             mem_refusals: 0,
             mem_last_refusal: None,
             checkpoints: checkpoint::CheckpointStore::default(),
+            repeat_record: None,
         }
     }
 
@@ -1014,7 +1050,7 @@ impl Session {
         let st = self.doc.storage();
         let og = self.doc.origin();
         let extra = format!(
-            ",\"has_clipboard\":{},\"paste\":{},\"move_draft\":{},\"rotate_draft\":{},\"scale_draft\":{},\"storage\":[{},{}],\"origin\":[{},{}],\"overscan\":{}",
+            ",\"has_clipboard\":{},\"paste\":{},\"move_draft\":{},\"rotate_draft\":{},\"scale_draft\":{},\"storage\":[{},{}],\"origin\":[{},{}],\"overscan\":{},\"can_repeat\":{},\"repeat_label\":{}",
             self.clipboard.is_some(),
             rect(self.paste_draft_rect()),
             rect(self.move_draft_rect()),
@@ -1025,6 +1061,11 @@ impl Session {
             og.x,
             og.y,
             self.settings.overscan_view,
+            self.can_repeat(),
+            match self.repeat_label() {
+                Some(l) => format!("\"{}\"", l),
+                None => "null".to_string(),
+            },
         );
         s.insert_str(s.len() - 1, &extra); // before the final '}'
         // Memory budget (SPEC §8.2b): fresh census + budgets + refusal telemetry, so the shell can
@@ -2483,6 +2524,9 @@ impl Session {
         if !self.active_editable() {
             return;
         }
+        // ADR 0017: snapshot the stamped pixels themselves (not a clipboard reference), so
+        // re-copying between this commit and a later Repeat can't change what Repeat stamps.
+        self.repeat_record = Some(RepeatOp::Paste { pixels: clip.clone(), pos });
         let before = self.begin_edit();
         {
             let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
@@ -2494,6 +2538,76 @@ impl Session {
     /// Discard the pending paste draft without drawing anything.
     pub fn paste_cancel(&mut self) {
         self.paste_draft = None;
+    }
+
+    // ---- Repeat (ADR 0017): re-execute the last repeatable committed op on the live target ----
+
+    /// Re-execute the last repeatable operation (an adjustment bake, layer-scoped flip/rotate/
+    /// scale, or a paste-stamp) against the CURRENT active frame/layer/selection. Parameters were
+    /// snapshotted at the original commit, so settings drift can't change what Repeat does. The
+    /// record survives Undo/Redo and dies with the document (load / NewDocument). No-op without a
+    /// record or on an uneditable target — the same silences the underlying verbs already keep.
+    pub fn repeat(&mut self) {
+        let op = match self.repeat_record.clone() {
+            Some(op) => op,
+            None => return,
+        };
+        self.settle_open_edits(); // an open stroke commits first, as Undo/Redo do [fuzz FZ-1]
+        match op {
+            RepeatOp::Hsv { dh, ds, dv, frame } => self.apply_hsv_with(dh, ds, dv, frame),
+            RepeatOp::Bc { db, cf, frame } => self.apply_bc_with(db, cf, frame),
+            RepeatOp::Levels { lo, g, hi, frame } => self.apply_levels_with(lo, g, hi, frame),
+            RepeatOp::Flip { horizontal } => self.flip_layer(horizontal),
+            RepeatOp::Rotate { angle, off, frame_scope, clean_edge, clean_edge_width } => {
+                self.rotate_draft = None; // never stack on a half-open Angle draft (rotate_layer's rule)
+                if frame_scope {
+                    self.rotate_draft_begin_frame();
+                } else {
+                    self.rotate_draft_begin();
+                }
+                if let Some(d) = &mut self.rotate_draft {
+                    d.angle = angle;
+                    d.off = off;
+                    d.clean_edge = clean_edge;
+                    d.clean_edge_width = clean_edge_width;
+                }
+                self.rotate_draft_commit(); // re-records the identical op — the record is stable
+            }
+            RepeatOp::Scale { sx, sy, off, frame_scope, clean_edge, clean_edge_width } => {
+                self.scale_draft = None;
+                if frame_scope {
+                    self.scale_draft_begin_frame();
+                } else {
+                    self.scale_draft_begin();
+                }
+                if let Some(d) = &mut self.scale_draft {
+                    d.scale_x = sx;
+                    d.scale_y = sy;
+                    d.off = off;
+                    d.clean_edge = clean_edge;
+                    d.clean_edge_width = clean_edge_width;
+                }
+                self.scale_draft_commit();
+            }
+            RepeatOp::Paste { pixels, pos } => {
+                if !self.active_editable() {
+                    return;
+                }
+                let before = self.begin_edit();
+                self.doc.active_frame_mut().active_layer_mut().pixels.blit_over(&pixels, pos);
+                self.commit_edit(before);
+            }
+        }
+    }
+
+    /// Whether a repeatable op is recorded (the shell's Repeat tile + `Repeat()` gate).
+    pub fn can_repeat(&self) -> bool {
+        self.repeat_record.is_some()
+    }
+
+    /// Short human label of the recorded op ("Levels", "Paste", …) for the state probe.
+    pub fn repeat_label(&self) -> Option<&'static str> {
+        self.repeat_record.as_ref().map(RepeatOp::label)
     }
 
     pub fn fill_selection(&mut self) {
@@ -2596,9 +2710,19 @@ impl Session {
         // display read between Apply and the shell's own identity reset composited the preview
         // over the already-baked pixels — the adjustment shown twice. The Levels/BC twins match.
         self.settings.hsv = (0.0, 0.0, 0.0);
-        // "Frame" scope: shift every layer of the active frame, ignoring the selection — frame
-        // mode acts on everything, like flip_frame/rotate_frame/map_frame. One undo step.
-        if self.settings.hsv_frame {
+        let frame = self.settings.hsv_frame;
+        if dh != 0.0 || ds != 0.0 || dv != 0.0 {
+            self.repeat_record = Some(RepeatOp::Hsv { dh, ds, dv, frame }); // ADR 0017
+        }
+        self.apply_hsv_with(dh, ds, dv, frame);
+    }
+
+    /// The parameterized bake behind `apply_hsv_shift` and `Repeat` (ADR 0017): applies the given
+    /// shift to the live target — every layer of the active frame in `frame` scope (ignoring the
+    /// selection, like flip_frame/rotate_frame/map_frame), else the active layer selection-clipped.
+    /// One undo step.
+    fn apply_hsv_with(&mut self, dh: f32, ds: f32, dv: f32, frame: bool) {
+        if frame {
             self.edit_doc("hsv_frame", |s| {
                 for l in &mut s.doc.active_frame_mut().layers {
                     tool::hsv_shift_region(&mut l.pixels, None, dh, ds, dv);
@@ -2651,7 +2775,16 @@ impl Session {
         let (db, cf) = self.settings.bc;
         // Apply consumes the pending adjustment (see apply_hsv_shift for the doubled-display why).
         self.settings.bc = (0, 1.0);
-        if self.settings.bc_frame {
+        let frame = self.settings.bc_frame;
+        if db != 0 || cf != 1.0 {
+            self.repeat_record = Some(RepeatOp::Bc { db, cf, frame }); // ADR 0017
+        }
+        self.apply_bc_with(db, cf, frame);
+    }
+
+    /// The parameterized bake behind `apply_brightness_contrast` and `Repeat` (ADR 0017).
+    fn apply_bc_with(&mut self, db: i32, cf: f32, frame: bool) {
+        if frame {
             self.edit_doc("bc_frame", |s| {
                 for l in &mut s.doc.active_frame_mut().layers {
                     tool::map_region(&mut l.pixels, None, |c| crate::color::brightness_contrast(c, db, cf));
@@ -2706,8 +2839,18 @@ impl Session {
         let (lo, g, hi) = self.settings.levels;
         // Apply consumes the pending adjustment (see apply_hsv_shift for the doubled-display why).
         self.settings.levels = (0, 1000, 255);
+        let frame = self.settings.levels_frame;
+        if lo != 0 || g != 1000 || hi != 255 {
+            self.repeat_record = Some(RepeatOp::Levels { lo, g, hi, frame }); // ADR 0017
+        }
+        self.apply_levels_with(lo, g, hi, frame);
+    }
+
+    /// The parameterized bake behind `apply_levels` and `Repeat` (ADR 0017). The (lo, γ‰, hi)
+    /// triple is sanitized by `color::levels_lut`; the table is built once and shared across layers.
+    fn apply_levels_with(&mut self, lo: u8, g: i32, hi: u8, frame: bool) {
         let lut = crate::color::levels_lut(lo, g, hi);
-        if self.settings.levels_frame {
+        if frame {
             self.edit_doc("levels_frame", |s| {
                 for l in &mut s.doc.active_frame_mut().layers {
                     tool::map_region(&mut l.pixels, None, |c| crate::color::apply_levels_lut(c, &lut));
@@ -3635,6 +3778,7 @@ impl Session {
         self.play_cache_dirty = true; // new frames/durations [battery F15]
         self.clipboard = None;
         self.paste_draft = None;
+        self.repeat_record = None; // Repeat does not cross documents (ADR 0017)
         self.move_draft = None; // a stale draft would reference the previous document's frame [F-29]
         self.move_sel_before = None; // drop any half-open selection-move drag
         self.clear_move_group(); // the Move group does not cross documents
@@ -3757,6 +3901,121 @@ mod tests {
         // structural ops are undoable
         assert!(s.doc.undo());
         assert_eq!(s.doc.frames.len(), 3);
+    }
+
+    // ---- Repeat (ADR 0017) ----
+
+    #[test]
+    fn repeat_levels_uses_snapshot_params_on_the_live_frame() {
+        let mut s = Session::new(8, 8);
+        s.settings.primary = Rgba8::rgb(100, 100, 100);
+        s.tool = ToolKind::Bucket;
+        s.tap(0, 0); // frame 0: solid gray
+        s.duplicate_frame(0); // frame 1 = same content
+        assert_eq!(s.doc.active_frame, 1);
+        s.run_script("SetLevels(0,1000,128)\nApplyLevels()").unwrap();
+        assert!(s.can_repeat());
+        assert_eq!(s.repeat_label(), Some("Levels"));
+        // Drift the sliders after the commit — Repeat must use the snapshot, not live settings.
+        s.run_script("SetLevels(50,2000,200)\nSetActiveFrame(0)\nRepeat()").unwrap();
+        assert_eq!(
+            s.layer_rgba_bytes(0, 0),
+            s.layer_rgba_bytes(1, 0),
+            "the same Levels bake must land on both frames"
+        );
+    }
+
+    #[test]
+    fn repeat_record_survives_undo_and_redo() {
+        let mut s = Session::new(8, 8);
+        s.settings.primary = Rgba8::rgb(64, 64, 64);
+        s.tool = ToolKind::Bucket;
+        s.tap(0, 0);
+        s.run_script("SetHsvShift(30,0,0)\nApplyHsvShift()").unwrap();
+        assert_eq!(s.repeat_label(), Some("HSV"));
+        s.run_script("Undo()").unwrap();
+        assert!(s.can_repeat(), "the record is independent of history (ADR 0017)");
+        s.run_script("Redo()").unwrap();
+        assert!(s.can_repeat());
+    }
+
+    #[test]
+    fn repeat_flip_acts_on_the_new_active_layer() {
+        let mut s = Session::new(8, 8);
+        s.settings.primary = Rgba8::rgb(255, 0, 0);
+        s.tap(1, 0); // layer 0: red at (1,0)
+        s.run_script("FlipH()").unwrap();
+        assert_eq!(s.repeat_label(), Some("Flip"));
+        s.add_layer(); // new blank ACTIVE layer
+        s.tap(1, 0); // layer 1: red at (1,0)
+        s.run_script("Repeat()").unwrap();
+        assert_eq!(
+            s.layer_rgba_bytes(0, 0),
+            s.layer_rgba_bytes(0, 1),
+            "identical content + the identical flip must produce identical layers"
+        );
+    }
+
+    #[test]
+    fn repeat_rotate_quarter_turn_matches_on_a_second_layer() {
+        let mut s = Session::new(8, 8);
+        s.settings.primary = Rgba8::rgb(0, 200, 0);
+        s.tap(1, 0);
+        s.tap(2, 3); // an asymmetric shape so the rotation is visible
+        s.rotate_layer(1);
+        assert_eq!(s.repeat_label(), Some("Rotate"));
+        s.add_layer();
+        s.tap(1, 0);
+        s.tap(2, 3);
+        s.run_script("Repeat()").unwrap();
+        assert_eq!(
+            s.layer_rgba_bytes(0, 0),
+            s.layer_rgba_bytes(0, 1),
+            "the repeated quarter-turn must reproduce the original exactly"
+        );
+    }
+
+    #[test]
+    fn repeat_paste_stamps_the_snapshot_not_the_live_clipboard() {
+        let mut s = Session::new(8, 8);
+        s.settings.primary = Rgba8::rgb(255, 0, 0);
+        s.tap(1, 1); // red at (1,1)
+        // The interactive Copy&Paste flow: a draft, then the commit (the instant `Paste()` verb
+        // stamps directly through `paste_to_frame` and is NOT repeatable — ADR 0017 covers the
+        // draft commit, the only path the shell's tool drives).
+        s.run_script("SelectAll()\nCopy()\nSelectNone()\nPasteDraft()\nPasteCommit()").unwrap();
+        assert_eq!(s.repeat_label(), Some("Paste"));
+        // Re-copy DIFFERENT content — Repeat must stamp the original snapshot regardless.
+        s.settings.primary = Rgba8::rgb(0, 0, 255);
+        s.tap(3, 3); // blue at (3,3)
+        s.run_script("SelectAll()\nCopy()\nSelectNone()").unwrap();
+        s.run_script("AddFrameAt(1)").unwrap(); // blank new frame, activated
+        assert_eq!(s.doc.active_frame, 1);
+        s.run_script("Repeat()").unwrap();
+        let px = |b: &[u8], x: usize, y: usize| {
+            let o = (y * 8 + x) * 4;
+            [b[o], b[o + 1], b[o + 2], b[o + 3]]
+        };
+        let f1 = s.layer_rgba_bytes(1, 0);
+        assert_eq!(px(&f1, 1, 1), [255, 0, 0, 255], "the snapshotted red stamp");
+        assert_eq!(px(&f1, 3, 3), [0, 0, 0, 0], "the later blue copy must NOT be stamped");
+    }
+
+    #[test]
+    fn repeat_record_dies_with_the_document() {
+        let mut s = Session::new(8, 8);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(0, 0);
+        s.run_script("FlipH()").unwrap();
+        assert!(s.can_repeat());
+        s.run_script("NewDocument(8,8)").unwrap();
+        assert!(!s.can_repeat(), "NewDocument's whole-session reset drops the record");
+        s.tap(0, 0);
+        s.run_script("FlipV()").unwrap();
+        assert!(s.can_repeat());
+        let bytes = s.save_bytes();
+        s.load_bytes(&bytes).unwrap();
+        assert!(!s.can_repeat(), "Repeat does not cross documents (ADR 0017)");
     }
 
     #[test]

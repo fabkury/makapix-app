@@ -2,7 +2,7 @@
 //! `session` god-file along the same `impl Session` seam `mod parse` already uses, so the methods
 //! still share `Session`'s private state (begin_edit/commit_edit/edit_doc, doc, selection). [audit F-17]
 
-use super::{RotateDraft, RotateDraftLayer, ScaleDraft, ScaleDraftLayer, Session};
+use super::{RepeatOp, RotateDraft, RotateDraftLayer, ScaleDraft, ScaleDraftLayer, Session};
 use crate::buffer::RgbaBuffer;
 use crate::color::Rgba8;
 use crate::document::Frame;
@@ -23,10 +23,11 @@ impl Session {
     /// layer) along the X axis (`horizontal`) or Y axis. With a selection the pixels mirror within
     /// the selection's bounding box and the selection mask mirrors with them (consistent with the
     /// Rotate tool); with none, the whole layer flips across the canvas. One undo step.
-    fn flip_layer(&mut self, horizontal: bool) {
+    pub(super) fn flip_layer(&mut self, horizontal: bool) {
         if !self.active_editable() {
             return;
         }
+        self.repeat_record = Some(RepeatOp::Flip { horizontal }); // ADR 0017
         let before = self.begin_edit();
 
         // Selection present (and non-empty) → mirror only the masked pixels inside their bbox.
@@ -508,6 +509,15 @@ impl Session {
             Some(fi) => fi,
             None => return,
         };
+        // ADR 0017: the committed rotation (its resampling included) is the repeatable op —
+        // covers the Angle commit AND the instant quarter-turns (`rotate_layer` routes here).
+        self.repeat_record = Some(RepeatOp::Rotate {
+            angle: d.angle,
+            off: d.off,
+            frame_scope: d.frame_scope,
+            clean_edge: d.clean_edge,
+            clean_edge_width: d.clean_edge_width,
+        });
         // Rotate over the whole storage about its center (= the canvas center for a centered gutter),
         // so the canvas rotates in place and the gutter rotates with it. [SPEC §8]
         let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
@@ -778,6 +788,16 @@ impl Session {
             Some(fi) => fi,
             None => return,
         };
+        // ADR 0017: the committed scale is the repeatable op — covers the Resize-draft commit AND
+        // the instant `scale_layer` (which routes here).
+        self.repeat_record = Some(RepeatOp::Scale {
+            sx: d.scale_x,
+            sy: d.scale_y,
+            off: d.off,
+            frame_scope: d.frame_scope,
+            clean_edge: d.clean_edge,
+            clean_edge_width: d.clean_edge_width,
+        });
         let (cw, ch) = { let s = self.doc.storage(); (s.w as i32, s.h as i32) };
         let before = self.doc.frames[fi].clone();
         let scaled_mask = apply_scale_to_frame(&d, &mut self.doc.frames[fi], cw, ch);

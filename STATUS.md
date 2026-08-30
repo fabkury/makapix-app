@@ -93,6 +93,7 @@ Gate B are deliberately parked with pickup notes in the RECOMMENDATIONS ledger.
 | Selection ops Add / Subtract / Union / Intersect / Invert | ✅ | set-algebra tested |
 | HSV-shift selected pixels | ✅ | closed-form oracle |
 | Brightness/Contrast (layer/selection, Frame scope) | ✅ | HSV-style tool: live engine preview, ±255 brightness + ±100% contrast around the 128 pivot; a non-zero adjustment is a draft resolved by the commit-menu (Commit = one undo step); closed-form oracle |
+| **Repeat** (repeat-redo) | ✅ | 2026-08-30 (ADR 0017): with the redo stack empty, the Redo tile becomes **Repeat** and re-executes the last repeatable op on the live target (active frame/layer/selection) — adjustment bakes (Levels/HSV/BC with scope), layer-scoped Flip/Rotate/Scale, paste-stamp (pixels snapshotted). Params snapshot at commit; record survives Undo/Redo, dies with the document; carried by replay checkpoints; Ctrl+Y rides the Redo command |
 | Gradient (2–8 colors, positions, alpha) | ✅ | linear + radial; up to 8 evenly-spaced colors (2026-08-30 — was 6); alpha; optional smoothstep easing; blends source-over onto layer content (2026-08-16 — was overwrite; transparent stops leave pixels untouched), with a pixel-exact composited draft preview |
 | Darkener / Lightener brush (intensity, size) | ✅ | dodge/burn via HSV-V |
 | **Ruler** (distance + **Angle** mode) | ✅ | pure-Dart canvas overlay (no engine): draggable endpoints with a px readout; Angle mode adds a third point C — 0–180° readout, cyan arc, smart chip flip, whole-cell snapping (2026-07-19) |

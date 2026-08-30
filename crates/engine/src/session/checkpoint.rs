@@ -16,7 +16,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use super::{LastGradient, Session};
+use super::{LastGradient, RepeatOp, Session};
 use crate::buffer::RgbaBuffer;
 use crate::document::Document;
 use crate::geom::Point;
@@ -54,6 +54,8 @@ struct Checkpoint {
     playing: bool,
     // Keeps the assert.gradient oracle valid after a restore; tiny.
     last_gradient: LastGradient,
+    // A journaled `Repeat()` after a scrub seek must see the same record it saw live (ADR 0017).
+    repeat_record: Option<RepeatOp>,
     mem_budget_override: Option<(usize, usize)>,
 }
 
@@ -241,6 +243,7 @@ impl Session {
             clock: self.clock,
             playing: self.playing,
             last_gradient: self.last_gradient.clone(),
+            repeat_record: self.repeat_record.clone(),
             mem_budget_override: self.mem_budget_override,
         };
         let doc_delta = match self.checkpoints.entries.last() {
@@ -284,6 +287,7 @@ impl Session {
         self.clock = cp.clock;
         self.playing = cp.playing;
         self.last_gradient = cp.last_gradient.clone();
+        self.repeat_record = cp.repeat_record.clone();
         self.mem_budget_override = cp.mem_budget_override;
         // Transient gesture/draft state was empty at take (quiescence) — reset to defaults.
         // (Any live coat dies with `stroke`/`pen_segment`.)

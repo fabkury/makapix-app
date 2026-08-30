@@ -60,6 +60,9 @@ const tools = <ToolDef>[
 // reorderable `tools` list above but still need their icon/label here.
 const undoToolDef = ToolDef('Undo', Icons.undo, 'Undo');
 const redoToolDef = ToolDef('Redo', Icons.redo, 'Redo');
+// The Redo tile's Repeat face (ADR 0017): shown when the redo stack is empty and the engine holds
+// a repeatable op. Same dsl ('Redo') so the tile keeps its tap routing; only the face changes.
+const repeatToolDef = ToolDef('Redo', Icons.repeat, 'Repeat');
 
 /// Rebuild the full tool order after a reorder done in *visible* space (the grid with [hidden]
 /// filtered out, as in the 3-row toolbar where Play is pinned): [hidden] is reinserted at its

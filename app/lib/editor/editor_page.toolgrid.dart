@@ -42,9 +42,19 @@ extension _EditorToolgrid on _EditorPageState {
     // A pending move draft makes Undo/Redo live so either can discard it (see _doToolAction), even
     // when there's no committed history to step through.
     if (dsl == 'Undo') return _hasMoveDraft || _state['can_undo'] == true;
-    if (dsl == 'Redo') return _hasMoveDraft || _state['can_redo'] == true;
+    // The Redo tile is also the Repeat tile (ADR 0017): live when there's a move draft to
+    // discard, history to redo, or — with the redo stack empty — a repeatable op to re-execute.
+    if (dsl == 'Redo') {
+      return _hasMoveDraft || _state['can_redo'] == true || _state['can_repeat'] == true;
+    }
     return true;
   }
+
+  // ADR 0017: the Redo tile shows its Repeat face — icon and label switch — exactly when a tap
+  // would repeat: no move draft to discard, no redo history, and the engine holds a repeatable
+  // op. Precedence (discard draft > redo > repeat) mirrors _doToolAction's dispatch below.
+  bool get _redoTileShowsRepeat =>
+      !_hasMoveDraft && _state['can_redo'] != true && _state['can_repeat'] == true;
 
   // Fire an action tool's action/toggle (not a tool selection).
   void _doToolAction(String dsl) {
@@ -63,6 +73,10 @@ extension _EditorToolgrid on _EditorPageState {
           _cancelMoveDraft();
         } else if (_state['can_redo'] == true) {
           _act('Redo()');
+        } else if (_state['can_repeat'] == true) {
+          // At the head of history the tile means Repeat (ADR 0017): re-execute the last
+          // repeatable op on the current frame/layer/selection.
+          _act('Repeat()');
         }
         break;
       case 'Onion':
@@ -231,7 +245,7 @@ extension _EditorToolgrid on _EditorPageState {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         _pinnedActionTile(undoToolDef),
-        _pinnedActionTile(redoToolDef),
+        _pinnedActionTile(_redoTileShowsRepeat ? repeatToolDef : redoToolDef),
         if (_threeRowToolbar) _pinnedThirdTile(),
       ],
     );

@@ -122,6 +122,8 @@ pub enum Action {
     /// `Session::fill_noise`).
     FillNoise(u64),
     ClearSelection,
+    /// Re-execute the last repeatable committed op on the live target (ADR 0017).
+    Repeat,
     ApplyHsvShift,
     ApplyBrightnessContrast,
     ApplyLevels,
@@ -389,6 +391,7 @@ impl Session {
                 self.doc.redo();
                 self.mem_recalibrate();
             }
+            Repeat => self.repeat(),
             ClearHistory => self.doc.history = crate::history::History::new(),
             SetMemBudget(soft, hard) => self.set_mem_budgets(soft as usize, hard as usize),
             Play => self.play(),
@@ -783,6 +786,7 @@ fn parse_line(line: &str) -> Result<Action, String> {
         "SortPaletteAt" => SortPaletteAt(usza(0)?),
         "Undo" => Undo,
         "Redo" => Redo,
+        "Repeat" => Repeat,
         "ClearHistory" => ClearHistory,
         "SetMemBudget" => SetMemBudget(u64a(0)?, u64a(1)?),
         "Play" => Play,
