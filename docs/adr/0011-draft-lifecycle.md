@@ -52,3 +52,8 @@ document funnels, not just the tool switch; a pillar switch tears the Editor dow
 cancels Drafts too, by the same rule. G-19 (palette extraction reading the un-baked document) is
 *not* closed by this policy — pushing the palette page is not a context change — and is tracked as
 a point fix.
+
+**Amended by ADR 0016 (2026-08-30):** inserting a *blank* layer (`AddLayer`/`AddLayerAt`) is
+preparation for a commit, not a context change — figure, paste, and Select-marquee Drafts survive
+it and commit onto the new layer; transform and adjust Drafts, which are bound to the old layer's
+content, still cancel. `DuplicateLayer` and every other structural verb remain context changes.

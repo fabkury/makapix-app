@@ -487,7 +487,11 @@ extension _EditorEngine on _EditorPageState {
   /// Gesture traffic itself uses [_send] directly and so never re-enters this gate.
   void _act(String dsl) {
     _finishInteraction();
-    if (_isContextChangeVerb(dsl)) _cancelDraftsForContextChange();
+    if (_isContextChangeVerb(dsl)) {
+      _cancelDraftsForContextChange();
+    } else if (_isBlankLayerVerb(dsl)) {
+      _cancelLayerBoundDraftsForBlankLayer();
+    }
     if (_playing && !_isTransportOrViewVerb(dsl)) _pause();
     _send(dsl);
     _refreshState();
@@ -539,7 +543,8 @@ extension _EditorEngine on _EditorPageState {
   /// new frame/layer (or retargets after a removal), so a Draft would otherwise survive onto a
   /// surface the artist never drew it on. Reorders keep the same content active and are not
   /// context changes. The layer-strip RESYNC deliberately uses _send, not _act, so it is not a
-  /// context change either.
+  /// context change either. Adding a *blank* layer is the one carve-out (ADR 0016) — see
+  /// [_isBlankLayerVerb].
   static bool _isContextChangeVerb(String dsl) {
     for (final part in dsl.split(';')) {
       final name = part.trim().split('(').first.trim();
@@ -550,8 +555,6 @@ extension _EditorEngine on _EditorPageState {
         'AddFrameAt',
         'DuplicateFrame',
         'RemoveFrame',
-        'AddLayer',
-        'AddLayerAt',
         'DuplicateLayer',
         'RemoveLayer',
         'MergeDown',
@@ -562,11 +565,40 @@ extension _EditorEngine on _EditorPageState {
     return false;
   }
 
+  /// ADR 0016: inserting a blank layer into the current frame is *preparation for a commit*, not
+  /// a context change. The composited preview is unchanged and the new (empty, active) layer is
+  /// exactly where "draw this on its own layer" wants the Draft to land — so the retargeting
+  /// families (figure, paste, Select marquee) survive. Only the two blank-layer verbs qualify:
+  /// DuplicateLayer activates a layer that already has content under the Draft, and stays a
+  /// context change.
+  static bool _isBlankLayerVerb(String dsl) {
+    for (final part in dsl.split(';')) {
+      final name = part.trim().split('(').first.trim();
+      if (name == 'AddLayer' || name == 'AddLayerAt') return true;
+    }
+    return false;
+  }
+
   /// ADR 0011: cancel whatever Draft is open — silently and irrecoverably. Tool switches have
   /// always done this in _selectTool; this is the same contract extended to frame, layer, and
   /// document changes. At most one Draft can exist at a time, so one call is enough.
   void _cancelDraftsForContextChange() {
     if (_hasAnyDraft) _cancelActiveDraft();
+  }
+
+  /// ADR 0016: on a blank-layer insert, cancel only the Drafts bound to the *old* layer's content.
+  /// Transform Drafts (Move/Rotate/Scale) hold lifted pixels pinned by layer id, so surviving would
+  /// let the commit pill land on a layer that is no longer active — the hidden off-surface commit
+  /// ADR 0011 exists to forbid. Adjust Drafts (HSV/Brightness-Contrast/Levels) preview the active
+  /// layer, which is now blank — a stuck slider adjusting nothing. Everything else stays open.
+  void _cancelLayerBoundDraftsForBlankLayer() {
+    final layerBound = (_tool == 'Move' && _hasMoveDraft) ||
+        (_tool == 'Rotate' && _hasRotateDraft) ||
+        (_tool == 'Resize' && _hasResizeDraft) ||
+        (_tool == 'HsvShift' && _hasHsvDraft) ||
+        (_tool == 'BrightnessContrast' && _hasBcDraft) ||
+        (_tool == 'Levels' && _hasLevelsDraft);
+    if (layerBound) _cancelActiveDraft();
   }
 
   /// ADR 0010: end an in-flight Gesture as if the artist lifted. Value gestures (control drags)

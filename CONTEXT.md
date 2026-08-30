@@ -94,7 +94,8 @@ _Avoid_: drag, interaction, input event
 **Draft**:
 Editor state the artist can see but has not committed: a shape or gradient figure, a
 Move/Rotate/Scale transform, an HSV/brightness-contrast/Levels preview, or a pending paste. A
-Draft belongs to the context it was made in and dies when that context changes (ADR 0011).
+Draft belongs to the context it was made in and dies when that context changes (ADR 0011); adding a
+blank layer is not such a change for the figure, paste, and marquee families (ADR 0016).
 _Avoid_: preview (that is what a Draft shows), pending edit, uncommitted change
 
 **Active target**:
