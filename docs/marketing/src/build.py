@@ -632,8 +632,8 @@ SLIDES = {
               slide_files),
 }
 
-ORDER = ["hero", "replay", "animation", "paint", "color",
-         "select", "free", "club", "files"]
+ORDER = ["hero", "free", "replay", "animation", "paint",
+         "color", "select", "club", "files"]
 PLAY_MAX = 8  # the Play listing caps at 8 screenshots; 09_files is App Store only
 
 

@@ -27,17 +27,17 @@ proof panel, chip ticker), community art credited `@handle` on-slide.
 1. **Hero** — "A pixel art studio in your pocket" (community-art wall + the editor
    with @birds' "senna fixed" open; that piece carries a `.mkpx`, hence its
    DRAWN IN MAKAPIX tag)
-2. **Replay** — "Your art draws itself" (engine-rendered progress filmstrip of the
-   staged lakeside scene + the real replay viewer; MP4/GIF/WebP timelapse chips)
-3. **Animation** — "1,024 frames. 64 layers." (ball fan + the timeline holding
-   @Badguy's 16-frame "cozy blizzard")
-4. **Paint** — AA off/on, the airbrush trio, 8-stop gradient, single-coat stroke
-   (all engine renders) + the real AA-chip tool row
-5. **Color** — RGBA ghost on checker + blend-mode grid + Levels before/after
-6. **Select** — selection canvas + mode row + cleanEdge vs nearest zoom
-7. **Free** — "Free. Ad-free. Open-source." (three statement panels + the GitHub
+2. **Free** — "Free. Ad-free. Open-source." (three statement panels + the GitHub
    repo line; replaced the palette slide 2026-08-31 by user decision — palette
-   coverage lives on as a chip on the color slide)
+   coverage lives on as a chip on the color slide; moved up to slot 2 same day)
+3. **Replay** — "Your art draws itself" (engine-rendered progress filmstrip of the
+   staged lakeside scene + the real replay viewer; MP4/GIF/WebP timelapse chips)
+4. **Animation** — "1,024 frames. 64 layers." (ball fan + the timeline holding
+   @Badguy's 16-frame "cozy blizzard")
+5. **Paint** — AA off/on, the airbrush trio, 8-stop gradient, single-coat stroke
+   (all engine renders) + the real AA-chip tool row
+6. **Color** — RGBA ghost on checker + blend-mode grid + Levels before/after
+7. **Select** — selection canvas + mode row + cleanEdge vs nearest zoom
 8. **Club** — credited community grid + the Recommended feed (finale)
 9. **Files** (App Store only) — import/export format flow
 
