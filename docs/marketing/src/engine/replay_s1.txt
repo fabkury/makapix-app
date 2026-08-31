@@ -1,0 +1,5 @@
+NewDocument(64, 64)
+SelectTool(Gradient)
+SetGradientType(Linear)
+SetGradientStops([#141C34FF@0, #3A2C50FF@0.38, #B4503CFF@0.62, #F0A050FF@0.85, #F8D890FF@1])
+Stroke([(32,0),(32,44)])

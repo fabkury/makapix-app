@@ -1,0 +1,110 @@
+{
+ "mr_tritium": {
+  "sqid": "4vaj",
+  "title": "Mr. Tritium",
+  "handle": "Badguy",
+  "w": 256,
+  "h": 256,
+  "frames": 7,
+  "bytes": 102850
+ },
+ "cozy_blizzard": {
+  "sqid": "juSi",
+  "title": "cozy blizzard",
+  "handle": "Badguy",
+  "w": 128,
+  "h": 128,
+  "frames": 16,
+  "bytes": 19902
+ },
+ "fairy_flower": {
+  "sqid": "uhEg",
+  "title": "fairy flower",
+  "handle": "Badguy",
+  "w": 128,
+  "h": 128,
+  "frames": 53,
+  "bytes": 70604
+ },
+ "brave_bear": {
+  "sqid": "wbJe",
+  "title": "Brave bear",
+  "handle": "Badguy",
+  "w": 128,
+  "h": 128,
+  "frames": 21,
+  "bytes": 19998
+ },
+ "senna_fixed": {
+  "sqid": "HqL9",
+  "title": "senna fixed",
+  "handle": "birds",
+  "w": 154,
+  "h": 154,
+  "frames": 1,
+  "bytes": 8496
+ },
+ "miski_wealth": {
+  "sqid": "L9bL",
+  "title": "m!ski wealth",
+  "handle": "Fab",
+  "w": 64,
+  "h": 64,
+  "frames": 80,
+  "bytes": 142092
+ },
+ "beach_centurion": {
+  "sqid": "s3mU",
+  "title": "AB Beach Centurion",
+  "handle": "Fab",
+  "w": 32,
+  "h": 32,
+  "frames": 60,
+  "bytes": 19292
+ },
+ "yellow_tang": {
+  "sqid": "gnG6",
+  "title": "yellow tang",
+  "handle": "Marina",
+  "w": 64,
+  "h": 64,
+  "frames": 1,
+  "bytes": 1401
+ },
+ "daydream": {
+  "sqid": "juV6",
+  "title": "d a y d r e a m",
+  "handle": "m o n s t e r",
+  "w": 256,
+  "h": 256,
+  "frames": 86,
+  "bytes": 236746
+ },
+ "chess3d": {
+  "sqid": "CX3E",
+  "title": "3D   c h e s s",
+  "handle": "m o n s t e r",
+  "w": 256,
+  "h": 256,
+  "frames": 85,
+  "bytes": 225328
+ },
+ "seaside_city": {
+  "sqid": "vF8K",
+  "title": "Seaside City",
+  "handle": "lucidwaevs",
+  "w": 64,
+  "h": 64,
+  "frames": 6,
+  "bytes": 1534
+ },
+ "night_island": {
+  "sqid": "HqGL",
+  "title": "Night Island",
+  "handle": "lucidwaevs",
+  "w": 64,
+  "h": 64,
+  "frames": 8,
+  "bytes": 3302
+ }
+}

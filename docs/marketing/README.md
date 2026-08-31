@@ -18,16 +18,35 @@ Every feature composition is rendered to four canvases:
 Plus one **Play feature graphic** 1024×500 (hero only). All outputs are flattened to
 24-bit RGB — both stores reject PNGs with an alpha channel.
 
-## The features (one asset each)
+## The slides (2026-08-31 redesign)
 
-1. **Frames & layers** — "1,024 frames. 64 layers." (designed graphic: receding frame stack)
-2. **True RGBA** — real 8-bit alpha, not chroma-key (designed graphic: alpha demo on checker)
-3. **Blend modes** — Multiply/Overlay/Screen/Difference… (engine-rendered mode grid + phone shot)
-4. **Selection algebra** — add/subtract/intersect + select layer pixels (diagram + phone shot)
-5. **Levels tool** — before/after + the Levels sheet (phone shot + engine render)
-6. **Ruler** — distances and angles (phone shot)
-7. **Palette** — import/export/sort by similarity (phone shot + palette strips)
-8. **cleanEdge rotate/scale** — cleanEdge vs nearest-neighbor comparison (engine renders)
+Play takes 01..08 (its listing caps at 8 screenshots); the App Store additionally
+takes `09_files`. Layout language: three zones per slide (primary demo, secondary
+proof panel, chip ticker), community art credited `@handle` on-slide.
+
+1. **Hero** — "A pixel art studio in your pocket" (community-art wall + the editor
+   with @birds' "senna fixed" open; that piece carries a `.mkpx`, hence its
+   DRAWN IN MAKAPIX tag)
+2. **Replay** — "Your art draws itself" (engine-rendered progress filmstrip of the
+   staged lakeside scene + the real replay viewer; MP4/GIF/WebP timelapse chips)
+3. **Animation** — "1,024 frames. 64 layers." (ball fan + the timeline holding
+   @Badguy's 16-frame "cozy blizzard")
+4. **Paint** — AA off/on, the airbrush trio, 8-stop gradient, single-coat stroke
+   (all engine renders) + the real AA-chip tool row
+5. **Color** — RGBA ghost on checker + blend-mode grid + Levels before/after
+6. **Select** — selection canvas + mode row + cleanEdge vs nearest zoom
+7. **Palette** — import/sort strips + the palette page
+8. **Club** — credited community grid + the Recommended feed (finale)
+9. **Files** (App Store only) — import/export format flow
+
+## Community art rules
+
+`art/club/` holds pieces downloaded from the public recommended feed
+(`credits.json` maps file -> title/handle/sqid). Only original art may appear:
+**no third-party game IP, no brand/licensed characters, no photo-import
+likenesses** — that rule extends to any screenshot's visible viewport (feed
+shots are cropped above rows containing fan-art; the My Drawings gallery is not
+shown at all). On-slide credit `@handle` is mandatory for community pieces.
 
 ## Pipeline (reproducible)
 
@@ -35,6 +54,8 @@ Plus one **Play feature graphic** 1024×500 (hero only). All outputs are flatten
   into `art/` (run from the repo root; the render probe wants relative paths).
 - `shots/` — real phone screenshots (adb screencap), raw.
 - `art/` — engine renders + downloaded artworks used in compositions.
+- `art/club/` — community art from the public recommended feed (see the rules above);
+  `credits.json` carries the attribution data the layouts read.
 - `src/build.py` — holds the slide specs (copy + per-orientation layout builders), writes one
   HTML page per (slide × format) into `src/_build/`, renders each with headless Chrome
   (`--screenshot --window-size=W,H --force-device-scale-factor=1`) into `out/<target>/`,

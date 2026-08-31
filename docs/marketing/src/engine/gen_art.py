@@ -7,7 +7,8 @@ root (the render probe wants relative paths):
 
     python docs/marketing/src/engine/gen_art.py [asset ...]
 
-Assets: mushroom ghost rotate scale blend levels ball palette (default: all).
+Assets: mushroom ghost rotate scale blend levels ball palette aa airbrush
+gradient8 coat replay (default: all).
 """
 
 import json
@@ -409,10 +410,136 @@ def build_palette():
     print(f"# palette: {len(shuffled)} colors shuffled -> engine-sorted")
 
 
+def build_aa():
+    """The same line-and-curve figure with AA off vs on (ADR 0008 edges)."""
+    figure = [
+        "SelectTool(Line)", "SetLineWidth(2)", "SetPrimaryColor(#78B0E8FF)",
+        "Stroke([(3,40),(44,9)])",
+        "SetPrimaryColor(#F0A050FF)",
+        "Stroke([(4,44),(45,30)])",
+        "SelectTool(Ellipse)", "SetShapeFill(false)", "SetLineWidth(2)",
+        "SetPrimaryColor(#E8F4FFFF)",
+        "Stroke([(14,6),(38,30)])",
+    ]
+    for name, aa in [("aa_off", "false"), ("aa_on", "true")]:
+        lines = ["NewDocument(48, 48)", f"SetAA({aa})"] + figure
+        run_mkpx(f"{name}.txt", lines, [f"render:0:{ART}/{name}.png:8".replace("\\", "/")])
+
+
+def build_airbrush():
+    """One sweeping stroke per airbrush variant: Dots, Soft, Mist."""
+    path = []
+    for i in range(72):
+        t = i / 71
+        x = 4 + t * 56
+        y = 16 + 9 * math.sin(t * math.pi * 1.6 + 0.4)
+        path.append(f"({int(x)},{int(y)})")
+    stroke = f"Stroke([{','.join(path)}])"
+    for name, tool, passes in [("air_dots", "Airbrush", 1), ("air_soft", "AirbrushSoft", 1),
+                               ("air_mist", "AirbrushMist", 4)]:
+        lines = [
+            "NewDocument(64, 32)",
+            f"SelectTool({tool})", "SetBrushSize(7)",
+            "SetPrimaryColor(#78B0E8FF)",
+        ] + [stroke] * passes
+        run_mkpx(f"{name}.txt", lines, [f"render:0:{ART}/{name}.png:8".replace("\\", "/")])
+
+
+def build_gradient8():
+    """An 8-stop linear gradient ramp, engine-blended."""
+    stops = ["#20244CFF@0", "#4040A0FF@0.14", "#7050C8FF@0.28", "#C050B0FF@0.43",
+             "#E86840FF@0.57", "#F0A050FF@0.71", "#F8D890FF@0.86", "#F6EEDEFF@1"]
+    lines = [
+        "NewDocument(64, 20)",
+        "SelectTool(Gradient)", "SetGradientType(Linear)",
+        f"SetGradientStops([{', '.join(stops)}])",
+        "Stroke([(0,10),(63,10)])",
+    ]
+    run_mkpx("gradient8.txt", lines, [f"render:0:{ART}/gradient8.png:8".replace("\\", "/")])
+
+
+def build_coat():
+    """Single-coat strokes (ADR 0007): one self-crossing 55%-alpha figure-eight
+    stroke lays one flat coat even where it crosses itself; the same figure as two
+    separate strokes stacks a second coat at the crossing."""
+    def fig8(t):
+        return (int(24 + 19 * math.sin(t)), int(24 + 12 * math.sin(2 * t)))
+    n = 96
+    pts = [fig8(i / n * 2 * math.pi) for i in range(n + 1)]
+    fmt = lambda ps: f"Stroke([{','.join(f'({x},{y})' for x, y in ps)}])"
+    setup = ["NewDocument(48, 48)", "SelectTool(Pencil)", "SetBrushSize(5)",
+             "SetPixelPerfect(false)", "SetPrimaryColor(#78B0E88C)"]
+    run_mkpx("coat_one.txt", setup + [fmt(pts)],
+             [f"render:0:{ART}/coat_one.png:8".replace("\\", "/")])
+
+
+def lakeside_stages():
+    """A 64x64 lakeside dusk, authored in five stages for the replay filmstrip."""
+    s1 = [
+        "NewDocument(64, 64)",
+        "SelectTool(Gradient)", "SetGradientType(Linear)",
+        "SetGradientStops([#141C34FF@0, #3A2C50FF@0.38, #B4503CFF@0.62, #F0A050FF@0.85, #F8D890FF@1])",
+        "Stroke([(32,0),(32,44)])",
+    ]
+    s2 = [
+        "SelectTool(Ellipse)", "SetShapeFill(true)",
+        "SetPrimaryColor(#F8E8B0FF)", "Stroke([(37,26),(49,38)])",
+        "SetPrimaryColor(#FFF6D8FF)", "Stroke([(39,28),(47,36)])",
+    ]
+    px3 = {}
+    far, near = "#2A2038FF", "#170F20FF"
+    for x in range(64):
+        h1 = 8 + 5 * math.sin(x * 0.19 + 1.1) + 2.5 * math.sin(x * 0.47)
+        for y in range(int(44 - h1), 45):
+            px3[(x, y)] = far
+        h2 = 4 + 4 * math.sin(x * 0.15 + 4.2) + 2 * math.sin(x * 0.66 + 0.8)
+        for y in range(int(45 - h2), 45):
+            px3[(x, y)] = near
+    s3 = []
+    emit_pixels(s3, px3)
+    s4 = [
+        "SelectTool(SelectRect)", "Stroke([(0,45),(63,63)])",
+        "SelectTool(Gradient)", "SetGradientType(Linear)",
+        "SetGradientStops([#B4503CFF@0, #3A2C50FF@0.5, #141C34FF@1])",
+        "Stroke([(32,45),(32,63)])",
+        "ClearSelection()",
+    ]
+    px4 = {}
+    for (rx0, rx1, ry) in [(36, 50, 47), (39, 47, 50), (34, 52, 53), (40, 46, 57), (37, 49, 61)]:
+        for x in range(rx0, rx1):
+            px4[(x, ry)] = "#F0B06CB4"
+    emit_pixels(s4, px4)
+    px5 = {}
+    for sx, sy in [(6, 5), (17, 9), (29, 4), (45, 7), (57, 11), (38, 13), (11, 16), (52, 3),
+                   (24, 7), (60, 8), (3, 12)]:
+        px5[(sx, sy)] = "#F6F0E0FF"
+    # birds silhouetted against the bright sky, near the sun
+    for bx, by in [(20, 24), (28, 20), (13, 28)]:
+        for dx in (-2, -1, 1, 2):
+            px5[(bx + dx, by - (1 if abs(dx) == 2 else 0))] = "#221428FF"
+    # sun glint: a bright broken column on the water below the sun
+    for gx0, gx1, gy in [(41, 45, 46), (42, 44, 48), (40, 46, 51), (42, 44, 55), (41, 45, 59)]:
+        for x in range(gx0, gx1 + 1):
+            px5[(x, gy)] = "#F8E8B0E6"
+    s5 = []
+    emit_pixels(s5, px5)
+    return [s1, s2, s3, s4, s5]
+
+
+def build_replay():
+    stages = lakeside_stages()
+    for k in range(1, 6):
+        lines = [ln for st in stages[:k] for ln in st]
+        run_mkpx(f"replay_s{k}.txt", lines,
+                 [f"render:0:{ART}/replay_s{k}.png:6".replace("\\", "/")])
+
+
 ASSETS = {
     "mushroom": build_mushroom, "ghost": build_ghost, "rotate": build_rotate,
     "scale": build_scale, "blend": build_blend, "levels": build_levels,
     "ball": build_ball, "palette": build_palette,
+    "aa": build_aa, "airbrush": build_airbrush, "gradient8": build_gradient8,
+    "coat": build_coat, "replay": build_replay,
 }
 
 if __name__ == "__main__":
