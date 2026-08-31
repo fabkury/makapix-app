@@ -413,21 +413,25 @@ extension _EditorTimeline on _EditorPageState {
   }
 
   // Nudge whatever the Move tool would drag: the selected pixels if there's a selection, else the
-  // active layer / move-group (the engine decides via NudgeMove).
+  // active layer / move-group. Pixel/layer nudges always go through the move DRAFT — an arrow tap
+  // with no draft pending opens one first (like a canvas drag's first movement), so the nudge stays
+  // uncommitted until Commit/Cancel. Selection-mask nudges stay immediate by decision: they are
+  // lightweight, fully undoable, and have no floating preview to commit.
   void _nudgeMove(int dx, int dy) {
     if (_moveSelectionMode) {
       _act('MoveSelection($dx,$dy)'); // move only the selection mask
       return;
     }
-    if (_hasMoveDraft) {
-      // Fine-adjust the pending move draft by one pixel (stays a draft until Commit).
-      _send('MoveDraftMove($dx,$dy)');
-      _refreshState();
-      _redraw();
-      return;
+    if (_playing) _pause(); // a nudge is editing intent (ADR 0012), same as a canvas stroke
+    if (!_hasMoveDraft) {
+      _syncLayerSel();
+      // Refused when there is nothing to move (empty layer, no selection): the follow-up
+      // MoveDraftMove is then a clean engine no-op and the tap does nothing, matching a drag.
+      _send('MoveDraftBegin()');
     }
-    _syncLayerSel();
-    _act('NudgeMove($dx,$dy)');
+    _send('MoveDraftMove($dx,$dy)');
+    _refreshState();
+    _redraw();
   }
 
   Future<void> _genLayerThumb(int frame, int layer, int hash) async {
