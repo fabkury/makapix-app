@@ -31,6 +31,9 @@ const EdgeInsets _kInsetPadding = EdgeInsets.symmetric(horizontal: 40, vertical:
 const EdgeInsets _kContentPadPortrait = EdgeInsets.fromLTRB(24, 20, 24, 24);
 const EdgeInsets _kContentPadLandscape = EdgeInsets.fromLTRB(16, 16, 16, 12);
 
+// The sources strip's swatch size and spacing (Primary / Prev / palette lane).
+const double _kSourceSz = 28, _kSourceGap = 6;
+
 // Which trio of numeric fields is shown; the choice is a lasting user preference.
 const String kColorPickerModePref = 'editor.colorPickerMode_v1';
 
@@ -38,9 +41,27 @@ enum _ColorFieldMode { rgb, hsv }
 
 /// The traditional square+hue color picker: a Saturation×Value square with a hue ramp beside it,
 /// an alpha slider, and a hex field. Dragging on the square or ramp updates the color live.
+///
+/// This dialog is the editor's one color-picking contract: every editable color (the primary,
+/// a gradient stop, a palette slot, anything added later) opens it, and it always offers the
+/// known colors as one-tap **sources** — the [primary], the [previous] primary (the X swap
+/// partner), and the active [palette] — so "set this color TO the primary" is chip → Primary
+/// → OK from anywhere, with no per-target UI. A source tap only sets the working color (the
+/// square, fields, and swatch jump to it); OK commits, like every other control here.
+/// Pass [primary] as null when the dialog is picking the primary itself (a "Primary" source
+/// would be a no-op there); [previous] and [palette] stay useful in that case.
 class ColorPickerDialog extends StatefulWidget {
   final Color initial;
-  const ColorPickerDialog({super.key, required this.initial});
+  final Color? primary;
+  final Color? previous;
+  final List<Color> palette;
+  const ColorPickerDialog({
+    super.key,
+    required this.initial,
+    this.primary,
+    this.previous,
+    this.palette = const [],
+  });
   @override
   State<ColorPickerDialog> createState() => _ColorPickerDialogState();
 }
@@ -317,6 +338,94 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
     ],
   );
 
+  // Adopt a source color wholesale (alpha included) as the working color; the dialog stays
+  // open so the user can nudge it before OK.
+  void _adopt(Color c) {
+    _unfocus();
+    final hsv = HSVColor.fromColor(c);
+    setState(() {
+      h = hsv.hue;
+      s = hsv.saturation;
+      v = hsv.value;
+      a = (c.a * 255).round().toDouble();
+    });
+    _syncFromColor();
+  }
+
+  bool get _hasSources =>
+      widget.primary != null || widget.previous != null || widget.palette.isNotEmpty;
+
+  // One source swatch; a white ring marks the source the working color currently equals, so
+  // after tapping Primary the dialog visibly sits "on Primary" until something nudges it.
+  Widget _sourceSwatch(Color c, {String? label, Key? key}) {
+    final selected = _color.toARGB32() == c.toARGB32();
+    final swatch = AlphaSwatch(
+      color: c,
+      width: _kSourceSz,
+      height: _kSourceSz,
+      diagonal: true,
+      borderRadius: 4,
+      borderColor: selected ? Colors.white : Colors.white38,
+      borderWidth: selected ? 2 : 1,
+    );
+    return Padding(
+      padding: const EdgeInsets.only(right: _kSourceGap),
+      child: GestureDetector(
+        key: key,
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _adopt(c),
+        child: label == null
+            ? swatch
+            : Column(mainAxisSize: MainAxisSize.min, children: [
+                swatch,
+                const SizedBox(height: 2),
+                Text(label, style: const TextStyle(fontSize: 9, height: 1)),
+              ]),
+      ),
+    );
+  }
+
+  // The sources strip: the labeled Primary / Prev swatches, then the palette as a horizontal
+  // lane that scrolls (never wraps — the dialog is width-constrained on phones, and the
+  // landscape pane is narrower still). Absent entirely when nothing was passed in.
+  Widget _buildSourcesStrip() {
+    final fixed = <Widget>[
+      if (widget.primary != null)
+        _sourceSwatch(widget.primary!, label: 'Primary', key: const Key('pickerSourcePrimary')),
+      if (widget.previous != null)
+        _sourceSwatch(widget.previous!, label: 'Prev', key: const Key('pickerSourcePrevious')),
+    ];
+    final pal = widget.palette;
+    return SizedBox(
+      // The labeled swatches set the height; the palette lane top-aligns with their swatches.
+      height: _kSourceSz + 2 + 11,
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        ...fixed,
+        if (fixed.isNotEmpty && pal.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(right: _kSourceGap),
+            child: SizedBox(
+              width: 1,
+              height: _kSourceSz,
+              child: const ColoredBox(color: Colors.white24),
+            ),
+          ),
+        if (pal.isNotEmpty)
+          Expanded(
+            child: SizedBox(
+              height: _kSourceSz,
+              child: ListView.builder(
+                key: const Key('pickerSourcePalette'),
+                scrollDirection: Axis.horizontal,
+                itemCount: pal.length,
+                itemBuilder: (_, i) => _sourceSwatch(pal[i]),
+              ),
+            ),
+          ),
+      ]),
+    );
+  }
+
   Widget _buildAlphaRow() => Row(
     children: [
       const SizedBox(width: 16, child: Text('A')),
@@ -462,6 +571,10 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (_hasSources) ...[
+                _buildSourcesStrip(),
+                const SizedBox(height: 6),
+              ],
               // No bottom slack: the spacer below is part of the scroll content, so the
               // markers can never be clipped on that side.
               Padding(
@@ -514,6 +627,10 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
                     child: _buildHeader(),
                   ),
                   const SizedBox(height: 8),
+                  if (_hasSources) ...[
+                    _buildSourcesStrip(),
+                    const SizedBox(height: 6),
+                  ],
                   // Scrolls only when the keyboard shrinks the dialog. It holds nothing
                   // with custom drag recognizers, so the gesture arena stays clean.
                   Expanded(

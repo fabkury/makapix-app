@@ -738,8 +738,24 @@ extension _EditorFileIo on _EditorPageState {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), duration: duration));
   }
 
-  Future<void> _pickColor({required Color initial, required ValueChanged<Color> onPick}) async {
-    final c = await showDialog<Color>(context: context, builder: (_) => ColorPickerDialog(initial: initial));
+  // The one way any editable color reaches the picker. The dialog is the primary-to-target
+  // contract (see ColorPickerDialog): it always gets the primary, the previous primary, and the
+  // palette as one-tap sources. [forPrimary] = the dialog is picking the primary itself, so the
+  // Primary source is withheld (it would be a no-op); Prev and the palette stay.
+  Future<void> _pickColor({
+    required Color initial,
+    required ValueChanged<Color> onPick,
+    bool forPrimary = false,
+  }) async {
+    final c = await showDialog<Color>(
+      context: context,
+      builder: (_) => ColorPickerDialog(
+        initial: initial,
+        primary: forPrimary ? null : _primary,
+        previous: _previousPrimary,
+        palette: List<Color>.unmodifiable(_palette),
+      ),
+    );
     if (c != null) onPick(c);
   }
 }

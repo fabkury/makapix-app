@@ -87,6 +87,11 @@ const _kCurrentDrawing = 'editor.currentDrawingId'; // last-open library drawing
 const _kShareFormatPref = 'editor.shareFormat_v1'; // last-used Share format for animations (GIF/WebP)
 const _kExportStillFormatPref = 'editor.exportStillFormat_v1'; // last-used frame/layer export format (PNG/WebP)
 const _kAaPref = 'editor.aa_v1'; // the shared AA (anti-alias) toggle (ADR 0008), persisted across restarts
+// The Gradient tool's extra colors (#RRGGBBAA list) and color count: a tool setting, not an
+// artwork fact, so it is one editor-wide preference (like AA) rather than per drawing — and it
+// survives the pillar switch that remounts the editor.
+const _kGradExtraPref = 'editor.gradientColors_v1';
+const _kGradCountPref = 'editor.gradientCount_v1';
 const _transformTools = {'Flip', 'Rotate', 'Resize', 'Invert'};
 // Row-3 "action" tools in the reorderable grid: tapping fires an action/toggle immediately rather
 // than selecting a draw tool (handled in _toolTile / _doToolAction). Undo/Redo are NOT here — they
@@ -288,7 +293,8 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // Gradient: the first color is ALWAYS the primary color; the remaining (count-1) colors are
   // independent (_gradExtra). _gradCount is the total number of evenly-spaced colors, 2 up to
   // _gradExtra.length + 1 (the engine's SetGradientStops has no cap of its own — the swatch
-  // roster is the limit).
+  // roster is the limit). These are the defaults; _loadToolOrder restores the persisted roster
+  // and count over them (_kGradExtraPref / _kGradCountPref), _persistGradient stores them.
   int _gradCount = 2;
   final List<Color> _gradExtra = [
     const Color(0xFFFFFFFF),

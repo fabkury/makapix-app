@@ -549,6 +549,7 @@ extension _EditorControls on _EditorPageState {
       void setGradCount(int n) {
         setState(() => _gradCount = n);
         _sendGradientStops();
+        _persistGradient();
       }
 
       final maxGrad = _gradExtra.length + 1;
@@ -560,13 +561,17 @@ extension _EditorControls on _EditorPageState {
       children.add(step('+', _gradCount < maxGrad ? () => setGradCount(_gradCount + 1) : null));
       // First color = the primary (same as the row-2 primary swatch); tapping it changes the
       // primary color. The rest are independent gradient colors.
-      children.add(_swatchButton(_primary, () => _pickColor(initial: _primary, onPick: _setPrimary)));
+      children.add(_swatchButton(
+          _primary, () => _pickColor(initial: _primary, onPick: _setPrimary, forPrimary: true)));
+      // The extras: tap = pick (the dialog offers the primary as a one-tap source); long-press /
+      // right-click = the quick menu (Use primary color / Set as primary / Edit color).
       for (var i = 0; i < _gradCount - 1; i++) {
         final idx = i;
-        children.add(_swatchButton(_gradExtra[idx], () => _pickColor(initial: _gradExtra[idx], onPick: (c) {
-              setState(() => _gradExtra[idx] = c);
-              _sendGradientStops();
-            })));
+        children.add(_swatchButton(
+          _gradExtra[idx],
+          () => _pickColor(initial: _gradExtra[idx], onPick: (c) => _setGradExtra(idx, c)),
+          onLongPress: () => _gradientSwatchMenu(idx),
+        ));
       }
     }
     if (_tool == 'SelectLayer') {
@@ -964,7 +969,7 @@ extension _EditorControls on _EditorPageState {
     // with 6-px margins); portrait (horizontal strip): 38×60 tall (60 fits the 72-high band
     // the same way) — and the corner-to-corner cut adapts with it.
     final primarySwatch = GestureDetector(
-      onTap: () => _pickColor(initial: _primary, onPick: _setPrimary),
+      onTap: () => _pickColor(initial: _primary, onPick: _setPrimary, forPrimary: true),
       child: Padding(
         padding: const EdgeInsets.all(6),
         child: Stack(alignment: Alignment.center, children: [
@@ -1043,6 +1048,60 @@ extension _EditorControls on _EditorPageState {
       swatch = Tooltip(message: name, waitDuration: const Duration(milliseconds: 500), triggerMode: TooltipTriggerMode.manual, child: swatch);
     }
     return swatch;
+  }
+
+  void _setGradExtra(int idx, Color c) {
+    setState(() => _gradExtra[idx] = c);
+    _sendGradientStops();
+    _persistGradient();
+  }
+
+  // The gradient extra's quick menu (long-press / right-click on its row-1 chip): the same
+  // family as the palette swatch sheet — "Use primary color" wears the primary's swatch there
+  // too. No reconfirm, unlike the palette's overwrite: an extra is a tool setting, re-editable in
+  // one tap, and changing it never touches committed pixels. "Set as primary" is the reverse
+  // direction (the tap edits the chip, it doesn't adopt it), so a gradient color can get back out.
+  void _gradientSwatchMenu(int idx) {
+    if (_playing) _pause();
+    final color = _gradExtra[idx];
+    showAppSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: AlphaSwatch(color: color, width: 28, height: 28, diagonal: true, borderRadius: 4),
+            title: Text('Gradient color ${idx + 2}'),
+            subtitle: Text(_hex(color)),
+            dense: true,
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: AlphaSwatch(color: _primary, width: 24, height: 24, borderRadius: 4),
+            title: const Text('Use primary color'),
+            onTap: () {
+              Navigator.pop(ctx);
+              _setGradExtra(idx, _primary);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.colorize),
+            title: const Text('Set as primary'),
+            onTap: () {
+              Navigator.pop(ctx);
+              _setPrimary(color);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.edit),
+            title: const Text('Edit color'),
+            onTap: () {
+              Navigator.pop(ctx);
+              _pickColor(initial: color, onPick: (c) => _setGradExtra(idx, c));
+            },
+          ),
+        ]),
+      ),
+    );
   }
 
   // Long-pressing the empty swatch area surfaces the single "Add current color" option (same action

@@ -452,11 +452,14 @@ extension _EditorToolgrid on _EditorPageState {
     );
   }
 
-  Widget _swatchButton(Color c, VoidCallback onTap) {
+  // [onLongPress] also answers a desktop right-click (the app's long-press convention).
+  Widget _swatchButton(Color c, VoidCallback onTap, {VoidCallback? onLongPress}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 3),
       child: GestureDetector(
         onTap: onTap,
+        onLongPress: onLongPress,
+        onSecondaryTap: onLongPress,
         child: AlphaSwatch(color: c, width: 30, height: 30, diagonal: true, borderRadius: 4, borderColor: Colors.white54),
       ),
     );

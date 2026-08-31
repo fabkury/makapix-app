@@ -251,4 +251,110 @@ void main() {
       expect(editable.focusNode.hasFocus, isFalse);
     });
   });
+
+  // The sources strip is the editor's primary-to-target contract: every color target opens this
+  // dialog, and the dialog always offers the primary / previous primary / palette as one-tap
+  // sources. A source tap sets the WORKING color and keeps the dialog open; OK commits it.
+  group('sources strip', () {
+    const primary = Color(0xFF123456), prev = Color(0xFF654321);
+    const palette = [Color(0xFF00FF00), Color(0x80FF00FF)];
+    final primaryKey = find.byKey(const Key('pickerSourcePrimary'));
+    final prevKey = find.byKey(const Key('pickerSourcePrevious'));
+    final paletteKey = find.byKey(const Key('pickerSourcePalette'));
+
+    // Opens the dialog through showDialog so OK's pop value is observable.
+    Future<Color? Function()> open(
+      WidgetTester tester, {
+      Size size = const Size(430, 932),
+      Color? primary,
+      Color? previous,
+      List<Color> palette = const [],
+    }) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      Color? picked;
+      var closed = false;
+      await tester.pumpWidget(MaterialApp(
+        home: Builder(
+          builder: (ctx) => TextButton(
+            onPressed: () async {
+              picked = await showDialog<Color>(
+                context: ctx,
+                builder: (_) => ColorPickerDialog(
+                  initial: const Color(0xFFFF0000),
+                  primary: primary,
+                  previous: previous,
+                  palette: palette,
+                ),
+              );
+              closed = true;
+            },
+            child: const Text('open'),
+          ),
+        ),
+      ));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      return () {
+        expect(closed, isTrue, reason: 'the dialog must have popped');
+        return picked;
+      };
+    }
+
+    testWidgets('absent when the caller passes no sources', (tester) async {
+      await pumpAt(tester, const Size(430, 932));
+      expect(primaryKey, findsNothing);
+      expect(prevKey, findsNothing);
+      expect(paletteKey, findsNothing);
+    });
+
+    testWidgets('tapping Primary adopts it, stays open, and OK returns it exactly',
+        (tester) async {
+      final result = await open(tester, primary: primary, previous: prev, palette: palette);
+      expect(primaryKey, findsOneWidget);
+      expect(find.text('FF0000'), findsOneWidget, reason: 'opens on the initial color');
+      await tester.tap(primaryKey);
+      await tester.pump();
+      expect(find.text('123456'), findsOneWidget, reason: 'the hex field jumps to the primary');
+      expect(find.text('OK'), findsOneWidget, reason: 'a source tap does not close the dialog');
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      expect(result(), primary, reason: 'the round trip through HSV is exact');
+    });
+
+    testWidgets('Prev and palette swatches adopt too, alpha included', (tester) async {
+      final result = await open(tester, primary: primary, previous: prev, palette: palette);
+      await tester.tap(prevKey);
+      await tester.pump();
+      expect(find.text('654321'), findsOneWidget);
+      // The palette lane: its second swatch is translucent, and the alpha comes along.
+      final swatches = find.descendant(of: paletteKey, matching: find.byType(GestureDetector));
+      expect(swatches, findsNWidgets(2));
+      await tester.tap(swatches.at(1));
+      await tester.pump();
+      expect(find.text('FF00FF80'), findsOneWidget, reason: 'hex shows RRGGBBAA for alpha < 255');
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      expect(result(), palette[1]);
+    });
+
+    testWidgets('picking for the primary itself withholds the Primary source only',
+        (tester) async {
+      await open(tester, previous: prev, palette: palette);
+      expect(primaryKey, findsNothing);
+      expect(prevKey, findsOneWidget);
+      expect(paletteKey, findsOneWidget);
+    });
+
+    testWidgets('the strip is present in landscape as well', (tester) async {
+      await open(tester, size: const Size(844, 390), primary: primary, previous: prev, palette: palette);
+      expect(tester.takeException(), isNull);
+      expect(primaryKey, findsOneWidget);
+      await tester.tap(primaryKey);
+      await tester.pump();
+      expect(find.text('123456'), findsOneWidget);
+    });
+  });
 }

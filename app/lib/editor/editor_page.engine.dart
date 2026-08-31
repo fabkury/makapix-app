@@ -17,6 +17,8 @@ extension _EditorEngine on _EditorPageState {
       final threeRow = prefs.getBool(_prefs3RowKey); // null = never chosen → 2-row default
       final pinned3 = prefs.getString(_prefsPinnedThirdKey);
       final aa = prefs.getBool(_kAaPref) ?? false;
+      final gradSaved = prefs.getStringList(_kGradExtraPref);
+      final gradCount = prefs.getInt(_kGradCountPref);
       final all = tools.map((t) => t.dsl).toList();
       List<String>? reconciled;
       if (saved != null) {
@@ -38,6 +40,27 @@ extension _EditorEngine on _EditorPageState {
             // default — re-send so the engine agrees with the restored chip state.
             _send('SetAA($_aa)');
           }
+          // The gradient roster: slot by slot over the defaults (a shorter or longer stored
+          // list, or an unparseable entry, leaves that slot's default), then the count
+          // clamped to the roster. Same re-send rule as AA if the Gradient tool is already up.
+          var gradChanged = false;
+          if (gradSaved != null) {
+            for (var i = 0; i < gradSaved.length && i < _gradExtra.length; i++) {
+              final c = _tryParseHex(gradSaved[i]);
+              if (c != null && c != _gradExtra[i]) {
+                _gradExtra[i] = c;
+                gradChanged = true;
+              }
+            }
+          }
+          if (gradCount != null) {
+            final n = gradCount.clamp(2, _gradExtra.length + 1);
+            if (n != _gradCount) {
+              _gradCount = n;
+              gradChanged = true;
+            }
+          }
+          if (gradChanged && _tool == 'Gradient') _sendGradientStops();
         });
       }
     } catch (_) {/* prefs unavailable → keep defaults */}
@@ -61,6 +84,14 @@ extension _EditorEngine on _EditorPageState {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_prefsPinnedThirdKey, _pinnedThirdTool);
+    } catch (_) {}
+  }
+
+  Future<void> _persistGradient() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_kGradExtraPref, [for (final c in _gradExtra) _hex(c)]);
+      await prefs.setInt(_kGradCountPref, _gradCount);
     } catch (_) {}
   }
 
@@ -222,6 +253,14 @@ extension _EditorEngine on _EditorPageState {
     if (h.length == 6) h = '${h}FF';
     final v = int.parse(h, radix: 16);
     return Color.fromARGB(v & 0xFF, (v >> 24) & 0xFF, (v >> 16) & 0xFF, (v >> 8) & 0xFF);
+  }
+
+  // _parseHex for untrusted input (stored preferences): null instead of a throw.
+  Color? _tryParseHex(String h) {
+    h = h.replaceAll('#', '').trim();
+    if (h.length != 6 && h.length != 8) return null;
+    if (int.tryParse(h, radix: 16) == null) return null;
+    return _parseHex(h);
   }
 
   void _send(String dsl, {bool activity = true}) {
