@@ -1,1 +1,10 @@
-A big round of fixes across the editor. Strokes, drafts, and playback now behave predictably when you switch tools, frames, or layers in the middle of something, and opening a drawing is safer if a file turns out to be damaged. The frame counter follows along while an animation plays. Plus polish throughout.
+Makapix 1.7.0:
+• Repeat: tap Redo at the newest step to re-run your last action
+• Gradients grow to 8 colors with a quick − N + stepper
+• Pick color sources: Primary, Previous, or any palette color in one tap
+• Clipboard swatch with a tap-to-zoom preview
+• New drawings start with black + white
+• Bigger, finger-friendly shape and selection handles
+• New frames land right after the active one
+• Stay signed in when you move to a new Android phone
+Plus fixes and polish.
