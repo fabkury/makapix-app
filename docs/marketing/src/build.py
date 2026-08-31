@@ -455,7 +455,8 @@ def slide_color(orient):
              <div class="caption">AFTER</div></div>
       </div></div>"""
     tick = chips([("8-BIT ALPHA", True), ("10 BLEND MODES", True),
-                  ("LEVELS: BLACK POINT / GAMMA / HIGHLIGHTS", False)])
+                  ("LEVELS: BLACK POINT / GAMMA / HIGHLIGHTS", False),
+                  (".GPL PALETTES IN / OUT", False)])
     if orient == "landscape":
         return f'<div class="row">{ghost}{grid}</div>' + tick
     return f'<div class="row">{ghost}{levels}</div>{grid}' + tick
@@ -491,34 +492,43 @@ def slide_select(orient):
     return canvas + f"<div>{ce}</div>" + tick
 
 
-def slide_palette(orient):
-    data = json.loads((ART / "palette_sort.json").read_text())
-
-    def strip(colors, label):
-        cells = "".join(
-            f'<div style="background:{c[:7]}"></div>' for c in colors)
-        return (f'<div><div class="pstrip">{cells}</div>'
-                f'<div class="caption">{label}</div></div>')
-
-    cols = len(data["shuffled"])
-    sw = {"portrait": 74, "square": 60, "landscape": 46}[orient]
-    strips = f"""
+def slide_free(orient):
+    """Free, ad-free, open-source: three statement panels + the repo line."""
+    pw = {"portrait": 27, "square": 19, "landscape": 14}[orient]
+    tick = chips([("TRULY FREE", True), ("NO ADS", False), ("NO SUBSCRIPTIONS", False),
+                  ("NO IN-APP PURCHASES", False), ("DRAW WITHOUT AN ACCOUNT", False),
+                  ("APACHE-2.0", True)])
+    repo = f"""
+    <div>
+      <div class="tag" style="border-color:#4080C0; text-align:center;">
+        github.com/fabkury/makapix-app</div>
+      <div class="caption">THE APP AND THE SERVER, BUILT IN THE OPEN</div>
+    </div>"""
+    panels = f"""
     <style>
-    .pstrip {{
-      display: grid; grid-template-columns: repeat({cols // 2}, 1fr);
-      width: calc(var(--u) * {sw}); border-radius: calc(var(--u)*0.8); overflow: hidden;
+    .freepanel {{
+      width: calc(var(--u)*{pw}); aspect-ratio: 1 / 1.05;
+      justify-content: center; gap: calc(var(--u)*2.2);
     }}
-    .pstrip div {{ aspect-ratio: 1; }}
+    .bignum {{ font-family:'PS2P'; font-size: calc(var(--u)*{pw * 0.26:.1f}); color:#F2F6FA; }}
+    .strike {{ position:relative; font-family:'PS2P';
+              font-size: calc(var(--u)*{pw * 0.17:.1f}); color:#7A8AA0; }}
+    .strike::after {{ content:''; position:absolute; left:-10%; right:-10%; top:46%;
+              height: calc(var(--u)*0.9); background:#E05050;
+              transform: rotate(-12deg); border-radius: calc(var(--u)*0.5); }}
+    .oss {{ font-family:'PS2P'; font-size: calc(var(--u)*{pw * 0.2:.1f}); color:#4080C0; }}
     </style>
-    {strip(data['shuffled'], 'IMPORTED: ANY ORDER')}
-    {strip(data['sorted'], 'ONE TAP: SORTED BY SIMILARITY')}"""
-    tick = chips([(".GPL IN / OUT", True), ("SORT BY SIMILARITY", False),
-                  ("NAMED COLORS", False), ("PRESET LIBRARIES", False)])
-    phone = ""
-    if orient == "portrait":
-        phone = (f'<div class="phone" style="width: calc(var(--u)*44);">'
-                 f'<img src="{art("crops/palette_top.png")}"></div>')
-    return strips + phone + tick
+    <div class="row" style="align-items: stretch;">
+      <div class="panel freepanel"><span class="bignum">$0</span>
+        <div class="plabel">FOREVER</div></div>
+      <div class="panel freepanel"><span class="strike">ADS</span>
+        <div class="plabel">ZERO. EVER.</div></div>
+      <div class="panel freepanel"><span class="oss">&lt;/&gt;</span>
+        <div class="plabel"><span class="a">OPEN</span> SOURCE</div></div>
+    </div>"""
+    if orient == "landscape":
+        return panels + tick
+    return panels + repo + tick
 
 
 def slide_club(orient):
@@ -608,10 +618,10 @@ SLIDES = {
                'SELECT IT. SPIN IT.<br><span class="a">NO JAGGIES</span>.',
                "Rect, oval, and lasso with add, subtract, and intersect. cleanEdge rotation keeps pixel art crisp.",
                slide_select),
-    "palette": ("MAKAPIX EDITOR",
-                'PALETTES THAT <span class="a">TRAVEL</span>.',
-                "Import and export .gpl files, sort any palette by similarity, and name every color.",
-                slide_palette),
+    "free": ("MAKAPIX CLUB",
+             'FREE. AD-FREE.<br><span class="a">OPEN-SOURCE.</span>',
+             "No ads, no subscriptions, no unlocks. The whole platform is open-source: the app and the server.",
+             slide_free),
     "club": ("MAKAPIX CLUB",
              'DRAW IT.<br>ANIMATE IT.<br><span class="a">SHARE IT.</span>',
              "Publish to the Makapix Club, react and comment, remix with public lineage. Free on Android and iOS.",
@@ -623,7 +633,7 @@ SLIDES = {
 }
 
 ORDER = ["hero", "replay", "animation", "paint", "color",
-         "select", "palette", "club", "files"]
+         "select", "free", "club", "files"]
 PLAY_MAX = 8  # the Play listing caps at 8 screenshots; 09_files is App Store only
 
 

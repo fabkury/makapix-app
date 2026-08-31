@@ -35,7 +35,9 @@ proof panel, chip ticker), community art credited `@handle` on-slide.
    (all engine renders) + the real AA-chip tool row
 5. **Color** — RGBA ghost on checker + blend-mode grid + Levels before/after
 6. **Select** — selection canvas + mode row + cleanEdge vs nearest zoom
-7. **Palette** — import/sort strips + the palette page
+7. **Free** — "Free. Ad-free. Open-source." (three statement panels + the GitHub
+   repo line; replaced the palette slide 2026-08-31 by user decision — palette
+   coverage lives on as a chip on the color slide)
 8. **Club** — credited community grid + the Recommended feed (finale)
 9. **Files** (App Store only) — import/export format flow
 
