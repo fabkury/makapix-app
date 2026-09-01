@@ -602,8 +602,8 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
             const SizedBox(height: 6),
             Text(
               downscaled
-                  ? 'On canvas: $rw × $rh px (downscaled to fit ${widget.canvasW}×${widget.canvasH}, centered)'
-                  : 'On canvas: $rw × $rh px (placed 1:1, centered)',
+                  ? 'On canvas: $rw × $rh px (downscaled to fit ${widget.canvasW}×${widget.canvasH})'
+                  : 'On canvas: $rw × $rh px (placed 1:1)',
               style: const TextStyle(fontSize: 12, color: Colors.white60),
             ),
           ]),

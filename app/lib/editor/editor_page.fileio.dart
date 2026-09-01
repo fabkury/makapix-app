@@ -192,8 +192,8 @@ extension _EditorFileIo on _EditorPageState {
                 sizeClass == ImportSizeClass.exact
                     ? 'Same size as the canvas: placed 1:1.'
                     : scaleUp
-                        ? 'Scaled up to fit the ${engine.width}×${engine.height} canvas (aspect kept), centered.'
-                        : 'Placed 1:1, centered on the ${engine.width}×${engine.height} canvas.',
+                        ? 'Scaled up to fit the ${engine.width}×${engine.height} canvas (aspect kept).'
+                        : 'Placed 1:1 on the ${engine.width}×${engine.height} canvas.',
                 style: caption,
               ),
               if (sizeClass == ImportSizeClass.small)
