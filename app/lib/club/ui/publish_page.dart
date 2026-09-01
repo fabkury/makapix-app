@@ -116,8 +116,12 @@ class _PublishPageState extends ConsumerState<PublishPage> {
     final canPostPublic = ref.watch(authControllerProvider).me?.capabilities['can_post_public'] == true;
     final uploading = pub.status == PublishStatus.uploading;
     final kib = (d.byteLength / 1024).toStringAsFixed(0);
+    // An explicit ListView padding replaces the safe-area inset, so the bottom must add the
+    // system inset back (gesture bar / home indicator) plus breathing room: the Publish button
+    // used to sit flush against the very bottom of the screen (2026-09-01).
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.fromLTRB(16, 16, 16, 32 + bottomInset),
       children: [
         Center(
           child: Container(
