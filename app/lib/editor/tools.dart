@@ -64,10 +64,6 @@ const redoToolDef = ToolDef('Redo', Icons.redo, 'Redo');
 // a repeatable op. Same dsl ('Redo') so the tile keeps its tap routing; only the face changes.
 const repeatToolDef = ToolDef('Redo', Icons.repeat, 'Repeat');
 
-/// Rebuild the full tool order after a reorder done in *visible* space (the grid with [hidden]
-/// filtered out, as in the 3-row toolbar where Play is pinned): [hidden] is reinserted at its
-/// index in [previousFull], clamped, so toggling the toolbar mode never churns the saved order.
-/// If [hidden] wasn't in [previousFull], [visible] is returned as-is (the 2-row path).
 /// Row-3 grid shape for [n] tiles. Tiles always flow row-major (left→right, top→bottom).
 /// Portrait (`vertical: false`): the grid scrolls horizontally in `bands` rows (2, or 3 in
 /// three-band mode) of up to `perBand` tiles each. Landscape (`vertical: true`): the transpose —
@@ -78,13 +74,48 @@ const repeatToolDef = ToolDef('Redo', Icons.repeat, 'Repeat');
   return (bands: k, perBand: (n + k - 1) ~/ k);
 }
 
-List<String> restoreHiddenTool(List<String> visible, List<String> previousFull, String hidden) {
-  final at = previousFull.indexOf(hidden);
-  if (at < 0) return visible;
-  final out = List<String>.of(visible)..remove(hidden);
-  out.insert(at.clamp(0, out.length), hidden);
+/// The row-3 grid's order in *visible* space: [order] minus the user-hidden tools (ADR 0018) and
+/// minus [pinned] (the 3-row toolbar's pinned 3rd-slot tool, which shows beside Undo/Redo instead;
+/// pass null in 2-row mode). Both exclusions are display-time only — every tool keeps its slot in
+/// the full order, so unhiding / unpinning puts it back exactly where it was.
+List<String> visibleToolOrder(List<String> order, Set<String> hidden, {String? pinned}) =>
+    order.where((d) => !hidden.contains(d) && d != pinned).toList();
+
+/// Rebuild the full tool order after a reorder done in *visible* space (see [visibleToolOrder]):
+/// every tool of [excluded] that was in [previousFull] is reinserted at its former index there,
+/// in ascending index order (clamped), so a visible-space drag never churns the hidden slots and
+/// removing-then-restoring is an exact round-trip. Tools of [excluded] absent from [previousFull]
+/// are ignored; if none is present, [visible] is returned as-is.
+List<String> restoreHiddenTools(List<String> visible, List<String> previousFull, Set<String> excluded) {
+  final slots = [
+    for (var i = 0; i < previousFull.length; i++)
+      if (excluded.contains(previousFull[i])) (i, previousFull[i]),
+  ];
+  if (slots.isEmpty) return visible;
+  final out = List<String>.of(visible)..removeWhere(excluded.contains);
+  for (final (at, d) in slots) {
+    out.insert(at.clamp(0, out.length), d);
+  }
   return out;
 }
+
+/// The one-tool form of [restoreHiddenTools] (the 3-row toolbar's pinned tool before hidden tools
+/// existed); kept as the readable name for that case.
+List<String> restoreHiddenTool(List<String> visible, List<String> previousFull, String hidden) =>
+    restoreHiddenTools(visible, previousFull, {hidden});
+
+/// Reconcile a persisted hidden-tool set against the [catalog] (ADR 0018): unknown dsl names
+/// (a tool removed from the catalog) are dropped, tools new to the catalog are visible by
+/// construction, and a set that would leave nothing visible is discarded outright — the UI floor
+/// is one visible tool, and only catalog drift or a damaged preference can breach it.
+Set<String> reconcileHiddenTools(Iterable<String>? saved, List<String> catalog) {
+  if (saved == null) return {};
+  final out = {for (final d in saved) if (catalog.contains(d)) d};
+  return out.length >= catalog.length ? <String>{} : out;
+}
+
+/// Whether one more tool may be hidden: the floor keeps at least one catalog tool visible.
+bool canHideAnotherTool(Set<String> hidden, List<String> catalog) => hidden.length < catalog.length - 1;
 
 /// The engine ToolKind for a Select-tool mode ('Rectangle' | 'Ellipse' | 'Lasso').
 String selectShapeEngineTool(String kind) => switch (kind) {
