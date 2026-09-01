@@ -58,6 +58,8 @@ import 'thumbnail.dart';
 import 'widgets/painters.dart';
 import 'widgets/strip_scroller.dart';
 import 'dialogs/crop_dialog.dart';
+import 'dialogs/place_dialog.dart';
+import 'dialogs/raster_preview.dart';
 import 'dialogs/color_picker_dialog.dart';
 import 'dialogs/rename_drawing_dialog.dart';
 

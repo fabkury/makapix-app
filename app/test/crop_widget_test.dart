@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:makapix_club/editor/dialogs/crop_dialog.dart';
+import 'package:makapix_club/editor/dialogs/raster_preview.dart';
 
 // Mirror of the engine's fit_no_upscale (crates/engine/src/import.rs) so we can assert resultDims
 // against the source of truth.
@@ -202,14 +203,18 @@ void main() {
     // whole flow runs inside `runAsync` — the fake test clock never resolves dart:ui codec futures.
     await tester.runAsync(() async {
       final bytes = await _solidPng(8, 8);
+      final preview = RasterPreview(bytes, srcW: 8, srcH: 8);
       await tester.pumpWidget(MaterialApp(
-        home: CropPage(bytes: bytes, srcW: 8, srcH: 8, canvasW: 4, canvasH: 4),
+        home: CropPage(preview: preview, srcW: 8, srcH: 8, canvasW: 4, canvasH: 4),
       ));
       await Future<void>.delayed(const Duration(milliseconds: 50)); // let the decode resolve
       await tester.pump();
-      // Replace the route → CropPage disposes. Must not throw (ticker + images disposed).
+      expect(preview.loaded, isTrue);
+      // Replace the route → CropPage disposes. Must not throw (ticker gone, preview still owned
+      // by the flow); then the flow disposes the preview.
       await tester.pumpWidget(const MaterialApp(home: SizedBox()));
       await tester.pump();
+      preview.dispose();
     });
     expect(tester.takeException(), isNull);
   });

@@ -109,14 +109,16 @@ extension _EditorFileIo on _EditorPageState {
     if (res == null || res.files.single.path == null) return;
     final bytes = await File(res.files.single.path!).readAsBytes();
 
-    // Decoded only for its dimensions (dialog title + CropPage bounds). Disposed on every exit
-    // path below — it is unbounded (a phone photo is tens of MB) and was previously leaked. [audit]
+    // Decoded only for its dimensions (dialog title, crop bounds, placement math); disposed at
+    // once — it is unbounded (a phone photo is tens of MB) and was once leaked. [audit]
     final srcImg = await _decodeBytes(bytes);
-    if (!mounted) {
-      srcImg.dispose();
-      return;
-    }
     final srcW = srcImg.width, srcH = srcImg.height;
+    srcImg.dispose();
+    if (!mounted) return;
+    // The animated preview both the Crop and the Place pages draw: decoded once, disposed once
+    // when the flow ends (the finally below), whichever pages were visited.
+    final preview = RasterPreview(bytes, srcW: srcW, srcH: srcH);
+    unawaited(preview.load());
     // The Fit / Stretch / Crop chooser only earns its place for a source larger than the canvas
     // (2026-09-01): a source no larger than the canvas is placed 1:1 centered unless the user
     // flips "Scale up to fit"; one the exact canvas size has a single outcome and no scaling UI.
@@ -130,7 +132,7 @@ extension _EditorFileIo on _EditorPageState {
     // `setS` runs normally. Cancelling keeps the previous mode (and any earlier crop).
     Future<void> pickCrop(StateSetter setS) async {
       final r = await Navigator.of(context).push<Rect>(MaterialPageRoute(
-        builder: (_) => CropPage(bytes: bytes, srcW: srcW, srcH: srcH, canvasW: engine.width, canvasH: engine.height),
+        builder: (_) => CropPage(preview: preview, srcW: srcW, srcH: srcH, canvasW: engine.width, canvasH: engine.height),
       ));
       if (r != null) {
         setS(() {
@@ -139,8 +141,20 @@ extension _EditorFileIo on _EditorPageState {
         });
       }
     }
+    // The engine arguments for the current choices, the on-canvas size they produce, and whether
+    // the Place step (ADR 0019) has anything to place — only when the result leaves canvas
+    // uncovered in some dimension. The dialog's primary button reads Next in that case.
+    ({int mode, Rect? crop}) currentArgs() => sizeClass == ImportSizeClass.large
+        ? (mode: mode, crop: cropRect)
+        : smallSourceImportArgs(scaleUp: scaleUp, srcW: srcW, srcH: srcH);
+    ({int w, int h}) currentPlaced() {
+      final a = currentArgs();
+      return importPlacedSize(
+          srcW: srcW, srcH: srcH, canvasW: engine.width, canvasH: engine.height, mode: a.mode, crop: a.crop);
+    }
+    bool placeApplies() => placementApplies(currentPlaced(), engine.width, engine.height);
     const caption = TextStyle(fontSize: 12, color: Colors.white60);
-    final ok = await showDialog<bool>(
+    Future<bool?> importDialog() => showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setS) => AlertDialog(
@@ -204,51 +218,93 @@ extension _EditorFileIo on _EditorPageState {
           ]),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Import')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(placeApplies() ? 'Next' : 'Import')),
           ],
         ),
       ),
     );
-    srcImg.dispose(); // only needed for the dialog title + crop bounds [audit]
-    if (ok != true) return;
-    // A small source resolves to the engine's crop path (whole source, 1:1 centered) or Fit.
-    final placement = sizeClass == ImportSizeClass.large
-        ? (mode: mode, crop: cropRect)
-        : smallSourceImportArgs(scaleUp: scaleUp, srcW: srcW, srcH: srcH);
-
-    // Decode on a background isolate under a modal spinner: the decode is the expensive half
-    // of an import (seconds for a many-frame GIF) and used to freeze the UI [audit #3]. The
-    // modal also keeps the document from changing under the import — a frame tap mid-decode
-    // would retarget startFrame.
-    final status = await _runWithImportSpinner(() async {
-      final (img, decodeStatus) = await Engine.decodeImageInBackground(bytes);
-      if (img == null) return decodeStatus; // failed, or tooLarge for a valid-but-huge file
-      try {
-        if (!mounted) return ImportStatus.failed; // engine may be gone; skip the apply
-        return engine.importDecoded(img,
-            mode: placement.mode,
-            asLayer: asLayer,
-            startFrame: engine.activeFrame,
-            cropX: placement.crop?.left.toInt() ?? 0,
-            cropY: placement.crop?.top.toInt() ?? 0,
-            cropW: placement.crop?.width.toInt() ?? 0,
-            cropH: placement.crop?.height.toInt() ?? 0);
-      } finally {
-        img.dispose();
+    try {
+      // Dialog → (Place) → import. Back on the Place page reopens the dialog with every choice
+      // intact; only the Place page's Import (or the dialog's, when nothing is placeable) commits.
+      (int, int)? place;
+      while (true) {
+        final ok = await importDialog();
+        if (ok != true || !mounted) return;
+        if (!placeApplies()) break;
+        final args = currentArgs();
+        final placed = currentPlaced();
+        // The start frame's current composite is the backdrop — copied out of the engine's
+        // reused scratch buffer before _decode premultiplies it in place.
+        final startFrame = engine.activeFrame;
+        final backdrop = await _decode(Uint8List.fromList(engine.compositeFrame(startFrame)), engine.width, engine.height);
+        if (!mounted) {
+          backdrop.dispose();
+          return;
+        }
+        final r = await Navigator.of(context).push<(int, int)>(MaterialPageRoute(
+          builder: (_) => PlacePage(
+            preview: preview,
+            srcRect: args.crop ?? Rect.fromLTWH(0, 0, srcW.toDouble(), srcH.toDouble()),
+            canvasW: engine.width,
+            canvasH: engine.height,
+            placedW: placed.w,
+            placedH: placed.h,
+            startFrame: startFrame,
+            backdrop: backdrop,
+          ),
+        ));
+        backdrop.dispose();
+        if (!mounted) return;
+        if (r != null) {
+          place = r;
+          break;
+        }
       }
-    });
-    if (!mounted) return;
+      // A small source resolves to the engine's crop path (whole source, 1:1) or Fit.
+      final placement = currentArgs();
+
+      // Decode on a background isolate under a modal spinner: the decode is the expensive half
+      // of an import (seconds for a many-frame GIF) and used to freeze the UI [audit #3]. The
+      // modal also keeps the document from changing under the import — a frame tap mid-decode
+      // would retarget startFrame.
+      final status = await _runWithImportSpinner(() async {
+        final (img, decodeStatus) = await Engine.decodeImageInBackground(bytes);
+        if (img == null) return decodeStatus; // failed, or tooLarge for a valid-but-huge file
+        try {
+          if (!mounted) return ImportStatus.failed; // engine may be gone; skip the apply
+          return engine.importDecoded(img,
+              mode: placement.mode,
+              asLayer: asLayer,
+              startFrame: engine.activeFrame,
+              cropX: placement.crop?.left.toInt() ?? 0,
+              cropY: placement.crop?.top.toInt() ?? 0,
+              cropW: placement.crop?.width.toInt() ?? 0,
+              cropH: placement.crop?.height.toInt() ?? 0,
+              placeX: place?.$1,
+              placeY: place?.$2);
+        } finally {
+          img.dispose();
+        }
+      });
+      if (!mounted) return;
+      await _finishImport(status, res.files.single.name);
+    } finally {
+      preview.dispose();
+    }
+  }
+
+  Future<void> _finishImport(ImportStatus status, String fileName) async {
     switch (status) {
       case ImportStatus.ok:
         // The sticky import bit (artwork-provenance 0001 §1): once set, it survives the work's
         // whole history — the next autosave persists it into the file's META chunk.
-        _provenance.markImported(res.files.single.name.split('.').last.toLowerCase());
+        _provenance.markImported(fileName.split('.').last.toLowerCase());
         // A successful import is a non-DSL document mutation: close the Journal chapter and
         // anchor the next one on the post-import content (ADR 0003). [replay]
         await _journalCutAndBaseline('import');
         _refreshState();
         _redraw();
-        _toast('Imported ${res.files.single.name} (${engine.frameCount} frames)');
+        _toast('Imported $fileName (${engine.frameCount} frames)');
       case ImportStatus.refused:
         _toast('Import refused: it would not fit in the memory budget');
       case ImportStatus.tooLarge:

@@ -1,10 +1,20 @@
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+
+import 'raster_preview.dart';
+
+/// Fit `(rw, rh)` inside `(cw, ch)` preserving aspect ratio, **never upscaling** — the engine's
+/// integer cross-multiply (`fit_no_upscale` in `crates/engine/src/import.rs`), so previews and
+/// placement math agree with the import byte for byte.
+(int, int) fitNoUpscale(int rw, int rh, int cw, int ch) {
+  if (rw <= cw && rh <= ch) return (rw, rh);
+  if (rw * ch >= rh * cw) return (cw, (rh * cw ~/ rw).clamp(1, ch));
+  return ((rw * ch ~/ rh).clamp(1, cw), ch);
+}
 
 /// Which corner reticle is being dragged.
 enum CropCorner { topLeft, topRight, bottomLeft, bottomRight }
@@ -102,14 +112,8 @@ class CropGeometry {
     }
   }
 
-  /// The on-canvas size this crop will produce — mirrors `fit_no_upscale` (integer cross-multiply).
-  (int, int) resultDims() {
-    if (w <= canvasW && h <= canvasH) return (w, h);
-    if (w * canvasH >= h * canvasW) {
-      return (canvasW, (h * canvasW ~/ w).clamp(1, canvasH));
-    }
-    return ((w * canvasH ~/ h).clamp(1, canvasW), canvasH);
-  }
+  /// The on-canvas size this crop will produce — [fitNoUpscale].
+  (int, int) resultDims() => fitNoUpscale(w, h, canvasW, canvasH);
 }
 
 /// Pure view transform for the crop editor (2026-09-01): the source is drawn at
@@ -229,11 +233,13 @@ ImportSizeClass importSizeClass(int srcW, int srcH, int canvasW, int canvasH) {
 /// middle-button drag pans; double-tap toggles fit ↔ 4× at the tapped point; the app bar's
 /// "Fit view" resets. Zoom runs from fit to 32 screen px per source px.
 class CropPage extends StatefulWidget {
-  final Uint8List bytes;
+  /// The shared decoded-frames preview (the import flow owns and disposes it; the Place page
+  /// reuses the same instance so a many-frame GIF is decoded once).
+  final RasterPreview preview;
   final int srcW, srcH, canvasW, canvasH;
   const CropPage({
     super.key,
-    required this.bytes,
+    required this.preview,
     required this.srcW,
     required this.srcH,
     required this.canvasW,
@@ -244,11 +250,6 @@ class CropPage extends StatefulWidget {
 }
 
 class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin {
-  // Soft caps for the animated preview: a big source can allocate ~1 GB+ of GPU textures across
-  // 1,024 frames, which OOMs phones. The crop rect is spatial, so a truncated PREVIEW never affects
-  // the actual import (the engine decodes the full animation independently).
-  static const int _kMaxPreviewFrames = 120;
-  static const int _kMaxPreviewPixels = 64 * 1000 * 1000;
   static const double _reticleRadius = 11; // drawn radius
   static const double _reticleHit = 28; // touch radius
   // One wheel notch zooms by this factor (the editor canvas's constants: 60 logical px per notch).
@@ -257,10 +258,6 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
   late final CropGeometry _geo;
   late final CropView _view;
   late final Ticker _ticker;
-  final List<ui.Image> _frames = [];
-  final List<Duration> _durations = [];
-  bool _truncated = false;
-  bool _loadError = false;
   int _current = 0;
   bool _playing = false;
   Duration _last = Duration.zero;
@@ -291,67 +288,27 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
     _geo = CropGeometry(srcW: widget.srcW, srcH: widget.srcH, canvasW: widget.canvasW, canvasH: widget.canvasH);
     _view = CropView(srcW: widget.srcW, srcH: widget.srcH);
     _ticker = createTicker(_onTick);
-    _load();
-  }
-
-  Future<void> _load() async {
-    try {
-      final codec = await ui.instantiateImageCodec(widget.bytes);
-      final count = codec.frameCount;
-      final frames = <ui.Image>[];
-      final durations = <Duration>[];
-      var pixels = 0;
-      var truncated = false;
-      for (var i = 0; i < count; i++) {
-        final fi = await codec.getNextFrame();
-        frames.add(fi.image);
-        durations.add(fi.duration.inMicroseconds <= 0 ? const Duration(milliseconds: 100) : fi.duration);
-        pixels += widget.srcW * widget.srcH;
-        if (frames.length >= _kMaxPreviewFrames || pixels >= _kMaxPreviewPixels) {
-          truncated = i + 1 < count;
-          break;
-        }
-      }
-      if (!mounted) {
-        for (final f in frames) {
-          f.dispose();
-        }
-        return;
-      }
-      setState(() {
-        _frames
-          ..clear()
-          ..addAll(frames);
-        _durations
-          ..clear()
-          ..addAll(durations);
-        _truncated = truncated;
-      });
-    } catch (_) {
-      if (mounted) setState(() => _loadError = true);
-    }
+    widget.preview.addListener(_onPreview);
+    widget.preview.load();
   }
 
   @override
   void dispose() {
+    widget.preview.removeListener(_onPreview);
     _ticker.dispose();
-    for (final f in _frames) {
-      f.dispose();
-    }
     super.dispose();
   }
 
+  void _onPreview() {
+    if (mounted) setState(() {});
+  }
+
   void _onTick(Duration elapsed) {
-    if (_frames.length < 2) return;
     final dt = elapsed - _last;
     _last = elapsed;
     _acc += dt;
-    var cur = _current;
-    var guard = 0;
-    while (_acc >= _durations[cur] && guard++ < _frames.length) {
-      _acc -= _durations[cur];
-      cur = (cur + 1) % _frames.length;
-    }
+    final (cur, left) = widget.preview.advance(_current, _acc);
+    _acc = left;
     if (cur != _current && mounted) setState(() => _current = cur);
   }
 
@@ -520,7 +477,8 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
 
   @override
   Widget build(BuildContext context) {
-    final animated = _frames.length > 1;
+    final p = widget.preview;
+    final animated = p.animated;
     final (rw, rh) = _geo.resultDims();
     final downscaled = rw < _geo.w || rh < _geo.h;
     return Scaffold(
@@ -562,9 +520,9 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
       ),
       body: Column(children: [
         Expanded(
-          child: _loadError
+          child: p.loadError
               ? const Center(child: Text('Could not decode this image.'))
-              : _frames.isEmpty
+              : !p.loaded
                   ? const Center(child: CircularProgressIndicator())
                   : LayoutBuilder(builder: (ctx, cons) {
                       _view.setView(Size(cons.maxWidth, cons.maxHeight));
@@ -598,7 +556,7 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
                             child: CustomPaint(
                               size: Size(cons.maxWidth, cons.maxHeight),
                               painter: _CropPreviewPainter(
-                                image: _frames[_current],
+                                image: p.frames[_current],
                                 geo: _geo,
                                 scale: _view.scale,
                                 origin: _view.origin,
@@ -619,10 +577,10 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
                 onPressed: animated ? _togglePlay : null,
               ),
               Text(
-                animated ? 'Frame ${_current + 1} / ${_frames.length}' : 'Static',
+                animated ? 'Frame ${_current + 1} / ${p.frames.length}' : 'Static',
                 style: const TextStyle(fontSize: 13),
               ),
-              if (_truncated)
+              if (p.truncated)
                 const Padding(
                   padding: EdgeInsets.only(left: 8),
                   child: Text('(preview truncated — full animation still imports)',
@@ -658,7 +616,7 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
             const SizedBox(width: 8),
             FilledButton(
-              onPressed: _frames.isEmpty ? null : () => Navigator.pop(context, _geo.toRect()),
+              onPressed: !p.loaded ? null : () => Navigator.pop(context, _geo.toRect()),
               child: const Text('Use crop'),
             ),
           ]),
