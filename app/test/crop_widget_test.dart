@@ -112,6 +112,91 @@ void main() {
     });
   });
 
+  group('CropView (zoom + pan)', () {
+    CropView view() => CropView(srcW: 100, srcH: 50)..setView(const Size(432, 232)); // fit = 4 px/px
+
+    test('fit: 1 = fit-to-screen, centered, pan pinned to zero', () {
+      final v = view();
+      expect(v.fitScale, 4);
+      expect(v.scale, 4);
+      expect(v.origin, const Offset(16, 16));
+      expect(v.isFit, isTrue);
+      v.panBy(const Offset(50, 50));
+      expect(v.pan, Offset.zero, reason: 'no panning at fit');
+    });
+
+    test('maxZoom puts 32 screen px on one source px; zoom never drops below fit', () {
+      final v = view();
+      expect(v.maxZoom, 8);
+      v.zoomAt(const Offset(100, 100), 100);
+      expect(v.zoom, 8);
+      expect(v.scale, 32);
+      v.zoomAt(const Offset(100, 100), 0.1);
+      expect(v.zoom, 1);
+    });
+
+    test('zoomAt keeps the source point under the pointer fixed', () {
+      final v = view();
+      const p = Offset(116, 66); // source (25, 12.5) at fit
+      final sx = (p.dx - v.origin.dx) / v.scale, sy = (p.dy - v.origin.dy) / v.scale;
+      v.zoomAt(p, 3);
+      expect(((p.dx - v.origin.dx) / v.scale - sx).abs(), lessThan(1e-9));
+      expect(((p.dy - v.origin.dy) / v.scale - sy).abs(), lessThan(1e-9));
+      expect(v.srcX(p.dx), 25);
+    });
+
+    test('pan is clamped so the image keeps CropView.keep px inside the viewport', () {
+      final v = view();
+      v.zoomAt(const Offset(216, 116), 4); // 1600×800 image in a 432×232 viewport
+      v.panBy(const Offset(-99999, -99999));
+      expect(v.origin.dx, CropView.keep - 100 * v.scale);
+      expect(v.origin.dy, CropView.keep - 50 * v.scale);
+      v.panBy(const Offset(99999, 99999));
+      expect(v.origin.dx, 432 - CropView.keep);
+      expect(v.origin.dy, 232 - CropView.keep);
+    });
+
+    test('double-tap toggles fit ↔ 4× about the tapped point; fit() resets everything', () {
+      final v = view();
+      v.toggleDoubleTap(const Offset(50, 40));
+      expect(v.zoom, 4);
+      expect(v.srcX(50), 9); // (50-16)/4 = 8.5 → rounds to 9; the same source column stays under the finger
+      v.toggleDoubleTap(const Offset(300, 100));
+      expect(v.isFit, isTrue);
+      v.zoomAt(const Offset(10, 10), 2);
+      v.panBy(const Offset(30, 0));
+      v.fit();
+      expect((v.zoom, v.pan), (1.0, Offset.zero));
+    });
+
+    test('a viewport change re-clamps the pan instead of stranding the image', () {
+      final v = view();
+      v.zoomAt(const Offset(216, 116), 4);
+      v.panBy(const Offset(99999, 0));
+      v.setView(const Size(232, 232));
+      expect(v.origin.dx, lessThanOrEqualTo(232 - CropView.keep));
+    });
+  });
+
+  group('import size class (streamlined dialog)', () {
+    test('exact / small / large', () {
+      expect(importSizeClass(32, 32, 32, 32), ImportSizeClass.exact);
+      expect(importSizeClass(20, 32, 32, 32), ImportSizeClass.small);
+      expect(importSizeClass(1, 1, 32, 32), ImportSizeClass.small);
+      expect(importSizeClass(33, 10, 32, 32), ImportSizeClass.large, reason: 'wider in one dimension');
+      expect(importSizeClass(10, 40, 32, 32), ImportSizeClass.large);
+      expect(importSizeClass(300, 300, 32, 32), ImportSizeClass.large);
+    });
+
+    test('small source: 1:1 centered = whole-source crop; scale-up = Fit', () {
+      final asIs = smallSourceImportArgs(scaleUp: false, srcW: 20, srcH: 16);
+      expect(asIs.mode, 2);
+      expect(asIs.crop, const Rect.fromLTWH(0, 0, 20, 16));
+      final up = smallSourceImportArgs(scaleUp: true, srcW: 20, srcH: 16);
+      expect((up.mode, up.crop), (0, null));
+    });
+  });
+
   testWidgets('CropPage pumps and disposes cleanly (no tick-after-dispose)', (tester) async {
     // Real image decoding (`instantiateImageCodec`/`toImage`) needs the real event loop, so the
     // whole flow runs inside `runAsync` — the fake test clock never resolves dart:ui codec futures.

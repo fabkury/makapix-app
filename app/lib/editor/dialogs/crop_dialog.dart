@@ -1,6 +1,8 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
@@ -110,9 +112,122 @@ class CropGeometry {
   }
 }
 
+/// Pure view transform for the crop editor (2026-09-01): the source is drawn at
+/// `fitScale × zoom` screen px per source px, centered in the viewport, then shifted by [pan].
+/// `zoom` runs from 1 (fit to screen — never below: there is nothing to see out there) up to
+/// [maxZoom], the zoom that puts [maxPxPerSource] screen px on one source pixel (the editor
+/// canvas's own ceiling). Pan is clamped so at least [keep] px of the image stay inside the
+/// viewport on each axis, and is pinned to zero at fit. Unit-tested; the page only feeds it
+/// gestures and reads [scale] / [origin].
+class CropView {
+  CropView({required this.srcW, required this.srcH, this.margin = 16});
+  final int srcW, srcH;
+  final double margin;
+  static const double maxPxPerSource = 32;
+  static const double keep = 48;
+
+  Size view = Size.zero;
+  double zoom = 1;
+  Offset pan = Offset.zero;
+
+  double get fitScale {
+    final aw = math.max(1.0, view.width - margin * 2);
+    final ah = math.max(1.0, view.height - margin * 2);
+    return math.min(aw / srcW, ah / srcH);
+  }
+
+  double get scale => fitScale * zoom;
+  double get maxZoom => math.max(1.0, maxPxPerSource / fitScale);
+  bool get isFit => zoom <= 1.0001;
+
+  /// The image's top-left on screen at the current zoom and pan.
+  Offset get origin => _centeredOrigin + pan;
+  Offset get _centeredOrigin => Offset((view.width - srcW * scale) / 2, (view.height - srcH * scale) / 2);
+
+  /// Adopt the viewport size (re-clamping the pan; a rotation must not strand the image).
+  void setView(Size s) {
+    if (s == view) return;
+    view = s;
+    _clampPan();
+  }
+
+  /// Zoom to [newZoom] (clamped) keeping the source point under screen point [p] fixed.
+  void zoomAt(Offset p, double newZoom) {
+    final oldScale = scale;
+    final oldOrigin = origin;
+    zoom = newZoom.clamp(1.0, maxZoom);
+    final k = scale / oldScale;
+    final desiredOrigin = p - (p - oldOrigin) * k;
+    pan = desiredOrigin - _centeredOrigin;
+    _clampPan();
+  }
+
+  void panBy(Offset d) {
+    pan += d;
+    _clampPan();
+  }
+
+  void fit() {
+    zoom = 1;
+    pan = Offset.zero;
+  }
+
+  /// Double-tap: back to fit when zoomed, else 4× fit about the tapped point.
+  void toggleDoubleTap(Offset p) {
+    if (isFit) {
+      zoomAt(p, 4);
+    } else {
+      fit();
+    }
+  }
+
+  /// Screen → source pixel (rounded), for corner drags.
+  int srcX(double localX) => ((localX - origin.dx) / scale).round();
+  int srcY(double localY) => ((localY - origin.dy) / scale).round();
+
+  void _clampPan() {
+    if (isFit) {
+      pan = Offset.zero;
+      return;
+    }
+    final base = _centeredOrigin;
+    double axis(double p, double b, double disp, double extent) {
+      // origin allowed in [keep − disp, extent − keep]; too small a viewport stays centered
+      final lo = keep - disp - b, hi = extent - keep - b;
+      return lo > hi ? 0 : p.clamp(lo, hi);
+    }
+    pan = Offset(axis(pan.dx, base.dx, srcW * scale, view.width), axis(pan.dy, base.dy, srcH * scale, view.height));
+  }
+}
+
+/// How a raster to import relates to the canvas (2026-09-01): the Fit / Stretch / Crop chooser
+/// only earns its place for a source larger than the canvas in at least one dimension. A source
+/// no larger than the canvas is placed 1:1 centered unless the user asks to scale it up; one the
+/// exact canvas size has a single outcome and no scaling UI at all.
+enum ImportSizeClass { exact, small, large }
+
+ImportSizeClass importSizeClass(int srcW, int srcH, int canvasW, int canvasH) {
+  if (srcW == canvasW && srcH == canvasH) return ImportSizeClass.exact;
+  if (srcW <= canvasW && srcH <= canvasH) return ImportSizeClass.small;
+  return ImportSizeClass.large;
+}
+
+/// Engine arguments for a source no larger than the canvas: [scaleUp] → Fit (mode 0, the
+/// aspect-kept upscale to fill the canvas); otherwise the whole source as an explicit crop
+/// region, which the engine places 1:1 centered (never upscaled) — the documented crop path
+/// rather than the anchor-centered Crop mode, so the placement is the one the crop editor uses.
+({int mode, Rect? crop}) smallSourceImportArgs({required bool scaleUp, required int srcW, required int srcH}) =>
+    scaleUp ? (mode: 0, crop: null) : (mode: 2, crop: Rect.fromLTWH(0, 0, srcW.toDouble(), srcH.toDouble()));
+
 /// A large, dedicated crop editor for imported rasters (static or animated). Returns the chosen crop
 /// rectangle in **source pixels** (or null on cancel). The engine (`mkpx_import`) places that region
 /// 1:1 centered on the canvas, downscaling only when it is larger than the canvas.
+///
+/// View gestures (user decisions 2026-09-01): one finger always edits the crop (a corner reticle
+/// or the rect body); two fingers pan and pinch-zoom about the pinch point; a trackpad pan/pinch
+/// does the same; the mouse wheel zooms about the cursor (the editor canvas's step); a right- or
+/// middle-button drag pans; double-tap toggles fit ↔ 4× at the tapped point; the app bar's
+/// "Fit view" resets. Zoom runs from fit to 32 screen px per source px.
 class CropPage extends StatefulWidget {
   final Uint8List bytes;
   final int srcW, srcH, canvasW, canvasH;
@@ -136,8 +251,11 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
   static const int _kMaxPreviewPixels = 64 * 1000 * 1000;
   static const double _reticleRadius = 11; // drawn radius
   static const double _reticleHit = 28; // touch radius
+  // One wheel notch zooms by this factor (the editor canvas's constants: 60 logical px per notch).
+  static const double _kWheelZoomStep = 1.2, _kWheelNotchDelta = 60.0;
 
   late final CropGeometry _geo;
+  late final CropView _view;
   late final Ticker _ticker;
   final List<ui.Image> _frames = [];
   final List<Duration> _durations = [];
@@ -148,18 +266,30 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
   Duration _last = Duration.zero;
   Duration _acc = Duration.zero;
 
-  // Drag state (snapshot on pan-start to avoid fractional drift).
+  // Crop-drag state (snapshot on start to avoid fractional drift).
   CropCorner? _dragCorner;
   bool _dragMove = false;
   Offset _startLocal = Offset.zero;
   int _startX = 0, _startY = 0;
-  double _scale = 1;
-  Offset _imgOrigin = Offset.zero;
+  // View-gesture state: a scale gesture is a view gesture from its start (two fingers / trackpad)
+  // or becomes one the moment a second finger lands — and stays one until it ends, so lifting
+  // back to one finger never resumes a crop edit mid-air.
+  bool _viewGesture = false;
+  // ScaleUpdateDetails.scale is cumulative only until the finger count changes (the recognizer
+  // re-references and reports 1 again), so zoom is applied as the ratio between consecutive
+  // updates, with the reference re-seeded on every pointer-count change.
+  double _lastGestureScale = 1;
+  int _lastPointerCount = 0;
+  // Mouse: a right/middle-button drag pans; tracked from the raw Listener so the primary-button
+  // scale recognizer never sees it as a crop edit.
+  bool _mousePan = false;
+  Offset _mouseLast = Offset.zero;
 
   @override
   void initState() {
     super.initState();
     _geo = CropGeometry(srcW: widget.srcW, srcH: widget.srcH, canvasW: widget.canvasW, canvasH: widget.canvasH);
+    _view = CropView(srcW: widget.srcW, srcH: widget.srcH);
     _ticker = createTicker(_onTick);
     _load();
   }
@@ -238,14 +368,24 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
     });
   }
 
-  // ---- gesture / coordinate mapping ----
+  // ---- gestures ----
 
-  int _srcX(double localX) => ((localX - _imgOrigin.dx) / _scale).round();
-  int _srcY(double localY) => ((localY - _imgOrigin.dy) / _scale).round();
+  void _endCropDrag() {
+    _dragCorner = null;
+    _dragMove = false;
+  }
 
-  void _onPanStart(DragStartDetails d) {
-    final p = d.localPosition;
-    // Corner reticles first (generous radius), then inside-rect move.
+  void _onScaleStart(ScaleStartDetails d) {
+    if (_mousePan) return;
+    _viewGesture = d.pointerCount >= 2 || d.kind == PointerDeviceKind.trackpad;
+    if (_viewGesture) {
+      _endCropDrag();
+      _lastGestureScale = 1;
+      _lastPointerCount = d.pointerCount;
+      return;
+    }
+    // One finger: corner reticles first (generous radius), then inside-rect move.
+    final p = d.localFocalPoint;
     for (final c in CropCorner.values) {
       if ((p - _cornerScreen(c)).distance <= _reticleHit) {
         _dragCorner = c;
@@ -254,10 +394,10 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
       }
     }
     final rectScreen = Rect.fromLTWH(
-      _imgOrigin.dx + _geo.x * _scale,
-      _imgOrigin.dy + _geo.y * _scale,
-      _geo.w * _scale,
-      _geo.h * _scale,
+      _view.origin.dx + _geo.x * _view.scale,
+      _view.origin.dy + _geo.y * _view.scale,
+      _geo.w * _view.scale,
+      _geo.h * _view.scale,
     );
     if (rectScreen.contains(p)) {
       _dragMove = true;
@@ -266,26 +406,79 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
       _startX = _geo.x;
       _startY = _geo.y;
     } else {
-      _dragMove = false;
-      _dragCorner = null;
+      _endCropDrag();
     }
   }
 
-  void _onPanUpdate(DragUpdateDetails d) {
+  void _onScaleUpdate(ScaleUpdateDetails d) {
+    if (_mousePan) return;
+    if (!_viewGesture && d.pointerCount >= 2) {
+      // A second finger joined a crop edit: it is a view gesture from here on.
+      _viewGesture = true;
+      _endCropDrag();
+      _lastGestureScale = d.scale;
+      _lastPointerCount = d.pointerCount;
+    }
+    if (_viewGesture) {
+      if (d.pointerCount != _lastPointerCount) {
+        _lastPointerCount = d.pointerCount;
+        _lastGestureScale = d.scale; // re-referenced: no zoom step on this update
+      }
+      final ratio = _lastGestureScale > 0 ? d.scale / _lastGestureScale : 1.0;
+      _lastGestureScale = d.scale;
+      setState(() {
+        // Pinch about the (moving) focal point: zoom keeps the source under the focal point
+        // fixed, then the focal drift pans.
+        if (ratio != 1) _view.zoomAt(d.localFocalPoint, _view.zoom * ratio);
+        _view.panBy(d.focalPointDelta);
+      });
+      return;
+    }
     if (_dragCorner != null) {
-      setState(() => _geo.dragCorner(_dragCorner!, _srcX(d.localPosition.dx), _srcY(d.localPosition.dy)));
+      setState(() =>
+          _geo.dragCorner(_dragCorner!, _view.srcX(d.localFocalPoint.dx), _view.srcY(d.localFocalPoint.dy)));
     } else if (_dragMove) {
-      final dx = ((d.localPosition.dx - _startLocal.dx) / _scale).round();
-      final dy = ((d.localPosition.dy - _startLocal.dy) / _scale).round();
+      final dx = ((d.localFocalPoint.dx - _startLocal.dx) / _view.scale).round();
+      final dy = ((d.localFocalPoint.dy - _startLocal.dy) / _view.scale).round();
       setState(() => _geo.setOrigin(_startX + dx, _startY + dy));
     }
   }
 
+  void _onScaleEnd(ScaleEndDetails d) {
+    _viewGesture = false;
+    _endCropDrag();
+  }
+
+  void _onDoubleTapDown(TapDownDetails d) => setState(() => _view.toggleDoubleTap(d.localPosition));
+
+  void _onPointerDown(PointerDownEvent e) {
+    if (e.kind == PointerDeviceKind.mouse && (e.buttons & (kSecondaryButton | kMiddleMouseButton)) != 0) {
+      _mousePan = true;
+      _mouseLast = e.localPosition;
+      _endCropDrag();
+    }
+  }
+
+  void _onPointerMove(PointerMoveEvent e) {
+    if (!_mousePan) return;
+    final delta = e.localPosition - _mouseLast;
+    _mouseLast = e.localPosition;
+    if (delta != Offset.zero) setState(() => _view.panBy(delta));
+  }
+
+  void _onPointerUp(PointerEvent e) => _mousePan = false;
+
+  void _onPointerSignal(PointerSignalEvent e) {
+    if (e is! PointerScrollEvent) return;
+    final factor = math.pow(_kWheelZoomStep, -e.scrollDelta.dy / _kWheelNotchDelta).toDouble();
+    setState(() => _view.zoomAt(e.localPosition, _view.zoom * factor));
+  }
+
   Offset _cornerScreen(CropCorner c) {
-    final l = _imgOrigin.dx + _geo.x * _scale;
-    final t = _imgOrigin.dy + _geo.y * _scale;
-    final r = l + _geo.w * _scale;
-    final b = t + _geo.h * _scale;
+    final l = _view.origin.dx + _geo.x * _view.scale;
+    final t = _view.origin.dy + _geo.y * _view.scale;
+    final r = l + _geo.w * _view.scale;
+    final b = t + _geo.h * _view.scale;
     switch (c) {
       case CropCorner.topLeft:
         return Offset(l, t);
@@ -335,13 +528,17 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
         title: const Text('Crop'),
         actions: [
           IconButton(
+            tooltip: 'Fit view',
+            icon: const Icon(Icons.fit_screen),
+            onPressed: _view.isFit ? null : () => setState(_view.fit),
+          ),
+          IconButton(
             tooltip: _geo.aspectLocked ? 'Aspect locked to canvas' : 'Lock to canvas aspect',
             icon: Icon(_geo.aspectLocked ? Icons.lock : Icons.lock_open),
             // [G-45] Kill any live drag first: an in-flight corner/move drag would otherwise
             // keep writing geometry derived from before the toggle.
             onPressed: () => setState(() {
-              _dragCorner = null;
-              _dragMove = false;
+              _endCropDrag();
               _geo.toggleAspectLock();
             }),
           ),
@@ -350,8 +547,7 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
             icon: const Icon(Icons.restart_alt),
             onPressed: () => setState(() {
               // [G-45] Same here: without this the still-held drag resurrects the pre-reset rect.
-              _dragCorner = null;
-              _dragMove = false;
+              _endCropDrag();
               final fresh = CropGeometry(
                   srcW: widget.srcW, srcH: widget.srcH, canvasW: widget.canvasW, canvasH: widget.canvasH);
               _geo
@@ -371,26 +567,44 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
               : _frames.isEmpty
                   ? const Center(child: CircularProgressIndicator())
                   : LayoutBuilder(builder: (ctx, cons) {
-                      const margin = 16.0;
-                      final availW = cons.maxWidth - margin * 2;
-                      final availH = cons.maxHeight - margin * 2;
-                      _scale = (availW / widget.srcW).clamp(0.0, double.infinity);
-                      final sh = availH / widget.srcH;
-                      if (sh < _scale) _scale = sh;
-                      final dispW = widget.srcW * _scale;
-                      final dispH = widget.srcH * _scale;
-                      _imgOrigin = Offset(margin + (availW - dispW) / 2, margin + (availH - dispH) / 2);
-                      return GestureDetector(
-                        onPanStart: _onPanStart,
-                        onPanUpdate: _onPanUpdate,
-                        child: CustomPaint(
-                          size: Size(cons.maxWidth, cons.maxHeight),
-                          painter: _CropPreviewPainter(
-                            image: _frames[_current],
-                            geo: _geo,
-                            scale: _scale,
-                            origin: _imgOrigin,
-                            reticleRadius: _reticleRadius,
+                      _view.setView(Size(cons.maxWidth, cons.maxHeight));
+                      // Raw pointer layer (wheel zoom, right/middle-drag pan) around the gesture
+                      // layer (primary-button scale = crop edit or two-finger view; double-tap).
+                      // The scale recognizer is restricted to the primary button so a mouse pan
+                      // never doubles as a crop edit.
+                      return Listener(
+                        onPointerDown: _onPointerDown,
+                        onPointerMove: _onPointerMove,
+                        onPointerUp: _onPointerUp,
+                        onPointerCancel: _onPointerUp,
+                        onPointerSignal: _onPointerSignal,
+                        child: RawGestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          gestures: <Type, GestureRecognizerFactory>{
+                            ScaleGestureRecognizer: GestureRecognizerFactoryWithHandlers<ScaleGestureRecognizer>(
+                              () => ScaleGestureRecognizer(
+                                  debugOwner: this, allowedButtonsFilter: (b) => b == kPrimaryButton),
+                              (r) => r
+                                ..onStart = _onScaleStart
+                                ..onUpdate = _onScaleUpdate
+                                ..onEnd = _onScaleEnd,
+                            ),
+                            DoubleTapGestureRecognizer: GestureRecognizerFactoryWithHandlers<DoubleTapGestureRecognizer>(
+                              () => DoubleTapGestureRecognizer(debugOwner: this),
+                              (r) => r..onDoubleTapDown = _onDoubleTapDown,
+                            ),
+                          },
+                          child: ClipRect(
+                            child: CustomPaint(
+                              size: Size(cons.maxWidth, cons.maxHeight),
+                              painter: _CropPreviewPainter(
+                                image: _frames[_current],
+                                geo: _geo,
+                                scale: _view.scale,
+                                origin: _view.origin,
+                                reticleRadius: _reticleRadius,
+                              ),
+                            ),
                           ),
                         ),
                       );
@@ -414,6 +628,11 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
                   child: Text('(preview truncated — full animation still imports)',
                       style: TextStyle(fontSize: 11, color: Colors.white54)),
                 ),
+              const Spacer(),
+              Text(
+                _view.isFit ? 'Zoom: fit' : 'Zoom ${(_view.zoom * 100).round()}%',
+                style: const TextStyle(fontSize: 12, color: Colors.white60),
+              ),
             ]),
             const SizedBox(height: 4),
             Wrap(spacing: 6, runSpacing: 4, children: [
