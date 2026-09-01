@@ -360,6 +360,13 @@ extension _EditorTimeline on _EditorPageState {
             _persistThreeRowToolbar();
           },
         ),
+        // ADR 0018: the hidden count rides the label so a tidied grid never reads as "my tool vanished".
+        _sheetItem(
+          ctx,
+          Icons.checklist,
+          _hiddenTools.isEmpty ? 'Show/hide tools…' : 'Show/hide tools… (${_hiddenTools.length} hidden)',
+          _showHideToolsSheet,
+        ),
         _sheetItem(ctx, Icons.fit_screen, 'Fit to screen', _fitView),
       ]);
 

@@ -165,7 +165,7 @@ extension _EditorToolgrid on _EditorPageState {
     );
   }
 
-  // The pinned 3rd tile (3-row mode only): defaults to Play, but long-press picks any tool. It tap-
+  // The pinned 3rd tile (3-row mode only): defaults to Pencil, but long-press picks any tool. It tap-
   // routes exactly like the grid's tile for that tool — an action tool (Onion) toggles via
   // _doToolAction; every other tool (incl. Play, whose controls live in row-1) selects via
   // _selectTool — so each tool keeps the behavior it has in the grid.
@@ -212,6 +212,62 @@ extension _EditorToolgrid on _EditorPageState {
             },
           ),
       ]),
+    );
+  }
+
+  // ☰ → View → Show/hide tools… (ADR 0018). Every catalog tool in catalog order (Undo/Redo are the
+  // fixed slots and never appear in `tools`), a check on the visible ones. Tapping a row toggles it,
+  // the grid behind reflows at once, and the sheet stays open (StatefulBuilder re-renders the rows
+  // from the page state _setToolHidden just changed). Hidden rows are dimmed; the active tool is
+  // marked (hiding it is allowed — it stays active); the last visible tool's row is inert (the
+  // one-visible floor); "Show all" restores every tool. Leading uses iconWidget (custom MpxIcons).
+  void _showHideToolsSheet() {
+    if (_playing) _pause();
+    showAppSheet(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: const Color(0xFF1A1C1F),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) {
+          final all = tools.map((t) => t.dsl).toList();
+          final atFloor = !canHideAnotherTool(_hiddenTools, all);
+          final n = _hiddenTools.length;
+          return _sheetScaffold(ctx, [
+            _sheetSection('Tools in the toolbar'),
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.visibility_outlined, size: 22, color: n == 0 ? Colors.white38 : Colors.white),
+              title: Text('Show all', style: TextStyle(color: n == 0 ? Colors.white38 : Colors.white)),
+              subtitle: Text(n == 0 ? 'Every tool is shown' : '$n hidden',
+                  style: const TextStyle(fontSize: 11, color: Colors.white54)),
+              onTap: n == 0 ? null : () => setSheet(_showAllTools),
+            ),
+            const Divider(height: 1),
+            for (final t in tools) _showHideToolRow(t, atFloor: atFloor, setSheet: setSheet),
+          ]);
+        },
+      ),
+    );
+  }
+
+  Widget _showHideToolRow(ToolDef t, {required bool atFloor, required StateSetter setSheet}) {
+    final hidden = _hiddenTools.contains(t.dsl);
+    final isActive = !_actionTools.contains(t.dsl) && t.dsl == _tool;
+    final onNow = t.dsl == 'Onion' && _onion;
+    final locked = !hidden && atFloor; // the last visible tool cannot be hidden
+    final fg = hidden ? Colors.white38 : Colors.white;
+    final note = [if (isActive) 'active', if (onNow) 'on', if (locked) 'last visible tool'].join(' · ');
+    return ListTile(
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      leading: t.iconWidget(size: 22, color: fg),
+      title: Text(t.label, style: TextStyle(color: fg)),
+      subtitle: note.isEmpty
+          ? null
+          : Text(note, style: TextStyle(fontSize: 11, color: hidden ? Colors.white24 : Colors.white54)),
+      trailing: hidden ? null : const Icon(Icons.check, color: Color(0xFF4080C0)),
+      onTap: locked ? null : () => setSheet(() => _setToolHidden(t.dsl, !hidden)),
     );
   }
 

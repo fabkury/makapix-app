@@ -16,6 +16,7 @@ extension _EditorEngine on _EditorPageState {
       final saved = prefs.getStringList(_prefsKey);
       final threeRow = prefs.getBool(_prefs3RowKey); // null = never chosen → 2-row default
       final pinned3 = prefs.getString(_prefsPinnedThirdKey);
+      final hiddenSaved = prefs.getStringList(_prefsHiddenKey);
       final aa = prefs.getBool(_kAaPref) ?? false;
       final gradSaved = prefs.getStringList(_kGradExtraPref);
       final gradCount = prefs.getInt(_kGradCountPref);
@@ -34,6 +35,9 @@ extension _EditorEngine on _EditorPageState {
           _threeRowPref = threeRow;
           // validate against the catalog — a stale/removed dsl in old prefs falls back to the default
           if (pinned3 != null && tools.any((t) => t.dsl == pinned3)) _pinnedThirdTool = pinned3;
+          // Unknown dsl dropped, an all-hidden set discarded (the one-visible floor), new tools
+          // visible by construction.
+          _hiddenTools = reconcileHiddenTools(hiddenSaved, all);
           if (aa != _aa) {
             _aa = aa;
             // The prefs read is async and can land after engine boot already pushed the
@@ -87,6 +91,13 @@ extension _EditorEngine on _EditorPageState {
     } catch (_) {}
   }
 
+  Future<void> _persistHiddenTools() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_prefsHiddenKey, _hiddenTools.toList());
+    } catch (_) {}
+  }
+
   Future<void> _persistGradient() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -102,11 +113,42 @@ extension _EditorEngine on _EditorPageState {
     } catch (_) {}
   }
 
-  // The row-3 grid's order in *visible* space: in 3-row mode the configured pinned tool is pinned
-  // beside Undo/Redo, so its tile is filtered out of the grid (it stays in _toolOrder). All drag/drop
-  // indexes (_dropIndex, `others`) live in this space; in 2-row mode it is the identity.
+  // The row-3 grid's order in *visible* space: the user-hidden tools (ADR 0018) are filtered out,
+  // and in 3-row mode so is the configured pinned tool (pinned beside Undo/Redo instead). Both stay
+  // in _toolOrder. All drag/drop indexes (_dropIndex, `others`) live in this space.
   List<String> _visibleOrder(List<String> order) =>
-      _threeRowToolbar ? order.where((d) => d != _pinnedThirdTool).toList() : order;
+      visibleToolOrder(order, _hiddenTools, pinned: _threeRowToolbar ? _pinnedThirdTool : null);
+
+  // The tools the grid excludes right now (the complement of _visibleOrder over the full order):
+  // what a visible-space reorder must reinsert at the former slots (see _commitToolDrag).
+  Set<String> get _excludedFromGrid => {..._hiddenTools, if (_threeRowToolbar) _pinnedThirdTool};
+
+  // Hide / unhide one row-3 tool (ADR 0018). Hiding never touches the tool selection — a hidden
+  // active tool simply stays active — with one decided exception: hiding Onion while onion
+  // skinning is on turns it off, so no invisible toggle keeps shading the canvas. The one-visible
+  // floor is enforced here too (the sheet also disables the last visible row). Persists at once.
+  void _setToolHidden(String dsl, bool hidden) {
+    if (hidden == _hiddenTools.contains(dsl)) return;
+    final all = tools.map((t) => t.dsl).toList();
+    if (hidden && !canHideAnotherTool(_hiddenTools, all)) return;
+    setState(() {
+      if (hidden) {
+        _hiddenTools = {..._hiddenTools, dsl};
+        if (dsl == 'Onion' && _onion) _onion = false;
+      } else {
+        _hiddenTools = {..._hiddenTools}..remove(dsl);
+      }
+    });
+    if (hidden && dsl == 'Onion') _redraw();
+    _persistHiddenTools();
+  }
+
+  // ☰ → View → Show/hide tools → Show all: unhide everything; the order is untouched.
+  void _showAllTools() {
+    if (_hiddenTools.isEmpty) return;
+    setState(() => _hiddenTools = {});
+    _persistHiddenTools();
+  }
 
   // The row-3 order to display (visible space): while dragging, the dragged tool is placed at the
   // live drop index among the other tools, so the menu rearranges in real time as a preview.
@@ -118,16 +160,17 @@ extension _EditorEngine on _EditorPageState {
     return [...others.sublist(0, drop), _dragTool!, ...others.sublist(drop)];
   }
 
-  // Commit the live-previewed order when the drag ends. The preview is in visible space, so in
-  // 3-row mode the grid-hidden pinned tile is reinserted at its former index to keep the full order
-  // (2-row mode must NOT reinsert: there the pinned tool is itself draggable in the grid).
+  // Commit the live-previewed order when the drag ends. The preview is in visible space, so every
+  // grid-excluded tool — the hidden set, plus the pinned tile in 3-row mode — is reinserted at its
+  // former index to keep the full order (in 2-row mode the pinned tool is itself draggable in the
+  // grid, so it is not excluded there).
   void _commitToolDrag() {
     if (_dragTool == null) return;
     // No release haptic by design: it proved unfeelable in device testing — Android can drop
     // performHapticFeedback effects (all of HapticFeedback.*) once the touch has ended. The
     // drag's haptic story is the pick-up tick plus the per-reflow ticks; don't re-add one here.
     final display = _displayToolOrder();
-    final order = _threeRowToolbar ? restoreHiddenTool(display, _toolOrder, _pinnedThirdTool) : display;
+    final order = restoreHiddenTools(display, _toolOrder, _excludedFromGrid);
     setState(() {
       _toolOrder = order;
       _dragTool = null;

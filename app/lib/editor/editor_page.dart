@@ -83,6 +83,7 @@ const double _kWheelZoomStep = 1.2, _kWheelNotchDelta = 60.0;
 const _prefsKey = 'tool_order_v1';
 const _prefs3RowKey = 'toolbar_3row_v1'; // ☰ → View → 3-row toolbar (row-3 grid in 3 rows, Play pinned)
 const _prefsPinnedThirdKey = 'toolbar_pinned3_v1'; // 3-row mode: which tool is pinned in the 3rd slot (long-press to change)
+const _prefsHiddenKey = 'tool_hidden_v1'; // ☰ → View → Show/hide tools: dsl names hidden from the row-3 grid (ADR 0018)
 const _kCurrentDrawing = 'editor.currentDrawingId'; // last-open library drawing (silent restore)
 const _kShareFormatPref = 'editor.shareFormat_v1'; // last-used Share format for animations (GIF/WebP)
 const _kExportStillFormatPref = 'editor.exportStillFormat_v1'; // last-used frame/layer export format (PNG/WebP)
@@ -468,6 +469,11 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // slot to change. The pinned tool stays in _toolOrder (only hidden from the grid) so pinning never
   // churns the saved order — see _visibleOrder / _pinnedThirdTile / _pinnedThirdConfigSheet.
   String _pinnedThirdTool = 'Pencil';
+  // ☰ → View → Show/hide tools (ADR 0018): tools hidden from the row-3 grid. Display-time only —
+  // hidden tools keep their slot in _toolOrder (unhide restores it), stay fully reachable through
+  // the keyboard / hold-pick / paste / pinned slot, and the active tool may be hidden (it stays
+  // active). Persisted editor-wide (_prefsHiddenKey); see _visibleOrder / _setToolHidden.
+  Set<String> _hiddenTools = {};
   String? _dragTool; // tool dsl being long-press-dragged in row-3 (null = not dragging)
   int? _dropIndex; // live insertion index among the non-dragged tools (for drag preview)
   // film-roll frame thumbnails (cached, invalidated by per-frame content hash)
