@@ -2711,7 +2711,23 @@ impl Session {
     /// [`MAX_PALETTE_COLORS`](crate::document::MAX_PALETTE_COLORS) unique colors (early abort —
     /// presence only, no ranking or occurrence counts).
     pub fn used_colors_json(&self) -> String {
-        match self.used_colors(crate::document::MAX_PALETTE_COLORS) {
+        Self::colors_json(self.used_colors(crate::document::MAX_PALETTE_COLORS))
+    }
+
+    /// [`used_colors_json`](Self::used_colors_json) with the colors in palette order — the same
+    /// stable [`palette_sort_key`](crate::color::palette_sort_key) ordering `SortPalette` applies
+    /// (grays first, then hue ramps dark→light), discovery order breaking ties. The shell's
+    /// "From artwork colors" preview shows exactly the palette that importing these colors
+    /// creates, so no `SortPalette` follow-up is needed.
+    pub fn used_colors_sorted_json(&self) -> String {
+        Self::colors_json(self.used_colors(crate::document::MAX_PALETTE_COLORS).map(|mut cs| {
+            cs.sort_by_key(|&c| crate::color::palette_sort_key(c));
+            cs
+        }))
+    }
+
+    fn colors_json(colors: Option<Vec<Rgba8>>) -> String {
+        match colors {
             None => "{\"over_limit\":true}".to_string(),
             Some(cs) => {
                 let mut s = String::from("{\"colors\":[");
@@ -6882,6 +6898,45 @@ mod tests {
         s.doc.frames[1].layers[0].pixels.set(o.x + 1, o.y, Rgba8::rgb(9, 8, 7));
         let cs = s.used_colors(256).unwrap();
         assert_eq!(cs, vec![Rgba8::rgb(1, 2, 3), Rgba8::rgb(9, 8, 7)], "frames scanned in order");
+    }
+
+    #[test]
+    fn used_colors_sorted_json_matches_import_then_sort_palette() {
+        // Paint a handful of colors in a deliberately unsorted discovery order: a mid gray, a
+        // red, black, a blue, a second red shade, white. The sorted query must equal what
+        // importing the discovery-order list and running SortPalette produces.
+        let mut s = Session::new(8, 1);
+        let o = s.doc.origin();
+        let px = [
+            Rgba8::rgb(128, 128, 128),
+            Rgba8::rgb(200, 30, 30),
+            Rgba8::rgb(0, 0, 0),
+            Rgba8::rgb(30, 60, 220),
+            Rgba8::rgb(120, 10, 10),
+            Rgba8::rgb(255, 255, 255),
+        ];
+        for (i, c) in px.iter().enumerate() {
+            s.doc.frames[0].layers[0].pixels.set(o.x + i as i32, o.y, *c);
+        }
+        let discovery = s.used_colors(256).unwrap();
+        assert_eq!(discovery, px.to_vec(), "discovery order is raster order");
+        let mut script = String::from("NewPalette(Artwork colors)");
+        for c in &discovery {
+            script.push_str(&format!("
+AddPaletteColor({})", c.to_hex()));
+        }
+        script.push_str("
+SortPalette()");
+        s.run_script(&script).unwrap();
+        let sorted_palette: Vec<String> = s.doc.palettes[s.doc.active_palette].colors.iter().map(|c| c.to_hex()).collect();
+        let expected = format!(
+            "{{\"colors\":[{}]}}",
+            sorted_palette.iter().map(|h| format!("\"{}\"", h)).collect::<Vec<_>>().join(",")
+        );
+        assert_eq!(s.used_colors_sorted_json(), expected);
+        assert_ne!(s.used_colors_sorted_json(), s.used_colors_json(), "the fixture is not already sorted");
+        // Over the limit and empty shapes are shared with the discovery-order query.
+        assert_eq!(Session::new(2, 2).used_colors_sorted_json(), "{\"colors\":[]}");
     }
 
     #[test]

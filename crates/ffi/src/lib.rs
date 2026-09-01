@@ -312,6 +312,16 @@ pub extern "C" fn mkpx_used_colors_json(ptr: *mut Session) -> *mut c_char {
     }
 }
 
+/// [`mkpx_used_colors_json`] in palette order (the `SortPalette` ordering, discovery order
+/// breaking ties) — the shell's "From artwork colors" preview. Free with `mkpx_free_string`.
+#[no_mangle]
+pub extern "C" fn mkpx_used_colors_sorted_json(ptr: *mut Session) -> *mut c_char {
+    match session(ptr) {
+        Some(s) => cstring(&s.used_colors_sorted_json()),
+        None => cstring("{}"),
+    }
+}
+
 /// Upper-bound estimate of the `.mkpx` payload the document saves to (bytes) — check before
 /// `mkpx_save` on constrained platforms (SPEC §8.2b).
 #[no_mangle]

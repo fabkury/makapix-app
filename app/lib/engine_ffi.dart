@@ -266,6 +266,7 @@ class Engine {
   late final _StateD _state = _lib.lookupFunction<_StateC, _StateD>('mkpx_state_json');
   late final _StateD _memJson = _lib.lookupFunction<_StateC, _StateD>('mkpx_mem_json');
   late final _StateD _usedColors = _lib.lookupFunction<_StateC, _StateD>('mkpx_used_colors_json');
+  late final _StateD _usedColorsSorted = _lib.lookupFunction<_StateC, _StateD>('mkpx_used_colors_sorted_json');
   late final _U64D _saveEstimate = _lib.lookupFunction<_U64C, _U64D>('mkpx_save_estimate');
   late final _OutlineD _outline = _lib.lookupFunction<_OutlineC, _OutlineD>('mkpx_outline_mask');
   late final _U32D _outlinePresent = _lib.lookupFunction<_U32C, _U32D>('mkpx_outline_present');
@@ -411,6 +412,38 @@ class Engine {
     final s = p.toDartString();
     _freeStr(p);
     return s;
+  }
+
+  /// [usedColorsJson] in palette order — the `SortPalette` ordering (grays first, then hue
+  /// ramps), so the "From artwork colors" preview is exactly the palette importing them creates.
+  String usedColorsSortedJson() {
+    final p = _usedColorsSorted(_s);
+    final s = p.toDartString();
+    _freeStr(p);
+    return s;
+  }
+
+  /// [usedColorsSortedJson] **off the UI thread**: a background isolate builds its own engine
+  /// from `docBytes` (a `.mkpx` snapshot from [save]) and runs the scan there, so the palette
+  /// page's spinner keeps animating on big multi-frame documents. Falls back to a synchronous
+  /// scan if the isolate can't run. The session pointer never crosses isolates. [audit F-12]
+  /// Returns `{}` when the snapshot doesn't load.
+  static Future<String> usedColorsInBackground(Uint8List docBytes) async {
+    try {
+      return await Isolate.run(() => _usedColorsFromBytes(docBytes));
+    } catch (_) {
+      return _usedColorsFromBytes(docBytes);
+    }
+  }
+
+  static String _usedColorsFromBytes(Uint8List docBytes) {
+    final e = Engine(8, 8);
+    try {
+      if (!e.load(docBytes).loaded) return '{}';
+      return e.usedColorsSortedJson();
+    } finally {
+      e.dispose();
+    }
   }
 
   /// Low-64-bit content hash of a frame (for thumbnail cache invalidation).
