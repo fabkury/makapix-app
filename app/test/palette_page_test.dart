@@ -5,12 +5,16 @@ import 'package:makapix_club/editor/palette_page.dart';
 
 class FakePaletteHost implements PaletteHost {
   FakePaletteHost(this.palettes,
-      {this.active = 0, this.usedColors = '{"colors":[]}', this.pendingDraft = false});
+      {this.active = 0, this.usedColors = '{"colors":[]}', this.pendingDraft = false, this.extract});
   List<PaletteInfo> palettes;
   int active;
   String usedColors;
   bool pendingDraft;
   final List<String> scripts = [];
+  final List<Color> primaries = [];
+
+  /// Overrides the extraction future (e.g. a never-completing one to hold the spinner).
+  Future<String> Function()? extract;
 
   @override
   bool get hasPendingDraft => pendingDraft;
@@ -25,7 +29,10 @@ class FakePaletteHost implements PaletteHost {
   }
 
   @override
-  String usedColorsJson() => usedColors;
+  Future<String> extractArtworkColors() => extract != null ? extract!() : Future.value(usedColors);
+
+  @override
+  void setPrimary(Color c) => primaries.add(c);
 }
 
 const _red = Color(0xFFFF0000);
@@ -179,7 +186,10 @@ void main() {
     expect(find.byType(PalettePage), findsNothing); // popped back
   });
 
-  testWidgets('from-artwork over the color limit shows the toast and sends nothing', (t) async {
+  // The Artwork colors page's own behavior is covered in artwork_colors_page_test.dart; these
+  // two pin the palette page's side of the flow: it opens the page, sends nothing itself, and
+  // toasts the count only when the page pops one (Accept).
+  testWidgets('from-artwork over the color limit: the page says so and nothing is sent', (t) async {
     final host = FakePaletteHost(
       [const PaletteInfo('Mine', [_red])],
       usedColors: '{"over_limit":true}',
@@ -191,9 +201,14 @@ void main() {
     await t.pumpAndSettle();
     expect(host.scripts, isEmpty);
     expect(find.textContaining('more than 256 colors'), findsOneWidget);
+    await t.tap(find.widgetWithText(FilledButton, 'Close'));
+    await t.pumpAndSettle();
+    expect(find.text('Palettes'), findsOneWidget); // back on the palette page
+    expect(host.scripts, isEmpty);
   });
 
-  testWidgets('from-artwork with colors creates the Artwork colors palette', (t) async {
+  testWidgets('from-artwork with colors: Accept creates the Artwork colors palette (already sorted) and toasts',
+      (t) async {
     final host = FakePaletteHost(
       [const PaletteInfo('Mine', [_red])],
       usedColors: '{"colors":["#FF0000FF","#00FF00FF"]}',
@@ -203,9 +218,11 @@ void main() {
     await t.pumpAndSettle();
     await t.tap(find.widgetWithText(ListTile, 'From artwork colors'));
     await t.pumpAndSettle();
-    expect(host.scripts, [
-      'NewPalette(Artwork colors)\nAddPaletteColor(#FF0000FF)\nAddPaletteColor(#00FF00FF)\nSortPalette()',
-    ]);
+    expect(host.scripts, isEmpty, reason: 'inspecting commits nothing');
+    await t.tap(find.widgetWithText(FilledButton, 'Accept'));
+    await t.pumpAndSettle();
+    expect(host.scripts, ['NewPalette(Artwork colors)\nAddPaletteColor(#FF0000FF)\nAddPaletteColor(#00FF00FF)']);
+    expect(find.text('Created "Artwork colors" (2 colors)'), findsOneWidget);
   });
 
   testWidgets('sort reconfirms; cancel sends nothing, confirm sends SortPaletteAt; single-color disabled',

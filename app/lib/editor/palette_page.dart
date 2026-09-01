@@ -17,6 +17,7 @@ import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter/services.dart' show AssetBundle, HapticFeedback, rootBundle;
 
 import '../engine_ffi.dart';
+import 'artwork_colors_page.dart';
 import 'palette_io.dart';
 
 /// Palettes per document — mirrors the engine's MAX_PALETTES (the .mkpx loader bound). The
@@ -56,8 +57,14 @@ abstract class PaletteHost {
   /// Runs a DSL script; null on success, else the engine's error string.
   String? run(String dsl);
 
-  /// `{"colors":["#RRGGBBAA",...]}` or `{"over_limit":true}` (engine aborts past 256 uniques).
-  String usedColorsJson();
+  /// The artwork's used colors in palette (SortPalette) order: `{"colors":["#RRGGBBAA",...]}`
+  /// or `{"over_limit":true}` (the engine aborts past 256 uniques); `{}` when the read failed.
+  /// A Future because the engine host runs the scan off the UI thread (see
+  /// [Engine.usedColorsInBackground]) — the Artwork colors page shows a spinner meanwhile.
+  Future<String> extractArtworkColors();
+
+  /// Makes [c] the editor's primary color (the Artwork colors page's "Set as primary color").
+  void setPrimary(Color c);
 
   /// True when the editor has an uncommitted Draft. Opening this page is NOT a context change
   /// under ADR 0011, so the Draft survives — but extraction reads the COMMITTED document, which
@@ -67,8 +74,11 @@ abstract class PaletteHost {
 }
 
 class EnginePaletteHost implements PaletteHost {
-  EnginePaletteHost(this.engine, {this.onMutated, this.onDsl, this.pendingDraft});
+  EnginePaletteHost(this.engine, {this.onMutated, this.onDsl, this.pendingDraft, this.onSetPrimary});
   final Engine engine;
+
+  /// The editor's own primary-color setter (state + `SetPrimaryColor` through its `_send`).
+  final void Function(Color c)? onSetPrimary;
 
   /// Supplied by the editor so the page can warn about an uncommitted Draft [G-19].
   final bool Function()? pendingDraft;
@@ -102,8 +112,13 @@ class EnginePaletteHost implements PaletteHost {
     return err;
   }
 
+  /// A `.mkpx` snapshot of the committed document, scanned in a background isolate — the
+  /// session pointer never crosses isolates (the export path's idiom). [audit F-12]
   @override
-  String usedColorsJson() => engine.usedColorsJson();
+  Future<String> extractArtworkColors() => Engine.usedColorsInBackground(engine.save());
+
+  @override
+  void setPrimary(Color c) => onSetPrimary?.call(c);
 }
 
 class PalettePage extends StatefulWidget {
@@ -377,31 +392,18 @@ class _PalettePageState extends State<PalettePage> {
     _toast('Imported "${p.name}" (${p.colors.length} colors)');
   }
 
+  // Inspect-before-commit (2026-09-01): the Artwork colors page extracts (spinner), shows the
+  // over-cap / empty / failed message or the sorted palette as a swatch grid, and only its Accept
+  // creates the palette. It pops the color count on Accept, null on Reject / back. Its color
+  // sheet can also add single colors to the active palette, so the list reloads either way.
   Future<void> _fromArtwork() async {
     if (!_belowCap()) return;
-    // [G-19] Say so before extracting: the pending Draft is a display-only preview and is not
-    // part of what gets read.
-    if (widget.host.hasPendingDraft) {
-      _toast('Colors come from the saved artwork — your pending edit is not included');
-    }
-    Map<String, dynamic> r;
-    try {
-      r = json.decode(widget.host.usedColorsJson()) as Map<String, dynamic>;
-    } catch (_) {
-      return;
-    }
-    if (r['over_limit'] == true) {
-      _toast('The artwork uses more than $kMaxPaletteColors colors.');
-      return;
-    }
-    final colors = [for (final h in (r['colors'] as List? ?? const [])) parseHexColor(h.toString())];
-    if (colors.isEmpty) {
-      _toast('The artwork has no colors yet');
-      return;
-    }
-    // Extraction order is raster discovery order — sort the fresh palette into ramps.
-    _mutate('${buildImportScript('Artwork colors', colors)}\nSortPalette()');
-    _toast('Created "Artwork colors" (${colors.length} colors)');
+    final n = await Navigator.of(context).push<int>(
+      MaterialPageRoute(builder: (_) => ArtworkColorsPage(host: widget.host)),
+    );
+    if (!mounted) return;
+    setState(_reload);
+    if (n != null) _toast('Created "Artwork colors" ($n colors)');
   }
 
   void _importPreset(PaletteInfo p) {

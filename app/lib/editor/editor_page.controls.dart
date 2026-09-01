@@ -1137,6 +1137,7 @@ extension _EditorControls on _EditorPageState {
             // Draft preview on screen. Pushing this page is not a context change (ADR 0011),
             // so the Draft deliberately survives the trip.
             pendingDraft: () => _hasAnyDraft,
+            onSetPrimary: _setPrimary, // the Artwork colors page's "Set as primary color"
             onDsl: (dsl) => _journal?.record(dsl)), // palette DSL reaches the Journal [replay]
       ),
     ));
