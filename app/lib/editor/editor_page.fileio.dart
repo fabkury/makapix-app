@@ -116,45 +116,81 @@ extension _EditorFileIo on _EditorPageState {
       srcImg.dispose();
       return;
     }
-    int mode = 0; // Fit
+    final srcW = srcImg.width, srcH = srcImg.height;
+    // The Fit / Stretch / Crop chooser only earns its place for a source larger than the canvas
+    // (2026-09-01): a source no larger than the canvas is placed 1:1 centered unless the user
+    // flips "Scale up to fit"; one the exact canvas size has a single outcome and no scaling UI.
+    final sizeClass = importSizeClass(srcW, srcH, engine.width, engine.height);
+    int mode = 0; // Fit (large sources)
+    bool scaleUp = false; // small sources
     bool asLayer = true;
-    Rect? cropRect; // in source pixels
+    Rect? cropRect; // in source pixels; set together with mode == 2, never orphaned
+    // Full-screen crop editor. Uses the OUTER _importImage `context` (not the dialog builder's
+    // `ctx`): the route stacks above the still-open import dialog and returns to it on pop, so
+    // `setS` runs normally. Cancelling keeps the previous mode (and any earlier crop).
+    Future<void> pickCrop(StateSetter setS) async {
+      final r = await Navigator.of(context).push<Rect>(MaterialPageRoute(
+        builder: (_) => CropPage(bytes: bytes, srcW: srcW, srcH: srcH, canvasW: engine.width, canvasH: engine.height),
+      ));
+      if (r != null) {
+        setS(() {
+          mode = 2;
+          cropRect = r;
+        });
+      }
+    }
+    const caption = TextStyle(fontSize: 12, color: Colors.white60);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setS) => AlertDialog(
-          title: Text('Import ${res.files.single.name} (${srcImg.width}×${srcImg.height})'),
+          title: Text('Import ${res.files.single.name} ($srcW×$srcH)'),
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Scaling', style: TextStyle(fontSize: 12, color: Colors.white60)),
-            const SizedBox(height: 4),
-            ToggleButtons(
-              isSelected: [mode == 0, mode == 1, mode == 2],
-              onPressed: (i) => setS(() { mode = i; if (i != 2) cropRect = null; }),
-              children: const [Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('Fit')), Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('Stretch')), Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('Crop'))],
-            ),
-            if (mode == 2)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.crop, size: 16),
-                  label: Text(cropRect == null ? 'Select crop area…' : 'Crop: ${cropRect!.width.toInt()}×${cropRect!.height.toInt()}'),
-                  onPressed: () async {
-                    // Full-screen crop editor. Uses the OUTER _importImage `context` (not the dialog
-                    // builder's `ctx`): the route stacks above the still-open import dialog and returns
-                    // to it on pop, so `setS` runs normally.
-                    final r = await Navigator.of(context).push<Rect>(MaterialPageRoute(
-                      builder: (_) => CropPage(
-                        bytes: bytes,
-                        srcW: srcImg.width,
-                        srcH: srcImg.height,
-                        canvasW: engine.width,
-                        canvasH: engine.height,
-                      ),
-                    ));
-                    if (r != null) setS(() => cropRect = r);
-                  },
-                ),
+            if (sizeClass == ImportSizeClass.large) ...[
+              const Text('Scaling', style: caption),
+              const SizedBox(height: 4),
+              ToggleButtons(
+                isSelected: [mode == 0, mode == 1, mode == 2],
+                // Tapping Crop opens the crop editor at once; Fit/Stretch drop any crop.
+                onPressed: (i) {
+                  if (i == 2) {
+                    pickCrop(setS);
+                  } else {
+                    setS(() {
+                      mode = i;
+                      cropRect = null;
+                    });
+                  }
+                },
+                children: const [Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('Fit')), Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('Stretch')), Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('Crop'))],
               ),
+              if (mode == 2 && cropRect != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.crop, size: 16),
+                    label: Text('Crop: ${cropRect!.width.toInt()}×${cropRect!.height.toInt()} — edit…'),
+                    onPressed: () => pickCrop(setS),
+                  ),
+                ),
+            ] else ...[
+              Text(
+                sizeClass == ImportSizeClass.exact
+                    ? 'Same size as the canvas: placed 1:1.'
+                    : scaleUp
+                        ? 'Scaled up to fit the ${engine.width}×${engine.height} canvas (aspect kept), centered.'
+                        : 'Placed 1:1, centered on the ${engine.width}×${engine.height} canvas.',
+                style: caption,
+              ),
+              if (sizeClass == ImportSizeClass.small)
+                SwitchListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Scale up to fit the canvas'),
+                  value: scaleUp,
+                  onChanged: (v) => setS(() => scaleUp = v),
+                ),
+            ],
             const SizedBox(height: 12),
             SwitchListTile(
               dense: true,
@@ -175,6 +211,10 @@ extension _EditorFileIo on _EditorPageState {
     );
     srcImg.dispose(); // only needed for the dialog title + crop bounds [audit]
     if (ok != true) return;
+    // A small source resolves to the engine's crop path (whole source, 1:1 centered) or Fit.
+    final placement = sizeClass == ImportSizeClass.large
+        ? (mode: mode, crop: cropRect)
+        : smallSourceImportArgs(scaleUp: scaleUp, srcW: srcW, srcH: srcH);
 
     // Decode on a background isolate under a modal spinner: the decode is the expensive half
     // of an import (seconds for a many-frame GIF) and used to freeze the UI [audit #3]. The
@@ -186,13 +226,13 @@ extension _EditorFileIo on _EditorPageState {
       try {
         if (!mounted) return ImportStatus.failed; // engine may be gone; skip the apply
         return engine.importDecoded(img,
-            mode: mode,
+            mode: placement.mode,
             asLayer: asLayer,
             startFrame: engine.activeFrame,
-            cropX: cropRect?.left.toInt() ?? 0,
-            cropY: cropRect?.top.toInt() ?? 0,
-            cropW: cropRect?.width.toInt() ?? 0,
-            cropH: cropRect?.height.toInt() ?? 0);
+            cropX: placement.crop?.left.toInt() ?? 0,
+            cropY: placement.crop?.top.toInt() ?? 0,
+            cropW: placement.crop?.width.toInt() ?? 0,
+            cropH: placement.crop?.height.toInt() ?? 0);
       } finally {
         img.dispose();
       }
