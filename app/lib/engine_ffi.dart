@@ -72,8 +72,9 @@ typedef _FreeStringC = Void Function(Pointer<Utf8>);
 typedef _FreeStringD = void Function(Pointer<Utf8>);
 typedef _FreeBytesC = Void Function(Pointer<Uint8>, Uint64);
 typedef _FreeBytesD = void Function(Pointer<Uint8>, int);
-typedef _ImportC = Int32 Function(Pointer<Void>, Pointer<Uint8>, IntPtr, Int32, Int32, Uint32, Int32, Int32, Int32, Int32);
-typedef _ImportD = int Function(Pointer<Void>, Pointer<Uint8>, int, int, int, int, int, int, int, int);
+typedef _ImportC = Int32 Function(
+    Pointer<Void>, Pointer<Uint8>, IntPtr, Int32, Int32, Uint32, Int32, Int32, Int32, Int32, Int32, Int32, Int32);
+typedef _ImportD = int Function(Pointer<Void>, Pointer<Uint8>, int, int, int, int, int, int, int, int, int, int, int);
 typedef _DecodeImageC = Pointer<Uint8> Function(Pointer<Uint8>, IntPtr, Pointer<Uint64>, Pointer<Int32>);
 typedef _DecodeImageD = Pointer<Uint8> Function(Pointer<Uint8>, int, Pointer<Uint64>, Pointer<Int32>);
 typedef _ExportPngC = Pointer<Uint8> Function(Pointer<Void>, Uint32, Uint32, Pointer<Uint64>);
@@ -701,12 +702,24 @@ class Engine {
 
   /// Import an image; mode 0=Fit,1=Stretch,2=Crop. Pass a crop rect (source pixels) to use an
   /// explicit interactive crop region, placed 1:1 centered on the canvas (downscaled to fit only
-  /// when larger than the canvas, never upscaled).
+  /// when larger than the canvas, never upscaled). `placeX`/`placeY` (both, canvas pixels) put the
+  /// placed image's top-left there instead of centering it (ADR 0019); off-canvas parts drop.
   bool importImage(Uint8List data,
-      {int mode = 0, bool asLayer = true, int startFrame = 0, int cropX = 0, int cropY = 0, int cropW = 0, int cropH = 0}) {
+      {int mode = 0,
+      bool asLayer = true,
+      int startFrame = 0,
+      int cropX = 0,
+      int cropY = 0,
+      int cropW = 0,
+      int cropH = 0,
+      int? placeX,
+      int? placeY}) {
     final p = malloc<Uint8>(data.length);
     p.asTypedList(data.length).setAll(0, data);
-    final ok = _import(_s, p, data.length, mode, asLayer ? 1 : 0, startFrame, cropX, cropY, cropW, cropH) == 0;
+    final place = placeX != null && placeY != null;
+    final ok = _import(_s, p, data.length, mode, asLayer ? 1 : 0, startFrame, cropX, cropY, cropW, cropH,
+            place ? 1 : 0, placeX ?? 0, placeY ?? 0) ==
+        0;
     malloc.free(p);
     return ok;
   }
@@ -716,10 +729,19 @@ class Engine {
   /// against the live session, so it belongs on the UI isolate; the expensive decode already
   /// happened in the background. The caller still owns `img` (dispose it in a `finally`).
   ImportStatus importDecoded(DecodedImage img,
-      {int mode = 0, bool asLayer = true, int startFrame = 0, int cropX = 0, int cropY = 0, int cropW = 0, int cropH = 0}) {
+      {int mode = 0,
+      bool asLayer = true,
+      int startFrame = 0,
+      int cropX = 0,
+      int cropY = 0,
+      int cropW = 0,
+      int cropH = 0,
+      int? placeX,
+      int? placeY}) {
     if (img._freed) return ImportStatus.failed;
+    final place = placeX != null && placeY != null;
     final rc = _importDecoded(_s, Pointer<Uint8>.fromAddress(img._addr), img._len, mode,
-        asLayer ? 1 : 0, startFrame, cropX, cropY, cropW, cropH);
+        asLayer ? 1 : 0, startFrame, cropX, cropY, cropW, cropH, place ? 1 : 0, placeX ?? 0, placeY ?? 0);
     return switch (rc) {
       0 => ImportStatus.ok,
       -2 => ImportStatus.refused,

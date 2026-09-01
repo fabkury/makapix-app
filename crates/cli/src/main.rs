@@ -253,6 +253,7 @@ fn main() {
                     start_frame: start + if as_layer { k } else { 0 },
                     as_layer,
                     crop_rect: None,
+                    placement: None,
                 };
                 session.import_decoded(&frames, cfg);
             }

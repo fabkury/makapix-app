@@ -44,6 +44,11 @@ pub struct ImportConfig {
     /// that region is placed **1:1, centered** on the canvas — downscaled (aspect-preserved) only
     /// when larger than the canvas, never upscaled — overriding `mode`.
     pub crop_rect: Option<IRect>,
+    /// Explicit placement (ADR 0019): the top-left of the placed image in canvas pixels, replacing
+    /// the centered anchor of the crop-rect and `Fit` paths. May be negative or run past the far
+    /// edge — the outside part is dropped. Ignored by `Stretch` (fills the canvas) and by the
+    /// anchored `Crop` mode. `None` keeps today's centering.
+    pub placement: Option<(i32, i32)>,
 }
 
 impl Default for ImportConfig {
@@ -54,6 +59,7 @@ impl Default for ImportConfig {
             start_frame: 0,
             as_layer: true,
             crop_rect: None,
+            placement: None,
         }
     }
 }
@@ -84,24 +90,37 @@ fn src_get(rgba: &[u8], w: u32, h: u32, x: i32, y: i32) -> Rgba8 {
     }
 }
 
+/// Where a `(dw, dh)` placed image lands on a `(cw, ch)` canvas: the explicit placement when
+/// set, else centered (integer division, matching the pre-placement behavior exactly).
+fn place_origin(cfg: &ImportConfig, cw: u32, ch: u32, dw: u32, dh: u32) -> (i32, i32) {
+    cfg.placement.unwrap_or(((cw as i32 - dw as i32) / 2, (ch as i32 - dh as i32) / 2))
+}
+
+/// Set a canvas pixel only when it is on the canvas — a placement may hang off any edge.
+fn set_clipped(out: &mut RgbaBuffer, cw: u32, ch: u32, x: i32, y: i32, c: Rgba8) {
+    if x >= 0 && y >= 0 && (x as u32) < cw && (y as u32) < ch {
+        out.set(x, y, c);
+    }
+}
+
 /// Rasterize one decoded frame into a canvas-sized buffer per the config.
 pub fn frame_to_buffer(df: &DecodedFrame, cw: u32, ch: u32, cfg: &ImportConfig) -> RgbaBuffer {
     let mut out = RgbaBuffer::new(cw, ch);
-    // Explicit interactive crop: place the chosen source region **1:1, centered** — downscaling
+    // Explicit interactive crop: place the chosen source region **1:1** — downscaling
     // (aspect-preserved, nearest-neighbor) only when the region is larger than the canvas. Never
-    // upscaled; a smaller region lands centered with transparent padding.
+    // upscaled; a smaller region lands with transparent padding, centered unless `placement` says
+    // where (the outside part of an off-canvas placement is dropped).
     if let Some(cr) = cfg.crop_rect {
         let (rw, rh) = (cr.w.max(1), cr.h.max(1));
         let (dw, dh) = fit_no_upscale(rw, rh, cw, ch);
-        let ox = (cw as i32 - dw as i32) / 2;
-        let oy = (ch as i32 - dh as i32) / 2;
+        let (ox, oy) = place_origin(cfg, cw, ch, dw, dh);
         for y in 0..dh as i32 {
             for x in 0..dw as i32 {
                 let sx = cr.x + (x as u64 * rw as u64 / dw as u64) as i32;
                 let sy = cr.y + (y as u64 * rh as u64 / dh as u64) as i32;
                 let c = src_get(&df.rgba, df.w, df.h, sx, sy);
                 if c.a != 0 {
-                    out.set(ox + x, oy + y, c);
+                    set_clipped(&mut out, cw, ch, ox + x, oy + y, c);
                 }
             }
         }
@@ -124,15 +143,14 @@ pub fn frame_to_buffer(df: &DecodedFrame, cw: u32, ch: u32, cfg: &ImportConfig) 
             let scale = (cw as f32 / df.w as f32).min(ch as f32 / df.h as f32);
             let dw = (df.w as f32 * scale).round() as i32;
             let dh = (df.h as f32 * scale).round() as i32;
-            let ox = (cw as i32 - dw) / 2;
-            let oy = (ch as i32 - dh) / 2;
+            let (ox, oy) = place_origin(cfg, cw, ch, dw.max(0) as u32, dh.max(0) as u32);
             for y in 0..dh {
                 for x in 0..dw {
                     let sx = (x as f32 / scale) as i32;
                     let sy = (y as f32 / scale) as i32;
                     let c = src_get(&df.rgba, df.w, df.h, sx, sy);
                     if c.a != 0 {
-                        out.set(ox + x, oy + y, c);
+                        set_clipped(&mut out, cw, ch, ox + x, oy + y, c);
                     }
                 }
             }
@@ -234,6 +252,69 @@ mod tests {
             }
         }
         DecodedFrame { rgba, w, h, duration_us: 80_000 }
+    }
+
+    /// A `w`×`h` solid red frame.
+    fn solid(w: u32, h: u32) -> DecodedFrame {
+        let mut rgba = vec![0u8; (w * h * 4) as usize];
+        for px in rgba.chunks_mut(4) {
+            px[0] = 255;
+            px[3] = 255;
+        }
+        DecodedFrame { rgba, w, h, duration_us: 80_000 }
+    }
+
+    fn crop_cfg(w: u32, h: u32, placement: Option<(i32, i32)>) -> ImportConfig {
+        ImportConfig { crop_rect: Some(IRect::new(0, 0, w, h)), placement, ..Default::default() }
+    }
+
+    fn set_pixels(buf: &RgbaBuffer, w: u32, h: u32) -> Vec<(i32, i32)> {
+        let mut v = Vec::new();
+        for y in 0..h as i32 {
+            for x in 0..w as i32 {
+                if buf.get(x, y).a != 0 {
+                    v.push((x, y));
+                }
+            }
+        }
+        v
+    }
+
+    #[test]
+    fn placement_none_keeps_centering() {
+        let df = solid(2, 2);
+        let a = frame_to_buffer(&df, 6, 6, &crop_cfg(2, 2, None));
+        let b = frame_to_buffer(&df, 6, 6, &crop_cfg(2, 2, Some((2, 2))));
+        assert_eq!(set_pixels(&a, 6, 6), vec![(2, 2), (3, 2), (2, 3), (3, 3)]);
+        assert_eq!(set_pixels(&a, 6, 6), set_pixels(&b, 6, 6), "explicit center == default center");
+    }
+
+    #[test]
+    fn placement_moves_and_clips_at_every_edge() {
+        let df = solid(2, 2);
+        assert_eq!(set_pixels(&frame_to_buffer(&df, 4, 4, &crop_cfg(2, 2, Some((0, 0)))), 4, 4),
+            vec![(0, 0), (1, 0), (0, 1), (1, 1)]);
+        // Hanging off the top-left: only the bottom-right source pixel lands.
+        assert_eq!(set_pixels(&frame_to_buffer(&df, 4, 4, &crop_cfg(2, 2, Some((-1, -1)))), 4, 4), vec![(0, 0)]);
+        // Hanging off the bottom-right.
+        assert_eq!(set_pixels(&frame_to_buffer(&df, 4, 4, &crop_cfg(2, 2, Some((3, 3)))), 4, 4), vec![(3, 3)]);
+        // Entirely outside: nothing, and no panic.
+        assert!(set_pixels(&frame_to_buffer(&df, 4, 4, &crop_cfg(2, 2, Some((9, -9)))), 4, 4).is_empty());
+    }
+
+    #[test]
+    fn placement_applies_to_fit_letterbox_but_not_stretch() {
+        // 4×2 source into 4×4: Fit gives a 4×2 band, centered at y=1 by default, at y=0 when placed.
+        let df = solid(4, 2);
+        let centered = frame_to_buffer(&df, 4, 4, &ImportConfig { mode: ScaleMode::Fit, ..Default::default() });
+        assert_eq!(set_pixels(&centered, 4, 4).iter().map(|p| p.1).min(), Some(1));
+        let placed = frame_to_buffer(
+            &df, 4, 4, &ImportConfig { mode: ScaleMode::Fit, placement: Some((0, 0)), ..Default::default() });
+        assert_eq!(set_pixels(&placed, 4, 4).iter().map(|p| p.1).max(), Some(1));
+        assert_eq!(set_pixels(&placed, 4, 4).len(), 8);
+        let stretched = frame_to_buffer(
+            &df, 4, 4, &ImportConfig { mode: ScaleMode::Stretch, placement: Some((2, 2)), ..Default::default() });
+        assert_eq!(set_pixels(&stretched, 4, 4).len(), 16, "Stretch ignores placement");
     }
 
     #[test]

@@ -565,6 +565,9 @@ fn import_frames_into(
     crop_y: i32,
     crop_w: i32,
     crop_h: i32,
+    place: c_int,
+    place_x: i32,
+    place_y: i32,
 ) -> c_int {
     use makapix_engine::geom::IRect;
     use makapix_engine::import::{Anchor, ImportConfig, ScaleMode};
@@ -586,6 +589,7 @@ fn import_frames_into(
         start_frame: start_frame as usize,
         as_layer: as_layer != 0,
         crop_rect,
+        placement: if place != 0 { Some((place_x, place_y)) } else { None },
     };
     if s.import_decoded(frames, cfg) {
         0
@@ -597,8 +601,10 @@ fn import_frames_into(
 /// Import an image file (GIF/PNG/APNG/JPEG/BMP/WebP) into the document.
 /// `mode`: 0=Fit, 1=Stretch, 2=Crop. `as_layer`: 0/1. A non-empty crop rect (`crop_w>0 && crop_h>0`,
 /// source pixels) places that region 1:1 centered on the canvas (downscaled to fit only when larger,
-/// never upscaled), overriding `mode`. Returns 0 on success, -1 on decode failure, -2 when the
-/// memory-budget gate refused the import (document unchanged), -3 when the input is valid but
+/// never upscaled), overriding `mode`. `place != 0` places the image's top-left at canvas pixel
+/// (`place_x`, `place_y`) instead of centering it (crop-rect and Fit paths; the outside part of an
+/// off-canvas placement is dropped) — ADR 0019. Returns 0 on success, -1 on decode failure, -2 when
+/// the memory-budget gate refused the import (document unchanged), -3 when the input is valid but
 /// exceeds the codec's decode size limits (too large — worth telling apart from corrupt).
 #[no_mangle]
 #[allow(clippy::too_many_arguments)]
@@ -613,6 +619,9 @@ pub extern "C" fn mkpx_import(
     crop_y: i32,
     crop_w: i32,
     crop_h: i32,
+    place: c_int,
+    place_x: i32,
+    place_y: i32,
 ) -> c_int {
     let s = match session(ptr) {
         Some(s) => s,
@@ -624,7 +633,7 @@ pub extern "C" fn mkpx_import(
         Err(makapix_codec::CodecError::TooLarge(_)) => return -3,
         Err(_) => return -1,
     };
-    import_frames_into(s, &frames, mode, as_layer, start_frame, crop_x, crop_y, crop_w, crop_h)
+    import_frames_into(s, &frames, mode, as_layer, start_frame, crop_x, crop_y, crop_w, crop_h, place, place_x, place_y)
 }
 
 // ---- background-decode import (audit #3, off-isolate half) ----
@@ -701,6 +710,9 @@ pub extern "C" fn mkpx_import_decoded(
     crop_y: i32,
     crop_w: i32,
     crop_h: i32,
+    place: c_int,
+    place_x: i32,
+    place_y: i32,
 ) -> c_int {
     use makapix_engine::import::DecodedFrame;
     let s = match session(ptr) {
@@ -744,7 +756,7 @@ pub extern "C" fn mkpx_import_decoded(
     if at != len {
         return -1;
     }
-    import_frames_into(s, &frames, mode, as_layer, start_frame, crop_x, crop_y, crop_w, crop_h)
+    import_frames_into(s, &frames, mode, as_layer, start_frame, crop_x, crop_y, crop_w, crop_h, place, place_x, place_y)
 }
 
 /// Upscale (nearest-neighbor) then encode one frame's RGBA as PNG or lossless WebP, with coarse
@@ -1441,7 +1453,7 @@ mod tests {
         .unwrap();
 
         let p = mkpx_new(16, 16);
-        let rc = mkpx_import(p, gif.as_ptr(), gif.len(), 1 /*stretch*/, 0 /*new frames*/, 0, 0, 0, 0, 0);
+        let rc = mkpx_import(p, gif.as_ptr(), gif.len(), 1 /*stretch*/, 0 /*new frames*/, 0, 0, 0, 0, 0, 0, 0, 0);
         assert_eq!(rc, 0);
         assert_eq!(mkpx_frame_count(p), 3);
 
@@ -1473,13 +1485,13 @@ mod tests {
         let gif = three_frame_gif();
 
         let direct = mkpx_new(16, 16);
-        assert_eq!(mkpx_import(direct, gif.as_ptr(), gif.len(), 1, 0, 0, 0, 0, 0, 0), 0);
+        assert_eq!(mkpx_import(direct, gif.as_ptr(), gif.len(), 1, 0, 0, 0, 0, 0, 0, 0, 0, 0), 0);
 
         let mut blob_len: u64 = 0;
         let blob = mkpx_decode_image(gif.as_ptr(), gif.len(), &mut blob_len, std::ptr::null_mut());
         assert!(!blob.is_null() && blob_len > 0);
         let split = mkpx_new(16, 16);
-        assert_eq!(mkpx_import_decoded(split, blob, blob_len as usize, 1, 0, 0, 0, 0, 0, 0), 0);
+        assert_eq!(mkpx_import_decoded(split, blob, blob_len as usize, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0), 0);
         mkpx_free_bytes(blob, blob_len);
         assert_eq!(mkpx_frame_count(split), 3);
 
@@ -1519,7 +1531,7 @@ mod tests {
         assert_eq!(status, -3);
         // The fused entry point reports the same condition as its own return code.
         let p = mkpx_new(16, 16);
-        assert_eq!(mkpx_import(p, gif.as_ptr(), gif.len(), 1, 0, 0, 0, 0, 0, 0), -3);
+        assert_eq!(mkpx_import(p, gif.as_ptr(), gif.len(), 1, 0, 0, 0, 0, 0, 0, 0, 0, 0), -3);
         mkpx_free(p);
     }
 
@@ -1531,9 +1543,9 @@ mod tests {
         assert!(!blob.is_null());
         let p = mkpx_new(16, 16);
         // Truncated blob (header intact, pixel data cut short) must fail cleanly, no import.
-        assert_eq!(mkpx_import_decoded(p, blob, blob_len as usize - 7, 1, 0, 0, 0, 0, 0, 0), -1);
+        assert_eq!(mkpx_import_decoded(p, blob, blob_len as usize - 7, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0), -1);
         // Trailing garbage past the last frame is rejected too (strict length).
-        assert_eq!(mkpx_import_decoded(p, blob, blob_len as usize, 1, 0, 0, 0, 0, 0, 0), 0);
+        assert_eq!(mkpx_import_decoded(p, blob, blob_len as usize, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0), 0);
         assert_eq!(mkpx_frame_count(p), 3);
         mkpx_free_bytes(blob, blob_len);
         mkpx_free(p);
@@ -1550,13 +1562,13 @@ mod tests {
         let err = mkpx_run(p, script.as_ptr(), script.len());
         assert!(err.is_null());
         assert_eq!(
-            mkpx_import_decoded(p, blob, blob_len as usize, 1, 0, 0, 0, 0, 0, 0),
+            mkpx_import_decoded(p, blob, blob_len as usize, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0),
             -2,
             "budget refusal must be distinguishable from a decode failure"
         );
         assert_eq!(mkpx_frame_count(p), 1, "refused import leaves the document unchanged");
         // The fused entry point reports the refusal the same way.
-        assert_eq!(mkpx_import(p, gif.as_ptr(), gif.len(), 1, 0, 0, 0, 0, 0, 0), -2);
+        assert_eq!(mkpx_import(p, gif.as_ptr(), gif.len(), 1, 0, 0, 0, 0, 0, 0, 0, 0, 0), -2);
         mkpx_free_bytes(blob, blob_len);
         mkpx_free(p);
     }
