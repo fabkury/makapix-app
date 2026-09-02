@@ -435,25 +435,26 @@ extension _EditorCanvas on _EditorPageState {
 
   // The Move / Move-selection / Paste drags are incremental (the engine takes deltas), so a
   // held Shift can't be a point transform there: these two helpers track the drag's ORIGIN and
-  // the total already sent, and each move sends the corrective delta toward the (axis-locked,
-  // when constrained) total — the engine's accumulated position always equals the intended
-  // total, with no off-axis drift and no jump when Shift lands mid-drag.
-  void _beginTotalDrag(Offset originCanvas) {
-    _dragTotalOrigin = originCanvas;
-    _dragSentDx = 0;
-    _dragSentDy = 0;
+  // the total already sent (TotalDragTracker), and each move sends the corrective delta toward
+  // the (axis-locked, when constrained; geared, when Slow) total — the engine's accumulated
+  // position always equals the intended total, with no off-axis drift and no jump when Shift
+  // lands mid-drag. Slow (ADR 0020) gears the drag by draftGearDivisor at the view scale
+  // captured at begin (a second finger ends the drag, so the scale can't change under it).
+  // A geared drag reads sub-pixel canvas positions; a 1:1 drag keeps the historical floored
+  // path untouched — the two must not be mixed (a floored origin under a raw position would
+  // bias the total by up to a pixel).
+  void _beginTotalDrag(Offset pos, Size box) {
+    final (scale, _) = _view(box);
+    final divisor = _slowDrafts ? draftGearDivisor(scale) : 1.0;
+    final origin = divisor > 1.0 ? _toCanvasRaw(pos, box) : _toCanvas(pos, box);
+    _drag = TotalDragTracker(origin, divisor: divisor);
   }
 
-  (int, int) _totalDragDelta(Offset pCanvas) {
-    final origin = _dragTotalOrigin;
-    if (origin == null) return (0, 0);
-    var total = pCanvas - origin;
-    if (_constrainHeld) total = axisLockTotal(total);
-    final dx = total.dx.round() - _dragSentDx;
-    final dy = total.dy.round() - _dragSentDy;
-    _dragSentDx += dx;
-    _dragSentDy += dy;
-    return (dx, dy);
+  (int, int) _totalDragDelta(Offset pos, Size box) {
+    final drag = _drag;
+    if (drag == null) return (0, 0);
+    final p = drag.geared ? _toCanvasRaw(pos, box) : _toCanvas(pos, box);
+    return drag.step(p, axisLock: _constrainHeld);
   }
 
   void _beginDraw(Offset pos, Size box) {
@@ -491,12 +492,12 @@ extension _EditorCanvas on _EditorPageState {
     }
     if (_isCopyPaste) {
       _pasteDragLast = _toCanvas(pos, box); // a drag moves the floating paste draft (if any)
-      _beginTotalDrag(_pasteDragLast!);
+      _beginTotalDrag(pos, box);
       return;
     }
     if (_tool == 'Move' && _moveSelectionMode) {
       _moveSelDragLast = _toCanvas(pos, box); // a drag moves the selection mask, not the pixels
-      _beginTotalDrag(_moveSelDragLast!);
+      _beginTotalDrag(pos, box);
       _send('MoveSelectionBegin()'); // coalesce the whole drag into ONE undo step
       return;
     }
@@ -508,7 +509,7 @@ extension _EditorCanvas on _EditorPageState {
       // later drag would skip MoveDraftBegin, deadening the tool.
       _moveDraftStarted = _hasMoveDraft;
       _moveDragLast = _toCanvas(pos, box);
-      _beginTotalDrag(_moveDragLast!);
+      _beginTotalDrag(pos, box);
       return;
     }
     if (_isCursorTool) {
@@ -562,11 +563,10 @@ extension _EditorCanvas on _EditorPageState {
     }
     if (_isCopyPaste) {
       if (_hasPasteDraft && _pasteDragLast != null) {
-        final p = _toCanvas(pos, box);
-        final (dx, dy) = _totalDragDelta(p);
+        final (dx, dy) = _totalDragDelta(pos, box);
         if (dx != 0 || dy != 0) {
           _send('PasteMove($dx, $dy)');
-          _pasteDragLast = p;
+          _pasteDragLast = _toCanvas(pos, box);
           _redraw(full: false, refetchSelection: false); // paste preview is in the composited image
         }
       }
@@ -574,11 +574,10 @@ extension _EditorCanvas on _EditorPageState {
     }
     if (_tool == 'Move' && _moveSelectionMode) {
       if (_moveSelDragLast != null) {
-        final p = _toCanvas(pos, box);
-        final (dx, dy) = _totalDragDelta(p);
+        final (dx, dy) = _totalDragDelta(pos, box);
         if (dx != 0 || dy != 0) {
           _send('MoveSelection($dx, $dy)');
-          _moveSelDragLast = p;
+          _moveSelDragLast = _toCanvas(pos, box);
           _redraw(full: false, refetchSelection: true); // the marquee moved
         }
       }
@@ -586,15 +585,14 @@ extension _EditorCanvas on _EditorPageState {
     }
     if (_isMoveDrafting) {
       if (_moveDragLast != null) {
-        final p = _toCanvas(pos, box);
-        final (dx, dy) = _totalDragDelta(p);
+        final (dx, dy) = _totalDragDelta(pos, box);
         if (dx != 0 || dy != 0) {
           if (!_moveDraftStarted) {
             _send('MoveDraftBegin()'); // first movement lifts the content into the draft
             _moveDraftStarted = true;
           }
           _send('MoveDraftMove($dx, $dy)');
-          _moveDragLast = p;
+          _moveDragLast = _toCanvas(pos, box);
           _redraw(full: false, refetchSelection: true); // a selection draft moves the marquee too
         }
       }

@@ -31,6 +31,7 @@ import 'package:makapix_club/share/image_share.dart';
 import 'package:makapix_club/ui/layout.dart';
 
 import 'blend_modes.dart';
+import 'drag_gear.dart';
 import 'gallery/gallery_page.dart';
 import 'levels_math.dart';
 import 'palette_io.dart';
@@ -333,6 +334,10 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // Move tool layer-move edge modes (mutually exclusive; both off = Regular = pixels clip off):
   bool _protectPixels = false; // keep opaque pixels on-canvas (non-destructive)
   bool _wrap = false; // pixels leaving one edge re-enter the opposite edge
+  // Slow (ADR 0020): the Move / Move-selection / Paste draft drags are geared down (drag_gear.dart)
+  // so an exact pixel is easy to land. Shared by the Move and CopyPaste tools, session-only (not
+  // persisted, like Protect/Wrap) and UI-only — the engine never hears about it.
+  bool _slowDrafts = false;
   // Move tool mode: false = move the layer/pixels (default); true = move only the selection mask.
   bool _moveSelectionMode = false;
   Offset? _moveSelDragLast; // last canvas position while dragging the selection mask
@@ -401,11 +406,11 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // grammar, not a Binding; mid-drag changes re-evaluate on the next pointer event.
   bool _constrainHeld = false;
   // Shared by the Move / Move-selection / Paste drags (at most one drag exists at a time):
-  // the drag origin in canvas coords and the total delta already sent to the engine. The
-  // continue handlers send CORRECTIVE deltas toward the (possibly axis-locked) total from
-  // the origin, so a held Shift locks the whole drag without off-axis drift.
-  Offset? _dragTotalOrigin;
-  int _dragSentDx = 0, _dragSentDy = 0;
+  // the drag origin in canvas coords, the gear divisor, and the total delta already sent to
+  // the engine. The continue handlers send CORRECTIVE deltas toward the (possibly axis-locked,
+  // geared) total from the origin, so a held Shift locks the whole drag without off-axis drift
+  // and a Slow drag carries its fractional remainder across events (drag_gear.dart).
+  TotalDragTracker? _drag;
   // Multi-touch on the canvas: one finger draws, two+ fingers pan/zoom. While pinching, drawing is
   // suspended until all fingers lift.
   final Map<int, Offset> _touchPos = {}; // live position of every finger on the canvas

@@ -285,6 +285,7 @@ extension _EditorControls on _EditorPageState {
           },
         ),
       ));
+      children.add(_slowChip()); // at the END of row-1 by decision (ADR 0020)
     }
     if (_tool == 'Ruler') {
       label('Ruler');
@@ -648,6 +649,7 @@ extension _EditorControls on _EditorPageState {
       children.add(_miniBtn('Cut', () => _act('Cut()')));
       children.add(_miniBtn('Paste', () => _act('PasteDraft()')));
       children.add(_miniBtn('Clear', () => _act('ClearSelection()')));
+      children.add(_slowChip()); // gears the paste-draft drag too (ADR 0020)
     }
     if (_tool == 'HsvShift') {
       // Every slider change syncs the pending shift into the engine, whose display then
@@ -1055,6 +1057,20 @@ extension _EditorControls on _EditorPageState {
     _sendGradientStops();
     _persistGradient();
   }
+
+  // Slow (ADR 0020): one shared chip on the Move and CopyPaste rows — the same flag gears the
+  // Move / Move-selection / Paste draft drags (drag_gear.dart). Takes effect on the NEXT drag
+  // (the divisor is captured at drag begin); a pending draft is untouched. Session-only, UI-only.
+  Widget _slowChip() => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: FilterChip(
+          selected: _slowDrafts,
+          label: Text(_slowDrafts ? 'Slow ✔' : 'Slow'),
+          tooltip: 'Gear the drag down so the draft moves less than your finger, for exact placement',
+          selectedColor: const Color(0xFF30A050),
+          onSelected: (v) => setState(() => _slowDrafts = v),
+        ),
+      );
 
   // The gradient extra's quick menu (long-press / right-click on its row-1 chip): the same
   // family as the palette swatch sheet — "Use primary color" wears the primary's swatch there
