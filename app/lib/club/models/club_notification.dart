@@ -13,7 +13,18 @@ class ClubNotification {
   final String? contentSqid;
   final String? contentArtUrl;
   final String? emoji;
+  final String? commentId;
   final String? commentPreview;
+
+  // Report notifications only (`new_report` / `report_resolved`; report-artwork
+  // message 0001, additive). `reasonCode` is the D3 report reason; the
+  // `targetUser*` trio describes a reported *user* (resolved at read time, all
+  // three null together once the account is deleted). A reported post or
+  // comment rides in the content_* fields instead (comment → its parent post).
+  final String? reasonCode;
+  final String? targetUserHandle;
+  final String? targetUserPublicSqid;
+  final String? targetUserAvatarUrl;
 
   ClubNotification({
     required this.id,
@@ -27,10 +38,35 @@ class ClubNotification {
     this.contentSqid,
     this.contentArtUrl,
     this.emoji,
+    this.commentId,
     this.commentPreview,
+    this.reasonCode,
+    this.targetUserHandle,
+    this.targetUserPublicSqid,
+    this.targetUserAvatarUrl,
   });
 
   bool get hasContentLink => contentSqid != null && contentSqid!.isNotEmpty;
+
+  /// A reported user with a live profile to open. False once the account is
+  /// deleted (the server nulls the trio) and on every non-report type.
+  bool get hasTargetUser => targetUserPublicSqid != null && targetUserPublicSqid!.isNotEmpty;
+
+  /// Set when the notification is about a comment (the report-artwork comment
+  /// target, or the comment/reply types).
+  bool get isAboutComment =>
+      (commentId != null && commentId!.isNotEmpty) ||
+      (commentPreview != null && commentPreview!.isNotEmpty);
+
+  /// Where the whole tile opens: the post when there is one, else the reported
+  /// user's profile, else nowhere (the tile stays inert). Post wins because the
+  /// server never sends both (content_* and target_user_* are exclusive by
+  /// report target).
+  NotificationLink? get link {
+    if (hasContentLink) return NotificationLink.post(contentSqid!);
+    if (hasTargetUser) return NotificationLink.profile(targetUserPublicSqid!);
+    return null;
+  }
 
   factory ClubNotification.fromJson(Map<String, dynamic> j) => ClubNotification(
         id: (j['id'] ?? '').toString(),
@@ -44,7 +80,12 @@ class ClubNotification {
         contentSqid: j['content_sqid'] as String?,
         contentArtUrl: j['content_art_url'] as String?,
         emoji: j['emoji'] as String?,
+        commentId: j['comment_id']?.toString(),
         commentPreview: j['comment_preview'] as String?,
+        reasonCode: j['reason_code'] as String?,
+        targetUserHandle: j['target_user_handle'] as String?,
+        targetUserPublicSqid: j['target_user_public_sqid'] as String?,
+        targetUserAvatarUrl: j['target_user_avatar_url'] as String?,
       );
 
   ClubNotification asRead() => ClubNotification(
@@ -59,6 +100,24 @@ class ClubNotification {
         contentSqid: contentSqid,
         contentArtUrl: contentArtUrl,
         emoji: emoji,
+        commentId: commentId,
         commentPreview: commentPreview,
+        reasonCode: reasonCode,
+        targetUserHandle: targetUserHandle,
+        targetUserPublicSqid: targetUserPublicSqid,
+        targetUserAvatarUrl: targetUserAvatarUrl,
       );
 }
+
+/// The in-app destination a notification tile opens (see [ClubNotification.link]).
+class NotificationLink {
+  final NotificationLinkKind kind;
+  final String sqid;
+  const NotificationLink._(this.kind, this.sqid);
+  const NotificationLink.post(String sqid) : this._(NotificationLinkKind.post, sqid);
+  const NotificationLink.profile(String sqid) : this._(NotificationLinkKind.profile, sqid);
+  bool get isPost => kind == NotificationLinkKind.post;
+  bool get isProfile => kind == NotificationLinkKind.profile;
+}
+
+enum NotificationLinkKind { post, profile }

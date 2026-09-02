@@ -242,6 +242,138 @@ void main() {
     });
   });
 
+  // report-artwork message 0001 (2026-09-02): new_report / report_resolved
+  // carry the reported post (content_*), comment (comment_* + parent post),
+  // or user (target_user_*), plus reason_code; the app composes the copy.
+  group('Report notifications (report-artwork 0001)', () {
+    ClubNotification post({String? title = 'Sunset', String reason = 'copyright'}) =>
+        ClubNotification.fromJson({
+          'id': '1',
+          'notification_type': 'new_report',
+          'reason_code': reason,
+          'post_id': 3591,
+          'content_title': title,
+          'content_sqid': 'eDfc',
+          'content_art_url': 'https://cdn/x.webp',
+        });
+    ClubNotification comment() => ClubNotification.fromJson({
+          'id': '2',
+          'notification_type': 'new_report',
+          'reason_code': 'harassment',
+          'content_title': 'Sunset',
+          'content_sqid': 'eDfc',
+          'content_art_url': 'https://cdn/x.webp',
+          'comment_id': 'c-uuid',
+          'comment_preview': 'you are terrible',
+        });
+    ClubNotification user() => ClubNotification.fromJson({
+          'id': '3',
+          'notification_type': 'new_report',
+          'reason_code': 'spam',
+          'target_user_handle': 'spammy',
+          'target_user_public_sqid': 'uZ9k',
+          'target_user_avatar_url': 'https://cdn/a.png',
+        });
+    final configReasons = ModerationRules.fromJson(moderationBlock(reasons: [
+      {'code': 'spam', 'label': 'Spam (live label)'},
+    ]))!
+        .reportReasons;
+
+    test('parses the four additive fields and keeps them through asRead', () {
+      final u = user();
+      expect(u.reasonCode, 'spam');
+      expect(u.targetUserHandle, 'spammy');
+      expect(u.targetUserPublicSqid, 'uZ9k');
+      expect(u.targetUserAvatarUrl, 'https://cdn/a.png');
+      final r = u.asRead();
+      expect(r.isRead, isTrue);
+      expect(r.reasonCode, 'spam');
+      expect(r.targetUserPublicSqid, 'uZ9k');
+      expect(r.targetUserAvatarUrl, 'https://cdn/a.png');
+    });
+
+    test('link: post → post, user → profile, bare → inert', () {
+      expect(post().link!.isPost, isTrue);
+      expect(post().link!.sqid, 'eDfc');
+      // A comment report links to its parent post.
+      expect(comment().link!.isPost, isTrue);
+      expect(user().link!.isProfile, isTrue);
+      expect(user().link!.sqid, 'uZ9k');
+      // Target vanished between report and render → no tap target.
+      expect(ClubNotification.fromJson({'id': '4', 'notification_type': 'new_report'}).link,
+          isNull);
+      // Deleted user: the trio goes null together → inert.
+      final gone = ClubNotification.fromJson({
+        'id': '5',
+        'notification_type': 'new_report',
+        'reason_code': 'spam',
+        'target_user_public_sqid': null,
+      });
+      expect(gone.hasTargetUser, isFalse);
+      expect(gone.link, isNull);
+    });
+
+    test('reason label: config wins, then the baked-in table, then the raw code', () {
+      expect(reportReasonLabel('spam', reasons: configReasons), 'Spam (live label)');
+      expect(reportReasonLabel('spam'), 'Spam or misleading');
+      expect(reportReasonLabel('copyright', reasons: configReasons), 'Copyright or IP violation');
+      expect(reportReasonLabel('brand_new_code'), 'brand_new_code');
+      expect(reportReasonLabel(null), isNull);
+      expect(reportReasonLabel(''), isNull);
+    });
+
+    test('new_report copy: post', () {
+      expect(newReportText(post()), 'New report: "Sunset" was reported for Copyright or IP violation');
+      expect(newReportText(post(reason: 'spam'), reasons: configReasons),
+          'New report: "Sunset" was reported for Spam (live label)');
+    });
+
+    test('new_report copy: untitled post still names a post', () {
+      expect(newReportText(post(title: '')), 'New report: A post was reported for Copyright or IP violation');
+      expect(newReportText(post(title: null)),
+          'New report: A post was reported for Copyright or IP violation');
+    });
+
+    test('new_report copy: comment → parent post + excerpt on a second line', () {
+      expect(newReportText(comment()),
+          'New report: A comment on "Sunset" was reported for Harassment or bullying\nyou are terrible');
+    });
+
+    test('new_report copy: user', () {
+      expect(newReportText(user()), 'New report: @spammy was reported for Spam or misleading');
+    });
+
+    test('new_report copy: legacy row keeps its pre-formatted summary', () {
+      final legacy = ClubNotification.fromJson({
+        'id': '6',
+        'notification_type': 'new_report',
+        'content_title': 'New post report: copyright',
+      });
+      expect(newReportText(legacy), 'New post report: copyright');
+      expect(legacy.link, isNull);
+    });
+
+    test('new_report copy: bare (target vanished) and reason-only', () {
+      expect(newReportText(ClubNotification.fromJson({'id': '7', 'notification_type': 'new_report'})),
+          'New content report');
+      expect(
+          newReportText(ClubNotification.fromJson(
+              {'id': '8', 'notification_type': 'new_report', 'reason_code': 'hate'})),
+          'New report: Hate or discrimination');
+    });
+
+    test('report_resolved copy names the subject, never the action (D22)', () {
+      expect(reportResolvedText(post()), 'Thanks — we\'ve reviewed your report on "Sunset".');
+      expect(reportResolvedText(comment()),
+          'Thanks — we\'ve reviewed your report on a comment on "Sunset".');
+      expect(reportResolvedText(user()), 'Thanks — we\'ve reviewed your report on @spammy.');
+      expect(
+          reportResolvedText(
+              ClubNotification.fromJson({'id': '9', 'notification_type': 'report_resolved'})),
+          'Thanks — we\'ve reviewed your report.');
+    });
+  });
+
   group('Rules gate (reactive, fail-open)', () {
     ClubServerConfig withModeration() =>
         ClubServerConfig.fromJson({'moderation': moderationBlock()});

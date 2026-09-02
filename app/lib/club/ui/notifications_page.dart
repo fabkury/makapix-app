@@ -4,8 +4,11 @@ import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/club_notification.dart';
+import '../models/safety_copy.dart';
+import '../models/server_config.dart';
 import '../state/api_providers.dart';
 import '../state/notifications_providers.dart';
+import '../state/publish_providers.dart';
 import 'artwork_detail_page.dart';
 import 'profile_page.dart';
 import 'widgets/common.dart';
@@ -48,6 +51,9 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
   Widget build(BuildContext context) {
     final s = ref.watch(notificationsFeedProvider);
     final n = ref.read(notificationsFeedProvider.notifier);
+    // Live report-reason labels for the report tiles; null until the config
+    // loads (the copy helpers then fall back to their baked-in table).
+    final reasons = ref.watch(serverConfigProvider).valueOrNull?.moderation?.reportReasons;
     Widget body;
     if (s.error != null && s.items.isEmpty) {
       body = ClubErrorRetry(message: s.error!, onRetry: n.refresh);
@@ -72,7 +78,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                           width: 22,
                           child: CircularProgressIndicator(strokeWidth: 2))));
             }
-            return _tile(s.items[i]);
+            return _tile(s.items[i], reasons);
           },
         ),
       );
@@ -93,12 +99,15 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
     'post_approved',
   };
 
-  Widget _tile(ClubNotification x) {
+  static const _reportTypes = {'new_report', 'report_resolved'};
+
+  Widget _tile(ClubNotification x, List<ReportReason>? reasons) {
     final hasThumb = x.contentArtUrl != null && x.contentArtUrl!.isNotEmpty;
-    // `new_report` is forced inert until the server confirms what its
-    // content_sqid carries — for a user-target report it isn't a post sqid, so
-    // the default post link would open a broken page (ugc-safety R9).
-    final canTap = x.hasContentLink && x.type != 'new_report';
+    // Whole-tile link: the post when the payload names one, else the reported
+    // user's profile (report-artwork message 0001 — content_sqid is always a
+    // post sqid or null, a reported user rides in target_user_*), else inert
+    // (a report whose target vanished, trust_granted, legacy rows).
+    final link = x.link;
     // Actor avatar → profile (actor_public_sqid, nullable: anonymous/deleted
     // actors get an inert avatar and the whole-tile post link keeps working).
     final actorSqid = x.actorPublicSqid;
@@ -106,6 +115,15 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
         ? () => Navigator.push(
             context, MaterialPageRoute(builder: (_) => ProfilePage(sqid: actorSqid)))
         : null;
+    // Thumbnail slot: the artwork for post/comment targets, the reported user's
+    // avatar for user targets (mirrors the website's report card).
+    Widget? trailing;
+    if (hasThumb) {
+      trailing = SizedBox(width: 40, height: 40, child: PixelArtImage(url: x.contentArtUrl!));
+    } else if (x.hasTargetUser) {
+      trailing = HandleAvatar(
+          url: x.targetUserAvatarUrl, handle: x.targetUserHandle ?? '?', radius: 20);
+    }
     return ListTile(
       leading: _shieldTypes.contains(x.type)
           ? const CircleAvatar(radius: 18, child: Icon(Icons.shield, size: 18))
@@ -113,19 +131,24 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
               onTap: avatarTap,
               child: HandleAvatar(url: x.actorAvatarUrl, handle: x.actorHandle ?? '?', radius: 18),
             ),
-      title: Text(_text(x), maxLines: 2, overflow: TextOverflow.ellipsis),
+      // Comment reports carry the excerpt on a second line, so give report
+      // tiles one more line than the rest.
+      title: Text(_text(x, reasons),
+          maxLines: _reportTypes.contains(x.type) ? 3 : 2, overflow: TextOverflow.ellipsis),
       subtitle: Text(timeAgo(x.createdAt), style: const TextStyle(fontSize: 11)),
-      trailing: hasThumb
-          ? SizedBox(width: 40, height: 40, child: PixelArtImage(url: x.contentArtUrl!))
-          : null,
-      onTap: canTap
-          ? () => Navigator.push(
-              context, MaterialPageRoute(builder: (_) => ArtworkDetailPage(sqid: x.contentSqid!)))
-          : null,
+      trailing: trailing,
+      onTap: link == null
+          ? null
+          : () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => link.isPost
+                      ? ArtworkDetailPage(sqid: link.sqid)
+                      : ProfilePage(sqid: link.sqid))),
     );
   }
 
-  String _text(ClubNotification x) {
+  String _text(ClubNotification x, List<ReportReason>? reasons) {
     final who = x.actorHandle ?? 'Someone';
     switch (x.type) {
       case 'reaction':
@@ -169,12 +192,12 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
       case 'moderator_revoked':
         return 'Your moderator role was removed';
       case 'new_report':
-        // Server puts the summary ("New {target_type} report: {reason_code}")
-        // in content_title; post_id/content_sqid are null (no in-app queue to
-        // link to), so the tile stays no-tap (message 0003 §4b).
-        return x.contentTitle ?? 'New content report';
+        // Composed from reason_code + the reported post/comment/user
+        // (report-artwork message 0001); legacy rows keep their pre-formatted
+        // summary. The reports queue itself stays web-only.
+        return newReportText(x, reasons: reasons);
       case 'report_resolved':
-        return "Thanks — we've reviewed your report.";
+        return reportResolvedText(x);
       default:
         return '$who · ${x.type}';
     }
