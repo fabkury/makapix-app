@@ -62,12 +62,87 @@ extension _EditorFileIo on _EditorPageState {
         _ => 'Could not open this file.',
       };
 
+  // File → Open: any supported file becomes a NEW library drawing, true to the source (CONTEXT.md
+  // "Open" — Import is the other gesture, into the current drawing). The picked bytes are sniffed
+  // (open_file.dart), never trusted by extension: an .mkpx signature opens as a document, anything
+  // else is tried as a raster image.
   Future<void> _open() async {
-    final res = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['mkpx']);
+    final res = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: kOpenExtensions);
     if (res == null || res.files.single.path == null) return;
     final name = res.files.single.name;
     final bytes = await File(res.files.single.path!).readAsBytes();
     if (!mounted) return;
+    if (isMkpxBytes(bytes)) {
+      await _openMkpx(name, bytes);
+    } else {
+      await _openRaster(name, bytes);
+    }
+  }
+
+  // Open a raster file (PNG / GIF / APNG / WebP / JPEG / BMP) as a new drawing at its own size:
+  // one frame per animation frame with its duration, nothing scaled, cropped, or placed. A source
+  // over the canvas cap cannot open true to the source and is refused toward Import. The decode
+  // happens BEFORE the outgoing drawing is released, so a corrupt or refused file leaves the
+  // current drawing untouched; only the memory-budget refusal can still land after the switch
+  // (the Club-edit path's situation — the new drawing is then blank and says so).
+  Future<void> _openRaster(String name, Uint8List bytes) async {
+    // Dimensions only (the Import flow's probe): the Flutter decode is cheap next to the engine
+    // decode and answers "is this an image at all?" and "does it fit the cap?" first.
+    int w, h;
+    try {
+      final probe = await _decodeBytes(bytes);
+      w = probe.width;
+      h = probe.height;
+      probe.dispose();
+    } catch (_) {
+      if (mounted) _toast("Couldn't open $name: it isn't a .mkpx file or a supported image.");
+      return;
+    }
+    if (!mounted) return;
+    final refusal = openRasterRefusal(w, h, maxDim: Engine.maxDim);
+    if (refusal != null) {
+      _toast(refusal, duration: const Duration(seconds: 4));
+      return;
+    }
+    // Full decode on a background isolate under the modal spinner [audit #3] — the expensive
+    // half for a many-frame GIF.
+    final (img, decodeStatus) = await _runWithImportSpinner(() => Engine.decodeImageInBackground(bytes));
+    if (!mounted) {
+      img?.dispose();
+      return;
+    }
+    if (img == null) {
+      _toast(decodeStatus == ImportStatus.tooLarge
+          ? "Couldn't open $name: too many frames or pixels for this device."
+          : "Couldn't open $name (unsupported or corrupt).");
+      return;
+    }
+    var ok = false;
+    try {
+      if (!await _releaseOutgoingDrawingInteractive('"$name"')) return;
+      if (!mounted) return;
+      // A fresh canvas at the source size, then a 1:1 fill: Stretch onto an equal-sized canvas
+      // is the identity (the Club-edit path's idiom), and every frame lands as a new frame.
+      _send('NewDocument($w,$h)');
+      ok = engine.importDecoded(img, mode: 1, asLayer: false, startFrame: 0) == ImportStatus.ok;
+    } finally {
+      img.dispose();
+    }
+    _resendEngineTool();
+    _clubSource = null;
+    // Every pixel came from outside: the sticky import bit (artwork-provenance 0001 §1) carries
+    // the format, exactly as an Import would. A failed fill holds a blank document — claim nothing.
+    _provenance = ok ? (DocProvenance.fresh()..markImported(importedFormatFromFileName(name))) : DocProvenance.unknown();
+    await _createFreshDrawing(title: titleFromFileName(name), contentFromBytes: true, reason: 'open');
+    if (!mounted) return;
+    _toast(ok
+        ? 'Opened $name (${engine.frameCount} ${engine.frameCount == 1 ? 'frame' : 'frames'})'
+        : "Couldn't open $name: it would not fit in the memory budget.");
+    _refreshState();
+    _redraw();
+  }
+
+  Future<void> _openMkpx(String name, Uint8List bytes) async {
     // Opening an external file is a NEW library drawing (never overwrites the current one). Ask
     // keep/discard/cancel for a non-blank canvas, release the current drawing accordingly, then
     // load; only adopt a new drawing if the load succeeds, so a corrupt file leaves the current
@@ -80,10 +155,7 @@ extension _EditorFileIo on _EditorPageState {
       }
       _clubSource = null;
       _restoreProvenance(bytes);
-      await _createFreshDrawing(
-          title: name.replaceAll(RegExp(r'\.mkpx$', caseSensitive: false), ''),
-          contentFromBytes: true,
-          reason: 'open');
+      await _createFreshDrawing(title: titleFromFileName(name), contentFromBytes: true, reason: 'open');
       if (mounted) _toast('Opened $name');
     } else {
       // Load failed; resume autosaving (and journaling) the still-current drawing. The

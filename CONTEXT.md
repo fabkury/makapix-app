@@ -34,7 +34,9 @@ _Avoid_: "animation mode", "the animation editor", Stage, Studio, Motion (as pil
 Bringing a whole file into the Editor as a new drawing, faithfully: layers, blend modes,
 opacity, palette, and timing survive the trip. A file either Opens true to the source or is
 refused; only representational details the Editor lacks may degrade, and the artist is told
-when the look changes. Applies to .mkpx and Aseprite files.
+when the look changes. Applies to .mkpx and Aseprite files, and to plain raster files (PNG, GIF,
+APNG, WebP, JPEG, BMP), which Open as a new drawing at their own size with one frame per animation
+frame; a raster larger than the canvas cap is refused toward Import, which scales or crops.
 _Avoid_: import (that is a different gesture), load (reserve for engine internals)
 
 **Import**:

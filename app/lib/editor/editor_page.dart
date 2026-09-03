@@ -34,6 +34,7 @@ import 'blend_modes.dart';
 import 'drag_gear.dart';
 import 'gallery/gallery_page.dart';
 import 'levels_math.dart';
+import 'open_file.dart';
 import 'palette_io.dart';
 import 'palette_page.dart';
 import 'tap_again.dart';
