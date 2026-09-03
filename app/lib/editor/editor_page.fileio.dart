@@ -694,7 +694,8 @@ extension _EditorFileIo on _EditorPageState {
   }
 
   // W/H ride the row-1 idiom (2026-09-01): a 6×-geared slider for per-pixel control, and the
-  // number beside it is a tappable label opening the numeric-entry dialog (clamped to 1–256).
+  // number beside it is a tappable label opening the numeric-entry dialog (clamped to the engine's
+  // 1–512, [Engine.maxDim]).
   // The geared slider accumulates fractions, so every read rounds — the label, the Club check,
   // and the committed size agree (toInt() would truncate 63.7 to 63 under a "64" label).
   Future<void> _resizeCanvasDialog() async {
@@ -703,9 +704,13 @@ extension _EditorFileIo on _EditorPageState {
     int ax = 1, ay = 1; // anchor cell: 0 = left/top, 1 = center, 2 = right/bottom
     Widget dim(StateSetter setS, String short, String name, double value, ValueChanged<double> set) => Row(children: [
           SizedBox(width: 20, child: Text(short)),
-          Expanded(child: _GearedSlider(value: value, min: 1, max: 256, onChanged: (v) => setS(() => set(v)))),
+          Expanded(
+              child: _GearedSlider(
+                  value: value, min: Engine.minDim.toDouble(), max: Engine.maxDim.toDouble(), onChanged: (v) => setS(() => set(v)))),
           InkWell(
-            onTap: () => _editSliderValue(name, value, 1, 256, (v) => setS(() => set(v.roundToDouble())), integer: true),
+            onTap: () => _editSliderValue(name, value, Engine.minDim.toDouble(), Engine.maxDim.toDouble(),
+                (v) => setS(() => set(v.roundToDouble())),
+                integer: true),
             borderRadius: BorderRadius.circular(4),
             child: Container(
               width: 40,
@@ -755,7 +760,7 @@ extension _EditorFileIo on _EditorPageState {
                 Expanded(child: Text('Anchor: content stays pinned ${_anchorHuman[ay][ax]}.', style: const TextStyle(fontSize: 12, color: Colors.white70))),
               ]),
             ),
-            Wrap(spacing: 6, children: [for (final p in [16, 32, 64, 128, 256]) ActionChip(label: Text('$p²'), onPressed: () => setS(() { w = p.toDouble(); h = p.toDouble(); }))]),
+            Wrap(spacing: 6, children: [for (final p in [16, 32, 64, 128, 256, 512]) ActionChip(label: Text('$p²'), onPressed: () => setS(() { w = p.toDouble(); h = p.toDouble(); }))]),
             if (!ClubSizeRules.accepted(w.round(), h.round())) ...[
               const SizedBox(height: 10),
               _ClubSizeAlert(w.round(), h.round()),

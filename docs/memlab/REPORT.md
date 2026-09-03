@@ -5,7 +5,9 @@ methodology and harnesses in `tools/memlab/`; raw data in `tools/memlab/results/
 
 ## Question
 
-The editor's limits are per-axis: ≤1024 frames, ≤64 layers/frame, ≤256×256 canvas. What actually
+The editor's limits are per-axis: ≤1024 frames, ≤64 layers/frame, ≤256×256 canvas (raised to 512×512
+on 2026-09-03 — see "512×512" under *Practical limits lookup*; the figures below were measured at
+256 and stay valid per byte). What actually
 happens when they are pushed with content the architecture cannot mitigate — every layer of every
 frame filled with pure random noise (no tile sparsity, no COW sharing, no RLE/dict/DEFLATE gains)?
 
@@ -192,6 +194,25 @@ maximum frame count per layers-per-frame under the comfortable (256 MiB) and abs
 budgets, worst-case (fully painted, all-unique) so every figure is a guarantee, plus an
 "Any size" sheet with the exact tiles-per-axis math (off-grid straddling included). Spot-verified
 against the engine: 64×64 @ 64 layers stops at exactly 320 full frames (335,544,320 bytes).
+
+**512×512 (canvas cap raised 2026-09-03, ADR 0021).** The spreadsheet's per-size sheets stop at 256;
+the "Any size" math applies unchanged. Memory is area-linear — re-measured headlessly with
+`MAX_DIM = 512`: a 512² document with the same tile count as a 256² one is byte-identical in the
+engine census, the save transient (852 MB peak at 256 MiB of payload on Windows), and the load time
+(~910 ms for a 268 MB file). So every 256 guarantee divides by four at 512:
+
+| Workload | 256×256 | 512×512 |
+|---|---|---|
+| Full-canvas payload per frame-layer | 256 KiB (64 tiles) | 1 MiB (256 tiles) |
+| Tile-table slots per layer (3×3 storage) | 576 (4,608 B) | 2,304 (18,432 B) |
+| Frame-layers under the 320 MiB hard budget (all unique) | 1,280 | 320 |
+| Full-canvas undo records kept (96 MiB history budget) | 128 (count cap) | 47 (byte budget) |
+| 64 fr × 4 ly noise edit, undo records retained | 364 | 92 |
+
+The budgets, not the canvas cap, are what keep the Android ~1 GiB allocator wall safe, so nothing
+in the enforcement section changes. CPU cost is the other axis: full-layer Scale (cleanEdge) and
+Rotate measured ~83 → ~385 ms and ~26 → ~108 ms per operation on the workstation, i.e. about a
+second on a phone.
 
 ## Reproducing
 

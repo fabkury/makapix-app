@@ -33,7 +33,7 @@ And if you just want to draw? Go ahead. **The editor works fully offline, no acc
 The built-in **Makapix Editor** is a serious tool for making animated pixel art:
 
 - **Animation first** — up to 1024 frames on a thumbnail timeline, with live playback while you edit.
-- **Room to work** — canvases up to 256×256, up to 64 layers, and deep undo (128 steps per frame).
+- **Room to work** — canvases up to 512×512, up to 64 layers, and deep undo (128 steps per frame).
 - **A full toolbox** — pencil, brush, airbrush, eraser, fill, gradient, dodge & burn, HSV and
   brightness adjustment, flip, rotate, resize, rectangle/oval/lasso selections, move & copy, a color
   picker, and a ruler that measures distances and angles.

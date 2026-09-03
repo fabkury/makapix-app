@@ -155,9 +155,9 @@ native/`-sys` crate in the core), determinism (byte-identical goldens), and memo
 dev-deps are unconstrained.
 
 Invariants to preserve: 8-bit RGBA sRGB, premultiplied internally, **integer-exact** (deterministic
-`util::det_*` transcendentals, never libm) so goldens never fork per platform; canvas 1×1–256×256; frames
-≤1024; layers ≤64; 32×32 tiling + COW + lazy alloc mandatory; per-frame 128-state undo with
-auto-compaction.
+`util::det_*` transcendentals, never libm) so goldens never fork per platform; canvas 1×1–512×512 (256
+until 2026-09-03, ADR 0021 — the byte budgets, not the canvas cap, bound memory); frames ≤1024; layers
+≤64; 32×32 tiling + COW + lazy alloc mandatory; per-frame 128-state undo with auto-compaction.
 
 Crates: `engine` (core) · `codec` (import GIF/PNG/APNG/JPEG/BMP/WebP; export PNG/GIF/animated lossless
 WebP — the animation container is hand-muxed in pure Rust; no APNG encoder) · `ffi` (cdylib + staticlib) ·

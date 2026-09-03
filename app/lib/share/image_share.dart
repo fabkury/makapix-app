@@ -314,7 +314,7 @@ Future<bool> shareRasterArtwork({
   void Function(String message)? onNotice,
 }) async {
   void fail(String m) => onError?.call(m);
-  if (width < 1 || height < 1 || width > 256 || height > 256) {
+  if (width < Engine.minDim || height < Engine.minDim || width > Engine.maxDim || height > Engine.maxDim) {
     fail('This artwork can’t be shared as an image.');
     return false;
   }

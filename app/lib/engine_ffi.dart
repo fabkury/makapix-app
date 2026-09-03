@@ -234,6 +234,13 @@ class DecodedImage {
 }
 
 class Engine {
+  /// Canvas side limits, mirroring `geom::MIN_DIM` / `geom::MAX_DIM` (256 → 512 on 2026-09-03,
+  /// ADR 0021). `mkpx_new` returns null outside this range, and every size entry point in the shell
+  /// (New document, Resize canvas, the share gate) clamps to it. Makapix Club's publish cap is a
+  /// separate, smaller rule (`ClubSizeRules`) — the editor is deliberately not limited to it.
+  static const int minDim = 1;
+  static const int maxDim = 512;
+
   final DynamicLibrary _lib;
   late final Pointer<Void> _s;
 

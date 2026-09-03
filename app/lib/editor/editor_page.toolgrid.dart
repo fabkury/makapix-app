@@ -542,8 +542,8 @@ extension _EditorToolgrid on _EditorPageState {
   }
 }
 
-// The New-document dialog: free-form width × height in the engine's full 1–256 range, with
-// square presets as shortcuts. Sizes Makapix Club won't accept (the hardcoded ClubSizeRules:
+// The New-document dialog: free-form width × height in the engine's full 1–512 range
+// ([Engine.maxDim]; 256 until ADR 0021), with square presets as shortcuts. Sizes Makapix Club won't accept (the hardcoded ClubSizeRules:
 // free-form band + small-size whitelist) get a red alert but remain creatable — the editor
 // is deliberately not limited to publishable sizes. Pops `(w, h)` on Create.
 class _NewDocumentDialog extends StatefulWidget {
@@ -565,7 +565,7 @@ class _NewDocumentDialogState extends State<_NewDocumentDialog> {
 
   int? _dim(TextEditingController c) {
     final v = int.tryParse(c.text.trim());
-    return (v != null && v >= 1 && v <= 256) ? v : null;
+    return (v != null && v >= Engine.minDim && v <= Engine.maxDim) ? v : null;
   }
 
   Widget _field(TextEditingController c, String label) {
@@ -598,7 +598,7 @@ class _NewDocumentDialogState extends State<_NewDocumentDialog> {
           ]),
           const SizedBox(height: 10),
           Wrap(spacing: 6, children: [
-            for (final p in [16, 32, 64, 128, 256])
+            for (final p in [16, 32, 64, 128, 256, 512])
               ActionChip(
                 label: Text('$p²'),
                 onPressed: () => setState(() {
@@ -609,7 +609,8 @@ class _NewDocumentDialogState extends State<_NewDocumentDialog> {
           ]),
           if (!valid) ...[
             const SizedBox(height: 10),
-            const Text('Each side must be 1–256 pixels.', style: TextStyle(fontSize: 12, color: Colors.white70)),
+            Text('Each side must be ${Engine.minDim}–${Engine.maxDim} pixels.',
+                style: const TextStyle(fontSize: 12, color: Colors.white70)),
           ],
           if (valid && !clubOk) ...[
             const SizedBox(height: 10),

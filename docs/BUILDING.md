@@ -39,7 +39,8 @@ One Flutter binary with two co-equal pillars:
 - Rust core, first-class & up front; Flutter shell over a hand-written C-ABI FFI (`dart:ffi`).
 - Deterministic, headless engine is the source of truth; CPU reference compositor is canonical.
 - 8-bit RGBA sRGB; premultiplied internal; integer-exact (goldens never fork per platform).
-- Canvas 1×1–256×256; frames 1–1024; layers 1–64; per-frame 128-state undo with auto-compaction.
+- Canvas 1×1–512×512 (256 until 2026-09-03, ADR 0021); frames 1–1024; layers 1–64; per-frame
+  128-state undo with auto-compaction.
 - Tiling (32×32) + copy-on-write + lazy alloc are mandatory; enforced memory budgets keep worst-case
   documents inside real device limits ([`docs/memlab/REPORT.md`](memlab/REPORT.md)).
 - Lossless, chunked, versioned `.mkpx` (v10: content-addressed tile dictionary, byte-deterministic);
