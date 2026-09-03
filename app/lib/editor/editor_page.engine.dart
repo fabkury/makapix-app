@@ -377,7 +377,18 @@ extension _EditorEngine on _EditorPageState {
           // space at a fixed cell size, so it does not zoom with the artwork (which is what lets
           // painted gray checkers be distinguished from true transparency).
           : engine.display(onion: _onion, grid: false, checker: false);
-      final (w, h) = playing ? (_canvasW, _canvasH) : (_dispW, _dispH); // cached [battery F20]
+      var (w, h) = playing ? (_canvasW, _canvasH) : (_dispW, _dispH); // cached [battery F20]
+      if (bytes.length != w * h * 4) {
+        // Self-heal: the cache disagrees with what the engine actually returned (a display-size
+        // change that bypassed _refreshState). Decoding at the wrong size paints garbage silently
+        // — the 2026-09-03 overscan gray sheet — so re-read the truth for this present.
+        _canvasW = engine.width;
+        _canvasH = engine.height;
+        _dispW = engine.displayWidth;
+        _dispH = engine.displayHeight;
+        (w, h) = playing ? (_canvasW, _canvasH) : (_dispW, _dispH);
+        assert(bytes.length == w * h * 4, 'display bytes ${bytes.length} vs ${w}x$h');
+      }
       final img = await _decode(bytes, w, h);
       if (!mounted) {
         img.dispose(); // we navigated away mid-decode; don't leak the GPU image [audit F-10]
@@ -607,16 +618,17 @@ extension _EditorEngine on _EditorPageState {
     return false;
   }
 
-  /// Verbs that may run while playback is running (ADR 0012). Everything else is editing intent
-  /// and pauses first; the default direction is deliberately "pauses", so a new verb is safe.
+  /// Verbs that may run while playback is running (ADR 0012): transport, plus pure-view verbs
+  /// that change nothing in the document (SetOverscanView only resizes the editing display).
+  /// Everything else is editing intent and pauses first; the default direction is deliberately
+  /// "pauses", so a new verb is safe.
   static bool _isTransportOrViewVerb(String dsl) {
+    const exempt = {'Play', 'Pause', 'AdvanceClock', 'Stop', 'SetOverscanView'};
     for (final part in dsl.split(';')) {
       final t = part.trim();
       if (t.isEmpty) continue;
       final name = t.split('(').first.trim();
-      if (name != 'Play' && name != 'Pause' && name != 'AdvanceClock' && name != 'Stop') {
-        return false;
-      }
+      if (!exempt.contains(name)) return false;
     }
     return true;
   }

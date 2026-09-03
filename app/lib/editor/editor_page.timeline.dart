@@ -345,10 +345,13 @@ extension _EditorTimeline on _EditorPageState {
           _overscan ? 'Overscan: on' : 'Overscan: off',
           () {
             setState(() => _overscan = !_overscan);
-            // Through _send (not engine.run) so the toggle reaches the Journal and the
-            // autosave activity gate like every other engine mutation. [replay]
-            _send('SetOverscanView(${_overscan ? 1 : 0})');
-            _redraw();
+            // Through _act (not a bare _send): the toggle changes the DISPLAY size (canvas ↔
+            // storage), and only _act's _refreshState re-reads it into the _dispW/_dispH cache.
+            // A bare _send left the cache stale, so the next present decoded the 3×3 storage
+            // buffer at canvas dimensions — a gray sheet over the canvas, no gutter, until an
+            // unrelated verb refreshed the cache (2026-09-03). _act also journals it and taps
+            // the autosave gate like every engine mutation. [replay]
+            _act('SetOverscanView(${_overscan ? 1 : 0})');
           },
         ),
         _sheetItem(
