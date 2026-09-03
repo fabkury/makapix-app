@@ -522,14 +522,15 @@ extension _EditorToolgrid on _EditorPageState {
   }
 
   Future<void> _newDialog() async {
-    final size = await showDialog<(int, int)>(
+    final spec = await showDialog<_NewDocumentSpec>(
       context: context,
       builder: (_) => const _NewDocumentDialog(),
     );
-    if (size != null) {
-      final (w, h) = size;
-      // A new canvas is a new library drawing; the previous one stays saved in My Drawings.
-      await _switchToNewDrawing(title: 'Untitled', mutateEngine: () {
+    if (spec != null) {
+      final (:w, :h, :title) = spec;
+      // A new canvas is a new library drawing; the previous one stays saved in My Drawings. The
+      // optional title lands on the library entry exactly as a rename would (blank = Untitled).
+      await _switchToNewDrawing(title: title.isEmpty ? 'Untitled' : title, mutateEngine: () {
         _send('NewDocument($w,$h)');
         _resendEngineTool();
         _clubSource = null;
@@ -542,10 +543,16 @@ extension _EditorToolgrid on _EditorPageState {
   }
 }
 
-// The New-document dialog: free-form width × height in the engine's full 1–512 range
-// ([Engine.maxDim]; 256 until ADR 0021), with square presets as shortcuts. Sizes Makapix Club won't accept (the hardcoded ClubSizeRules:
-// free-form band + small-size whitelist) get a red alert but remain creatable — the editor
-// is deliberately not limited to publishable sizes. Pops `(w, h)` on Create.
+// What the New-document dialog pops on Create: the canvas size plus the optional title, already
+// trimmed (empty = the caller's "Untitled" default).
+typedef _NewDocumentSpec = ({int w, int h, String title});
+
+// The New-document dialog: an optional title (top, not autofocused so the size chips stay above
+// the phone keyboard; trimmed, capped at [kDrawingTitleMaxLength] like the rename dialog), then
+// free-form width × height in the engine's full 1–512 range ([Engine.maxDim]; 256 until
+// ADR 0021), with square presets as shortcuts. Sizes Makapix Club won't accept (the hardcoded
+// ClubSizeRules: free-form band + small-size whitelist) get a red alert but remain creatable —
+// the editor is deliberately not limited to publishable sizes. Pops a [_NewDocumentSpec].
 class _NewDocumentDialog extends StatefulWidget {
   const _NewDocumentDialog();
   @override
@@ -553,15 +560,19 @@ class _NewDocumentDialog extends StatefulWidget {
 }
 
 class _NewDocumentDialogState extends State<_NewDocumentDialog> {
+  final _title = TextEditingController();
   final _w = TextEditingController(text: '64');
   final _h = TextEditingController(text: '64');
 
   @override
   void dispose() {
+    _title.dispose();
     _w.dispose();
     _h.dispose();
     super.dispose();
   }
+
+  _NewDocumentSpec _spec(int w, int h) => (w: w, h: h, title: _title.text.trim());
 
   int? _dim(TextEditingController c) {
     final v = int.tryParse(c.text.trim());
@@ -591,6 +602,17 @@ class _NewDocumentDialogState extends State<_NewDocumentDialog> {
       content: SizedBox(
         width: 320,
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          TextField(
+            controller: _title,
+            maxLength: kDrawingTitleMaxLength,
+            textInputAction: TextInputAction.done,
+            decoration: const InputDecoration(labelText: 'Title (optional)', counterText: '', isDense: true),
+            // Enter/Done on a valid size creates at once — the title is the last thing typed.
+            onSubmitted: (_) {
+              if (valid) Navigator.pop(context, _spec(w, h));
+            },
+          ),
+          const SizedBox(height: 12),
           Row(children: [
             _field(_w, 'Width'),
             const Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('×')),
@@ -621,7 +643,7 @@ class _NewDocumentDialogState extends State<_NewDocumentDialog> {
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
         FilledButton(
-          onPressed: valid ? () => Navigator.pop(context, (w, h)) : null,
+          onPressed: valid ? () => Navigator.pop(context, _spec(w, h)) : null,
           child: const Text('Create'),
         ),
       ],

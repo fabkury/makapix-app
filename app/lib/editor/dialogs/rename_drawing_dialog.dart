@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+/// The longest drawing title the shell accepts, enforced at input time here and in the
+/// New-document dialog's optional title field (2026-09-03). Titles are trimmed on save.
+const int kDrawingTitleMaxLength = 128;
+
 /// The one rename-drawing dialog, shared by the gallery grid and the editor's ☰ header.
 /// Returns the trimmed new title, or null on cancel; callers treat null / empty / unchanged
 /// as a no-op.
@@ -41,7 +45,8 @@ class _RenameDrawingDialogState extends State<_RenameDrawingDialog> {
       content: TextField(
         controller: _ctrl,
         autofocus: true,
-        decoration: const InputDecoration(hintText: 'Title'),
+        maxLength: kDrawingTitleMaxLength,
+        decoration: const InputDecoration(hintText: 'Title', counterText: ''),
         onSubmitted: (v) => Navigator.pop(context, v.trim()),
       ),
       actions: [
