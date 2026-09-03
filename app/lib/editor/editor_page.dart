@@ -36,6 +36,7 @@ import 'gallery/gallery_page.dart';
 import 'levels_math.dart';
 import 'palette_io.dart';
 import 'palette_page.dart';
+import 'tap_again.dart';
 import 'keyboard/bindings_store.dart';
 import 'keyboard/cheat_sheet.dart';
 import 'keyboard/commands.dart';
@@ -706,8 +707,13 @@ class _EditorPageState extends ConsumerState<EditorPage>
     _clipImageGen = -1;
   }
 
+  /// The keyboard "Delete frame" command's second-press arm (ADR 0022; the sheet buttons carry
+  /// their own inside [TapAgainDeleteButton]). Keyed by frame index; `_send` disarms it.
+  final _frameDeleteArm = TapAgainArm();
+
   @override
   void dispose() {
+    _frameDeleteArm.dispose();
     _playTicker?.dispose(); // legal while active; must precede super.dispose (mixin asserts)
     _playTimer?.cancel(); // the timer half of the hybrid playback clock [battery R3]
     WidgetsBinding.instance.removeObserver(this);

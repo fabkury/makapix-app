@@ -87,15 +87,15 @@ extension _EditorSheets on _EditorPageState {
         ],
       ]);
 
-  // The lone destructive action at the bottom of a sheet.
-  Widget _sheetDelete(String label, VoidCallback? onTap) => SizedBox(
+  // The lone destructive action at the bottom of a sheet. Two taps within 3 s (ADR 0022): the
+  // first arms and relabels the button, the second confirms. [armKey] = (target index, _sendSeq)
+  // so a retarget in the strip OR any other sheet action (every one of them sends engine
+  // traffic, which bumps _sendSeq before the sheet rebuilds) disarms it; closing the sheet
+  // unmounts it. The one silent case: a `_send` that reaches the engine without a sheet rebuild
+  // leaves the button armed until its window expires.
+  Widget _sheetDelete(String label, VoidCallback? onTap, {required Object armKey}) => SizedBox(
         width: double.infinity,
-        child: TextButton.icon(
-          style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
-          onPressed: onTap,
-          icon: const Icon(Icons.delete_outline, size: 18),
-          label: Text(label),
-        ),
+        child: TapAgainDeleteButton(label: label, onConfirmed: onTap, armKey: armKey),
       );
 
   // An icon toggle chip for the state zone (visible / locked / move-group).
@@ -490,7 +490,7 @@ extension _EditorSheets on _EditorPageState {
                   setS(() => cur = cur.clamp(0, count - 2)); // count-1 layers remain
                   WidgetsBinding.instance.addPostFrameCallback((_) => showCur());
                 }
-              : null),
+              : null, armKey: (cur, _sendSeq)),
         ]);
       }),
     ).whenComplete(stripCtrl.dispose);
@@ -627,7 +627,7 @@ extension _EditorSheets on _EditorPageState {
                   _act('RemoveFrame($cur)');
                   setS(() {}); // the builder clamps cur to the shrunken roll
                 }
-              : null),
+              : null, armKey: (cur, _sendSeq)),
         ]);
       }),
     );

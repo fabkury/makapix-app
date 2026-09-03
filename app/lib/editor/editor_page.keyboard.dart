@@ -84,9 +84,17 @@ class _EditorKeyboardHost implements EditorAccess {
   @override
   void deleteFrame() {
     if (_s.engine.frameCount <= 1) return;
+    final frame = _s.engine.activeFrame;
+    // Two presses within 3 s (ADR 0022), the same rule as the sheet button: the first press
+    // arms for THIS frame and says so; a frame change, any engine traffic (_send disarms), or
+    // the window's expiry means the next press is a first press again.
+    if (!_s._frameDeleteArm.tap(frame)) {
+      _s._toast('Press Delete frame again to delete frame ${frame + 1}', duration: kTapAgainWindow);
+      return;
+    }
     if (_s._playing) _s._pause();
     _s._clearLayerGroup(); // a different frame (with its own layer stack) may become active
-    _s._act('RemoveFrame(${_s.engine.activeFrame})');
+    _s._act('RemoveFrame($frame)');
   }
 
   @override

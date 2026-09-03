@@ -309,6 +309,9 @@ extension _EditorEngine on _EditorPageState {
   void _send(String dsl, {bool activity = true}) {
     if (!_engineReady) return;
     _sendSeq++; // playback decode-on-change stamp (see _onPlayTick)
+    // Any edit disarms the keyboard "Delete frame" second-press (ADR 0022) — the confirm must
+    // apply to the state the artist armed. Playback ticks (activity:false) are not edits.
+    if (activity) _frameDeleteArm.disarm();
     _journal?.record(dsl); // the Journal tap: verbatim, before run (record what was SENT)
     final err = engine.run(dsl);
     if (err != null) debugPrint('DSL error: $err  <- $dsl');
