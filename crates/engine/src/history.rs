@@ -16,8 +16,9 @@ pub const PER_FRAME_CAP: usize = 128;
 pub const TOTAL_CAP: usize = 8192;
 /// Byte budget for retained history (undo + redo), enforced by evicting the oldest undo records.
 /// Count caps alone let adversarial content retain gigabytes (memlab, `docs/memlab/REPORT.md`):
-/// 128 full-canvas repaints of one 256×256 layer ≈ 33.5 MB **per frame**, and structural records
-/// scale with the whole document. 96 MiB keeps the engine's share well under the ~1 GiB Android
+/// 128 full-canvas repaints of one 256×256 layer ≈ 33.5 MB **per frame** (at 512×512 about 47
+/// repaints fill the budget — the bytes, not the count cap, bound big canvases), and structural
+/// records scale with the whole document. 96 MiB keeps the engine's share well under the ~1 GiB Android
 /// allocator wall with the document budget (SPEC §8.2b).
 pub const HISTORY_BYTE_BUDGET: usize = 96 * 1024 * 1024;
 /// Never evict below this many records, even over budget — undo must not silently vanish

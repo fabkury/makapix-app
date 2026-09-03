@@ -72,7 +72,7 @@ The Q1×Q4 interaction — "byte-deterministic single file" vs "compress only so
 
 ```
 TILE_SIZE = 32     TILE_AREA = 1024     TILE_BYTES = 4096
-Canvas          8..=256 per axis
+Canvas          8..=512 per axis   (256 until 2026-09-03 — ADR 0021; see §20)
 Frames/doc      1..=1024
 Layers/frame    1..=64
 Frame duration  16_667..=1_000_000 µs
@@ -80,7 +80,7 @@ Pixels          8-bit STRAIGHT (non-premultiplied) RGBA, sRGB, byte order R,G,B,
 Integers        little-endian, fixed width, EXCEPT varint = unsigned LEB128 (canonical, minimal)
 Tile-local pixel index   i = y*32 + x,   x,y ∈ 0..31
 MAX_DICT_TILES  1 << 24   (bounds decode; far above frames*layers*cells)
-MAX_SEL_BYTES   73_728    (ceil(768*768 / 8))
+MAX_SEL_BYTES   294_912   (ceil(1536*1536 / 8); 73_728 = 768²/8 under the 256 cap)
 MAX_STR         4096
 CRC             CRC-32C (Castagnoli, poly 0x1EDC6F41 reflected), pure-Rust table
 ```
@@ -141,8 +141,8 @@ Fixed payload, little-endian:
 | Type | Field | Notes |
 |------|-------|-------|
 | `u16` | `format_version` | `10`. Else `UnsupportedVersion`. |
-| `u16` | `canvas_w` | 8..=256. |
-| `u16` | `canvas_h` | 8..=256. |
+| `u16` | `canvas_w` | 8..=512 (256 until 2026-09-03). |
+| `u16` | `canvas_h` | 8..=512 (256 until 2026-09-03). |
 | `u16` | `gutter_left` | persisted per-side margin, px (§13). |
 | `u16` | `gutter_top` | px. |
 | `u16` | `gutter_right` | px. |
@@ -157,8 +157,8 @@ Fixed payload, little-endian:
 Explicit per-side gutter margins (v5) make the file self-describing and let the load-time remap (§13)
 stay clean if the runtime gutter policy ever changes. Storage geometry is derived:
 `storage_w = canvas_w + gutter_left + gutter_right` (same for height), `tiles_x = ceil(storage_w/32)`,
-`tiles_y = ceil(storage_h/32)`, `cells = tiles_x*tiles_y`. Loader validates `storage_w,storage_h ≤ 768`
-⇒ `cells ≤ 576`.
+`tiles_y = ceil(storage_h/32)`, `cells = tiles_x*tiles_y`. Loader validates `storage_w,storage_h ≤ 1536`
+⇒ `cells ≤ 2304` (768 ⇒ 576 under the 256 cap).
 
 ---
 
@@ -520,8 +520,8 @@ UnsupportedChunk([u8;4]) · OverBudget` (the last = a well-formed file whose uni
 exceeds the session's document memory budget — refused before any tile is materialized).
 
 - **Bounds on every read**; any field/count reading past end ⇒ `Incomplete`.
-- **Caps on every count** (violation ⇒ `Corrupt`/`TooLarge`): canvas 8..=256; storage ≤ 768; cells ≤
-  576; frames 1..=1024; layers 1..=64; `palette_count ≤ 256`; `color_count ≤ 65536`; `str ≤ 4096`;
+- **Caps on every count** (violation ⇒ `Corrupt`/`TooLarge`): canvas 8..=512; storage ≤ 1536; cells ≤
+  2304; frames 1..=1024; layers 1..=64; `palette_count ≤ 256`; `color_count ≤ 65536`; `str ≤ 4096`;
   `tile_count ≤ MAX_DICT_TILES`; `SELC` bytes ≤ `MAX_SEL_BYTES`; `uncompressed_len` ≤ a fixed inflate
   cap; varint ≤ 5 bytes/u32.
 - **Bounded allocation**: reserve `min(count, remaining_bytes / MIN_ENTRY_BYTES)` — a crafted
@@ -545,6 +545,10 @@ exceeds the session's document memory budget — refused before any tile is mate
   it (decision 2).
 - A `format_version` bump is reserved for changes that break **critical** parsing (signature, framing,
   or `HEAD`/`TILE`/`FRMS` grammar).
+- **Loosening a reader cap is not a version bump** (2026-09-03, ADR 0021: canvas 256 → 512, storage
+  768 → 1536, `MAX_SEL_BYTES` 73_728 → 294_912). The wire fields were already `u16`, so a file at or
+  under the old cap is byte-identical under both readers; a file over it is refused by an older reader
+  as `Corrupt("canvas size out of range")` — the accepted hard cutoff.
 
 ---
 

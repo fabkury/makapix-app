@@ -1,8 +1,12 @@
 //! Geometry: integer canvas coordinates, sub-pixel points, sizes, rectangles, and the
 //! pure screen↔canvas transform (SPEC §4 module 2, §5.4).
 
+/// Canvas side limits. Raised 256 → 512 on 2026-09-03 (ADR 0021): memory is area-linear, so the
+/// byte budgets still hold; a 512 document simply reaches them at ~¼ the frames/layers/undo depth.
+/// The storage plane is 3× the canvas per axis (`Document::gutter_for`), so 512 means a 1536×1536
+/// plane and 2304 tile slots per layer; `io::MAX_SEL_BYTES` is sized to that plane.
 pub const MIN_DIM: u16 = 1;
-pub const MAX_DIM: u16 = 256;
+pub const MAX_DIM: u16 = 512;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Point {

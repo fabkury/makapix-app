@@ -20,8 +20,9 @@ const TILE_BYTES: usize = 32 * 32 * 4; // 4096
 const CELL_PX: usize = 1024;
 const MAX_DICT_TILES: usize = 1 << 24;
 const MAX_STR: usize = 4096;
-/// Largest legal packed selection: a 768×768 storage plane = 589824 bits = 73728 bytes.
-const MAX_SEL_BYTES: usize = (768 * 768) / 8;
+/// Largest legal packed selection: a 1536×1536 storage plane (3 × `MAX_DIM`) = 2,359,296 bits =
+/// 294,912 bytes. Was 768² / 8 = 73,728 while `MAX_DIM` was 256 (until 2026-09-03, ADR 0021).
+const MAX_SEL_BYTES: usize = (3 * crate::geom::MAX_DIM as usize).pow(2) / 8;
 /// The fixed `INTG` trailer size: fourcc(4) + flags(1) + length(4) + crc32c payload(4).
 const INTG_LEN: usize = 13;
 
@@ -1361,6 +1362,24 @@ mod tests {
         doc.selection = Some(Arc::new(m));
         let back = load_from_bytes(&save_to_bytes(&doc)).unwrap();
         assert_eq!(back.selection.as_deref(), doc.selection.as_deref());
+    }
+
+    #[test]
+    fn roundtrips_a_max_canvas_with_a_bits_selection() {
+        // 512×512 (MAX_DIM since ADR 0021): the 1536×1536 storage plane must clear MAX_SEL_BYTES and
+        // the loader's canvas gate; a BITS mask exercises the packed-selection path at full size.
+        let mut doc = Document::new(crate::geom::MAX_DIM, crate::geom::MAX_DIM);
+        let st = doc.storage();
+        assert_eq!(st.w as usize * st.h as usize / 8, MAX_SEL_BYTES, "cap matches the storage plane");
+        let mut m = Mask::new(st.w as u32, st.h as u32);
+        m.set(0, 0, true);
+        m.set(st.w as i32 - 1, st.h as i32 - 1, true);
+        m.set(700, 900, true); // not a filled rect → BITS
+        doc.selection = Some(Arc::new(m));
+        let back = load_from_bytes(&save_to_bytes(&doc)).unwrap();
+        assert_eq!(back.storage(), st);
+        assert_eq!(back.selection.as_deref(), doc.selection.as_deref());
+        assert_eq!(back.content_hash(), doc.content_hash());
     }
 
     #[test]
