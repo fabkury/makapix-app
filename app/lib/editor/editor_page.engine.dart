@@ -20,6 +20,10 @@ extension _EditorEngine on _EditorPageState {
       final aa = prefs.getBool(_kAaPref) ?? false;
       final gradSaved = prefs.getStringList(_kGradExtraPref);
       final gradCount = prefs.getInt(_kGradCountPref);
+      final patSaved = prefs.getString(_kPatternPref);
+      final patOnSaved = prefs.getStringList(_kPatternOnPref);
+      final gradDither = prefs.getInt(_kGradDitherPref);
+      final patRecents = prefs.getStringList(_kPatternRecentsPref);
       final all = tools.map((t) => t.dsl).toList();
       List<String>? reconciled;
       if (saved != null) {
@@ -65,6 +69,27 @@ extension _EditorEngine on _EditorPageState {
             }
           }
           if (gradChanged && _tool == 'Gradient') _sendGradientStops();
+          // Patterns (ADR 0025): fail-soft — a malformed tile reads as "none", an unknown tool
+          // name in the On list is dropped, a bad dither size is Off. Re-send like AA if the
+          // current tool is affected, since engine boot already pushed the defaults.
+          final pat = patSaved == null ? null : PatternTile.parse(patSaved);
+          if (pat != null) _pattern = pat;
+          if (patOnSaved != null) {
+            for (final t in patOnSaved) {
+              if (_kPatternTools.contains(t)) _patternOn[t] = true;
+            }
+          }
+          if (patRecents != null) {
+            _patternRecents
+              ..clear()
+              ..addAll([for (final s in patRecents) ?PatternTile.parse(s)].take(10));
+          }
+          if (gradDither != null && const [0, 2, 4, 8].contains(gradDither)) {
+            _gradDither = gradDither;
+            if (gradDither != 0) _gradDitherLast = gradDither;
+          }
+          if (_patternActive) _send(_patternDsl);
+          if (_gradDither != 0) _send('SetGradientDither($_gradDither)');
         });
       }
     } catch (_) {/* prefs unavailable → keep defaults */}
@@ -110,6 +135,21 @@ extension _EditorEngine on _EditorPageState {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kAaPref, _aa);
+    } catch (_) {}
+  }
+
+  Future<void> _persistPattern() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final pat = _pattern;
+      if (pat == null) {
+        await prefs.remove(_kPatternPref);
+      } else {
+        await prefs.setString(_kPatternPref, pat.pref);
+      }
+      await prefs.setStringList(_kPatternOnPref, [for (final e in _patternOn.entries) if (e.value) e.key]);
+      await prefs.setInt(_kGradDitherPref, _gradDither);
+      await prefs.setStringList(_kPatternRecentsPref, [for (final t in _patternRecents) t.pref]);
     } catch (_) {}
   }
 
@@ -878,6 +918,10 @@ extension _EditorEngine on _EditorPageState {
     // On its own line: under the replay line-skip an old app drops exactly the unknown verb's
     // line, so SetAA must not carry siblings it would take down with it.
     _send('SetAA($_aa)');
+    // Patterns (ADR 0025), each on its own line for the same reason: the tile in force for THIS
+    // tool (per-tool On/Off is a shell concept, like per-tool Precision), and the Gradient's dither.
+    _send(_patternDsl);
+    _send('SetGradientDither($_gradDither)');
     _send('SetEyedropSource(${_eyedropLayer ? 'Layer' : 'Frame'})');
     _send('SetSelectColorSource(${_selColorLayer ? 'Layer' : 'Frame'})');
     _send('SetCleanEdge($_cleanEdge); SetCleanEdgeWidth(${(_cleanEdgeWidth * 1000).round()})');

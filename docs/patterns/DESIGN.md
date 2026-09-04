@@ -1,13 +1,35 @@
 # Patterns (dither and texture masks) — design
 
-**Status: designed 2026-09-03/04, NOT implemented.** Every decision below was taken with the user
-in a four-round question pass on 2026-09-03; this document records them so implementation can start
-without re-deciding anything. Companion ADR: [ADR 0025](../adr/0025-patterns-are-a-paint-gate.md).
-Code references are to `21a09080`. Inventory entry: `docs/editor-gaps/INVENTORY.md` A2.
+**Status: designed 2026-09-03/04, IMPLEMENTED 2026-09-04** (engine `38b3ee87`, shell in the
+following commit). Every decision below was taken with the user in a four-round question pass on
+2026-09-03; this document records them, plus the four implementation-time adjustments listed under
+"As built". Companion ADR: [ADR 0025](../adr/0025-patterns-are-a-paint-gate.md). Inventory entry:
+`docs/editor-gaps/INVENTORY.md` A2.
+
+## As built (deviations from the decisions below, all 2026-09-04)
+
+- **Tile cap 16×16, not 8×8** (user decision at implementation time, to leave 12×12 and 16×16
+  open): `Pattern` stores its bits in a fixed 32-byte array (`PATTERN_MAX_SIDE = 16`,
+  `PATTERN_BYTES`), still `Copy` and allocation-free. The DSL form is one big-endian hex integer of
+  `w*h` bits (up to 64 digits), so raising the cap later is a constant change with no journal
+  format change. The v1 **catalog** still stops at 8×8; the page renders any size.
+- **The Gradient's swatch and page are called "Dither"** (user decision), the four gated tools keep
+  "Pattern" / "Patterns".
+- **An empty gated tap records no undo step.** The engine's standing empty-edit rule (a commit
+  whose patch is empty records nothing — painting a color over itself records nothing either) wins
+  over the wording below; the Rust test pins the actual behavior.
+- **The Bayer ladders carry explicit inverses.** A Bayer level's complement is not another level
+  of the ladder (the thresholds are not symmetric), so each ladder lists every level with its
+  inverse, ordered by density: 2×2 → 6 tiles, 4×4 → 30, 8×8 → 30. With lines (12), diagonals and
+  crosshatch at pitch 3/4/8 (18), and dots/grids/bricks/checkers (22), the catalog holds 118 tiles,
+  none duplicated (tiles the ladders already contain — the 2×2 checker, the single-dot 2×2, the
+  2-px grid — are not repeated under a second name), none all-ON or all-OFF.
+- The `assert.gradient` CLI oracle compares the whole storage buffer, so it fails on any document
+  with an overscan gutter, dithered or not — a pre-existing limitation of the probe, left as is.
 
 ## What it is
 
-A **pattern** is a small repeating bitmask (up to 8×8) that gates painting: where the pattern bit
+A **pattern** is a small repeating bitmask (up to 16×16; the catalog uses up to 8×8) that gates painting: where the pattern bit
 is ON the tool paints as usual; where it is OFF the pixel is left untouched. Anchored to the canvas
 grid, so overlapping strokes always tile seamlessly. Pencil, Brush, Eraser, and Bucket get a
 **Pattern** swatch at the end of row-1; the Gradient gets a different, related thing — **ordered
@@ -39,7 +61,7 @@ catalog (~110 built-in tiles) and a recently-used strip.
 ## The model
 
 ```
-Pattern { w: u8 (1..=8), h: u8 (1..=8), bits: u64 }   // row-major, bit (y*w + x), LSB first
+Pattern { w: u8 (1..=16), h: u8 (1..=16), bits: [u8; 32] }   // row-major, bit (y*w + x), LSB first (as built; designed as u64 ≤ 8×8)
 on(x, y) = (bits >> ((y mod h) * w + (x mod w))) & 1   // x, y in CANVAS coordinates
 ```
 
@@ -196,7 +218,8 @@ tap selects and pops, Gradient filter), a controls test that the AA chip disable
 ## Edge-case policy (all decided; listed so nobody re-litigates them mid-implementation)
 
 - A size-1 Pencil tap, a Precision DRAW, or a Bucket tap that lands only on OFF pixels **paints
-  nothing and still costs an undo step** (consistent with painting the same color over itself).
+  nothing**; as built it records no undo step (the engine's empty-edit rule — the same as painting
+  the same color over itself).
 - The Eraser under a pattern **erases ON bits only**; OFF bits keep their pixels.
 - Bucket's fill *region* ignores the pattern (a masked-off pixel still propagates); only the writes
   are gated. "All layers" keeps deciding the region from the composite.

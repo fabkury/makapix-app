@@ -1,7 +1,8 @@
 # Patterns are a canvas-anchored paint gate, not a brush: ON bits paint, OFF bits are untouched
 
-**Decided 2026-09-03; not yet implemented** (design: `docs/patterns/DESIGN.md`). Engine: a
-`Pattern` bitmask (≤ 8×8) in `Settings`, verbs `SetPattern(w,h,hexbits)` / `SetPattern(off)` and
+**Decided 2026-09-03; implemented 2026-09-04** (design and as-built notes: `docs/patterns/DESIGN.md`).
+Engine: a `Pattern` bitmask (≤ 16×16 on the wire, the catalog ≤ 8×8) in `Settings`, verbs
+`SetPattern(w,h,hexbits)` / `SetPattern(off)` and
 `SetGradientDither(n)`, gates in `tool::plot`, `StrokeCoat::raise`, `tool::flood_fill`, and a
 threshold branch in `gradient_color_at_sorted`. Shell: a "Pattern" swatch at the end of row-1 on
 Pencil/Brush/Eraser/Bucket/Gradient, a Patterns page with a built-in catalog and a recents strip.
@@ -61,7 +62,8 @@ Alternatives rejected:
 Consequences: `tool::plot`, `StrokeCoat::raise`, and `tool::flood_fill` gain a gate argument, and
 any *future* write path that paints through the primary color must thread it too (Line/Shape,
 Airbrush, Dodge/Burn are explicitly out of v1 and set `ctx.pattern = None`). A size-1 tap that lands
-only on OFF pixels paints nothing and still records an undo step. New Rust pins (a dithered gradient
+only on OFF pixels paints nothing (and, under the engine's standing empty-edit rule, records no undo
+step). New Rust pins (a dithered gradient
 hash, a masked pixel-perfect elbow) join `aa_off_pins.rs`'s doctrine: a moved pin is the bug. Old
 apps replay a journal with these verbs by dropping the unknown lines — the documented cost of any
 additive verb — so no `#mkpxj` bump (ADR 0015 bumps only on a semantics fork).

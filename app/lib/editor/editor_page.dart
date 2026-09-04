@@ -37,6 +37,9 @@ import 'levels_math.dart';
 import 'open_file.dart';
 import 'palette_io.dart';
 import 'palette_page.dart';
+import 'patterns/pattern_tile.dart';
+import 'patterns/patterns_catalog.dart';
+import 'patterns/patterns_page.dart';
 import 'tap_again.dart';
 import 'keyboard/bindings_store.dart';
 import 'keyboard/cheat_sheet.dart';
@@ -98,6 +101,12 @@ const _kAaPref = 'editor.aa_v1'; // the shared AA (anti-alias) toggle (ADR 0008)
 // survives the pillar switch that remounts the editor.
 const _kGradExtraPref = 'editor.gradientColors_v1';
 const _kGradCountPref = 'editor.gradientCount_v1';
+// Patterns (ADR 0025): the global tile (`w,h,hex`), the tools that have it On, the Gradient's
+// dither size, and the recents strip — editor-wide preferences like the gradient roster.
+const _kPatternPref = 'editor.pattern_v1';
+const _kPatternOnPref = 'editor.patternOn_v1';
+const _kGradDitherPref = 'editor.gradientDither_v1';
+const _kPatternRecentsPref = 'editor.patternRecents_v1';
 const _transformTools = {'Flip', 'Rotate', 'Resize', 'Invert'};
 // Row-3 "action" tools in the reorderable grid: tapping fires an action/toggle immediately rather
 // than selecting a draw tool (handled in _toolTile / _doToolAction). Undo/Redo are NOT here — they
@@ -111,6 +120,9 @@ const _precisionTools = {'Pencil', 'Brush', 'Airbrush', 'Eraser', 'Bucket', 'Dod
 // Tools whose mark is a stamp/spray of `brush_size` — the row-1 Size slider's audience and the
 // [ / ] keyboard Commands' enablement (the figure tools use line_width + fill instead).
 const _kBrushSizeTools = {'Pencil', 'Brush', 'Airbrush', 'Eraser', 'Dodge', 'Burn'};
+// The tools a pattern gates (ADR 0025). The Gradient has its own Bayer dither instead and never
+// reads the pattern; every other tool paints ungated.
+const _kPatternTools = {'Pencil', 'Brush', 'Eraser', 'Bucket'};
 
 class EditorPage extends ConsumerStatefulWidget {
   const EditorPage({super.key});
@@ -311,6 +323,16 @@ class _EditorPageState extends ConsumerState<EditorPage>
     const Color(0xFFFFD000),
     const Color(0xFFE02020),
   ];
+  // Patterns (ADR 0025): ONE global tile, remembered until replaced (null until the first pick),
+  // with an On/Off flag per gated tool — pick Bayer 4×4 once, have the Pencil On and the Bucket
+  // Off. The engine holds only what is in force for the current tool: _pushToolSettings resolves
+  // the pair into `SetPattern(w,h,hex)` or `SetPattern(off)` on every tool switch, so a journal
+  // replays the same lines the live session ran. The Gradient keeps its own Bayer dither size
+  // (0 = off) and the last non-zero one for the long-press toggle. All persisted editor-wide.
+  PatternTile? _pattern;
+  final Map<String, bool> _patternOn = {};
+  final List<PatternTile> _patternRecents = [];
+  int _gradDither = 0, _gradDitherLast = 4;
   // HSV-shift sliders: zero = no change, so entering the tool previews the document as-is.
   double _hsvH = 0, _hsvS = 0, _hsvV = 0;
   // Brightness/Contrast sliders: zero = no change too (the contrast slider is ±% around the 1.0×
@@ -511,6 +533,10 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // Whether the current tool offers the AA toggle: the shape tools always; Brush and Eraser
   // only in Round mode (the engine ignores AA for Square, so the chip hides with it).
   bool get _aaCapable => _tool == 'Line' || _tool == 'Shape' || ((_tool == 'Brush' || _tool == 'Eraser') && _round);
+  // Whether the current tool paints through the pattern right now (ADR 0025).
+  bool get _patternActive => _kPatternTools.contains(_tool) && (_patternOn[_tool] ?? false) && _pattern != null;
+  // The pattern line the engine needs for the current tool — what _pushToolSettings emits.
+  String get _patternDsl => _patternActive ? _pattern!.dsl : 'SetPattern(off)';
   // Whether the current tool is *in* precision mode right now.
   bool get _isPrecision => _precisionOn.contains(_tool);
 

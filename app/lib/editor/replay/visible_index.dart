@@ -135,9 +135,9 @@ bool _statementVisible(String verb, String tool, bool penHeld) {
     // verb still gets the safe default below.
     'SetAA', 'SetAlphaCutoff', 'SetBcScope', 'SetBrightnessContrast', 'SetBrushShape', 'SetBrushSize',
     'SetCleanEdge', 'SetCleanEdgeWidth', 'SetContiguous', 'SetEyedropSource',
-    'SetFillAllLayers', 'SetGradientSmoothstep', 'SetGradientStops', 'SetGradientType',
+    'SetFillAllLayers', 'SetGradientDither', 'SetGradientSmoothstep', 'SetGradientStops', 'SetGradientType',
     'SetHsvScope', 'SetHsvShift', 'SetIntensity', 'SetLevels', 'SetLevelsScope',
-    'SetLineWidth', 'SetMemBudget', 'SetOverscanView', 'SetPixelPerfect', 'SetPrimaryColor',
+    'SetLineWidth', 'SetMemBudget', 'SetOverscanView', 'SetPattern', 'SetPixelPerfect', 'SetPrimaryColor',
     'SetProtectPixels', 'SetScaleCleanEdge', 'SetScaleCleanEdgeWidth', 'SetSecondaryColor',
     'SetSeed', 'SetSelectColorSource', 'SetSelectionMode', 'SetShapeFill',
     'SetShapeRotation', 'SetSpacing', 'SetThreshold', 'SetTriangleTip', 'SetWrap',

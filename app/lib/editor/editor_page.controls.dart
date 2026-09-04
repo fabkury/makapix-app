@@ -374,18 +374,26 @@ extension _EditorControls on _EditorPageState {
     // for Brush/Eraser (here), at the END of the row for Line/Shape (added below their blocks —
     // a user placement decision, 2026-08-15).
     void addAaChip() {
+      // AA is inert while a pattern is on (ADR 0025): the engine ignores it and the chip greys
+      // out, but the stored preference is untouched — AA returns when the pattern goes Off.
+      final gated = _patternActive;
       children.add(Padding(
         padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: FilterChip(
-          selected: _aa,
-          label: Text(_aa ? 'AA ✔' : 'AA'),
-          selectedColor: const Color(0xFF30A050),
-          onSelected: (v) {
-            setState(() => _aa = v);
-            _send('SetAA($_aa)');
-            _persistAa();
-            if (_hasShapeDraft) _redraw(); // the pending shape preview re-renders AA'd live
-          },
+        child: Tooltip(
+          message: gated ? 'Off while a pattern is on' : '',
+          child: FilterChip(
+            selected: _aa,
+            label: Text(_aa ? 'AA ✔' : 'AA'),
+            selectedColor: const Color(0xFF30A050),
+            onSelected: gated
+                ? null
+                : (v) {
+                    setState(() => _aa = v);
+                    _send('SetAA($_aa)');
+                    _persistAa();
+                    if (_hasShapeDraft) _redraw(); // the pending shape preview re-renders AA'd live
+                  },
+          ),
         ),
       ));
     }
@@ -553,6 +561,11 @@ extension _EditorControls on _EditorPageState {
           onLongPress: () => _gradientSwatchMenu(idx),
         ));
       }
+    }
+    // The Pattern swatch (ADR 0025) rides at the END of row-1 for the four gated tools, and the
+    // Gradient's Dither swatch likewise (a user placement decision, 2026-09-03).
+    if (_kPatternTools.contains(_tool) || _tool == 'Gradient') {
+      children.add(_patternSwatch());
     }
     if (_tool == 'SelectLayer') {
       // Alpha cutoff: pixels with alpha > threshold (the opaque pixels) are "selected"
@@ -1122,6 +1135,116 @@ extension _EditorControls on _EditorPageState {
 
   // The palette page owns palette-level management (switch/new/rename/duplicate/reorder/
   // import/export/clear/delete + presets); the row-2 strip keeps color-level editing.
+  // ---- patterns (ADR 0025) ----
+
+  // The row-1 swatch: the tile in force, repeated at 2 px per cell in the primary color; dimmed
+  // with a slash while Off (a generic checker glyph if no tile was ever picked). Tap opens the
+  // page; long-press / right-click toggles Off ↔ the last tile without opening it. The Gradient's
+  // variant shows its Bayer dither at the 50 % level and toggles Off ↔ the last size.
+  Widget _patternSwatch() {
+    final gradient = _tool == 'Gradient';
+    final on = gradient ? _gradDither != 0 : _patternActive;
+    final tile = gradient
+        ? bayerTile(_gradDither == 0 ? _gradDitherLast : _gradDither, (_gradDither == 0 ? _gradDitherLast : _gradDither) * 2)
+        : (_pattern ?? bayerTile(2, 2));
+    final label = gradient ? 'Dither' : 'Pattern';
+    final name = gradient
+        ? (on ? 'Bayer $_gradDither×$_gradDither' : 'Off')
+        : (on ? (patternName(_pattern!) ?? 'Custom pattern') : 'Off');
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 3),
+      child: Tooltip(
+        message: '$label: $name',
+        child: GestureDetector(
+          onTap: _openPatternsPage,
+          onLongPress: _togglePattern,
+          onSecondaryTap: _togglePattern,
+          child: Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              border: Border.all(color: on ? Colors.white70 : Colors.white38),
+              borderRadius: BorderRadius.circular(4),
+              color: const Color(0xFF1E2226),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Stack(fit: StackFit.expand, children: [
+              Opacity(
+                opacity: on ? 1 : 0.35,
+                child: CustomPaint(painter: PatternTilePainter(tile: tile, color: _primary, scale: 2)),
+              ),
+              if (!on) const CustomPaint(painter: _SlashPainter()),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openPatternsPage() async {
+    if (_playing) _pause();
+    if (_tool == 'Gradient') {
+      final n = await Navigator.of(context).push<int>(MaterialPageRoute(
+        builder: (_) => PatternsPage.gradient(primary: _primary, dither: _gradDither),
+      ));
+      if (!mounted || n == null) return;
+      _setGradDither(n);
+      return;
+    }
+    final tool = _tool;
+    final pick = await Navigator.of(context).push<PatternPick>(MaterialPageRoute(
+      builder: (_) => PatternsPage(
+        primary: _primary,
+        toolName: tool,
+        current: _pattern,
+        on: _patternOn[tool] ?? false,
+        recents: List.of(_patternRecents),
+      ),
+    ));
+    if (!mounted || pick == null || _tool != tool) return;
+    switch (pick) {
+      case PatternOff():
+        setState(() => _patternOn[tool] = false);
+      case PatternChosen(:final tile):
+        setState(() {
+          _pattern = tile;
+          _patternOn[tool] = true;
+          final next = pushRecentPattern(_patternRecents, tile);
+          _patternRecents
+            ..clear()
+            ..addAll(next);
+        });
+    }
+    _send(_patternDsl);
+    _persistPattern();
+  }
+
+  // Long-press / right-click on the swatch: Off ↔ the last pattern (or dither size) without the
+  // page. A no-op with a hint until a pattern was picked at least once.
+  void _togglePattern() {
+    if (_tool == 'Gradient') {
+      _setGradDither(_gradDither == 0 ? _gradDitherLast : 0);
+      return;
+    }
+    if (_pattern == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tap the swatch to pick a pattern first'), duration: Duration(seconds: 2)));
+      return;
+    }
+    setState(() => _patternOn[_tool] = !(_patternOn[_tool] ?? false));
+    _send(_patternDsl);
+    _persistPattern();
+  }
+
+  void _setGradDither(int n) {
+    setState(() {
+      _gradDither = n;
+      if (n != 0) _gradDitherLast = n;
+    });
+    _send('SetGradientDither($_gradDither)');
+    if (_hasShapeDraft) _redraw(); // the pending gradient preview reflects it live
+    _persistPattern();
+  }
+
   Future<void> _openPalettePage() async {
     if (_playing) _pause();
     await Navigator.of(context).push(MaterialPageRoute(
@@ -1307,4 +1430,20 @@ extension _EditorControls on _EditorPageState {
   }
 
   // The static visual of a tool tile (icon + label, highlighted when selected/hovered).
+}
+
+/// The diagonal slash over a swatch whose pattern (or dither) is Off.
+class _SlashPainter extends CustomPainter {
+  const _SlashPainter();
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()
+      ..color = Colors.white60
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(Offset(4, size.height - 4), Offset(size.width - 4, 4), p);
+  }
+
+  @override
+  bool shouldRepaint(_SlashPainter old) => false;
 }

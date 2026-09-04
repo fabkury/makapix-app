@@ -238,6 +238,10 @@ Sketches only; each becomes its own design note (and usually an ADR) before impl
 
 ### A2 — Dither patterns
 
+**IMPLEMENTED 2026-09-04** as designed in `docs/patterns/DESIGN.md` + ADR 0025 (a paint *gate*
+with `SetPattern(w,h,hex)`, not the `SetDither(pattern, ox, oy)` sketch below; no offset control).
+The notes below are the original brainstorm.
+
 - **Engine.** `SetDither(pattern, ox, oy)` with pattern ∈ {Off, Checker, Bayer2, Bayer4, Bayer8,
   custom 8×8 bitmask}. Applied as a **coverage mask on the coat** for Pencil/Brush/Eraser/Bucket
   (only pattern-on pixels are touched, PMNG style), and as **ordered dithering between adjacent
