@@ -21,7 +21,8 @@ following commit). Every decision below was taken with the user in a four-round 
 - **The Bayer ladders carry explicit inverses.** A Bayer level's complement is not another level
   of the ladder (the thresholds are not symmetric), so each ladder lists every level with its
   inverse, ordered by density: 2×2 → 6 tiles, 4×4 → 30, 8×8 → 30. With lines (12), diagonals and
-  crosshatch at pitch 3/4/8 (18), and dots/grids/bricks/checkers (22), the catalog holds 118 tiles,
+  crosshatch at pitch 3/4/8 (18), and dots/grids/bricks/checkers (20 — the 2-cell checker and its
+  inverse are the Bayer 4×4 half-density tiles, so the ladder keeps them), the catalog holds 116 tiles,
   none duplicated (tiles the ladders already contain — the 2×2 checker, the single-dot 2×2, the
   2-px grid — are not repeated under a second name), none all-ON or all-OFF.
 - The `assert.gradient` CLI oracle compares the whole storage buffer, so it fails on any document
