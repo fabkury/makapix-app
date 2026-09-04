@@ -269,6 +269,16 @@ fn pp_corner(a: Point, b: Point, c: Point) -> bool {
         && (a.y - c.y).abs() == 1
 }
 
+/// `d.clamp(lo, hi)`, except that an inverted range (`lo > hi`: the thing being clamped is larger
+/// than the window it must stay inside) yields 0 — "hold still" — instead of panicking.
+fn clamp_or_hold(d: i32, lo: i32, hi: i32) -> i32 {
+    if lo > hi {
+        0
+    } else {
+        d.clamp(lo, hi)
+    }
+}
+
 fn union_irect(a: crate::geom::IRect, b: crate::geom::IRect) -> crate::geom::IRect {
     let x = a.x.min(b.x);
     let y = a.y.min(b.y);
@@ -2416,10 +2426,9 @@ impl Session {
         } else if self.settings.protect_pixels {
             match m.bounds() {
                 Some(bb) => {
-                    // Clamp so the selection stays within the canvas window (storage coords).
-                    let cr = self.doc.canvas_rect();
-                    let cdx = dx.clamp(cr.x - bb.x, cr.right() - (bb.x + bb.w as i32));
-                    let cdy = dy.clamp(cr.y - bb.y, cr.bottom() - (bb.y + bb.h as i32));
+                    // Clamp so the selection stays within the canvas window (storage coords); a
+                    // selection larger than the canvas (overscan view) holds still on that axis.
+                    let (cdx, cdy) = self.clamp_move_to_canvas(bb, dx, dy);
                     m.translated(cdx, cdy)
                 }
                 None => m,
@@ -3280,11 +3289,19 @@ impl Session {
         acc
     }
 
-    /// Clamp a translation so an opaque bounding box `bbox` (storage coords) stays fully inside the
-    /// canvas window — Protect-pixels never pushes opaque content off the canvas into the gutter.
+    /// Clamp a translation so a bounding box `bbox` (storage coords) stays fully inside the canvas
+    /// window — Protect-pixels never pushes opaque content off the canvas into the gutter. Per
+    /// axis: content that fits the canvas is clamped to it (content already overhanging one edge is
+    /// pulled back on); content WIDER/TALLER than the canvas on an axis (it overhangs both edges,
+    /// e.g. after pasting into the overscan gutter) can't be protected by any move, so that axis
+    /// holds still. The plain `i32::clamp` panicked there (`min > max`) and, with the release
+    /// `panic = "abort"`, crashed the app.
     fn clamp_move_to_canvas(&self, bbox: crate::geom::IRect, dx: i32, dy: i32) -> (i32, i32) {
         let cr = self.doc.canvas_rect();
-        (dx.clamp(cr.x - bbox.x, cr.right() - bbox.right()), dy.clamp(cr.y - bbox.y, cr.bottom() - bbox.bottom()))
+        (
+            clamp_or_hold(dx, cr.x - bbox.x, cr.right() - bbox.right()),
+            clamp_or_hold(dy, cr.y - bbox.y, cr.bottom() - bbox.bottom()),
+        )
     }
 
     /// Translate the content of all selected layers by (dx,dy), together, as one undoable
@@ -6752,6 +6769,81 @@ mod tests {
         s.pointer_up();
         assert_eq!(s.pixel(0, 0, 3, 0), Rgba8::WHITE);
         assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::TRANSPARENT);
+    }
+
+    /// A 16×16 document whose layer 0 holds an opaque blob overhanging every canvas edge into the
+    /// gutter (the only way pixels get there: paste): the union opaque bbox is larger than the
+    /// canvas on both axes, so Protect-pixels can't be satisfied by any move.
+    fn doc_surrounded_by_gutter_pixels() -> Session {
+        let mut s = Session::new(16, 16);
+        s.run_script(
+            "SelectTool(Rectangle); SetShapeFill(true); SetPrimaryColor(#FF0000FF); \
+             Stroke([(4,4),(11,11)]); SelectAll(); Copy(); SelectNone(); \
+             PasteDraft(); PasteMove(-8,-8); PasteCommit(); PasteDraft(); PasteMove(8,-8); PasteCommit(); \
+             PasteDraft(); PasteMove(-8,8); PasteCommit(); PasteDraft(); PasteMove(8,8); PasteCommit(); \
+             SetProtectPixels(true)",
+        )
+        .unwrap();
+        let o = s.doc.origin();
+        let bb = s.doc.active_frame().layers[0].pixels.opaque_bounds().unwrap();
+        assert!(
+            bb.x < o.x && bb.right() > o.x + 16 && bb.y < o.y && bb.bottom() > o.y + 16,
+            "bbox exceeds the canvas: {bb:?}"
+        );
+        s
+    }
+
+    /// Regression: Protect-pixels moves of content larger than the canvas used to panic in
+    /// `i32::clamp` (`min > max`) — an app crash under `panic = "abort"`. Now the axis holds still.
+    #[test]
+    fn protect_pixels_holds_content_larger_than_the_canvas_instead_of_panicking() {
+        // Move-tool layer drag (the reported crash).
+        let mut s = doc_surrounded_by_gutter_pixels();
+        let before = s.frame_hash(0);
+        s.run_script("SelectTool(Move); PointerDown(8,8); PointerMove(11,10); PointerUp()").unwrap();
+        assert_eq!(s.frame_hash(0), before, "both axes overflow → the layer holds still");
+
+        // Arrow-key nudge of the layer.
+        s.nudge_layers(3, -2);
+        assert_eq!(s.frame_hash(0), before);
+
+        // Move draft (arrow taps on the Move tool).
+        s.run_script("MoveDraftBegin(); MoveDraftMove(2,2)").unwrap();
+        assert_eq!(s.move_draft.as_ref().unwrap().offset, Point::new(0, 0));
+        s.run_script("MoveDraftCommit()").unwrap();
+        assert_eq!(s.frame_hash(0), before);
+
+        // Selection mask spanning beyond the canvas (overscan view widens the selectable window).
+        s.run_script("SetOverscanView(true); SelectTool(SelectRect); Stroke([(-4,-4),(20,20)]); MoveSelection(3,3)")
+            .unwrap();
+        let bb = s.doc.selection.as_ref().unwrap().bounds().unwrap();
+        let o = s.doc.origin();
+        assert_eq!((bb.x, bb.y), (o.x - 4, o.y - 4), "the mask held still");
+    }
+
+    /// Only the overflowing axis holds: the other axis still clamps and moves as before.
+    #[test]
+    fn protect_pixels_holds_only_the_overflowing_axis() {
+        let mut s = Session::new(16, 16);
+        // A 4-wide column spanning the canvas top to bottom and pasted 8 px up and 8 px down: it
+        // fits horizontally but overhangs the canvas top and bottom.
+        s.run_script(
+            "SelectTool(Rectangle); SetShapeFill(true); SetPrimaryColor(#FF0000FF); \
+             Stroke([(6,0),(9,15)]); SelectAll(); Copy(); SelectNone(); \
+             PasteDraft(); PasteMove(0,-8); PasteCommit(); PasteDraft(); PasteMove(0,8); PasteCommit(); \
+             SetProtectPixels(true); SelectTool(Move)",
+        )
+        .unwrap();
+        let red = Rgba8::rgb(255, 0, 0);
+        s.run_script("PointerDown(8,8); PointerMove(11,13); PointerUp()").unwrap();
+        assert_eq!(s.pixel(0, 0, 9, 8), red, "x moved by 3");
+        assert_eq!(s.pixel(0, 0, 5, 8), Rgba8::TRANSPARENT);
+        assert_eq!(s.pixel(0, 0, 9, 0), red, "y held: the column still spans the canvas");
+        assert_eq!(s.pixel(0, 0, 9, 15), red);
+        // Dragging right by 20 clamps x to the canvas edge — the fitting axis keeps its clamp.
+        s.run_script("PointerDown(8,8); PointerMove(28,8); PointerUp()").unwrap();
+        assert_eq!(s.pixel(0, 0, 15, 8), red);
+        assert_eq!(s.pixel(0, 0, 11, 8), Rgba8::TRANSPARENT);
     }
 
     #[test]
