@@ -27,9 +27,11 @@ import 'dart:typed_data';
 /// The Journal epoch this build RECORDS under (ADR 0015). Epoch 2 is the interaction-policy
 /// semantics of ADRs 0010-0014: structural verbs preserve the active target by identity, so a
 /// journal recorded under epoch 1 can replay to a different result than the session that produced
-/// it. Nothing branches on the epoch — it exists so the artifact says which semantics made it, and
-/// so the next fork has a boundary to point at.
-const int kJournalEpoch = 2;
+/// it. Epoch 3 (ADR 0024): a Bucket tap arms the Repeat record, so a `Repeat()` that follows a
+/// fill re-fills rather than re-running the earlier adjustment or transform. Nothing branches on
+/// the epoch — it exists so the artifact says which semantics made it, and so the next fork has a
+/// boundary to point at.
+const int kJournalEpoch = 3;
 
 /// The version header — always the Journal's first line. This is what new Journals are WRITTEN
 /// with; [journalEpochOf] decides what is READ, and it accepts every past epoch.

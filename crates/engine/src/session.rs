@@ -63,6 +63,11 @@ struct Stroke {
     /// stays pristine while the stroke is live; the compositor previews this coat and
     /// `pointer_up` resolves it into the layer once. Dies with the `Stroke` on cancel/restore.
     coat: Option<StrokeCoat>,
+    /// A Repeat record armed by the press (a Bucket tap fills at press) but promoted to
+    /// `Session::repeat_record` only when the stroke COMMITS (ADR 0017: snapshot at commit): a
+    /// canceled tap — a two-finger gesture that began as a fill — reverts its pixels and must
+    /// not clobber the record it never earned. Dies with the `Stroke` on cancel.
+    repeat: Option<RepeatOp>,
 }
 
 /// One open drag segment of the held precision pen (see `Session::pen_segment`).
@@ -169,10 +174,11 @@ struct ScaleDraftLayer {
     src: RgbaBuffer,
 }
 
-/// The last repeatable committed operation (ADR 0017): its parameters, snapshotted at commit so
-/// later settings drift can never change what Repeat does. The TARGET is live — `Session::repeat`
-/// re-executes against the active frame/layer/selection at Repeat time. Paste snapshots the
-/// stamped pixels themselves, so re-copying between commit and Repeat can't change the stamp.
+/// The last repeatable committed operation (ADR 0017; Bucket added by ADR 0024): its parameters,
+/// snapshotted at commit so later settings drift can never change what Repeat does. The TARGET is
+/// live — `Session::repeat` re-executes against the active frame/layer/selection at Repeat time.
+/// Paste snapshots the stamped pixels themselves, so re-copying between commit and Repeat can't
+/// change the stamp.
 #[derive(Clone)]
 enum RepeatOp {
     Hsv { dh: f32, ds: f32, dv: f32, frame: bool },
@@ -182,6 +188,11 @@ enum RepeatOp {
     Rotate { angle: f32, off: Point, frame_scope: bool, clean_edge: bool, clean_edge_width: f32 },
     Scale { sx: f32, sy: f32, off: Point, frame_scope: bool, clean_edge: bool, clean_edge_width: f32 },
     Paste { pixels: RgbaBuffer, pos: Point },
+    /// A Bucket fill (ADR 0024): the seed in CANVAS coordinates (storage shifts with the gutter
+    /// on a canvas resize; the canvas pixel is what the artist tapped), plus the fill's own
+    /// settings frozen at the tap — the live Threshold/Contiguous/All-layers chips and primary
+    /// color never change what Repeat fills. The region is decided live, like every target.
+    Bucket { seed: Point, color: Rgba8, threshold: u8, contiguous: bool, all_layers: bool },
 }
 
 impl RepeatOp {
@@ -195,6 +206,7 @@ impl RepeatOp {
             RepeatOp::Rotate { .. } => "Rotate",
             RepeatOp::Scale { .. } => "Scale",
             RepeatOp::Paste { .. } => "Paste",
+            RepeatOp::Bucket { .. } => "Fill",
         }
     }
 }
@@ -1457,6 +1469,8 @@ impl Session {
         // Pixel-perfect Pencil: seeds the corner-double filter with the first painted pixel (captured
         // with its pre-stroke color so a later removal restores it). Empty for every other case.
         let mut pp = Vec::new();
+        // A Bucket tap arms its Repeat record here; `pointer_up` promotes it on commit (ADR 0024).
+        let mut repeat = None;
         // The single Move tool moves the selected pixels when there's a selection, else the layer.
         let has_sel = self.doc.selection.as_ref().and_then(|s| s.bounds()).is_some();
         // Paint-immediately tools.
@@ -1480,7 +1494,10 @@ impl Session {
                     c.dab(sel.as_deref(), p);
                     coat = Some(c);
                 }
-                ToolKind::Bucket => self.flood_fill_at(p),
+                ToolKind::Bucket => {
+                    self.flood_fill_at(p);
+                    repeat = Some(self.bucket_record(p));
+                }
                 ToolKind::Move => {
                     // lift selected pixels into a floating buffer
                     if let Some(sel) = self.selection_clone() {
@@ -1536,7 +1553,7 @@ impl Session {
             });
         }
         self.stroke =
-            Some(Stroke { before, tool: self.tool, start: p, last: p, path: vec![p], floating, pp, coat });
+            Some(Stroke { before, tool: self.tool, start: p, last: p, path: vec![p], floating, pp, coat, repeat });
     }
 
     /// Freeze the paint settings into a fresh coat for a single-coat stroke of `tool` (ADR 0007:
@@ -1829,7 +1846,17 @@ impl Session {
         // Gate on the stroke's OWN tool: keying off the live tool let a mid-stroke switch to
         // a non-committing tool strand the painted pixels untracked. [fuzz FZ-1]
         if stroke.tool.commits_stroke() {
+            self.promote_stroke_repeat(stroke.repeat.take());
             self.commit_edit(stroke.before);
+        }
+    }
+
+    /// The stroke commits: its armed Repeat record (a Bucket tap's, ADR 0024) becomes THE
+    /// record. Unconditional on the fill's effect — a same-color tap still "did a fill", and the
+    /// record is the tap's parameters, not its diff (Flip arms the same way).
+    fn promote_stroke_repeat(&mut self, armed: Option<RepeatOp>) {
+        if let Some(r) = armed {
+            self.repeat_record = Some(r);
         }
     }
 
@@ -1860,6 +1887,7 @@ impl Session {
                 if let Some(coat) = stroke.coat.take() {
                     self.flatten_coat(&coat);
                 }
+                self.promote_stroke_repeat(stroke.repeat.take()); // a force-committed Bucket tap still counts
                 self.commit_edit(stroke.before);
             }
         }
@@ -2328,20 +2356,43 @@ impl Session {
     /// contiguous and "All layers" settings plus the selection. Shared by the Bucket pointer tap
     /// and `fill_cursor`; the caller owns the undo edit.
     fn flood_fill_at(&mut self, p: Point) {
-        let color = self.settings.primary;
-        let (th, cont) = (self.settings.threshold, self.settings.contiguous);
+        let (color, th, cont, all) = (
+            self.settings.primary,
+            self.settings.threshold,
+            self.settings.contiguous,
+            self.settings.fill_all_layers,
+        );
+        self.flood_fill_with(p, color, th, cont, all);
+    }
+
+    /// The parameterized fill behind `flood_fill_at` and `Repeat` (ADR 0024): the given color and
+    /// fill settings, the LIVE selection and (for `all_layers`) the live composite of the active
+    /// frame — the target is always live, only the parameters are the caller's.
+    fn flood_fill_with(&mut self, p: Point, color: Rgba8, th: u8, cont: bool, all_layers: bool) {
         let sel = self.selection_clone();
         // "All layers": decide the region from the composited frame (computed before the
         // mutable layer borrow), while the fill still lands in the active layer only. The
         // reference is composited over the whole **storage** area so its coordinates line
         // up with the storage-indexed layer buffer the flood reads. [risk: bucket ref]
-        let reference = self
-            .settings
-            .fill_all_layers
-            .then(|| render::composite_frame(self.doc.active_frame(), self.doc.storage_rect()));
+        let reference =
+            all_layers.then(|| render::composite_frame(self.doc.active_frame(), self.doc.storage_rect()));
         let clip = self.paint_clip();
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
         tool::flood_fill(buf, reference.as_ref(), sel.as_ref(), clip, p, color, th, cont, PaintMode::Replace);
+    }
+
+    /// The Repeat record of a fill seeded at `p` (storage coords) under the live settings (ADR
+    /// 0024). The seed is stored canvas-relative so a later canvas resize (which moves the gutter
+    /// origin the storage coordinates hang off) keeps pointing at the tapped canvas pixel.
+    fn bucket_record(&self, p: Point) -> RepeatOp {
+        let o = self.doc.origin();
+        RepeatOp::Bucket {
+            seed: Point::new(p.x - o.x, p.y - o.y),
+            color: self.settings.primary,
+            threshold: self.settings.threshold,
+            contiguous: self.settings.contiguous,
+            all_layers: self.settings.fill_all_layers,
+        }
     }
 
     /// Flood-fill at the reticle (off-finger Bucket, Fill button): the same fill a tap would do —
@@ -2354,6 +2405,7 @@ impl Session {
         let p = self.cursor_storage();
         self.flood_fill_at(p);
         self.commit_edit(before);
+        self.repeat_record = Some(self.bucket_record(p)); // the same fill a tap arms (ADR 0024)
     }
 
     // ---- selection / clipboard ops ----
@@ -2642,6 +2694,18 @@ impl Session {
                 }
                 let before = self.begin_edit();
                 self.doc.active_frame_mut().active_layer_mut().pixels.blit_over(&pixels, pos);
+                self.commit_edit(before);
+            }
+            RepeatOp::Bucket { seed, color, threshold, contiguous, all_layers } => {
+                if !self.active_editable() {
+                    return;
+                }
+                // Canvas → storage at Repeat time (the gutter may have moved since the tap). A seed
+                // now off-canvas is refused by `flood_fill` itself: an empty edit, nothing recorded.
+                let o = self.doc.origin();
+                let p = Point::new(seed.x + o.x, seed.y + o.y);
+                let before = self.begin_edit();
+                self.flood_fill_with(p, color, threshold, contiguous, all_layers);
                 self.commit_edit(before);
             }
         }
@@ -4109,6 +4173,106 @@ mod tests {
         let bytes = s.save_bytes();
         s.load_bytes(&bytes).unwrap();
         assert!(!s.can_repeat(), "Repeat does not cross documents (ADR 0017)");
+    }
+
+    // ---- Repeat: Bucket fill (ADR 0024) ----
+
+    /// A 6×6 scene with a hollow red box; its interior (2..=3, 2..=3) is the fill target at (2,2).
+    fn bucket_scene() -> Session {
+        let mut s = Session::new(6, 6);
+        s.settings.primary = Rgba8::rgb(255, 0, 0);
+        s.tool = ToolKind::Rectangle;
+        s.settings.shape_fill = false;
+        s.stroke_path(&[(1, 1), (4, 4)]);
+        s.tool = ToolKind::Bucket;
+        s
+    }
+
+    #[test]
+    fn repeat_bucket_uses_the_snapshot_color_and_settings_on_the_other_frame() {
+        let mut s = bucket_scene();
+        s.run_script("SetLevels(0,1000,128)\nApplyLevels()").unwrap();
+        assert_eq!(s.repeat_label(), Some("Levels"));
+        s.settings.primary = Rgba8::rgb(0, 0, 255);
+        s.tap(2, 2); // blue fills the box interior
+        assert_eq!(s.repeat_label(), Some("Fill"), "a Bucket tap is the last repeatable op, period");
+        assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::rgb(0, 0, 255));
+        s.duplicate_frame(0); // frame 1 = a copy (blue interior), activated
+        assert_eq!(s.doc.active_frame, 1);
+        s.settings.primary = Rgba8::WHITE;
+        s.run_script("SetThreshold(0)\nSetContiguous(true)").unwrap();
+        s.tap(2, 2); // white fills frame 1's interior; THIS tap is the record now
+        // Drift everything after the commit: color, threshold, contiguity — Repeat ignores it all.
+        s.settings.primary = Rgba8::rgb(0, 255, 0);
+        s.run_script("SetThreshold(255)\nSetContiguous(false)\nSetActiveFrame(0)\nRepeat()").unwrap();
+        assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::WHITE, "the snapshot color lands on the other frame");
+        assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 0, 1, 1), Rgba8::rgb(255, 0, 0), "threshold 0 + contiguous: the box survives");
+        assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::TRANSPARENT, "the outside is not reached");
+    }
+
+    #[test]
+    fn repeat_bucket_from_the_fill_button_lands_on_a_new_layer() {
+        let mut s = bucket_scene();
+        s.run_script("SetCursor(2,2)\nFillCursor()").unwrap(); // the off-finger Fill button
+        assert_eq!(s.repeat_label(), Some("Fill"));
+        assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::rgb(255, 0, 0));
+        s.add_layer(); // blank ACTIVE layer: no box there, so the fill floods the whole canvas
+        s.settings.primary = Rgba8::rgb(0, 0, 255);
+        s.run_script("Repeat()").unwrap();
+        assert_eq!(s.pixel(0, 1, 0, 0), Rgba8::rgb(255, 0, 0), "snapshot red, live target (layer 1)");
+        assert_eq!(s.pixel(0, 1, 5, 5), Rgba8::rgb(255, 0, 0));
+        assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::TRANSPARENT, "layer 0 untouched");
+    }
+
+    #[test]
+    fn canceled_bucket_tap_keeps_the_previous_record() {
+        let mut s = bucket_scene();
+        s.run_script("FlipH()").unwrap();
+        assert_eq!(s.repeat_label(), Some("Flip"));
+        s.pointer_down(2, 2); // fills at press...
+        assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::rgb(255, 0, 0));
+        s.cancel_stroke(); // ...but a two-finger gesture takes the tap back
+        assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::TRANSPARENT);
+        assert_eq!(s.repeat_label(), Some("Flip"), "a fill that never committed never became the record");
+    }
+
+    #[test]
+    fn same_color_bucket_tap_still_arms() {
+        let mut s = bucket_scene();
+        s.run_script("FlipH()").unwrap();
+        s.settings.primary = Rgba8::TRANSPARENT;
+        s.tap(2, 2); // fills the transparent interior with transparent: no pixel changes
+        assert_eq!(s.repeat_label(), Some("Fill"), "the record is the tap's parameters, not its diff");
+        assert!(s.doc.undo(), "the flip is still the last undo step");
+        assert_eq!(s.repeat_label(), Some("Fill"), "and Undo leaves the record alone (ADR 0017)");
+    }
+
+    #[test]
+    fn repeat_bucket_seed_follows_the_canvas_pixel_across_a_resize() {
+        let mut s = bucket_scene();
+        s.tap(2, 2);
+        // Grow the canvas anchored bottom-right: the content shifts by +2,+2 in canvas terms and
+        // the gutter origin moves too. The seed is a CANVAS pixel, so Repeat fills whatever now
+        // sits at canvas (2,2) — the new blank outside region, bounded by the shifted box.
+        s.run_script("ResizeCanvas(8, 8, BottomRight)").unwrap();
+        assert_eq!(s.pixel(0, 0, 3, 3), Rgba8::rgb(255, 0, 0), "the box corner moved to (3,3)");
+        assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::TRANSPARENT);
+        s.run_script("Repeat()").unwrap();
+        assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::rgb(255, 0, 0), "filled at the tapped canvas pixel");
+        assert_eq!(s.pixel(0, 0, 7, 7), Rgba8::rgb(255, 0, 0), "the outside flood reached the new corner");
+        assert_eq!(s.pixel(0, 0, 4, 4), Rgba8::rgb(255, 0, 0), "the interior was already red");
+    }
+
+    #[test]
+    fn repeat_bucket_rides_replay_checkpoints() {
+        let mut s = bucket_scene();
+        s.tap(2, 2);
+        let id = s.take_checkpoint().expect("quiescent");
+        s.run_script("FlipH()").unwrap();
+        assert_eq!(s.repeat_label(), Some("Flip"));
+        assert!(s.restore_checkpoint(id));
+        assert_eq!(s.repeat_label(), Some("Fill"), "the record restored with the checkpoint");
     }
 
     #[test]
