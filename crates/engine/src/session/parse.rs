@@ -274,6 +274,7 @@ impl Session {
             SetSelectionMode(m) => self.selection_mode = m,
             SetShapeFill(b) => self.settings.shape_fill = b,
             SetLineWidth(w) => self.settings.line_width = w.max(1),
+            // Retired from the editor UI (ADR 0023) but still honored: journals replay it.
             SetProtectPixels(b) => self.settings.protect_pixels = b,
             SetWrap(b) => self.settings.wrap = b,
             SetPixelPerfect(b) => self.settings.pixel_perfect = b,

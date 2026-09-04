@@ -188,9 +188,11 @@ pub struct ToolSettings {
     pub shape_fill: bool,
     pub line_width: u16,
     /// When true, a layer Move refuses to push any opaque pixel off-canvas (non-destructive).
+    /// **Retired from the editor UI 2026-09-04 (ADR 0023):** the shell never sets it anymore, but
+    /// `SetProtectPixels` stays fully functional so journals recorded with it replay unchanged.
     pub protect_pixels: bool,
     /// When true, a layer Move wraps pixels around the canvas edges (top↔bottom, left↔right)
-    /// instead of clipping them off. Mutually exclusive with `protect_pixels` (enforced by the UI).
+    /// instead of clipping them off. Takes precedence over `protect_pixels` wherever both are set.
     pub wrap: bool,
     /// Pencil "pixel perfect": while drawing a 1px Pencil stroke, drop the redundant "corner double"
     /// pixels (the L-shaped elbow at each turn) so the line stays a clean 1px wide. Only meaningful

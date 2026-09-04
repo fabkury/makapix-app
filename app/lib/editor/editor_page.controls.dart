@@ -234,8 +234,9 @@ extension _EditorControls on _EditorPageState {
     if (_tool == 'Move') {
       // Mode: move the layer/pixels (default) or ONLY the selection mask (the marquee, not the
       // pixels). In "layer/pixels", a selection moves the selected pixels and none moves the
-      // layer/move-group. Edge mode: Protect (clamp on-canvas) / Wrap (re-enter the opposite edge) /
-      // both off = Regular — applies to layer, pixel AND selection-mask moves (Protect/Wrap exclusive).
+      // layer/move-group. Edge mode: Wrap (re-enter the opposite edge) / off = Regular (pixels leaving
+      // the canvas clip off) — applies to layer, pixel AND selection-mask moves. (The former
+      // "Protect pixels" chip was removed 2026-09-04, ADR 0023; the engine verb lives on for replay.)
       final hasSel = _outlineEdges.isNotEmpty;
       children.add(_toggle(['Move layer/pixels', 'Move selection'], _moveSelectionMode ? 1 : 0, (i) {
         // Switching the move mode mid-draft discards the pending draft first.
@@ -250,26 +251,7 @@ extension _EditorControls on _EditorPageState {
       ]));
       children.add(IconButton(iconSize: 20, tooltip: 'Nudge right', onPressed: () => _nudgeMove(1, 0), icon: const Icon(Icons.chevron_right)));
       children.add(const SizedBox(width: 6));
-      if (_moveSelectionMode || !hasSel) {
-        // Protect applies to layer moves and selection-mask moves (not pixel moves), so it's hidden
-        // only when moving the selected pixels.
-        children.add(Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 3),
-          child: FilterChip(
-            selected: _protectPixels,
-            label: Text(_protectPixels ? 'Protect ✔' : 'Protect pixels'),
-            selectedColor: const Color(0xFF30A050),
-            onSelected: (v) {
-              setState(() {
-                _protectPixels = v;
-                if (v) _wrap = false;
-              });
-              _send('SetProtectPixels($_protectPixels); SetWrap($_wrap)');
-            },
-          ),
-        ));
-      }
-      // Wrap applies to both layer and pixel moves.
+      // Wrap applies to layer, pixel, and selection-mask moves alike.
       children.add(Padding(
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: FilterChip(
@@ -277,11 +259,8 @@ extension _EditorControls on _EditorPageState {
           label: Text(_wrap ? 'Wrap ✔' : 'Wrap'),
           selectedColor: const Color(0xFF30A050),
           onSelected: (v) {
-            setState(() {
-              _wrap = v;
-              if (v) _protectPixels = false;
-            });
-            _send('SetProtectPixels($_protectPixels); SetWrap($_wrap)');
+            setState(() => _wrap = v);
+            _send('SetWrap($_wrap)');
           },
         ),
       ));

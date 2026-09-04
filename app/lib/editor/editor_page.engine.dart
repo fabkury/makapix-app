@@ -871,7 +871,9 @@ extension _EditorEngine on _EditorPageState {
     _send('SetThreshold($_threshold); SetContiguous($_contiguous); SetAlphaCutoff($_alphaCutoff)');
     _send('SetIntensity($_intensity); SetShapeFill($_shapeFill); SetLineWidth($_lineWidth)');
     _send('SetFillAllLayers($_fillAllLayers)');
-    _send('SetSelectionMode($_selMode); SetProtectPixels($_protectPixels); SetWrap($_wrap)');
+    // SetProtectPixels is no longer emitted (ADR 0023): the engine default is off and nothing in the
+    // shell can turn it on. Old journals carrying the verb still replay through the engine as before.
+    _send('SetSelectionMode($_selMode); SetWrap($_wrap)');
     _send('SetPixelPerfect($_perfect); SetOverscanView(${_overscan ? 1 : 0})');
     // On its own line: under the replay line-skip an old app drops exactly the unknown verb's
     // line, so SetAA must not carry siblings it would take down with it.

@@ -333,12 +333,13 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // upscaling (both factors ≥ 1); downscaling is always nearest-neighbor engine-side.
   bool _resizeCleanEdge = true;
   double _resizeCleanEdgeWidth = 1.0;
-  // Move tool layer-move edge modes (mutually exclusive; both off = Regular = pixels clip off):
-  bool _protectPixels = false; // keep opaque pixels on-canvas (non-destructive)
+  // Move tool edge mode (off = Regular = pixels leaving the canvas clip off). The former
+  // "Protect pixels" companion was removed from the UI 2026-09-04 (ADR 0023); the engine's
+  // SetProtectPixels verb stays functional so old journals replay unchanged.
   bool _wrap = false; // pixels leaving one edge re-enter the opposite edge
   // Slow (ADR 0020): the Move / Move-selection / Paste draft drags are geared down (drag_gear.dart)
   // so an exact pixel is easy to land. Shared by the Move and CopyPaste tools, session-only (not
-  // persisted, like Protect/Wrap) and UI-only — the engine never hears about it.
+  // persisted, like Wrap) and UI-only — the engine never hears about it.
   bool _slowDrafts = false;
   // Move tool mode: false = move the layer/pixels (default); true = move only the selection mask.
   bool _moveSelectionMode = false;

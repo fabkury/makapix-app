@@ -163,7 +163,7 @@ today. ✅ present · ◑ partial · ○ absent.
 | Pixel-perfect stroke | ✅ Pencil "Perfect" | — |
 | Symmetry / mirror painting | ○ | A1 |
 | Dither brush / pattern paint | ○ | A2 |
-| Alpha lock | ○ (Move has "Protect pixels" only) | A3 |
+| Alpha lock | ○ | A3 |
 | Replace color | ○ | A4 |
 | Outline | ○ (Shape's Outline is a draw mode) | A5 |
 | Shading ink (palette-ramp shift) | ○ | B6 |
