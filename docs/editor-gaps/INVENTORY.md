@@ -1,7 +1,8 @@
 # Makapix Editor feature-gap inventory
 
-**Date:** 2026-09-03 · **Status: brainstorm, nothing scheduled.** Nothing in this document is
-committed work; it is the ranked reference list to pick from. **Sources:** code sweep of the engine
+**Date:** 2026-09-03 · **refreshed 2026-09-04 for 1.9.0** (A2 Dither/Patterns shipped; Bucket fill joined
+Repeat; "Protect pixels" retired from the Move UI). **Status: brainstorm, nothing scheduled.** Nothing in
+this document is committed work; it is the ranked reference list to pick from. **Sources:** code sweep of the engine
 verb catalog (`crates/engine/src/session/parse.rs`), the tool catalog (`app/lib/editor/tools.dart`),
 menus, dialogs, and palette I/O at `ba9ca686`; `STATUS.md` §"Remaining gaps"; and a 2026-09-03 web
 survey of the competition — desktop (Aseprite 1.3.18, Pro Motion NG 8, Pixelorama 1.2, LibreSprite,
@@ -41,7 +42,9 @@ fill/outline, ratio lock) · Ruler (length + angle) · Dodge/Burn · Eyedropper 
 Move (layer/pixels/selection, wrap) · Copy/Paste with clipboard swatch · Select
 (rect/oval/lasso, add/sub/intersect) · Select by color · Select layer alpha · HSV · Brightness/
 Contrast · Levels · Flip · Rotate (90s + free angle, cleanEdge) · Resize (cleanEdge) · Invert ·
-AA toggle · Precision off-finger cursor with act-by-button · Slow (geared) drags · Repeat-redo ·
+AA toggle · **Patterns** (dither/texture paint gate on Pencil/Brush/Eraser/Bucket + Gradient Dither,
+1.9.0) · Precision off-finger cursor with act-by-button · Slow (geared) drags · Repeat-redo (strokes,
+figures, paste, Bucket fill) ·
 64 layers (opacity, 10 blend modes, lock, hide, merge down, copy to all frames, move-group) ·
 1,024 frames (durations, fps presets, playhead, drag reorder, loop-wrapping onion skin) · palettes
 (page, naming, sort, from-artwork, .gpl/.json in, .gpl out, five presets) · import of every raster
@@ -73,7 +76,7 @@ architecture cheaply. Any one of them is a sensible next feature.
 | # | Gap | 📱 | 🎨 | Effort | Lands in | Competitors |
 |---|-----|----|----|--------|----------|-------------|
 | A1 | **Symmetry / mirror drawing** (H · V · both; optional diagonal + rotational) | H | H | M–L | E J | Aseprite, PMNG (cyclic), Pixelorama, LibreSprite, rx, Piskel, Pixaki, Resprite, Pixquare, Pixel Studio, Pixilart |
-| A2 | **Dither patterns** on Pencil/Brush/Eraser/Bucket/Gradient (Bayer 2×2/4×4/8×8, lines, dots, bricks; no offset) — **designed 2026-09-04**: `docs/patterns/DESIGN.md` + ADR 0025 | H | H | M | E J | Aseprite (gradient + bucket), PMNG, Piskel, Pyxel, Pixelorama, Pixaki (13 patterns), Resprite, Pixquare, Pixel Studio |
+| ~~A2~~ | ~~**Dither patterns**~~ — **SHIPPED in 1.9.0 (2026-09-04)** as Patterns: `docs/patterns/DESIGN.md` + ADR 0025 (116-tile catalog incl. Bayer 2/4/8 + inverses, Gradient "Dither"; no offset control, no custom tiles yet) | H | H | M | E J | Aseprite (gradient + bucket), PMNG, Piskel, Pyxel, Pixelorama, Pixaki (13 patterns), Resprite, Pixquare, Pixel Studio |
 | A3 | **Alpha lock** ("lock transparency": paint only where the layer already has pixels) | H | H | S | E J | Aseprite, LibreSprite, Pixelorama, Pixaki, Resprite, Pixquare |
 | A4 | **Replace color** (A → B; layer · frame · all frames scope) | H | H | S–M | E J | Aseprite, Piskel, GraphicsGale, Pixaki (cel/layer/project), Pixquare |
 | A5 | **Outline** (1-px stroke around opaque pixels: color, inside/outside, 4/8-connected; layer or selection) | H | H | S–M | E J | Aseprite, Pixelorama, Resprite (layer style), Pixquare, Pixel Studio, Dotpict |
@@ -162,7 +165,7 @@ today. ✅ present · ◑ partial · ○ absent.
 |---|---|---|
 | Pixel-perfect stroke | ✅ Pencil "Perfect" | — |
 | Symmetry / mirror painting | ○ | A1 |
-| Dither brush / pattern paint | ○ | A2 |
+| Dither brush / pattern paint | ✅ Patterns (1.9.0) | A2 |
 | Alpha lock | ○ | A3 |
 | Replace color | ○ | A4 |
 | Outline | ○ (Shape's Outline is a draw mode) | A5 |
@@ -471,7 +474,7 @@ append-only journal, the checkpoint FFI, and the Club lineage.
 ## 5. Suggested reading of the list
 
 If the next release wants **one** editor headline: **A1 Symmetry** (asked for by every persona and
-absent everywhere in the code) or **A2 Dither** (the single most "pixel art" feature missing).
+absent everywhere in the code). A2 Dither, the other headline candidate, shipped in 1.9.0 as Patterns.
 If it wants a **touch-quality** release: A6 + A7 + A11 + B15 + B18 are all shell-only and together
 close most of the mobile table-stakes column. If it wants an **animation** release: A8 + A9 + B5 +
 B9 (+ B4 later). **B14 Preferences** should land before or with A8/A11/B10/B22, since each of those
