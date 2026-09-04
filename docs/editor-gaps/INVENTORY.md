@@ -38,7 +38,7 @@ Read `STATUS.md` §"Tools & editing" for the full table. The short version, so t
 alone: Pencil (pixel-perfect) · Brush · Airbrush ×3 · Eraser · Bucket (threshold, contiguous, all
 layers) · Gradient (linear/radial, 2–8 colors, smoothstep) · Line · Shape (rect/ellipse/triangle,
 fill/outline, ratio lock) · Ruler (length + angle) · Dodge/Burn · Eyedropper (frame/layer source) ·
-Move (layer/pixels/selection, wrap, protect) · Copy/Paste with clipboard swatch · Select
+Move (layer/pixels/selection, wrap) · Copy/Paste with clipboard swatch · Select
 (rect/oval/lasso, add/sub/intersect) · Select by color · Select layer alpha · HSV · Brightness/
 Contrast · Levels · Flip · Rotate (90s + free angle, cleanEdge) · Resize (cleanEdge) · Invert ·
 AA toggle · Precision off-finger cursor with act-by-button · Slow (geared) drags · Repeat-redo ·
@@ -73,7 +73,7 @@ architecture cheaply. Any one of them is a sensible next feature.
 | # | Gap | 📱 | 🎨 | Effort | Lands in | Competitors |
 |---|-----|----|----|--------|----------|-------------|
 | A1 | **Symmetry / mirror drawing** (H · V · both; optional diagonal + rotational) | H | H | M–L | E J | Aseprite, PMNG (cyclic), Pixelorama, LibreSprite, rx, Piskel, Pixaki, Resprite, Pixquare, Pixel Studio, Pixilart |
-| A2 | **Dither patterns** on Pencil/Brush/Eraser/Bucket/Gradient (Bayer 2×2/4×4/8×8, lines, dots, bricks; no offset) — **designed 2026-09-04**: `docs/patterns/DESIGN.md` + ADR 0023 | H | H | M | E J | Aseprite (gradient + bucket), PMNG, Piskel, Pyxel, Pixelorama, Pixaki (13 patterns), Resprite, Pixquare, Pixel Studio |
+| A2 | **Dither patterns** on Pencil/Brush/Eraser/Bucket/Gradient (Bayer 2×2/4×4/8×8, lines, dots, bricks; no offset) — **designed 2026-09-04**: `docs/patterns/DESIGN.md` + ADR 0025 | H | H | M | E J | Aseprite (gradient + bucket), PMNG, Piskel, Pyxel, Pixelorama, Pixaki (13 patterns), Resprite, Pixquare, Pixel Studio |
 | A3 | **Alpha lock** ("lock transparency": paint only where the layer already has pixels) | H | H | S | E J | Aseprite, LibreSprite, Pixelorama, Pixaki, Resprite, Pixquare |
 | A4 | **Replace color** (A → B; layer · frame · all frames scope) | H | H | S–M | E J | Aseprite, Piskel, GraphicsGale, Pixaki (cel/layer/project), Pixquare |
 | A5 | **Outline** (1-px stroke around opaque pixels: color, inside/outside, 4/8-connected; layer or selection) | H | H | S–M | E J | Aseprite, Pixelorama, Resprite (layer style), Pixquare, Pixel Studio, Dotpict |

@@ -2,7 +2,7 @@
 
 **Status: designed 2026-09-03/04, NOT implemented.** Every decision below was taken with the user
 in a four-round question pass on 2026-09-03; this document records them so implementation can start
-without re-deciding anything. Companion ADR: [ADR 0023](../adr/0023-patterns-are-a-paint-gate.md).
+without re-deciding anything. Companion ADR: [ADR 0025](../adr/0025-patterns-are-a-paint-gate.md).
 Code references are to `21a09080`. Inventory entry: `docs/editor-gaps/INVENTORY.md` A2.
 
 ## What it is
@@ -84,8 +84,8 @@ list and to the shell's `replay/visible_index.dart` settings allowlist.
 |---|---|---|
 | Pencil (plain and pixel-perfect) | `tool::plot` (`tool.rs:270`), called from `stamp_active` and `pencil_perfect_segment` | `plot` gains a `gate: Option<(&Pattern, Point)>` argument (pattern + canvas origin) checked after the selection. The pixel-perfect tail (`pp`) keeps recording geometry with the pre-stroke color; a masked-off pixel was never written, so its "restore" is a no-op — thinning stays exactly geometric |
 | Brush, Eraser | `StrokeCoat::raise` (`coat.rs`) | Skip the raise when the gate is OFF at (x, y). Because the gate lives at raise time, the display-time coat overlay (preview) and `commit_into` agree by construction — the ADR 0007 invariant holds without extra work |
-| Bucket (tap and reticle Fill) | `tool::flood_fill` via `flood_fill_at` (`session.rs:2320`) | Region computed exactly as today (threshold, contiguous, "All layers" reference); the write loop consults the gate. The flood's visited set is unaffected, so a masked-off pixel still propagates the fill |
-| Gradient | `tool::apply_gradient` / `gradient_color_at_sorted` (`tool.rs:403`) | With `dither = n`: find the bounding stops `i, i+1` and the local fraction `t` (eased by smoothstep when enabled, as today); output stop `i+1` if `t * n² > bayer_n[y mod n][x mod n] + ½` else stop `i` — **exactly one of the two stop colors, alpha included**, never an interpolation. Integer compare after scaling; the existing f32 fraction is IEEE-deterministic and already on the wire. `last_gradient` (the Repeat snapshot) gains the dither value |
+| Bucket (tap and reticle Fill) | `tool::flood_fill` via `flood_fill_at` (`session.rs:2320`) | Region computed exactly as today (threshold, contiguous, "All layers" reference); the write loop consults the gate. The flood's visited set is unaffected, so a masked-off pixel still propagates the fill. `bucket_record` (ADR 0024) snapshots the pattern with the other parameters so Repeat reproduces the dithered fill |
+| Gradient | `tool::apply_gradient` / `gradient_color_at_sorted` (`tool.rs:403`) | With `dither = n`: find the bounding stops `i, i+1` and the local fraction `t` (eased by smoothstep when enabled, as today); output stop `i+1` if `t * n² > bayer_n[y mod n][x mod n] + ½` else stop `i` — **exactly one of the two stop colors, alpha included**, never an interpolation. Integer compare after scaling; the existing f32 fraction is IEEE-deterministic and already on the wire. `last_gradient` (the `assert.gradient` probe's oracle) gains the dither value so the oracle reproduces the thresholding, or the probe reports "not applicable" for dithered gradients — pick when implementing |
 | Airbrush ×3, Dodge, Burn, Line/Shape, Move, Paste | — | Untouched in v1. `open_coat` sets `ctx.pattern = None` for the non-participating coat tools so a stray global pattern can never leak |
 
 **AA.** `Session::open_coat` already limits `aa` to a round Brush/Eraser of size > 1; add
@@ -210,7 +210,9 @@ tap selects and pops, Gradient filter), a controls test that the AA chip disable
   offset/phase and scale knobs).
 - Gradient dithering yields exactly the two adjacent stop colors per pixel (alpha included) and
   respects Smoothstep before thresholding; radial and linear alike; it composes with the selection.
-- Repeat (ADR 0017) re-executes the last Gradient with the dither it was committed with.
+- Repeat of a Bucket fill (ADR 0024) snapshots the pattern in force at the tap alongside the
+  seed, color, Threshold, Contiguous, and All-layers — "same region, same dither on the next
+  frame". Gradient is not in the repeatable set (ADR 0017), so nothing to snapshot there.
 - Switching tools re-pushes the resolved pattern state; a mid-stroke `SetPattern` (keyboard or
   replay) applies from the next stroke for the coat tools (ADR 0007) and from the next tap for
   Pencil/Bucket.
