@@ -75,11 +75,11 @@ architecture cheaply. Any one of them is a sensible next feature.
 
 | # | Gap | 📱 | 🎨 | Effort | Lands in | Competitors |
 |---|-----|----|----|--------|----------|-------------|
-| A1 | **Symmetry / mirror drawing** (H · V · both; optional diagonal + rotational) | H | H | M–L | E J | Aseprite, PMNG (cyclic), Pixelorama, LibreSprite, rx, Piskel, Pixaki, Resprite, Pixquare, Pixel Studio, Pixilart |
+| A1 | **Symmetry / mirror drawing** (H · V · both; optional diagonal + rotational) — **designed 2026-09-04**: `docs/symmetry/DESIGN.md` + ADR 0026, headline of the next release | H | H | M–L | E J | Aseprite, PMNG (cyclic), Pixelorama, LibreSprite, rx, Piskel, Pixaki, Resprite, Pixquare, Pixel Studio, Pixilart |
 | ~~A2~~ | ~~**Dither patterns**~~ — **SHIPPED in 1.9.0 (2026-09-04)** as Patterns: `docs/patterns/DESIGN.md` + ADR 0025 (116-tile catalog incl. Bayer 2/4/8 + inverses, Gradient "Dither"; no offset control, no custom tiles yet) | H | H | M | E J | Aseprite (gradient + bucket), PMNG, Piskel, Pyxel, Pixelorama, Pixaki (13 patterns), Resprite, Pixquare, Pixel Studio |
 | A3 | **Alpha lock** ("lock transparency": paint only where the layer already has pixels) | H | H | S | E J | Aseprite, LibreSprite, Pixelorama, Pixaki, Resprite, Pixquare |
-| A4 | **Replace color** (A → B; layer · frame · all frames scope) | H | H | S–M | E J | Aseprite, Piskel, GraphicsGale, Pixaki (cel/layer/project), Pixquare |
-| A5 | **Outline** (1-px stroke around opaque pixels: color, inside/outside, 4/8-connected; layer or selection) | H | H | S–M | E J | Aseprite, Pixelorama, Resprite (layer style), Pixquare, Pixel Studio, Dotpict |
+| A4 | **Replace color** (A → B; layer · frame · all frames scope) — **designed 2026-09-04** (rider in `docs/symmetry/DESIGN.md`) | H | H | S–M | E J | Aseprite, Piskel, GraphicsGale, Pixaki (cel/layer/project), Pixquare |
+| A5 | **Outline** (1-px stroke around opaque pixels: color, inside/outside, 4/8-connected; layer or selection) — **designed 2026-09-04** (rider in `docs/symmetry/DESIGN.md`; width 1–4) | H | H | S–M | E J | Aseprite, Pixelorama, Resprite (layer style), Pixquare, Pixel Studio, Dotpict |
 | A6 | **Touch undo/redo gestures** (two-finger tap undo, three-finger redo, hold = rapid) + **long-press eyedropper** on the canvas | H | M | S–M | S | Pixaki, Resprite, Pixquare, Procreate; long-press pick: Pixaki, Resprite, Pixquare |
 | A7 | **Reference image underlay** (opacity, lock to canvas, not part of the document) — plus the **remix source as reference** (§4 N4) | M–H | H | M | S | Aseprite, Pixelorama, Lospec, Pixaki (full-res layers), Pixquare, Dots (tracing template) |
 | A8 | **Onion skin range · opacity · tint** (prev/next counts, per-side toggle) | M | H | S–M | E F | Aseprite, LibreSprite, Pixelorama, Pixaki (10 frames), Pixquare |
