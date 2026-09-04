@@ -565,6 +565,16 @@ extension _EditorControls on _EditorPageState {
     // The Pattern swatch (ADR 0025) rides at the END of row-1 for the four gated tools, and the
     // Gradient's Dither swatch likewise (a user placement decision, 2026-09-03).
     if (_kPatternTools.contains(_tool) || _tool == 'Gradient') {
+      // On the Gradient row a thin rule keeps the Dither swatch from reading as one more
+      // gradient color swatch (user decision 2026-09-04).
+      if (_tool == 'Gradient') {
+        children.add(Container(
+          width: 1,
+          height: 26,
+          margin: const EdgeInsets.symmetric(horizontal: 6),
+          color: Colors.white30,
+        ));
+      }
       children.add(_patternSwatch());
     }
     if (_tool == 'SelectLayer') {
@@ -1137,10 +1147,11 @@ extension _EditorControls on _EditorPageState {
   // import/export/clear/delete + presets); the row-2 strip keeps color-level editing.
   // ---- patterns (ADR 0025) ----
 
-  // The row-1 swatch: the tile in force, repeated at 2 px per cell in the primary color; dimmed
-  // with a slash while Off (a generic checker glyph if no tile was ever picked). Tap opens the
-  // page; long-press / right-click toggles Off ↔ the last tile without opening it. The Gradient's
-  // variant shows its Bayer dither at the 50 % level and toggles Off ↔ the last size.
+  // The row-1 swatch: the tile in force, repeated at 2 px per cell in the two preview colors
+  // (never the primary: it could match the toolbar); dimmed with a slash while Off (a generic
+  // checker glyph if no tile was ever picked). Tap opens the page; long-press / right-click
+  // toggles Off ↔ the last tile without opening it. The Gradient's variant shows its Bayer dither
+  // at the 50 % level and toggles Off ↔ the last size.
   Widget _patternSwatch() {
     final gradient = _tool == 'Gradient';
     final on = gradient ? _gradDither != 0 : _patternActive;
@@ -1165,13 +1176,14 @@ extension _EditorControls on _EditorPageState {
             decoration: BoxDecoration(
               border: Border.all(color: on ? Colors.white70 : Colors.white38),
               borderRadius: BorderRadius.circular(4),
-              color: const Color(0xFF1E2226),
             ),
             clipBehavior: Clip.antiAlias,
             child: Stack(fit: StackFit.expand, children: [
               Opacity(
                 opacity: on ? 1 : 0.35,
-                child: CustomPaint(painter: PatternTilePainter(tile: tile, color: _primary, scale: 2)),
+                child: CustomPaint(
+                    painter: PatternTilePainter(
+                        tile: tile, onColor: _patternOnColor, offColor: _patternOffColor, scale: 2)),
               ),
               if (!on) const CustomPaint(painter: _SlashPainter()),
             ]),
@@ -1185,7 +1197,13 @@ extension _EditorControls on _EditorPageState {
     if (_playing) _pause();
     if (_tool == 'Gradient') {
       final n = await Navigator.of(context).push<int>(MaterialPageRoute(
-        builder: (_) => PatternsPage.gradient(primary: _primary, dither: _gradDither),
+        builder: (_) => PatternsPage.gradient(
+          dither: _gradDither,
+          onColor: _patternOnColor,
+          offColor: _patternOffColor,
+          pickColor: _pickColorValue,
+          onDisplayColorsChanged: _setPatternDisplayColors,
+        ),
       ));
       if (!mounted || n == null) return;
       _setGradDither(n);
@@ -1194,11 +1212,14 @@ extension _EditorControls on _EditorPageState {
     final tool = _tool;
     final pick = await Navigator.of(context).push<PatternPick>(MaterialPageRoute(
       builder: (_) => PatternsPage(
-        primary: _primary,
         toolName: tool,
         current: _pattern,
         on: _patternOn[tool] ?? false,
         recents: List.of(_patternRecents),
+        onColor: _patternOnColor,
+        offColor: _patternOffColor,
+        pickColor: _pickColorValue,
+        onDisplayColorsChanged: _setPatternDisplayColors,
       ),
     ));
     if (!mounted || pick == null || _tool != tool) return;
@@ -1216,6 +1237,15 @@ extension _EditorControls on _EditorPageState {
         });
     }
     _send(_patternDsl);
+    _persistPattern();
+  }
+
+  // The Patterns page's preview colors: applied to the row-1 swatch at once and persisted.
+  void _setPatternDisplayColors(Color on, Color off) {
+    setState(() {
+      _patternOnColor = on;
+      _patternOffColor = off;
+    });
     _persistPattern();
   }
 

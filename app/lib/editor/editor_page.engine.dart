@@ -24,6 +24,7 @@ extension _EditorEngine on _EditorPageState {
       final patOnSaved = prefs.getStringList(_kPatternOnPref);
       final gradDither = prefs.getInt(_kGradDitherPref);
       final patRecents = prefs.getStringList(_kPatternRecentsPref);
+      final patColors = prefs.getStringList(_kPatternColorsPref);
       final all = tools.map((t) => t.dsl).toList();
       List<String>? reconciled;
       if (saved != null) {
@@ -83,6 +84,10 @@ extension _EditorEngine on _EditorPageState {
             _patternRecents
               ..clear()
               ..addAll([for (final s in patRecents) ?PatternTile.parse(s)].take(10));
+          }
+          if (patColors != null && patColors.length == 2) {
+            _patternOnColor = _tryParseHex(patColors[0]) ?? _patternOnColor;
+            _patternOffColor = _tryParseHex(patColors[1]) ?? _patternOffColor;
           }
           if (gradDither != null && const [0, 2, 4, 8].contains(gradDither)) {
             _gradDither = gradDither;
@@ -150,6 +155,7 @@ extension _EditorEngine on _EditorPageState {
       await prefs.setStringList(_kPatternOnPref, [for (final e in _patternOn.entries) if (e.value) e.key]);
       await prefs.setInt(_kGradDitherPref, _gradDither);
       await prefs.setStringList(_kPatternRecentsPref, [for (final t in _patternRecents) t.pref]);
+      await prefs.setStringList(_kPatternColorsPref, [_hex(_patternOnColor), _hex(_patternOffColor)]);
     } catch (_) {}
   }
 

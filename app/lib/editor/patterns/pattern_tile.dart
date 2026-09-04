@@ -1,4 +1,4 @@
-// A pattern tile (ADR 0025): the shell-side twin of the engine's `Pattern` — a small repeating
+// A pattern tile (ADR 0025): the shell-side twin of the engine's `Pattern`: a small repeating
 // bitmask that gates painting. Pure Dart, no engine: the editor, the Patterns page, the catalog,
 // the prefs, and the widget tests all share this one value type. A tile is its bits: two tiles
 // with the same size and bits are equal whatever a catalog calls them, which is what lets the
@@ -12,7 +12,7 @@ class PatternTile {
   /// Width and height in cells, each 1..=[kPatternMaxSide].
   final int w, h;
 
-  /// Bit `y*w + x` is the cell at (x, y) — the engine's layout. Always < 2^(w*h).
+  /// Bit `y*w + x` is the cell at (x, y): the engine's layout. Always < 2^(w*h).
   final BigInt bits;
 
   const PatternTile._(this.w, this.h, this.bits);
@@ -86,7 +86,7 @@ class PatternTile {
   /// The complementary tile (every cell flipped).
   PatternTile get inverse => PatternTile._(w, h, bits ^ ((BigInt.one << cellCount) - BigInt.one));
 
-  /// Fixed-width lowercase hex, `ceil(w*h/4)` digits — the engine's `Pattern::hex()`.
+  /// Fixed-width lowercase hex, `ceil(w*h/4)` digits: the engine's `Pattern::hex()`.
   String get hex => bits.toRadixString(16).padLeft((cellCount + 3) ~/ 4, '0');
 
   /// The journal line that puts this tile in force.

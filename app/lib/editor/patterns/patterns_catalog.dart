@@ -1,5 +1,5 @@
 // The built-in pattern catalog (ADR 0025): ~100 tiles up to 8×8, generated once from small
-// generator functions and grouped by family for the Patterns page. Ids and names are UI-only —
+// generator functions and grouped by family for the Patterns page. Ids and names are UI-only -
 // prefs and the journal store the TILE (`PatternTile.pref` / `.dsl`), so renaming, reordering,
 // or extending this catalog never breaks a stored recent or a recorded session.
 //
@@ -7,8 +7,8 @@
 // diagonals and crosshatch, then dots / grids / bricks / checkers. EVERY tile is listed with its
 // exact inverse, so a two-color dither is two strokes with complementary tiles: the non-Bayer
 // families pair each tile with its inverse, and the Bayer ladders run by density with both
-// phases at each step (a Bayer level's inverse is NOT another level of the ladder — the
-// thresholds are not symmetric — so the inverses are explicit entries). Tiles the ladders already
+// phases at each step (a Bayer level's inverse is NOT another level of the ladder: the
+// thresholds are not symmetric: so the inverses are explicit entries). Tiles the ladders already
 // contain (the 2×2 checker, the single-dot 2×2, the 2-px grid) are not repeated under a second
 // name: the catalog has no duplicate tiles, no all-ON tile (that is Off), and no all-OFF tile (it
 // would paint nothing).
@@ -30,7 +30,7 @@ class PatternFamily {
 }
 
 /// The canonical Bayer thresholds `0..n²` for n ∈ {2, 4, 8} (the recursive expansion
-/// `M(2n) = [[4M, 4M+2], [4M+3, 4M+1]]` of `[[0, 2], [3, 1]]`) — the same tables the engine
+/// `M(2n) = [[4M, 4M+2], [4M+3, 4M+1]]` of `[[0, 2], [3, 1]]`): the same tables the engine
 /// dithers gradients with.
 List<List<int>> bayerMatrix(int n) {
   var m = [
@@ -105,7 +105,7 @@ List<PatternFamily> _build() {
         PatternEntry(id: '$id.inv', name: '$name (inverse)', tile: t.inverse),
       ];
 
-  // Bayer ladders at coarse steps: 2×2 every level, 4×4 every level, 8×8 every 4th level —
+  // Bayer ladders at coarse steps: 2×2 every level, 4×4 every level, 8×8 every 4th level -
   // each level followed by its inverse, the whole ladder ordered by density (ON count).
   for (final (n, step) in [(2, 1), (4, 1), (8, 4)]) {
     final entries = <PatternEntry>[];

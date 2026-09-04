@@ -939,7 +939,14 @@ extension _EditorFileIo on _EditorPageState {
     required ValueChanged<Color> onPick,
     bool forPrimary = false,
   }) async {
-    final c = await showDialog<Color>(
+    final c = await _pickColorValue(initial, forPrimary: forPrimary);
+    if (c != null) onPick(c);
+  }
+
+  /// The Pick color dialog as a value: the chosen color, or null when dismissed. Pages that own
+  /// their own state (the Patterns page's preview colors) take this as a callback.
+  Future<Color?> _pickColorValue(Color initial, {bool forPrimary = false}) {
+    return showDialog<Color>(
       context: context,
       builder: (_) => ColorPickerDialog(
         initial: initial,
@@ -948,6 +955,5 @@ extension _EditorFileIo on _EditorPageState {
         palette: List<Color>.unmodifiable(_palette),
       ),
     );
-    if (c != null) onPick(c);
   }
 }

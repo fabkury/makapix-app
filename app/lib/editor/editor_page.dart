@@ -107,6 +107,7 @@ const _kPatternPref = 'editor.pattern_v1';
 const _kPatternOnPref = 'editor.patternOn_v1';
 const _kGradDitherPref = 'editor.gradientDither_v1';
 const _kPatternRecentsPref = 'editor.patternRecents_v1';
+const _kPatternColorsPref = 'editor.patternColors_v1'; // [ON, OFF] preview colors as #RRGGBBAA
 const _transformTools = {'Flip', 'Rotate', 'Resize', 'Invert'};
 // Row-3 "action" tools in the reorderable grid: tapping fires an action/toggle immediately rather
 // than selecting a draw tool (handled in _toolTile / _doToolAction). Undo/Redo are NOT here — they
@@ -333,6 +334,11 @@ class _EditorPageState extends ConsumerState<EditorPage>
   final Map<String, bool> _patternOn = {};
   final List<PatternTile> _patternRecents = [];
   int _gradDither = 0, _gradDitherLast = 4;
+  // The two colors patterns are PREVIEWED in (the row-1 swatch and the Patterns/Dither pages),
+  // never the primary color: a primary close to the toolbar would hide the tile. Black on white
+  // by default (user decision 2026-09-04), editable on the page, persisted editor-wide. The tool
+  // itself still paints ON cells with the primary color.
+  Color _patternOnColor = kPatternOnDefault, _patternOffColor = kPatternOffDefault;
   // HSV-shift sliders: zero = no change, so entering the tool previews the document as-is.
   double _hsvH = 0, _hsvS = 0, _hsvV = 0;
   // Brightness/Contrast sliders: zero = no change too (the contrast slider is ±% around the 1.0×
