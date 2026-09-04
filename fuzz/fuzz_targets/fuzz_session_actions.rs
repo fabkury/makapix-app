@@ -147,6 +147,11 @@ enum Act {
     SetBrightnessContrast(i8, i8),
     ApplyBrightnessContrast,
     SetAA(bool),
+    /// ADR 0025: sides 1..=16 (the wire cap) with up to 64 bits of the tile; a tile whose set
+    /// bits exceed w*h is rejected by the parser — that path is fuzzed on purpose.
+    SetPattern(u8, u8, u64),
+    SetPatternOff,
+    SetGradientDither(u8),
     SetContiguous(bool),
     SetPixelPerfect(bool),
     SetWrap(bool),
@@ -227,6 +232,9 @@ fn render(act: &Act, out: &mut String) {
         }
         Act::ApplyBrightnessContrast => writeln!(out, "ApplyBrightnessContrast()"),
         Act::SetAA(b) => writeln!(out, "SetAA({})", b),
+        Act::SetPattern(w, h, bits) => writeln!(out, "SetPattern({},{},{:x})", w % 17, h % 17, bits),
+        Act::SetPatternOff => writeln!(out, "SetPattern(off)"),
+        Act::SetGradientDither(n) => writeln!(out, "SetGradientDither({})", [0u8, 2, 4, 8, 3][(*n % 5) as usize]),
         Act::SetContiguous(b) => writeln!(out, "SetContiguous({})", b),
         Act::SetPixelPerfect(b) => writeln!(out, "SetPixelPerfect({})", b),
         Act::SetWrap(b) => writeln!(out, "SetWrap({})", b),

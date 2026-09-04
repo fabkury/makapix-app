@@ -6,7 +6,7 @@ use crate::color::Rgba8;
 use crate::document::{BlendMode, LoopMode};
 use crate::geom::{MAX_DIM, MIN_DIM};
 use crate::selection::CombineMode;
-use crate::tool::{BrushShape, GradientKind, Stop, ToolKind};
+use crate::tool::{BrushShape, GradientKind, Pattern, Stop, ToolKind};
 
 #[derive(Clone, Debug)]
 pub enum Action {
@@ -54,6 +54,8 @@ pub enum Action {
     SetGradientType(GradientKind),
     SetGradientStops(Vec<Stop>),
     SetGradientSmoothstep(bool),
+    /// The Gradient's ordered dither (ADR 0025): 0 = off, else the Bayer size 2 | 4 | 8.
+    SetGradientDither(u8),
     SetHsvShift(f32, f32, f32),
     SetHsvScope(bool), // true = the whole active frame, false = the active layer / selection
     SetBrightnessContrast(i32, f32), // brightness delta [-255,255], contrast factor around 128
@@ -70,6 +72,9 @@ pub enum Action {
     /// Anti-alias (ADR 0008): one shared flag for round Brush, Line/Rect/Ellipse/Triangle, and
     /// round Eraser — fractional-coverage edges instead of hard pixel steps.
     SetAA(bool),
+    /// The pattern gate (ADR 0025): `SetPattern(w,h,hex)` carries the tile's bits themselves
+    /// (catalog names are a shell convenience, never a replay contract); `SetPattern(off)` clears.
+    SetPattern(Option<Pattern>),
     SetOverscanView(bool),
     SetCleanEdge(bool),
     SetCleanEdgeWidth(i32), // thousandths, 0..=2000 = 0.0..=2.0 (the SetShapeRotation convention)
@@ -265,6 +270,7 @@ impl Session {
             SetGradientType(k) => self.settings.gradient.kind = k,
             SetGradientStops(s) => self.settings.gradient.stops = s,
             SetGradientSmoothstep(b) => self.settings.gradient.smoothstep = b,
+            SetGradientDither(n) => self.settings.gradient.dither = n,
             SetHsvShift(dh, ds, dv) => self.settings.hsv = (dh, ds, dv),
             SetHsvScope(frame) => self.settings.hsv_frame = frame,
             SetBrightnessContrast(db, cf) => self.settings.bc = (db, cf),
@@ -279,6 +285,7 @@ impl Session {
             SetWrap(b) => self.settings.wrap = b,
             SetPixelPerfect(b) => self.settings.pixel_perfect = b,
             SetAA(b) => self.settings.aa = b,
+            SetPattern(p) => self.settings.pattern = p,
             SetOverscanView(b) => self.settings.overscan_view = b,
             SetEyedropSource(b) => self.settings.eyedrop_layer = b,
             SetSelectColorSource(b) => self.settings.select_color_layer = b,
@@ -637,6 +644,10 @@ fn parse_line(line: &str) -> Result<Action, String> {
             o => return Err(format!("bad gradient '{}'", o)),
         }),
         "SetGradientSmoothstep" => SetGradientSmoothstep(boola(0)?),
+        "SetGradientDither" => SetGradientDither(match u8a(0)? {
+            n @ (0 | 2 | 4 | 8) => n,
+            o => return Err(format!("bad gradient dither {} (0, 2, 4 or 8)", o)),
+        }),
         "SetHsvShift" => SetHsvShift(f32a(0)?, f32a(1)?, f32a(2)?),
         "SetHsvScope" => SetHsvScope(args.first().map(|s| s.eq_ignore_ascii_case("frame")).unwrap_or(false)),
         "SetBrightnessContrast" => SetBrightnessContrast(i32a(0)?, f32a(1)?),
@@ -656,6 +667,13 @@ fn parse_line(line: &str) -> Result<Action, String> {
         "SetWrap" => SetWrap(boola(0)?),
         "SetPixelPerfect" => SetPixelPerfect(boola(0)?),
         "SetAA" => SetAA(boola(0)?),
+        "SetPattern" => SetPattern(match args.first().copied().map(str::trim).unwrap_or("") {
+            a if a.eq_ignore_ascii_case("off") => None,
+            _ => {
+                let hex = args.get(2).copied().ok_or("SetPattern needs w, h, hexbits or off")?;
+                Some(Pattern::parse(u8a(0)?, u8a(1)?, hex)?)
+            }
+        }),
         "SetOverscanView" => SetOverscanView(boola(0)?),
         "SetCleanEdge" => SetCleanEdge(boola(0)?),
         "SetCleanEdgeWidth" => SetCleanEdgeWidth(i32a(0)?),

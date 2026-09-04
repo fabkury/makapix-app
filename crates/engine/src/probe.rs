@@ -8,7 +8,7 @@ use crate::document::{Document, Frame};
 use crate::geom::{IRect, Point};
 use crate::history::Edit;
 use crate::selection::Mask;
-use crate::tool::{gradient_eval, GradientKind, Stop};
+use crate::tool::{gradient_eval, Dither, GradientKind, Stop};
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
@@ -486,6 +486,7 @@ pub struct GradientOracle {
 /// `apply_gradient` blends source-over, so the closed form only equals the buffer where blending
 /// is an identity — a layer that was empty under the gradient, or fully opaque stops. Scripts
 /// using `assert.gradient` must apply the gradient to an empty layer (or use opaque stops).
+#[allow(clippy::too_many_arguments)]
 pub fn gradient_oracle(
     buf: &RgbaBuffer,
     kind: GradientKind,
@@ -493,13 +494,14 @@ pub fn gradient_oracle(
     p0: Point,
     p1: Point,
     smooth: bool,
+    dither: Option<Dither>,
     tol: u8,
 ) -> GradientOracle {
     let mut max_delta = 0u8;
     let mut worst = None;
     for y in 0..buf.height() as i32 {
         for x in 0..buf.width() as i32 {
-            let expected = gradient_eval(kind, stops, p0, p1, x, y, smooth);
+            let expected = gradient_eval(kind, stops, p0, p1, x, y, smooth, dither);
             let actual = buf.get(x, y);
             let d = crate::color::max_channel_delta(expected, actual);
             if d > max_delta {

@@ -61,6 +61,7 @@ fuzz_target!(|input: Input| {
         anchor: if input.anchor { Anchor::Center } else { Anchor::TopLeft },
         as_layer: input.as_layer,
         start_frame: input.start as usize,
+        placement: None,
         crop_rect: input
             .crop
             .map(|(x, y, w, h)| IRect::new(x as i32, y as i32, w.unsigned_abs() as u32, h.unsigned_abs() as u32)),

@@ -11,7 +11,7 @@ use crate::geom::{IRect, Point, PointF};
 use crate::io;
 use crate::render;
 use crate::selection::{CombineMode, Mask};
-use crate::tool::{self, BrushShape, GradientKind, PaintMode, Stop, ToolKind, ToolSettings};
+use crate::tool::{self, BrushShape, GradientKind, PaintMode, Pattern, PatternGate, Stop, ToolKind, ToolSettings};
 use crate::util::{hash_hex, Hash, SeededRng, VirtualClock};
 use std::sync::Arc;
 
@@ -25,9 +25,9 @@ pub use parse::Action;
 type TileSnapshot = std::sync::Arc<crate::buffer::TileTable>;
 
 /// The last applied gradient, kept for the `assert.gradient` test oracle:
-/// (kind, stops, p0, p1, smoothstep, frame id, layer id). Shared with the replay
+/// (kind, stops, p0, p1, smoothstep, dither (0 = off), frame id, layer id). Shared with the replay
 /// checkpoint capture (`session/checkpoint.rs`).
-pub(crate) type LastGradient = Option<(GradientKind, Vec<Stop>, Point, Point, bool, u32, u32)>;
+pub(crate) type LastGradient = Option<(GradientKind, Vec<Stop>, Point, Point, bool, u8, u32, u32)>;
 
 /// A pre-edit snapshot pinned to the exact (frame id, layer id) it was taken from. The matching
 /// commit/cancel resolves that target *by id* rather than acting on "whatever is active now", so a
@@ -192,7 +192,8 @@ enum RepeatOp {
     /// on a canvas resize; the canvas pixel is what the artist tapped), plus the fill's own
     /// settings frozen at the tap — the live Threshold/Contiguous/All-layers chips and primary
     /// color never change what Repeat fills. The region is decided live, like every target.
-    Bucket { seed: Point, color: Rgba8, threshold: u8, contiguous: bool, all_layers: bool },
+    /// `pattern` is the gate in force at the tap (ADR 0025): "same region, same dither".
+    Bucket { seed: Point, color: Rgba8, threshold: u8, contiguous: bool, all_layers: bool, pattern: Option<Pattern> },
 }
 
 impl RepeatOp {
@@ -775,6 +776,7 @@ impl Session {
             &self.settings.gradient,
             a,
             b,
+            self.doc.origin(),
         );
         Some(frame)
     }
@@ -1482,9 +1484,10 @@ impl Session {
                     let color = self.settings.primary;
                     let clip = self.paint_clip();
                     let sel = self.selection_arc(); // [C-2]
+                    let gate = self.pattern_gate(ToolKind::Pencil);
                     let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
                     let orig = buf.get(p.x, p.y);
-                    tool::plot(buf, sel.as_deref(), clip, p.x, p.y, color, PaintMode::Replace);
+                    tool::plot(buf, sel.as_deref(), gate, clip, p.x, p.y, color, PaintMode::Replace);
                     pp.push((p, orig));
                 }
                 ToolKind::Pencil => self.stamp_active(p, PaintMode::Replace, self.settings.primary),
@@ -1572,7 +1575,11 @@ impl Session {
         };
         // AA (ADR 0008) applies to the round Brush and Eraser only — never the airbrushes or
         // Dodge/Burn — and a size-1 or Square brush stays hard.
+        // AA is inert while a pattern is on (ADR 0025): fractional coverage through a dither
+        // is meaningless, and a hard edge is what the artist asked for.
+        let pattern = self.pattern_gate(tool);
         let aa = self.settings.aa
+            && pattern.is_none()
             && matches!(tool, ToolKind::Brush | ToolKind::Eraser)
             && matches!(self.settings.brush_shape, BrushShape::Round)
             && self.settings.brush_size > 1;
@@ -1584,12 +1591,24 @@ impl Session {
             shape: self.settings.brush_shape,
             intensity: self.settings.intensity,
             aa,
+            pattern,
             dv,
             seed,
             fid: f.id,
             lid: f.active_layer().id,
         };
         StrokeCoat::new(self.doc.canvas_rect(), ctx)
+    }
+
+    /// The pattern gate (ADR 0025) that applies to a write by `tool` right now: the global pattern
+    /// anchored at the current canvas origin, for the four gated tools only — every other tool
+    /// paints ungated whatever the settings hold, so a stray pattern can never leak into a shape,
+    /// an airbrush, or a Dodge/Burn stroke.
+    fn pattern_gate(&self, tool: ToolKind) -> Option<PatternGate> {
+        if !matches!(tool, ToolKind::Pencil | ToolKind::Brush | ToolKind::Eraser | ToolKind::Bucket) {
+            return None;
+        }
+        self.settings.pattern.map(|pattern| PatternGate { pattern, origin: self.doc.origin() })
     }
 
     /// The live single-coat stroke's coat, if any — what the compositor previews (ADR 0007).
@@ -1756,10 +1775,11 @@ impl Session {
                     let spec = self.settings.gradient.clone();
                     let clip = self.paint_clip();
                     let sel = self.selection_clone();
+                    let origin = self.doc.origin();
                     if let Some(buf) = self.buf_by_ids_mut(sfid, slid) {
-                        tool::apply_gradient(buf, sel.as_ref(), clip, &spec, start, last);
+                        tool::apply_gradient(buf, sel.as_ref(), clip, &spec, start, last, origin);
                         self.last_gradient =
-                            Some((spec.kind, spec.stops.clone(), start, last, spec.smoothstep, sfid, slid));
+                            Some((spec.kind, spec.stops.clone(), start, last, spec.smoothstep, spec.dither, sfid, slid));
                     }
                 }
                 ToolKind::Line | ToolKind::Rectangle | ToolKind::Ellipse | ToolKind::Triangle => {
@@ -1968,12 +1988,13 @@ impl Session {
         if self.tool == ToolKind::Gradient {
             let spec = self.settings.gradient.clone();
             let (fi, li) = (self.doc.active_frame, self.doc.active_frame().active_layer);
+            let origin = self.doc.origin();
             {
                 let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-                tool::apply_gradient(buf, sel.as_ref(), clip, &spec, a, b);
+                tool::apply_gradient(buf, sel.as_ref(), clip, &spec, a, b, origin);
             }
             let (fid, lid) = (self.doc.frames[fi].id, self.doc.frames[fi].layers[li].id);
-            self.last_gradient = Some((spec.kind, spec.stops.clone(), a, b, spec.smoothstep, fid, lid));
+            self.last_gradient = Some((spec.kind, spec.stops.clone(), a, b, spec.smoothstep, spec.dither, fid, lid));
         } else {
             let color = self.settings.primary;
             let (fill, lw, kind) = (self.settings.shape_fill, self.settings.line_width, self.tool);
@@ -2026,15 +2047,17 @@ impl Session {
         let (size, shape) = (self.settings.brush_size, self.settings.brush_shape);
         let clip = self.paint_clip();
         let sel = self.selection_arc(); // Arc bump, not a 72 KiB deep copy — per stamp [C-2]
+        let gate = self.pattern_gate(self.tool);
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-        tool::stamp(buf, sel.as_deref(), clip, p, size, shape, color, mode);
+        tool::stamp(buf, sel.as_deref(), gate, clip, p, size, shape, color, mode);
     }
     fn stroke_active(&mut self, a: Point, b: Point, mode: PaintMode, color: Rgba8) {
         let (size, shape) = (self.settings.brush_size, self.settings.brush_shape);
         let clip = self.paint_clip();
         let sel = self.selection_arc(); // [C-2]
+        let gate = self.pattern_gate(self.tool);
         let Some(buf) = self.paint_buf_mut() else { return }; // frozen target [fuzz FZ-1]
-        tool::stroke_segment(buf, sel.as_deref(), clip, a, b, size, shape, color, mode);
+        tool::stroke_segment(buf, sel.as_deref(), gate, clip, a, b, size, shape, color, mode);
     }
 
     /// True when the Pencil should draw in pixel-perfect mode: the toggle is on and the brush is a
@@ -2067,6 +2090,9 @@ impl Session {
         let color = self.settings.primary;
         let clip = self.paint_clip();
         let sel = self.selection_arc(); // [C-2]
+        // Pixel-perfect runs first, the pattern gates the write (ADR 0025): the corner filter
+        // stays purely geometric, and a gated-off pixel that gets "restored" was never written.
+        let gate = self.pattern_gate(ToolKind::Pencil);
         let mut pts = Vec::new();
         crate::raster::line(a, b, |x, y| pts.push(Point::new(x, y)));
         {
@@ -2078,7 +2104,7 @@ impl Session {
                     continue;
                 }
                 let orig = buf.get(c.x, c.y); // pre-stroke color (stroke hasn't touched `c` yet)
-                tool::plot(buf, sel.as_deref(), clip, c.x, c.y, color, PaintMode::Replace);
+                tool::plot(buf, sel.as_deref(), gate, clip, c.x, c.y, color, PaintMode::Replace);
                 pp.push((c, orig));
                 let n = pp.len();
                 if n >= 3 && pp_corner(pp[n - 3].0, pp[n - 2].0, pp[n - 1].0) {
@@ -2213,8 +2239,9 @@ impl Session {
             let color = self.settings.primary;
             let clip = self.paint_clip();
             let sel = self.selection_arc(); // [C-2]
+            let gate = self.pattern_gate(ToolKind::Pencil);
             let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-            tool::plot(buf, sel.as_deref(), clip, p.x, p.y, color, PaintMode::Replace);
+            tool::plot(buf, sel.as_deref(), gate, clip, p.x, p.y, color, PaintMode::Replace);
         } else if StrokeCoat::tool_uses_coat(self.tool) {
             // The Hold dab is its own one-dab single-coat stroke (ADR 0007): coat, dab,
             // flatten, and let the commit below record it as one step — same as always.
@@ -2356,20 +2383,22 @@ impl Session {
     /// contiguous and "All layers" settings plus the selection. Shared by the Bucket pointer tap
     /// and `fill_cursor`; the caller owns the undo edit.
     fn flood_fill_at(&mut self, p: Point) {
-        let (color, th, cont, all) = (
+        let (color, th, cont, all, pattern) = (
             self.settings.primary,
             self.settings.threshold,
             self.settings.contiguous,
             self.settings.fill_all_layers,
+            self.settings.pattern,
         );
-        self.flood_fill_with(p, color, th, cont, all);
+        self.flood_fill_with(p, color, th, cont, all, pattern);
     }
 
     /// The parameterized fill behind `flood_fill_at` and `Repeat` (ADR 0024): the given color and
     /// fill settings, the LIVE selection and (for `all_layers`) the live composite of the active
     /// frame — the target is always live, only the parameters are the caller's.
-    fn flood_fill_with(&mut self, p: Point, color: Rgba8, th: u8, cont: bool, all_layers: bool) {
+    fn flood_fill_with(&mut self, p: Point, color: Rgba8, th: u8, cont: bool, all_layers: bool, pattern: Option<Pattern>) {
         let sel = self.selection_clone();
+        let gate = pattern.map(|pattern| PatternGate { pattern, origin: self.doc.origin() });
         // "All layers": decide the region from the composited frame (computed before the
         // mutable layer borrow), while the fill still lands in the active layer only. The
         // reference is composited over the whole **storage** area so its coordinates line
@@ -2378,7 +2407,7 @@ impl Session {
             all_layers.then(|| render::composite_frame(self.doc.active_frame(), self.doc.storage_rect()));
         let clip = self.paint_clip();
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-        tool::flood_fill(buf, reference.as_ref(), sel.as_ref(), clip, p, color, th, cont, PaintMode::Replace);
+        tool::flood_fill(buf, reference.as_ref(), sel.as_ref(), gate, clip, p, color, th, cont, PaintMode::Replace);
     }
 
     /// The Repeat record of a fill seeded at `p` (storage coords) under the live settings (ADR
@@ -2392,6 +2421,7 @@ impl Session {
             threshold: self.settings.threshold,
             contiguous: self.settings.contiguous,
             all_layers: self.settings.fill_all_layers,
+            pattern: self.settings.pattern,
         }
     }
 
@@ -2696,7 +2726,7 @@ impl Session {
                 self.doc.active_frame_mut().active_layer_mut().pixels.blit_over(&pixels, pos);
                 self.commit_edit(before);
             }
-            RepeatOp::Bucket { seed, color, threshold, contiguous, all_layers } => {
+            RepeatOp::Bucket { seed, color, threshold, contiguous, all_layers, pattern } => {
                 if !self.active_editable() {
                     return;
                 }
@@ -2705,7 +2735,7 @@ impl Session {
                 let o = self.doc.origin();
                 let p = Point::new(seed.x + o.x, seed.y + o.y);
                 let before = self.begin_edit();
-                self.flood_fill_with(p, color, threshold, contiguous, all_layers);
+                self.flood_fill_with(p, color, threshold, contiguous, all_layers, pattern);
                 self.commit_edit(before);
             }
         }
@@ -3923,9 +3953,11 @@ impl Session {
     // ---- gradient oracle access ----
 
     pub fn assert_last_gradient(&self, tol: u8) -> Option<crate::probe::GradientOracle> {
-        let (kind, stops, p0, p1, smooth, fid, lid) = self.last_gradient.as_ref()?;
+        let (kind, stops, p0, p1, smooth, dither, fid, lid) = self.last_gradient.as_ref()?;
         let fi = self.doc.frame_index_by_id(*fid)?;
         let li = self.doc.frames[fi].layer_index_by_id(*lid)?;
+        // The dither is anchored where the canvas sits NOW — the fill's own anchor at the time.
+        let dither = matches!(*dither, 2 | 4 | 8).then_some(tool::Dither { n: *dither, origin: self.doc.origin() });
         Some(crate::probe::gradient_oracle(
             &self.doc.frames[fi].layers[li].pixels,
             *kind,
@@ -3933,6 +3965,7 @@ impl Session {
             *p0,
             *p1,
             *smooth,
+            dither,
             tol,
         ))
     }
@@ -6606,6 +6639,7 @@ mod tests {
             kind: GradientKind::Linear,
             stops: vec![Stop::new(Rgba8::rgb(255, 0, 0), 0.0), Stop::new(Rgba8::rgb(0, 0, 255), 1.0)],
             smoothstep: false,
+            dither: 0,
         };
         s.shape_set(0, 0, 15, 0); // horizontal red→blue gradient, drafted but not committed
 
@@ -6641,6 +6675,7 @@ mod tests {
             kind: GradientKind::Linear,
             stops: vec![Stop::new(Rgba8::new(255, 255, 0, 255), 0.0), Stop::new(Rgba8::new(255, 255, 0, 0), 1.0)],
             smoothstep: false,
+            dither: 0,
         };
         s.shape_set(0, 0, 15, 0); // opaque yellow at x=0 fading to fully transparent at x=15
 
@@ -6653,6 +6688,7 @@ mod tests {
             8,
             0,
             false,
+            None,
         );
         let blended = crate::color::over(g8, red);
 

@@ -12,7 +12,7 @@ use crate::color::{self, Rgba8};
 use crate::geom::{IRect, Point};
 use crate::raster;
 use crate::selection::Mask;
-use crate::tool::{BrushShape, ToolKind};
+use crate::tool::{BrushShape, PatternGate, ToolKind};
 use crate::util::hash_xy;
 
 /// Mist speck alpha band (pre-color-alpha). Each pixel draws its own depth from the hash: alpha
@@ -42,6 +42,10 @@ pub struct PaintCtx {
     /// stroke start like every ctx field (a mid-stroke `SetAA` applies from the next stroke);
     /// only ever true for a round Brush/Eraser of size > 1 (see `Session::open_coat`).
     pub aa: bool,
+    /// The pattern gate (ADR 0025) frozen at stroke start — `Some` only for a Brush/Eraser
+    /// stroke begun with a pattern on. Applied in `raise`, so the display-time preview and
+    /// `commit_into` agree by construction (the ADR 0007 invariant needs no extra work).
+    pub pattern: Option<PatternGate>,
     /// Dodge/Burn signed value shift; 0.0 for the paint tools.
     pub dv: f32,
     /// Per-stroke speckle-field seed (Dots/Mist; 0 otherwise). Drawn from the session RNG —
@@ -109,6 +113,11 @@ impl StrokeCoat {
         let Some(i) = self.index(x, y) else { return };
         if let Some(m) = sel {
             if !m.get(x, y) {
+                return;
+            }
+        }
+        if let Some(g) = self.ctx.pattern {
+            if !g.admits(x, y) {
                 return;
             }
         }
@@ -336,6 +345,7 @@ mod tests {
             shape: BrushShape::Round,
             intensity: 200,
             aa: false,
+            pattern: None,
             dv: 0.1,
             seed: 42,
             fid: 0,
