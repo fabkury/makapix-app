@@ -8,7 +8,7 @@ root (the render probe wants relative paths):
     python docs/marketing/src/engine/gen_art.py [asset ...]
 
 Assets: mushroom ghost rotate scale blend levels ball palette aa airbrush
-gradient8 coat replay (default: all).
+gradient8 coat replay patterns (default: all).
 """
 
 import json
@@ -534,12 +534,94 @@ def build_replay():
                  [f"render:0:{ART}/replay_s{k}.png:6".replace("\\", "/")])
 
 
+# ---------------------------------------------------------------- patterns (ADR 0025)
+
+# Catalog tiles as the engine takes them (w, h, hex): the Bayer 4x4 ladder at 4/16, 8/16,
+# 12/16 (the same tiles the app's catalog generates), a 4 px crosshatch, and a 3 px diagonal.
+BAYER4 = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]]
+
+
+def tile_hex(w, h, on):
+    v = 0
+    for y in range(h):
+        for x in range(w):
+            if on(x, y):
+                v |= 1 << (y * w + x)
+    return f"{v:0{(w * h + 3) // 4}x}"
+
+
+def bayer_tile(level):
+    return f"SetPattern(4,4,{tile_hex(4, 4, lambda x, y: BAYER4[y][x] < level)})"
+
+
+def build_patterns():
+    """The Patterns slide's demos, all through the gate (ADR 0025): a sphere shaded with
+    four Bayer densities by Bucket-filling ellipse selections; one Brush stroke through a
+    crosshatch tile; the Gradient's 2x2 and 8x8 dithers next to the smooth ramp; and a strip
+    of catalog tiles filled into rectangle selections."""
+    art = lambda n: f"render:0:{ART}/{n}.png:8".replace("\\", "/")
+
+    # Sphere: base fill, then three dithered highlight passes and a solid core, each a Bucket
+    # tap inside an ellipse selection (the region is the base color; the gate dithers the writes).
+    # Threshold 255 makes each fill's region the whole selection whatever the earlier passes
+    # left there, so the nested Bayer levels stack into the classic shading ladder.
+    sphere = ["NewDocument(48, 48)", "SelectTool(SelectEllipse)", "Stroke([(3,3),(44,44)])",
+              "SelectTool(Bucket)", "SetThreshold(255)", "SetPrimaryColor(#1E2E6AFF)", "Tap(24,24)"]
+    passes = [((6, 6, 40, 40), 4, "#3C58B4FF"), ((8, 7, 34, 33), 8, "#5A82D8FF"),
+              ((10, 8, 29, 27), 12, "#8CB4F0FF")]
+    for (x0, y0, x1, y1), level, color in passes:
+        sphere += ["SelectTool(SelectEllipse)", f"Stroke([({x0},{y0}),({x1},{y1})])",
+                   "SelectTool(Bucket)", bayer_tile(level), f"SetPrimaryColor({color})", "Tap(18,16)"]
+    sphere += ["SelectTool(SelectEllipse)", "Stroke([(12,9),(23,20)])",
+               "SelectTool(Bucket)", "SetPattern(off)", "SetPrimaryColor(#D8ECFFFF)", "Tap(17,14)",
+               "SelectNone()"]
+    run_mkpx("pat_sphere.txt", sphere, [art("pat_sphere")])
+
+    # Stroke: one sweeping size-9 Brush stroke gated by a 4 px crosshatch; the tile meshes
+    # across the whole stroke because the gate is anchored to the canvas, not the stroke.
+    path = []
+    for i in range(72):
+        t = i / 71
+        x = 4 + t * 56
+        y = 16 + 9 * math.sin(t * math.pi * 1.6 + 0.4)
+        path.append(f"({int(x)},{int(y)})")
+    cross = f"SetPattern(4,4,{tile_hex(4, 4, lambda x, y: (x + y) % 4 == 0 or (x - y) % 4 == 0)})"
+    run_mkpx("pat_stroke.txt", [
+        "NewDocument(64, 32)", "SelectTool(Brush)", "SetBrushShape(Round)", "SetBrushSize(9)",
+        "SetPrimaryColor(#F0A050FF)", cross, f"Stroke([{','.join(path)}])",
+    ], [art("pat_stroke")])
+
+    # Gradient dither: the same two-stop ramp smooth, Bayer 2x2, and Bayer 8x8.
+    for name, n in [("pat_grad_off", 0), ("pat_grad_b2", 2), ("pat_grad_b8", 8)]:
+        run_mkpx(f"{name}.txt", [
+            "NewDocument(64, 16)", "SelectTool(Gradient)", "SetGradientType(Linear)",
+            "SetGradientStops([#20244CFF@0, #F8D890FF@1])", f"SetGradientDither({n})",
+            "Stroke([(0,8),(63,8)])",
+        ], [art(name)])
+
+    # Tile strip: eight catalog tiles, each Bucket-filled into its own 8x8 rectangle selection.
+    tiles = [
+        bayer_tile(2), bayer_tile(6), bayer_tile(8), bayer_tile(12),
+        f"SetPattern(1,2,{tile_hex(1, 2, lambda x, y: y == 0)})",
+        f"SetPattern(3,3,{tile_hex(3, 3, lambda x, y: (x + y) % 3 == 0)})",
+        cross,
+        f"SetPattern(4,4,{tile_hex(4, 4, lambda x, y: x == 0 or y == 0)})",
+    ]
+    strip = ["NewDocument(88, 8)", "SetPrimaryColor(#78B0E8FF)"]
+    for i, verb in enumerate(tiles):
+        x0 = i * 11
+        strip += ["SelectTool(SelectRect)", f"Stroke([({x0},0),({x0 + 7},7)])",
+                  "SelectTool(Bucket)", verb, f"Tap({x0 + 3},3)"]
+    strip += ["SelectNone()"]
+    run_mkpx("pat_tiles.txt", strip, [art("pat_tiles")])
+
+
 ASSETS = {
     "mushroom": build_mushroom, "ghost": build_ghost, "rotate": build_rotate,
     "scale": build_scale, "blend": build_blend, "levels": build_levels,
     "ball": build_ball, "palette": build_palette,
     "aa": build_aa, "airbrush": build_airbrush, "gradient8": build_gradient8,
-    "coat": build_coat, "replay": build_replay,
+    "coat": build_coat, "replay": build_replay, "patterns": build_patterns,
 }
 
 if __name__ == "__main__":

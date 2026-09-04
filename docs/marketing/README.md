@@ -21,8 +21,9 @@ Plus one **Play feature graphic** 1024×500 (hero only). All outputs are flatten
 ## The slides (2026-08-31 redesign)
 
 Play takes 01..08 (its listing caps at 8 screenshots); the App Store additionally
-takes `09_files`. Layout language: three zones per slide (primary demo, secondary
-proof panel, chip ticker), community art credited `@handle` on-slide.
+takes `09_select` and `10_files` (it allows 10). Layout language: three zones per
+slide (primary demo, secondary proof panel, chip ticker), community art credited
+`@handle` on-slide.
 
 1. **Hero** — "A pixel art studio in your pocket" (community-art wall + the editor
    with @birds' "senna fixed" open; that piece carries a `.mkpx`, hence its
@@ -36,10 +37,15 @@ proof panel, chip ticker), community art credited `@handle` on-slide.
    @Badguy's 16-frame "cozy blizzard")
 5. **Paint** — AA off/on, the airbrush trio, 8-stop gradient, single-coat stroke
    (all engine renders) + the real AA-chip tool row
-6. **Color** — RGBA ghost on checker + blend-mode grid + Levels before/after
-7. **Select** — selection canvas + mode row + cleanEdge vs nearest zoom
+6. **Patterns** — "Dither with one tap" (added 2026-09-04, ADR 0025): a Bucket-shaded
+   dithered sphere, one Brush stroke through a crosshatch, the Gradient's smooth /
+   2×2 / 8×8 dither ramps, a catalog tile strip (all engine renders) + the real
+   Patterns page in a phone frame and the Pencil's row-1 with the Pattern swatch On
+7. **Color** — RGBA ghost on checker + blend-mode grid + Levels before/after
 8. **Club** — credited community grid + the Recommended feed (finale)
-9. **Files** (App Store only) — import/export format flow
+9. **Select** (App Store only since 2026-09-04) — selection canvas + mode row +
+   cleanEdge vs nearest zoom
+10. **Files** (App Store only) — import/export format flow
 
 ## Community art rules
 

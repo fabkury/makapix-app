@@ -77,6 +77,10 @@ def crops():
     crop("row1_aa.png", (0, 2098, 1344, 2245), "row1_aa.png")
     crop("row1_airbrush.png", (0, 2098, 1344, 2245), "row1_airbrush.png")
     crop("row1_gradient.png", (0, 2098, 1344, 2245), "row1_gradient.png")
+    # the Patterns pass (2026-09-04): the page as a phone panel, the Pencil's row-1 strip with
+    # the Pattern swatch On at its end
+    crop("patterns_page.png", app_box, "patterns_page_app.png")
+    crop("row1_pattern.png", (0, 2098, 1344, 2245), "row1_pattern.png")
     # zoomed insets for the cleanEdge comparison (the key's ring bow, 2x)
     for n in ["rot_orig", "rot_nearest", "rot_cleanedge"]:
         im = Image.open(ART / f"{n}.png").crop((104, 40, 296, 232))
@@ -291,7 +295,7 @@ def slide_hero(orient):
     phone_crop = shot_crop("hero_senna_app", "editor_hero_app")
     wall = "".join(tile(n, {"portrait": 17.8, "square": 11.2, "landscape": 12}[orient])
                    for n in ["daydream", "mr_tritium", "seaside_city", "cozy_blizzard"])
-    tick = chips([("256&times;256", False), ("1,024 FRAMES", True), ("64 LAYERS", True),
+    tick = chips([("512&times;512", False), ("1,024 FRAMES", True), ("64 LAYERS", True),
                   ("10 BLEND MODES", False), ("TIMELAPSE EXPORT", False)])
     if orient == "landscape":
         return f"""
@@ -425,6 +429,56 @@ def slide_paint(orient):
     return (f'<div class="row" style="align-items:stretch;">{p_aa}{p_air}</div>'
             f'<div class="row" style="align-items:stretch;">{p_grad}{p_coat}</div>'
             + strip + tick)
+
+
+def slide_patterns(orient):
+    """Patterns (ADR 0025): a Bucket-shaded sphere, a Brush stroke through a crosshatch, the
+    Gradient's ordered dither next to the smooth ramp, a strip of catalog tiles, and the real
+    Patterns page in a phone frame."""
+    sph_w = {"portrait": 16, "square": 9, "landscape": 11}[orient]
+    stroke_w = {"portrait": 22, "square": 12, "landscape": 15}[orient]
+    grad_w = {"portrait": 30, "square": 16, "landscape": 22}[orient]
+    land = orient == "landscape"
+    p_sphere = f"""
+    <div class="panel"><div class="plabel">{"BUCKET" if land else 'BUCKET + <span class="a">BAYER</span>'}</div>
+      <img class="pix" src="{art('pat_sphere.png')}" style="width: calc(var(--u)*{sph_w});">
+    </div>"""
+    p_stroke = f"""
+    <div class="panel"><div class="plabel">{"BRUSH" if land else "ONE BRUSH STROKE"}</div>
+      <img class="pix" src="{art('pat_stroke.png')}" style="width: calc(var(--u)*{stroke_w});">
+    </div>"""
+    ramps = "".join(
+        f'<img class="pix" src="{art(n)}" style="width: calc(var(--u)*{grad_w}); display:block;">'
+        for n in ["pat_grad_off.png", "pat_grad_b2.png", "pat_grad_b8.png"])
+    p_grad = f"""
+    <div class="panel"><div class="plabel">GRADIENT: SMOOTH / <span class="a">2&times;2</span> / <span class="a">8&times;8</span></div>
+      <div style="display:flex; flex-direction:column; gap: calc(var(--u)*0.6);">{ramps}</div>
+    </div>"""
+    tiles_w = {"portrait": 62, "square": 40, "landscape": 40}[orient]
+    p_tiles = f"""
+    <div class="panel"><div class="plabel"><span class="a">116</span> TILES, EVERY ONE WITH ITS INVERSE</div>
+      <img class="pix" src="{art('pat_tiles.png')}" style="width: calc(var(--u)*{tiles_w});">
+    </div>"""
+    tick = chips([("PENCIL / BRUSH / ERASER / BUCKET", True), ("ONE TAP: ON / OFF", False),
+                  ("MESHES ACROSS STROKES", False), ("DITHERED GRADIENTS", True)])
+    page_crop = shot_crop("patterns_page_app", "")
+    if orient == "landscape":
+        phone = (f'<div class="phone" style="width: calc(var(--u)*17);">'
+                 f'<img src="{art(f"crops/{page_crop}.png")}"></div>' if page_crop else "")
+        return f'<div class="row">{phone}{p_sphere}{p_stroke}</div>' + tick
+    ph = {"portrait": 29, "square": 16}[orient]
+    phone = (f'<div class="phone" style="width: calc(var(--u)*{ph});">'
+             f'<img src="{art(f"crops/{page_crop}.png")}"></div>' if page_crop else "")
+    row1 = shot_crop("row1_pattern", "")
+    strip = (f'<img class="uistrip" src="{art(f"crops/{row1}.png")}">'
+             if row1 and orient == "portrait" else "")
+    return (f'<div class="row" style="align-items:stretch;">{phone}'
+            f'<div style="display:flex; flex-direction:column; gap: calc(var(--u)*2.2); justify-content:space-between;">'
+            f'{p_sphere}{p_stroke}</div></div>'
+            f'<div class="row" style="align-items:stretch;">{p_grad}</div>'
+            # the square canvas has no vertical room for the tile strip (the phone panel
+            # shows the catalog anyway); portrait keeps it
+            f'{p_tiles if orient == "portrait" else ""}{strip}{tick}')
 
 
 def slide_color(orient):
@@ -610,6 +664,10 @@ SLIDES = {
               'BRUSHES BUILT FOR <span class="a">PIXELS</span>.',
               "Anti-aliased edges when you want them. Three airbrushes. Eight-stop gradients. Single-coat strokes.",
               slide_paint),
+    "patterns": ("MAKAPIX EDITOR",
+                 'DITHER WITH <span class="a">ONE TAP</span>.',
+                 "Pick a pattern and every stroke, fill, and erase paints through it. Bayer ladders, lines, bricks, checkers, plus ordered dithering for gradients.",
+                 slide_patterns),
     "color": ("MAKAPIX EDITOR",
               'REAL RGBA. <span class="a">TEN</span> BLEND MODES.',
               "True 8-bit alpha in every pixel. Multiply, Screen, Overlay and more, plus Levels to rescue any import.",
@@ -632,9 +690,9 @@ SLIDES = {
               slide_files),
 }
 
-ORDER = ["hero", "free", "replay", "animation", "paint",
-         "color", "select", "club", "files"]
-PLAY_MAX = 8  # the Play listing caps at 8 screenshots; 09_files is App Store only
+ORDER = ["hero", "free", "replay", "animation", "paint", "patterns",
+         "color", "club", "select", "files"]
+PLAY_MAX = 8  # the Play listing caps at 8 screenshots; 09_select and 10_files are App Store only
 
 
 # ---------------------------------------------------------------- render
