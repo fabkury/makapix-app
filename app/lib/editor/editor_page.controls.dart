@@ -1162,6 +1162,27 @@ extension _EditorControls on _EditorPageState {
     final name = gradient
         ? (on ? 'Bayer $_gradDither×$_gradDither' : 'Off')
         : (on ? (patternName(_pattern!) ?? 'Custom pattern') : 'Off');
+    // The swatch reads like the row's other toggles (user decision 2026-09-04): while On it
+    // sits in the same green chip the active FilterChips wear, with a check to its right;
+    // while Off it is a plain dark chip holding the dimmed, slashed tile.
+    final tileBox = Container(
+      width: 26,
+      height: 26,
+      decoration: BoxDecoration(
+        border: Border.all(color: on ? Colors.white : Colors.white38),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(fit: StackFit.expand, children: [
+        Opacity(
+          opacity: on ? 1 : 0.35,
+          child: CustomPaint(
+              painter: PatternTilePainter(
+                  tile: tile, onColor: _patternOnColor, offColor: _patternOffColor, scale: 2)),
+        ),
+        if (!on) const CustomPaint(painter: _SlashPainter()),
+      ]),
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 3),
       child: Tooltip(
@@ -1171,21 +1192,19 @@ extension _EditorControls on _EditorPageState {
           onLongPress: _togglePattern,
           onSecondaryTap: _togglePattern,
           child: Container(
-            width: 30,
-            height: 30,
+            height: 34,
+            padding: const EdgeInsets.symmetric(horizontal: 5),
             decoration: BoxDecoration(
-              border: Border.all(color: on ? Colors.white70 : Colors.white38),
-              borderRadius: BorderRadius.circular(4),
+              color: on ? const Color(0xFF30A050) : const Color(0xFF2E3237),
+              border: Border.all(color: on ? const Color(0xFF30A050) : Colors.white24),
+              borderRadius: BorderRadius.circular(8),
             ),
-            clipBehavior: Clip.antiAlias,
-            child: Stack(fit: StackFit.expand, children: [
-              Opacity(
-                opacity: on ? 1 : 0.35,
-                child: CustomPaint(
-                    painter: PatternTilePainter(
-                        tile: tile, onColor: _patternOnColor, offColor: _patternOffColor, scale: 2)),
-              ),
-              if (!on) const CustomPaint(painter: _SlashPainter()),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              tileBox,
+              if (on) ...[
+                const SizedBox(width: 5),
+                const Text('✔', style: TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w600)),
+              ],
             ]),
           ),
         ),
