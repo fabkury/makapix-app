@@ -262,6 +262,188 @@ fn gate_admits(gate: Option<PatternGate>, x: i32, y: i32) -> bool {
     gate.map(|g| g.admits(x, y)).unwrap_or(true)
 }
 
+// ---- symmetry (ADR 0026) ----
+
+/// Mirror-drawing mode (ADR 0026). `H` mirrors left ↔ right (its axis is a *vertical* line),
+/// `V` mirrors top ↔ bottom (a *horizontal* axis line), `Both` is the two together and yields
+/// four images of every write (the fourth is the point reflection).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum SymMode {
+    #[default]
+    Off,
+    H,
+    V,
+    Both,
+}
+
+impl SymMode {
+    /// The DSL token (`SetSymmetry(<mode>, ax, ay)`).
+    pub fn token(self) -> &'static str {
+        match self {
+            SymMode::Off => "off",
+            SymMode::H => "h",
+            SymMode::V => "v",
+            SymMode::Both => "both",
+        }
+    }
+    pub fn parse(s: &str) -> Option<SymMode> {
+        let s = s.trim();
+        if s.eq_ignore_ascii_case("off") {
+            Some(SymMode::Off)
+        } else if s.eq_ignore_ascii_case("h") {
+            Some(SymMode::H)
+        } else if s.eq_ignore_ascii_case("v") {
+            Some(SymMode::V)
+        } else if s.eq_ignore_ascii_case("both") {
+            Some(SymMode::Both)
+        } else {
+            None
+        }
+    }
+    pub fn mirrors_x(self) -> bool {
+        matches!(self, SymMode::H | SymMode::Both)
+    }
+    pub fn mirrors_y(self) -> bool {
+        matches!(self, SymMode::V | SymMode::Both)
+    }
+}
+
+/// The symmetry setting (ADR 0026): a session setting like AA and the pattern — journaled,
+/// never saved in `.mkpx`. Each axis is an integer `A` in **half-pixel canvas units** with the
+/// reflection `x' = A − x`: `A` even mirrors through pixel column `A/2`, `A` odd mirrors between
+/// two columns. `None` = centered (`A = w − 1`, exact for odd and even canvases) and follows
+/// every canvas resize; an explicit value is clamped to `0 … 2(w − 1)` when resolved.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct Symmetry {
+    pub mode: SymMode,
+    pub ax: Option<i32>,
+    pub ay: Option<i32>,
+}
+
+impl Symmetry {
+    pub const OFF: Symmetry = Symmetry { mode: SymMode::Off, ax: None, ay: None };
+
+    /// Resolve against the canvas window (storage coordinates) into the storage-space
+    /// reflection sums a write path uses. The canvas center is `w − 1` in half-pixel units;
+    /// the storage sum adds the origin twice (`x_s' = A + 2·ox − x_s`), so the overscan gutter
+    /// never shifts the axis.
+    pub fn resolve(&self, canvas: IRect) -> Mirror {
+        let axis = |explicit: Option<i32>, extent: u32, origin: i32| -> Option<i32> {
+            let hi = 2 * (extent as i32 - 1).max(0);
+            let a = explicit.unwrap_or(extent as i32 - 1).clamp(0, hi);
+            Some(a + 2 * origin)
+        };
+        Mirror {
+            h: if self.mode.mirrors_x() { axis(self.ax, canvas.w, canvas.x) } else { None },
+            v: if self.mode.mirrors_y() { axis(self.ay, canvas.h, canvas.y) } else { None },
+        }
+    }
+
+    /// The DSL line that restates this setting.
+    pub fn to_dsl(&self) -> String {
+        let axis = |a: Option<i32>| a.map(|v| v.to_string()).unwrap_or_else(|| "c".to_string());
+        format!("SetSymmetry({},{},{})", self.mode.token(), axis(self.ax), axis(self.ay))
+    }
+}
+
+/// A resolved mirror for one write path (storage coordinates): `x' = h − x`, `y' = v − y`.
+/// `NONE` is the identity. Frozen into a coat's `PaintCtx` at stroke start (ADR 0007); read
+/// live by the Pencil, the Bucket, and the figure commit, like the pattern gate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Mirror {
+    pub h: Option<i32>,
+    pub v: Option<i32>,
+}
+
+/// One reflection of the active set: which axes it flips.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Reflection {
+    pub fx: bool,
+    pub fy: bool,
+}
+
+impl Mirror {
+    pub const NONE: Mirror = Mirror { h: None, v: None };
+
+    #[inline]
+    pub fn is_none(&self) -> bool {
+        self.h.is_none() && self.v.is_none()
+    }
+
+    /// The active reflections, identity first, in a fixed order (id, x, y, xy) — so two points
+    /// transformed in parallel stay paired (a mirrored line segment keeps its endpoints).
+    pub fn reflections(&self) -> impl Iterator<Item = Reflection> {
+        let (h, v) = (self.h.is_some(), self.v.is_some());
+        [
+            Some(Reflection { fx: false, fy: false }),
+            h.then_some(Reflection { fx: true, fy: false }),
+            v.then_some(Reflection { fx: false, fy: true }),
+            (h && v).then_some(Reflection { fx: true, fy: true }),
+        ]
+        .into_iter()
+        .flatten()
+    }
+
+    /// Apply one reflection to a storage point.
+    #[inline]
+    pub fn apply(&self, r: Reflection, p: Point) -> Point {
+        let x = if r.fx { self.h.map_or(p.x, |h| h - p.x) } else { p.x };
+        let y = if r.fy { self.v.map_or(p.y, |v| v - p.y) } else { p.y };
+        Point::new(x, y)
+    }
+
+    /// The distinct images of `p` (the primary first). A point on an axis has fewer than the
+    /// reflection count — it is written once, never twice.
+    pub fn images(&self, p: Point) -> Images {
+        let mut out = Images { pts: [p; 4], n: 0, i: 0 };
+        for r in self.reflections() {
+            let q = self.apply(r, p);
+            if !out.pts[..out.n].contains(&q) {
+                out.pts[out.n] = q;
+                out.n += 1;
+            }
+        }
+        out
+    }
+
+    /// The canonical image of (x, y): the lexicographically smallest, so a position hash (the
+    /// airbrush speckle field) is identical across all images and the mirror is pixel-exact.
+    #[inline]
+    pub fn canonical(&self, x: i32, y: i32) -> (i32, i32) {
+        if self.is_none() {
+            return (x, y);
+        }
+        let mut best = (x, y);
+        for q in self.images(Point::new(x, y)) {
+            if (q.x, q.y) < best {
+                best = (q.x, q.y);
+            }
+        }
+        best
+    }
+}
+
+/// The distinct images of one point under a [`Mirror`] (at most four).
+#[derive(Clone, Copy, Debug)]
+pub struct Images {
+    pts: [Point; 4],
+    n: usize,
+    i: usize,
+}
+
+impl Iterator for Images {
+    type Item = Point;
+    fn next(&mut self) -> Option<Point> {
+        if self.i < self.n {
+            let p = self.pts[self.i];
+            self.i += 1;
+            Some(p)
+        } else {
+            None
+        }
+    }
+}
+
 /// The canonical Bayer matrices (ordered-dither thresholds `0..n²`), used by the Gradient's
 /// dither (ADR 0025). `BAYER4` and `BAYER8` are the recursive expansions of `BAYER2`
 /// (`M(2n) = [[4M, 4M+2], [4M+3, 4M+1]]`) — a unit test pins that.
@@ -401,6 +583,9 @@ pub struct ToolSettings {
     /// Brush, Eraser, and Bucket write paths; every other tool ignores it. AA is inert while a
     /// pattern is on (`Session::open_coat`).
     pub pattern: Option<Pattern>,
+    /// Mirror drawing (ADR 0026): `Off` by default; a session setting, never saved. Read by the
+    /// stroke coat (frozen at stroke start), the Pencil, the Bucket, and the figure commit.
+    pub symmetry: Symmetry,
     /// Overscan view: when on, the display renders the whole storage area (canvas + gutter, the gutter
     /// dimmed) and selection gestures may reach into the gutter. A view/interaction flag driven from
     /// the shell (like `wrap`); it never affects paint tools, export or thumbnails. [SPEC §8]
@@ -453,6 +638,7 @@ impl Default for ToolSettings {
             pixel_perfect: false,
             aa: false,
             pattern: None,
+            symmetry: Symmetry::OFF,
             overscan_view: false,
             clean_edge: true,
             clean_edge_width: 1.0,
@@ -546,13 +732,16 @@ pub fn stroke_segment(
     }
 }
 
-/// Flood fill from `seed` (SPEC §11.2). Returns true if any pixel changed.
-/// Flood-fill from `seed`. The fill is always written to `buf` (the active layer). The region to
-/// fill is decided by `reference` when `Some` — the composited image, for the "All layers" mode, so
-/// connectivity/color-matching considers every layer — otherwise by `buf` itself (active layer).
-/// The pattern `gate` (ADR 0025) never shapes the region — threshold, contiguity, and the
-/// reference decide it exactly as without one, and a gated-off pixel still propagates the flood —
-/// it only decides which pixels inside the region get written.
+/// Flood-fill from every seed in `seeds` (SPEC §11.2; several seeds = the images of one tap
+/// under symmetry, ADR 0026). The fill is always written to `buf` (the active layer). The
+/// region to fill is decided by `reference` when `Some` — the composited image, for the "All
+/// layers" mode, so connectivity/color-matching considers every layer — otherwise by `buf`
+/// itself (active layer). Every seed's region is decided against the **pre-fill** buffer and
+/// the union is written once: a second flood run after the first write would see a
+/// half-dithered region and behave erratically. The pattern `gate` (ADR 0025) never shapes the
+/// region — threshold, contiguity, and the reference decide it exactly as without one, and a
+/// gated-off pixel still propagates the flood — it only decides which pixels inside the region
+/// get written. Seeds outside `clip` (the gutter) are ignored.
 #[allow(clippy::too_many_arguments)]
 pub fn flood_fill(
     buf: &mut RgbaBuffer,
@@ -560,51 +749,68 @@ pub fn flood_fill(
     sel: Option<&Mask>,
     gate: Option<PatternGate>,
     clip: IRect,
-    seed: Point,
+    seeds: &[Point],
     color: Rgba8,
     threshold: u8,
     contiguous: bool,
     mode: PaintMode,
 ) {
     let w = buf.width() as i32;
-    // Bucket is canvas-only: the flood may neither start nor spread outside `clip` (the gutter).
-    if !clip.contains(seed) {
-        return;
-    }
+    let h = buf.height() as i32;
     // Sample the deciding buffer: the reference (composite) if given, else the layer being filled.
     let read = |x: i32, y: i32, b: &RgbaBuffer| match reference {
         Some(r) => r.get(x, y),
         None => b.get(x, y),
     };
-    let target = read(seed.x, seed.y, buf);
     let in_sel = |x: i32, y: i32| sel.map(|m| m.get(x, y)).unwrap_or(true);
-    if contiguous {
-        let mut visited = vec![false; (w * buf.height() as i32) as usize];
-        let mut stack = vec![seed];
-        while let Some(p) = stack.pop() {
-            if !clip.contains(p) {
-                continue;
-            }
-            let idx = (p.y * w + p.x) as usize;
-            if visited[idx] {
-                continue;
-            }
-            visited[idx] = true;
-            if !in_sel(p.x, p.y) || color::max_channel_delta(read(p.x, p.y, buf), target) > threshold {
-                continue;
-            }
-            plot(buf, sel, gate, clip, p.x, p.y, color, mode);
-            stack.push(Point::new(p.x + 1, p.y));
-            stack.push(Point::new(p.x - 1, p.y));
-            stack.push(Point::new(p.x, p.y + 1));
-            stack.push(Point::new(p.x, p.y - 1));
+    let mut region = vec![false; (w * h) as usize];
+    let mut any = false;
+    for &seed in seeds {
+        // Bucket is canvas-only: the flood may neither start nor spread outside `clip`.
+        if !clip.contains(seed) {
+            continue;
         }
-    } else {
-        for y in clip.y..clip.bottom() {
-            for x in clip.x..clip.right() {
-                if in_sel(x, y) && color::max_channel_delta(read(x, y, buf), target) <= threshold {
-                    plot(buf, sel, gate, clip, x, y, color, mode);
+        let target = read(seed.x, seed.y, buf);
+        if contiguous {
+            let mut visited = vec![false; (w * h) as usize];
+            let mut stack = vec![seed];
+            while let Some(p) = stack.pop() {
+                if !clip.contains(p) {
+                    continue;
                 }
+                let idx = (p.y * w + p.x) as usize;
+                if visited[idx] {
+                    continue;
+                }
+                visited[idx] = true;
+                if !in_sel(p.x, p.y) || color::max_channel_delta(read(p.x, p.y, buf), target) > threshold {
+                    continue;
+                }
+                region[idx] = true;
+                any = true;
+                stack.push(Point::new(p.x + 1, p.y));
+                stack.push(Point::new(p.x - 1, p.y));
+                stack.push(Point::new(p.x, p.y + 1));
+                stack.push(Point::new(p.x, p.y - 1));
+            }
+        } else {
+            for y in clip.y..clip.bottom() {
+                for x in clip.x..clip.right() {
+                    if in_sel(x, y) && color::max_channel_delta(read(x, y, buf), target) <= threshold {
+                        region[(y * w + x) as usize] = true;
+                        any = true;
+                    }
+                }
+            }
+        }
+    }
+    if !any {
+        return;
+    }
+    for y in clip.y..clip.bottom() {
+        for x in clip.x..clip.right() {
+            if region[(y * w + x) as usize] {
+                plot(buf, sel, gate, clip, x, y, color, mode);
             }
         }
     }
@@ -909,15 +1115,135 @@ pub fn cover_color(color: Rgba8, cover: u8) -> Option<Rgba8> {
     }
 }
 
+/// Every (x, y, coverage) plot of a figure, AA or hard (hard plots carry coverage 255), through
+/// the same rasterizers `draw_shape` and the preview use. The mirrored figure paths (ADR 0026)
+/// feed these plots into a [`CoverMap`] so the primary and its images max-combine.
+#[allow(clippy::too_many_arguments)]
+pub fn shape_plots(
+    kind: ToolKind,
+    a: Point,
+    b: Point,
+    rot: f32,
+    tip: f32,
+    fill: bool,
+    line_width: u16,
+    aa: bool,
+    plot: &mut dyn FnMut(i32, i32, u8),
+) {
+    if aa {
+        shape_cover_aa(kind, a, b, rot, tip, fill, line_width, plot);
+        return;
+    }
+    let lw = line_width.max(1) as i32;
+    let mut f = |x: i32, y: i32| plot(x, y, 255);
+    if kind == ToolKind::Triangle {
+        if fill {
+            raster::triangle_filled(a, b, rot, tip, &mut f);
+        } else {
+            raster::triangle_outline(a, b, rot, tip, lw, &mut f);
+        }
+        return;
+    }
+    if rot.abs() > 1e-4 {
+        if let Some(k) = rotated_kind(kind) {
+            raster::rotated_shape(a, b, rot, k, fill, lw, &mut f);
+            return;
+        }
+    }
+    match kind {
+        ToolKind::Line => raster::thick_line(a, b, lw, &mut f),
+        ToolKind::Rectangle => {
+            if fill {
+                raster::rect_filled(a, b, &mut f)
+            } else {
+                raster::rect_outline(a, b, lw, &mut f)
+            }
+        }
+        ToolKind::Ellipse => {
+            if fill {
+                raster::ellipse_filled(a, b, &mut f)
+            } else {
+                raster::ellipse_outline(a, b, lw, &mut f)
+            }
+        }
+        _ => {}
+    }
+}
+
+/// A max-combined coverage map over one rect (ADR 0026): a mirrored figure's primary and image
+/// plots land here first, so where they overlap on the axis the pixel is composited **once** at
+/// the higher coverage — never blended twice (the coat's rule, ADR 0007, applied to figures).
+pub struct CoverMap {
+    rect: IRect,
+    cover: Vec<u8>,
+}
+
+impl CoverMap {
+    pub fn new(rect: IRect) -> CoverMap {
+        CoverMap { rect, cover: vec![0; (rect.w * rect.h) as usize] }
+    }
+    #[inline]
+    pub fn raise(&mut self, x: i32, y: i32, c: u8) {
+        if c == 0 || !self.rect.contains(Point::new(x, y)) {
+            return;
+        }
+        let i = ((y - self.rect.y) as u32 * self.rect.w + (x - self.rect.x) as u32) as usize;
+        if self.cover[i] < c {
+            self.cover[i] = c;
+        }
+    }
+    /// Raise every image of (x, y) under `mirror`.
+    #[inline]
+    pub fn raise_mirrored(&mut self, mirror: Mirror, x: i32, y: i32, c: u8) {
+        for q in mirror.images(Point::new(x, y)) {
+            self.raise(q.x, q.y, c);
+        }
+    }
+    /// Visit every covered pixel (row-major).
+    pub fn for_each(&self, mut f: impl FnMut(i32, i32, u8)) {
+        for y in 0..self.rect.h as i32 {
+            for x in 0..self.rect.w as i32 {
+                let c = self.cover[(y as u32 * self.rect.w + x as u32) as usize];
+                if c > 0 {
+                    f(self.rect.x + x, self.rect.y + y, c);
+                }
+            }
+        }
+    }
+}
+
+/// The coverage map of a figure and all its images under `mirror`, over `rect`.
+#[allow(clippy::too_many_arguments)]
+pub fn shape_cover_mirrored(
+    rect: IRect,
+    mirror: Mirror,
+    kind: ToolKind,
+    a: Point,
+    b: Point,
+    rot: f32,
+    tip: f32,
+    fill: bool,
+    line_width: u16,
+    aa: bool,
+) -> CoverMap {
+    let mut map = CoverMap::new(rect);
+    shape_plots(kind, a, b, rot, tip, fill, line_width, aa, &mut |x, y, c| map.raise_mirrored(mirror, x, y, c));
+    map
+}
+
 /// Draw a shape (Line/Rectangle/Ellipse/Triangle), outline or filled (SPEC §28.1), optionally
 /// rotated by `rot` radians (Rectangle/Ellipse/Triangle). `tip` ∈ [-1, 1] skews a Triangle's apex
 /// horizontally along its top edge (ignored by the other shapes). With `aa` (ADR 0008) the shape
 /// draws through the coverage rasterizers instead — fractional rim alpha via [`cover_color`].
+/// With a `mirror` (ADR 0026) the rasterized pixels are reflected — a pixel-exact mirror — and
+/// the primary and its images composite through one [`CoverMap`]; without one the path is
+/// byte-identical to the pre-symmetry engine.
 #[allow(clippy::too_many_arguments)]
 pub fn draw_shape(
     buf: &mut RgbaBuffer,
     sel: Option<&Mask>,
     clip: IRect,
+    mirror: Mirror,
     kind: ToolKind,
     a: Point,
     b: Point,
@@ -929,6 +1255,15 @@ pub fn draw_shape(
     mode: PaintMode,
     aa: bool,
 ) {
+    if !mirror.is_none() {
+        let map = shape_cover_mirrored(clip, mirror, kind, a, b, rot, tip, fill, line_width, aa);
+        map.for_each(|x, y, c| {
+            if let Some(src) = cover_color(color, c) {
+                plot(buf, sel, None, clip, x, y, src, mode);
+            }
+        });
+        return;
+    }
     if aa {
         shape_cover_aa(kind, a, b, rot, tip, fill, line_width, &mut |x, y, c| {
             if let Some(src) = cover_color(color, c) {
@@ -990,7 +1325,7 @@ mod tests {
     #[test]
     fn flood_fill_fills_region() {
         let mut b = RgbaBuffer::new(8, 8);
-        flood_fill(&mut b, None, None, None, IRect::new(0, 0, 8, 8), Point::new(0, 0), Rgba8::WHITE, 0, true, PaintMode::Replace);
+        flood_fill(&mut b, None, None, None, IRect::new(0, 0, 8, 8), &[Point::new(0, 0)], Rgba8::WHITE, 0, true, PaintMode::Replace);
         // all-transparent target → fills entire canvas
         for y in 0..8 {
             for x in 0..8 {
@@ -1006,7 +1341,7 @@ mod tests {
         for y in 0..8 {
             b.set(4, y, Rgba8::BLACK);
         }
-        flood_fill(&mut b, None, None, None, IRect::new(0, 0, 8, 8), Point::new(0, 0), Rgba8::WHITE, 0, true, PaintMode::Replace);
+        flood_fill(&mut b, None, None, None, IRect::new(0, 0, 8, 8), &[Point::new(0, 0)], Rgba8::WHITE, 0, true, PaintMode::Replace);
         assert_eq!(b.get(0, 0), Rgba8::WHITE);
         assert_eq!(b.get(3, 3), Rgba8::WHITE);
         assert_eq!(b.get(5, 3), Rgba8::TRANSPARENT); // other side untouched

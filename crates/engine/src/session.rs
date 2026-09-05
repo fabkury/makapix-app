@@ -11,7 +11,9 @@ use crate::geom::{IRect, Point, PointF};
 use crate::io;
 use crate::render;
 use crate::selection::{CombineMode, Mask};
-use crate::tool::{self, BrushShape, GradientKind, PaintMode, Pattern, PatternGate, Stop, ToolKind, ToolSettings};
+use crate::tool::{
+    self, BrushShape, GradientKind, Mirror, PaintMode, Pattern, PatternGate, Stop, ToolKind, ToolSettings,
+};
 use crate::util::{hash_hex, Hash, SeededRng, VirtualClock};
 use std::sync::Arc;
 
@@ -58,7 +60,7 @@ struct Stroke {
     /// Pencil pixel-perfect: the tail of recently painted pixels (with their captured pre-stroke
     /// colors), used to detect and undo the L-shaped "corner double" as the stroke is drawn. Only
     /// populated for a 1px Pencil with `pixel_perfect` on; empty otherwise. See [`pp_corner`].
-    pp: Vec<(Point, Rgba8)>,
+    pp: Vec<PpPixel>,
     /// Single-coat coverage for the Brush/Airbrush/Dodge/Burn families (ADR 0007): the layer
     /// stays pristine while the stroke is live; the compositor previews this coat and
     /// `pointer_up` resolves it into the layer once. Dies with the `Stroke` on cancel/restore.
@@ -272,6 +274,54 @@ fn sel_eq(a: &Option<Arc<Mask>>, b: &Option<Arc<Mask>>) -> bool {
 }
 
 /// Smallest rectangle covering both `a` and `b`.
+/// One pixel of the pixel-perfect Pencil tail: the pixel the stroke path plotted, plus every
+/// image of it under the mirror (ADR 0026) with the color each image had **at its own plot
+/// time** — today's Pencil rule applied per image. A pixel the stroke had already painted (as a
+/// deliberate pixel or as another pixel's image) therefore stays painted when a corner-double is
+/// restored, which keeps a stroke that crosses its own axis symmetric and gap-free (a
+/// first-touch map would un-paint it). `n ≤ 4`; the primary is `at[0]`.
+#[derive(Clone, Copy, Debug)]
+struct PpPixel {
+    p: Point,
+    at: [(Point, Rgba8); 4],
+    n: u8,
+}
+
+impl PpPixel {
+    /// A tail seed for an already-painted pixel (restoring it is a visual no-op).
+    fn seed(p: Point, current: Rgba8) -> PpPixel {
+        PpPixel { p, at: [(p, current); 4], n: 1 }
+    }
+    /// Restore every image to the color it had when this pixel was plotted.
+    fn restore(&self, buf: &mut RgbaBuffer) {
+        for &(q, orig) in &self.at[..self.n as usize] {
+            buf.set(q.x, q.y, orig);
+        }
+    }
+}
+
+/// Plot `c` and all its images under `mirror` for the pixel-perfect Pencil, capturing each
+/// image's pre-plot color (see [`PpPixel`]).
+#[allow(clippy::too_many_arguments)]
+fn pp_plot(
+    buf: &mut RgbaBuffer,
+    sel: Option<&Mask>,
+    gate: Option<PatternGate>,
+    clip: IRect,
+    mirror: Mirror,
+    c: Point,
+    color: Rgba8,
+) -> PpPixel {
+    let mut e = PpPixel { p: c, at: [(c, Rgba8::TRANSPARENT); 4], n: 0 };
+    for q in mirror.images(c) {
+        let orig = buf.get(q.x, q.y);
+        tool::plot(buf, sel, gate, clip, q.x, q.y, color, PaintMode::Replace);
+        e.at[e.n as usize] = (q, orig);
+        e.n += 1;
+    }
+    e
+}
+
 /// Pixel-perfect corner test: is `b` the redundant middle of an L-shaped elbow `a → b → c`?
 /// True when `a` and `c` are diagonal neighbors (one step apart on both axes) and `b` is the
 /// orthogonal pixel wedged between them — the "corner double" a hand would never place.
@@ -327,7 +377,7 @@ pub struct Session {
     pen_held: bool,
     /// Pixel-perfect corner-filter tail for the precision pen line: the reticle path has no
     /// [`Stroke`], so its tail lives here (see `Stroke::pp` for the pointer-stroke twin).
-    pen_pp: Vec<(Point, Rgba8)>,
+    pen_pp: Vec<PpPixel>,
     clipboard: Option<(RgbaBuffer, Point)>,
     /// Bumped on every clipboard write (copy/cut) and on the load-time clear — the shell's
     /// clipboard-swatch cache key (cheaper than hashing the pixels; the probe exposes it).
@@ -701,6 +751,30 @@ impl Session {
         let lw = self.settings.line_width.max(1) as i32;
         let fill = self.settings.shape_fill;
         let rot = self.shape_rotation;
+        // Symmetry (ADR 0026): preview through the SAME mirrored coverage map the commit uses
+        // (tool::shape_cover_mirrored + tool::cover_color), so preview == commit per pixel and
+        // the axis overlap is composited once. The un-mirrored paths below are untouched.
+        let mirror = self.mirror();
+        if !mirror.is_none() {
+            let map = tool::shape_cover_mirrored(
+                self.doc.canvas_rect(),
+                mirror,
+                self.tool,
+                a,
+                b,
+                rot,
+                self.triangle_tip,
+                fill,
+                self.settings.line_width,
+                self.settings.aa,
+            );
+            map.for_each(|x, y, c| {
+                if let Some(src) = tool::cover_color(color, c) {
+                    buf.blend_over(x, y, src);
+                }
+            });
+            return;
+        }
         // AA (ADR 0008): preview through the SAME coverage dispatch the commit uses
         // (tool::shape_cover_aa + tool::cover_color), so preview == commit per pixel.
         if self.settings.aa {
@@ -1078,7 +1152,7 @@ impl Session {
         let st = self.doc.storage();
         let og = self.doc.origin();
         let extra = format!(
-            ",\"has_clipboard\":{},\"clipboard_gen\":{},\"clipboard_size\":{},\"paste\":{},\"move_draft\":{},\"rotate_draft\":{},\"scale_draft\":{},\"storage\":[{},{}],\"origin\":[{},{}],\"overscan\":{},\"can_repeat\":{},\"repeat_label\":{}",
+            ",\"has_clipboard\":{},\"clipboard_gen\":{},\"clipboard_size\":{},\"paste\":{},\"move_draft\":{},\"rotate_draft\":{},\"scale_draft\":{},\"storage\":[{},{}],\"origin\":[{},{}],\"overscan\":{},\"can_repeat\":{},\"repeat_label\":{},\"symmetry\":\"{}\"",
             self.clipboard.is_some(),
             self.clipboard_gen,
             match self.clipboard_size() {
@@ -1099,6 +1173,8 @@ impl Session {
                 Some(l) => format!("\"{}\"", l),
                 None => "null".to_string(),
             },
+            // The symmetry setting as its own DSL line (ADR 0026), e.g. "SetSymmetry(h,c,c)".
+            self.settings.symmetry.to_dsl(),
         );
         s.insert_str(s.len() - 1, &extra); // before the final '}'
         // Memory budget (SPEC §8.2b): fresh census + budgets + refusal telemetry, so the shell can
@@ -1485,10 +1561,9 @@ impl Session {
                     let clip = self.paint_clip();
                     let sel = self.selection_arc(); // [C-2]
                     let gate = self.pattern_gate(ToolKind::Pencil);
+                    let mirror = self.mirror();
                     let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-                    let orig = buf.get(p.x, p.y);
-                    tool::plot(buf, sel.as_deref(), gate, clip, p.x, p.y, color, PaintMode::Replace);
-                    pp.push((p, orig));
+                    pp.push(pp_plot(buf, sel.as_deref(), gate, clip, mirror, p, color));
                 }
                 ToolKind::Pencil => self.stamp_active(p, PaintMode::Replace, self.settings.primary),
                 t if StrokeCoat::tool_uses_coat(t) => {
@@ -1592,6 +1667,7 @@ impl Session {
             intensity: self.settings.intensity,
             aa,
             pattern,
+            mirror: self.mirror(),
             dv,
             seed,
             fid: f.id,
@@ -1609,6 +1685,14 @@ impl Session {
             return None;
         }
         self.settings.pattern.map(|pattern| PatternGate { pattern, origin: self.doc.origin() })
+    }
+
+    /// The mirror (ADR 0026) in force for a write right now: the symmetry setting resolved
+    /// against the current canvas window, in storage coordinates. Frozen into a coat at stroke
+    /// start; read live by the Pencil, the Bucket, and the figure paths. `Mirror::NONE` while
+    /// symmetry is Off, and every write path then behaves exactly as before the feature.
+    fn mirror(&self) -> Mirror {
+        self.settings.symmetry.resolve(self.doc.canvas_rect())
     }
 
     /// The live single-coat stroke's coat, if any — what the compositor previews (ADR 0007).
@@ -1788,8 +1872,11 @@ impl Session {
                     let aa = self.settings.aa;
                     let clip = self.paint_clip();
                     let sel = self.selection_clone();
+                    let mirror = self.mirror();
                     if let Some(buf) = self.buf_by_ids_mut(sfid, slid) {
-                        tool::draw_shape(buf, sel.as_ref(), clip, kind, start, last, 0.0, 0.0, color, fill, lw, PaintMode::Over, aa);
+                        tool::draw_shape(
+                            buf, sel.as_ref(), clip, mirror, kind, start, last, 0.0, 0.0, color, fill, lw, PaintMode::Over, aa,
+                        );
                     }
                 }
                 ToolKind::Move => {
@@ -2000,8 +2087,9 @@ impl Session {
             let (fill, lw, kind) = (self.settings.shape_fill, self.settings.line_width, self.tool);
             let (rot, tip) = (self.shape_rotation, self.triangle_tip);
             let aa = self.settings.aa;
+            let mirror = self.mirror();
             let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-            tool::draw_shape(buf, sel.as_ref(), clip, kind, a, b, rot, tip, color, fill, lw, PaintMode::Over, aa);
+            tool::draw_shape(buf, sel.as_ref(), clip, mirror, kind, a, b, rot, tip, color, fill, lw, PaintMode::Over, aa);
         }
         self.commit_edit(before);
         self.shape_draft = None;
@@ -2048,16 +2136,23 @@ impl Session {
         let clip = self.paint_clip();
         let sel = self.selection_arc(); // Arc bump, not a 72 KiB deep copy — per stamp [C-2]
         let gate = self.pattern_gate(self.tool);
+        let mirror = self.mirror(); // one stamp per image (ADR 0026); the footprint is symmetric
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-        tool::stamp(buf, sel.as_deref(), gate, clip, p, size, shape, color, mode);
+        for q in mirror.images(p) {
+            tool::stamp(buf, sel.as_deref(), gate, clip, q, size, shape, color, mode);
+        }
     }
     fn stroke_active(&mut self, a: Point, b: Point, mode: PaintMode, color: Rgba8) {
         let (size, shape) = (self.settings.brush_size, self.settings.brush_shape);
         let clip = self.paint_clip();
         let sel = self.selection_arc(); // [C-2]
         let gate = self.pattern_gate(self.tool);
+        let mirror = self.mirror(); // one segment per reflection, endpoints paired (ADR 0026)
         let Some(buf) = self.paint_buf_mut() else { return }; // frozen target [fuzz FZ-1]
-        tool::stroke_segment(buf, sel.as_deref(), gate, clip, a, b, size, shape, color, mode);
+        for r in mirror.reflections() {
+            let (qa, qb) = (mirror.apply(r, a), mirror.apply(r, b));
+            tool::stroke_segment(buf, sel.as_deref(), gate, clip, qa, qb, size, shape, color, mode);
+        }
     }
 
     /// True when the Pencil should draw in pixel-perfect mode: the toggle is on and the brush is a
@@ -2086,13 +2181,16 @@ impl Session {
     /// (the L-elbow) as soon as a turn completes, restoring the removed pixel to its captured
     /// pre-stroke color. `pp` is the running tail of recently painted pixels (with their
     /// pre-stroke colors); the caller carries it across segments. See [`pp_corner`].
-    fn pencil_perfect_segment(&mut self, a: Point, b: Point, pp: &mut Vec<(Point, Rgba8)>) {
+    fn pencil_perfect_segment(&mut self, a: Point, b: Point, pp: &mut Vec<PpPixel>) {
         let color = self.settings.primary;
         let clip = self.paint_clip();
         let sel = self.selection_arc(); // [C-2]
         // Pixel-perfect runs first, the pattern gates the write (ADR 0025): the corner filter
         // stays purely geometric, and a gated-off pixel that gets "restored" was never written.
         let gate = self.pattern_gate(ToolKind::Pencil);
+        // The filter runs on the primary path; each decision (plot or restore) then applies to
+        // every image of the pixel (ADR 0026) — a mirrored pixel-perfect path by construction.
+        let mirror = self.mirror();
         let mut pts = Vec::new();
         crate::raster::line(a, b, |x, y| pts.push(Point::new(x, y)));
         {
@@ -2100,18 +2198,16 @@ impl Session {
             for c in pts {
                 // Successive segments share an endpoint (`line(a,b)` then `line(b,c)` both yield `b`);
                 // skip a repeat so it isn't mistaken for a step.
-                if pp.last().map(|&(q, _)| q == c).unwrap_or(false) {
+                if pp.last().map(|e| e.p == c).unwrap_or(false) {
                     continue;
                 }
-                let orig = buf.get(c.x, c.y); // pre-stroke color (stroke hasn't touched `c` yet)
-                tool::plot(buf, sel.as_deref(), gate, clip, c.x, c.y, color, PaintMode::Replace);
-                pp.push((c, orig));
+                // Each image captures its own pre-plot color (see `PpPixel`).
+                pp.push(pp_plot(buf, sel.as_deref(), gate, clip, mirror, c, color));
                 let n = pp.len();
-                if n >= 3 && pp_corner(pp[n - 3].0, pp[n - 2].0, pp[n - 1].0) {
+                if n >= 3 && pp_corner(pp[n - 3].p, pp[n - 2].p, pp[n - 1].p) {
                     // The middle pixel is the corner double: restore it and drop it from the tail so
                     // its neighbors become adjacent and the filter continues cleanly.
-                    let (mid, mid_orig) = pp[n - 2];
-                    buf.set(mid.x, mid.y, mid_orig);
+                    pp[n - 2].restore(buf);
                     pp.remove(n - 2);
                 }
             }
@@ -2240,8 +2336,11 @@ impl Session {
             let clip = self.paint_clip();
             let sel = self.selection_arc(); // [C-2]
             let gate = self.pattern_gate(ToolKind::Pencil);
+            let mirror = self.mirror();
             let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-            tool::plot(buf, sel.as_deref(), gate, clip, p.x, p.y, color, PaintMode::Replace);
+            for q in mirror.images(p) {
+                tool::plot(buf, sel.as_deref(), gate, clip, q.x, q.y, color, PaintMode::Replace);
+            }
         } else if StrokeCoat::tool_uses_coat(self.tool) {
             // The Hold dab is its own one-dab single-coat stroke (ADR 0007): coat, dab,
             // flatten, and let the commit below record it as one step — same as always.
@@ -2273,7 +2372,7 @@ impl Session {
             // the previous segment, so seeding with its current color is visually a no-op.
             let p = self.cursor_storage();
             let c = self.doc.active_frame().active_layer().pixels.get(p.x, p.y);
-            self.pen_pp.push((p, c));
+            self.pen_pp.push(PpPixel::seed(p, c));
         }
     }
 
@@ -2406,8 +2505,12 @@ impl Session {
         let reference =
             all_layers.then(|| render::composite_frame(self.doc.active_frame(), self.doc.storage_rect()));
         let clip = self.paint_clip();
+        // Symmetry (ADR 0026): one flood per image of the seed, regions decided against the
+        // pre-fill buffer and written once (`flood_fill` unions them). Read live — Repeat
+        // fills under the symmetry in force at Repeat time (user decision, unlike the pattern).
+        let seeds: Vec<Point> = self.mirror().images(p).collect();
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-        tool::flood_fill(buf, reference.as_ref(), sel.as_ref(), gate, clip, p, color, th, cont, PaintMode::Replace);
+        tool::flood_fill(buf, reference.as_ref(), sel.as_ref(), gate, clip, &seeds, color, th, cont, PaintMode::Replace);
     }
 
     /// The Repeat record of a fill seeded at `p` (storage coords) under the live settings (ADR

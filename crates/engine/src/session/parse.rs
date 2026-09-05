@@ -6,7 +6,7 @@ use crate::color::Rgba8;
 use crate::document::{BlendMode, LoopMode};
 use crate::geom::{MAX_DIM, MIN_DIM};
 use crate::selection::CombineMode;
-use crate::tool::{BrushShape, GradientKind, Pattern, Stop, ToolKind};
+use crate::tool::{BrushShape, GradientKind, Pattern, Stop, SymMode, Symmetry, ToolKind};
 
 #[derive(Clone, Debug)]
 pub enum Action {
@@ -75,6 +75,9 @@ pub enum Action {
     /// The pattern gate (ADR 0025): `SetPattern(w,h,hex)` carries the tile's bits themselves
     /// (catalog names are a shell convenience, never a replay contract); `SetPattern(off)` clears.
     SetPattern(Option<Pattern>),
+    /// Mirror drawing (ADR 0026): `SetSymmetry(off|h|v|both, ax, ay)` with each axis an integer
+    /// in half-pixel canvas units or `c` (centered); `SetSymmetry(off)` alone is accepted.
+    SetSymmetry(Symmetry),
     SetOverscanView(bool),
     SetCleanEdge(bool),
     SetCleanEdgeWidth(i32), // thousandths, 0..=2000 = 0.0..=2.0 (the SetShapeRotation convention)
@@ -286,6 +289,7 @@ impl Session {
             SetPixelPerfect(b) => self.settings.pixel_perfect = b,
             SetAA(b) => self.settings.aa = b,
             SetPattern(p) => self.settings.pattern = p,
+            SetSymmetry(s) => self.settings.symmetry = s,
             SetOverscanView(b) => self.settings.overscan_view = b,
             SetEyedropSource(b) => self.settings.eyedrop_layer = b,
             SetSelectColorSource(b) => self.settings.select_color_layer = b,
@@ -674,6 +678,19 @@ fn parse_line(line: &str) -> Result<Action, String> {
                 Some(Pattern::parse(u8a(0)?, u8a(1)?, hex)?)
             }
         }),
+        "SetSymmetry" => {
+            let mode_tok = args.first().copied().map(str::trim).unwrap_or("");
+            let mode = SymMode::parse(mode_tok).ok_or_else(|| format!("bad symmetry mode '{}' (off, h, v, both)", mode_tok))?;
+            // An axis is an integer (half-pixel canvas units) or `c` = centered; missing = centered.
+            let axis = |k: usize| -> Result<Option<i32>, String> {
+                match args.get(k).copied().map(str::trim) {
+                    None | Some("") => Ok(None),
+                    Some(a) if a.eq_ignore_ascii_case("c") => Ok(None),
+                    Some(a) => a.parse::<i32>().map(Some).map_err(|_| format!("bad symmetry axis '{}'", a)),
+                }
+            };
+            SetSymmetry(Symmetry { mode, ax: axis(1)?, ay: axis(2)? })
+        }
         "SetOverscanView" => SetOverscanView(boola(0)?),
         "SetCleanEdge" => SetCleanEdge(boola(0)?),
         "SetCleanEdgeWidth" => SetCleanEdgeWidth(i32a(0)?),

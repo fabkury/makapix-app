@@ -12,7 +12,7 @@ use crate::color::{self, Rgba8};
 use crate::geom::{IRect, Point};
 use crate::raster;
 use crate::selection::Mask;
-use crate::tool::{BrushShape, PatternGate, ToolKind};
+use crate::tool::{BrushShape, Mirror, PatternGate, ToolKind};
 use crate::util::hash_xy;
 
 /// Mist speck alpha band (pre-color-alpha). Each pixel draws its own depth from the hash: alpha
@@ -46,6 +46,10 @@ pub struct PaintCtx {
     /// stroke begun with a pattern on. Applied in `raise`, so the display-time preview and
     /// `commit_into` agree by construction (the ADR 0007 invariant needs no extra work).
     pub pattern: Option<PatternGate>,
+    /// The mirror (ADR 0026) frozen at stroke start: every dab lands once per image, into the
+    /// same coat, so overlap at the axis max-combines and the AA rim stays exact. The speckle
+    /// field hashes the canonical image so the airbrush mirror is pixel-exact.
+    pub mirror: Mirror,
     /// Dodge/Burn signed value shift; 0.0 for the paint tools.
     pub dv: f32,
     /// Per-stroke speckle-field seed (Dots/Mist; 0 otherwise). Drawn from the session RNG —
@@ -136,8 +140,16 @@ impl StrokeCoat {
         });
     }
 
-    /// One dab of the frozen tool at `p` (storage coordinates).
+    /// One dab of the frozen tool at `p` (storage coordinates) — and at every image of `p`
+    /// under the frozen mirror (ADR 0026).
     pub fn dab(&mut self, sel: Option<&Mask>, p: Point) {
+        for q in self.ctx.mirror.images(p) {
+            self.dab_one(sel, q);
+        }
+    }
+
+    /// One dab of the frozen tool at exactly `p` (storage coordinates).
+    fn dab_one(&mut self, sel: Option<&Mask>, p: Point) {
         let size = self.ctx.size.max(1);
         match self.ctx.tool {
             // Brush, Eraser, and Dodge/Burn share the stamp footprint convention (radius
@@ -232,7 +244,15 @@ impl StrokeCoat {
     /// exactly solid (plain `hash < c` would miss 1/256 of pixels at full Intensity).
     #[inline]
     fn speck(&self, x: i32, y: i32, c: u8) -> bool {
-        c == 255 || (hash_xy(x, y, self.ctx.seed) & 0xFF) < c as u64
+        c == 255 || (self.field_hash(x, y) & 0xFF) < c as u64
+    }
+
+    /// The speckle-field hash at (x, y): of the canonical image under the frozen mirror, so
+    /// mirrored specks are a pixel-exact reflection (ADR 0026). Identity without a mirror.
+    #[inline]
+    fn field_hash(&self, x: i32, y: i32) -> u64 {
+        let (cx, cy) = self.ctx.mirror.canonical(x, y);
+        hash_xy(cx, cy, self.ctx.seed)
     }
 
     /// THE shared preview/commit path: the layer pixel at (x, y) after this coat applies to
@@ -265,7 +285,7 @@ impl StrokeCoat {
             // and idempotent like everything else in the coat; the grainy varied-opacity look
             // that accumulation used to produce now comes from the field itself.
             ToolKind::AirbrushMist => {
-                let h = hash_xy(x, y, self.ctx.seed);
+                let h = self.field_hash(x, y);
                 if c == 255 || (h & 0xFF) < c as u64 {
                     let ceil = MIST_ALPHA_FLOOR + ((MIST_ALPHA_CEIL_MAX - MIST_ALPHA_FLOOR) * c as u32) / 255;
                     let v = ((h >> 8) & 0xFF) as u32;
@@ -346,6 +366,7 @@ mod tests {
             intensity: 200,
             aa: false,
             pattern: None,
+            mirror: Mirror::NONE,
             dv: 0.1,
             seed: 42,
             fid: 0,
