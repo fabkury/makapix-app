@@ -1,13 +1,37 @@
 # Symmetry (mirror drawing) + Replace color + Outline — design
 
 **Decided 2026-09-04** in a grilled design interview (every decision below is the user's; the
-assumptions are marked). **Not implemented.** Doctrine: ADR 0026. Source list: A1, A4, A5 of
+assumptions are marked). **Implemented 2026-09-05** (engine 82a9dbc0 + dc39399d, shell c47cecf7 +
+64313c2b; see "As built"). Doctrine: ADR 0026. Source list: A1, A4, A5 of
 `docs/editor-gaps/INVENTORY.md`. This is the headline of the next editor release after 1.9.0
 (Patterns); Replace color and Outline ride along as two small tools.
 
 Terminology used throughout: **"H" mirrors left ↔ right**, so its axis is a *vertical* line at
 `x = A/2`; **"V" mirrors top ↔ bottom** across a *horizontal* line at `y = A/2`; **"Both"** is H
 and V together and yields **four** copies of every write (the fourth is the point reflection).
+
+## As built (deviations from the decisions below, all 2026-09-05, each asked and approved)
+
+- **Pencil pre-stroke colors are captured per image at plot time**, not through a first-touch
+  map. Tracing a stroke that crosses its own axis showed the first-touch map un-painting
+  deliberate pixels (the mirror paints `q`, the primary path later passes through `q` and takes an
+  L-turn; restoring `q` to blank breaks the mirrored line). Today's Pencil rule applied per image
+  is symmetric and gap-free; `PpPixel` in `session.rs` holds the images and their plot-time colors.
+- **Figures mirror their rasterized pixels**, not re-rasterized reflected parameters. Rasterizers
+  are not guaranteed reflection-symmetric (midpoint rounding), so reflecting the plots gives a
+  pixel-exact mirror with no rotation/tip special cases; `tool::shape_cover_mirrored` collects
+  the primary and its images into one `CoverMap`. The un-mirrored path is byte-identical to before.
+- **Replace color writes the canvas window only**, never the parked gutter (paint-class rule,
+  SPEC §8/§15) — `map_region` also skips transparent pixels, so a dedicated `tool::replace_region`
+  visits every canvas pixel (a transparent `from` fills the empty area as decided).
+- **The engine accepts Outline widths 1–64**; the UI stepper stops at 4 as decided.
+- **Outline lands right after Fill for fresh installs**; users with a saved tool order get it
+  appended at the end (the standing order reconciler). Its key is **Q**, the last unbound letter.
+- **The eraser's finger-follow footprint outline gets its mirrored images in the same style** as
+  the outline itself (the ghost treatment applies to the precision reticle).
+- **The Mirror chip reads "Moving axis…" in magenta while Move-axis mode is on**; tapping it exits.
+- The Bucket's `flood_fill` now takes a slice of seeds (regions unioned against the pre-fill
+  buffer, written once); with one seed it is the old function.
 
 ## What it is
 

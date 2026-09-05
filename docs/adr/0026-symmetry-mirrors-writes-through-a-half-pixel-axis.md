@@ -1,6 +1,6 @@
 # Symmetry mirrors each write through a half-pixel axis; the mask, the gate, and the undo step are never mirrored
 
-**Decided 2026-09-04; not yet implemented** (design: `docs/symmetry/DESIGN.md`). Engine: a
+**Decided 2026-09-04; implemented 2026-09-05** (design and as-built notes: `docs/symmetry/DESIGN.md`). Engine: a
 `Symmetry { mode, ax, ay }` in `Settings`, one additive verb `SetSymmetry(mode, ax, ay)`, a fan-out
 over the images of every write in the stroke coat, the Pencil path, the figure rasterizers, and the
 flood fill. Shell: a row-1 "Mirror" chip, a dashed axis overlay, a transient Move-axis mode, a
@@ -46,8 +46,9 @@ image against the pre-fill buffer and writes the union once, because a second fl
 first write would see a half-dithered region and behave erratically. The Airbrush speck hash uses
 the canonical image of the pixel while symmetry is on, so its mirror is pixel-exact rather than
 merely equal in density. The Pencil applies its pixel-perfect filter to the primary path and
-mirrors each resulting plot or restore, capturing pre-stroke colors on first touch across all
-images so a restore is always the true pre-stroke color.
+mirrors each resulting plot or restore, each image capturing its own color at plot time — so a
+pixel the stroke already painted (deliberately, or as another pixel's image) stays painted when a
+corner-double is restored, which keeps a stroke that crosses its own axis symmetric and gap-free.
 
 **Repeat reads the live symmetry.** Unlike the pattern, which `RepeatOp::Bucket` freezes at the
 tap ("same region, same dither"), the mirror mode is read at repeat time (user decision): Repeat
@@ -72,7 +73,7 @@ Alternatives rejected:
 
 Consequences: `PaintCtx` carries the resolved symmetry; `StrokeCoat::dab` fans out; the figure
 commit and preview paths share a coverage map; `flood_fill` unions regions from several seeds;
-`pencil_perfect_segment` keeps a first-touch color map. Any *future* write path must decide
+`pencil_perfect_segment` captures each image's color at its own plot time (see the design note's as-built list: a first-touch map un-paints deliberate pixels). Any *future* write path must decide
 explicitly whether it mirrors (drafts, Gradient, Outline, and Replace color do not). New Rust pins
 cover the odd/even center, an axis pixel written once, the figure overlap, the unioned flood, and
 the canonical speck; the 24-hash AA-OFF pin suite must not move. Diagonal and rotational symmetry
