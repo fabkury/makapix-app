@@ -196,6 +196,43 @@ enum RepeatOp {
     /// color never change what Repeat fills. The region is decided live, like every target.
     /// `pattern` is the gate in force at the tap (ADR 0025): "same region, same dither".
     Bucket { seed: Point, color: Rgba8, threshold: u8, contiguous: bool, all_layers: bool, pattern: Option<Pattern> },
+    /// A Replace color (2026-09-04 rider of ADR 0026): from, to, scope, and tolerance frozen; the
+    /// target (layer/frame/frames, the selection) is live like every Repeat.
+    ReplaceColor { from: Rgba8, to: Rgba8, scope: ReplaceScope, tolerance: u8 },
+    /// An Outline (2026-09-04 rider): color, side, corners, and width frozen; the layer is live.
+    Outline { color: Rgba8, inside: bool, square: bool, width: u8 },
+}
+
+/// The scope of a `ReplaceColor`: the active layer, every editable layer of the active frame, or
+/// every editable layer of every frame. Hidden and locked layers are never written (the engine's
+/// standing editability rule); the selection clips every scope.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReplaceScope {
+    Layer,
+    Frame,
+    All,
+}
+
+impl ReplaceScope {
+    pub fn parse(s: &str) -> Option<ReplaceScope> {
+        let s = s.trim();
+        if s.eq_ignore_ascii_case("layer") {
+            Some(ReplaceScope::Layer)
+        } else if s.eq_ignore_ascii_case("frame") {
+            Some(ReplaceScope::Frame)
+        } else if s.eq_ignore_ascii_case("all") {
+            Some(ReplaceScope::All)
+        } else {
+            None
+        }
+    }
+    pub fn token(self) -> &'static str {
+        match self {
+            ReplaceScope::Layer => "layer",
+            ReplaceScope::Frame => "frame",
+            ReplaceScope::All => "all",
+        }
+    }
 }
 
 impl RepeatOp {
@@ -210,6 +247,8 @@ impl RepeatOp {
             RepeatOp::Scale { .. } => "Scale",
             RepeatOp::Paste { .. } => "Paste",
             RepeatOp::Bucket { .. } => "Fill",
+            RepeatOp::ReplaceColor { .. } => "Replace color",
+            RepeatOp::Outline { .. } => "Outline",
         }
     }
 }
@@ -2841,6 +2880,8 @@ impl Session {
                 self.flood_fill_with(p, color, threshold, contiguous, all_layers, pattern);
                 self.commit_edit(before);
             }
+            RepeatOp::ReplaceColor { from, to, scope, tolerance } => self.replace_color(from, to, scope, tolerance),
+            RepeatOp::Outline { color, inside, square, width } => self.outline(color, inside, square, width),
         }
     }
 
@@ -3178,6 +3219,138 @@ impl Session {
                 tool::map_region(&mut l.pixels, None, &f);
             }
         });
+    }
+
+    // ---- Replace color + Outline (the 2026-09-04 riders of ADR 0026; docs/symmetry/DESIGN.md) ----
+
+    /// Recolor every pixel within `tolerance` of `from` (the Bucket metric: max channel delta over
+    /// straight RGBA) to `to`, over the active layer, every editable layer of the active frame,
+    /// or every editable layer of every frame. The selection clips every scope; hidden and
+    /// locked layers are never written. One undo step whatever the scope; nothing is recorded
+    /// when no pixel matches (the empty-edit rule). Transparent is allowed on both sides: a
+    /// transparent `from` fills the empty pixels, a transparent `to` erases a color. Arms Repeat.
+    pub fn replace_color(&mut self, from: Rgba8, to: Rgba8, scope: ReplaceScope, tolerance: u8) {
+        self.repeat_record = Some(RepeatOp::ReplaceColor { from, to, scope, tolerance });
+        if from == to {
+            return;
+        }
+        // A paint-class write: the canvas window only, never the parked gutter (SPEC §8, §15).
+        let clip = self.paint_clip();
+        let editable = |l: &crate::document::Layer| l.visible && !l.locked;
+        let sel = self.selection_clone();
+        let matches = |l: &crate::document::Layer| {
+            editable(l) && tool::replace_region_matches(&l.pixels, sel.as_ref(), clip, from, to, tolerance)
+        };
+        match scope {
+            ReplaceScope::Layer => {
+                if !self.active_editable() {
+                    return;
+                }
+                let before = self.begin_edit();
+                let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
+                tool::replace_region(buf, sel.as_ref(), clip, from, to, tolerance);
+                self.commit_edit(before);
+            }
+            ReplaceScope::Frame => {
+                if !self.doc.active_frame().layers.iter().any(matches) {
+                    return; // the empty-edit rule: nothing to change, nothing recorded
+                }
+                self.edit_frame(|s| {
+                    for l in &mut s.doc.active_frame_mut().layers {
+                        if editable(l) {
+                            tool::replace_region(&mut l.pixels, sel.as_ref(), clip, from, to, tolerance);
+                        }
+                    }
+                });
+            }
+            ReplaceScope::All => {
+                if !self.doc.frames.iter().flat_map(|fr| fr.layers.iter()).any(matches) {
+                    return;
+                }
+                self.edit_doc("replace_color", |s| {
+                    for fr in &mut s.doc.frames {
+                        for l in &mut fr.layers {
+                            if editable(l) {
+                                tool::replace_region(&mut l.pixels, sel.as_ref(), clip, from, to, tolerance);
+                            }
+                        }
+                    }
+                });
+            }
+        }
+    }
+
+    /// Draw a `width`-pixel ring around the opaque pixels of the active layer (∩ the selection,
+    /// when one exists) in `color`: **outside** = the dilation minus the content, **inside** = the
+    /// content minus its erosion; `square` = the 8-neighborhood (square corners), else the
+    /// 4-neighborhood (round corners). Pixels beyond the canvas count as empty, so an outside
+    /// ring is clipped at the canvas edge and an inside ring follows it. The ring is a plain
+    /// Replace write clipped by the selection and the canvas — never pattern-gated, never
+    /// mirrored. One undo step; a locked or hidden layer is a no-op. Arms Repeat.
+    pub fn outline(&mut self, color: Rgba8, inside: bool, square: bool, width: u8) {
+        self.repeat_record = Some(RepeatOp::Outline { color, inside, square, width });
+        if !self.active_editable() {
+            return;
+        }
+        let width = width.clamp(1, 64) as i32;
+        let clip = self.paint_clip();
+        let sel = self.selection_clone();
+        let before = self.begin_edit();
+        let (w, h) = (clip.w as i32, clip.h as i32);
+        let idx = |x: i32, y: i32| ((y - clip.y) * w + (x - clip.x)) as usize;
+        let inside_clip = |x: i32, y: i32| x >= clip.x && y >= clip.y && x < clip.right() && y < clip.bottom();
+        let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
+        let mut mask = vec![false; (w * h) as usize];
+        for y in clip.y..clip.bottom() {
+            for x in clip.x..clip.right() {
+                if sel.as_ref().is_none_or(|m| m.get(x, y)) && buf.get(x, y).a > 0 {
+                    mask[idx(x, y)] = true;
+                }
+            }
+        }
+        // One morphological step: dilate (any neighbor ON) or erode (every neighbor ON, with
+        // off-canvas neighbors counting as OFF).
+        let step = |src: &[bool], dilate: bool| -> Vec<bool> {
+            let mut out = vec![false; src.len()];
+            let at = |x: i32, y: i32| inside_clip(x, y) && src[idx(x, y)];
+            for y in clip.y..clip.bottom() {
+                for x in clip.x..clip.right() {
+                    let mut n = [
+                        at(x - 1, y),
+                        at(x + 1, y),
+                        at(x, y - 1),
+                        at(x, y + 1),
+                        at(x - 1, y - 1),
+                        at(x + 1, y - 1),
+                        at(x - 1, y + 1),
+                        at(x + 1, y + 1),
+                    ];
+                    if !square {
+                        n[4] = !dilate; // the diagonals are neutral for the 4-neighborhood
+                        n[5] = !dilate;
+                        n[6] = !dilate;
+                        n[7] = !dilate;
+                    }
+                    let me = src[idx(x, y)];
+                    out[idx(x, y)] = if dilate { me || n.iter().any(|&b| b) } else { me && n.iter().all(|&b| b) };
+                }
+            }
+            out
+        };
+        let mut grown = mask.clone();
+        for _ in 0..width {
+            grown = step(&grown, !inside);
+        }
+        for y in clip.y..clip.bottom() {
+            for x in clip.x..clip.right() {
+                let i = idx(x, y);
+                let ring = if inside { mask[i] && !grown[i] } else { grown[i] && !mask[i] };
+                if ring {
+                    tool::plot(buf, sel.as_ref(), None, clip, x, y, color, PaintMode::Replace);
+                }
+            }
+        }
+        self.commit_edit(before);
     }
 
     // ---- frame & layer ops ----

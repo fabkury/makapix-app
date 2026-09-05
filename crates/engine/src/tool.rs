@@ -1029,6 +1029,45 @@ pub fn map_region(buf: &mut RgbaBuffer, sel: Option<&Mask>, f: impl Fn(Rgba8) ->
     }
 }
 
+/// Replace color (the 2026-09-04 rider of ADR 0026): every pixel of the `clip` window (the
+/// canvas — never the parked gutter) inside the selection whose max channel delta from `from`
+/// (the Bucket metric, straight RGBA, alpha included) is within `tolerance` becomes `to`.
+/// Unlike [`map_region`] this visits transparent pixels too, so a transparent `from` fills the
+/// empty area. Returns whether any pixel changed.
+pub fn replace_region(buf: &mut RgbaBuffer, sel: Option<&Mask>, clip: IRect, from: Rgba8, to: Rgba8, tolerance: u8) -> bool {
+    let mut changed = false;
+    for y in clip.y..clip.bottom() {
+        for x in clip.x..clip.right() {
+            if let Some(m) = sel {
+                if !m.get(x, y) {
+                    continue;
+                }
+            }
+            let c = buf.get(x, y);
+            if c != to && color::max_channel_delta(c, from) <= tolerance {
+                buf.set(x, y, to);
+                changed = true;
+            }
+        }
+    }
+    changed
+}
+
+/// Whether [`replace_region`] would change anything (a dry run, same rules).
+pub fn replace_region_matches(buf: &RgbaBuffer, sel: Option<&Mask>, clip: IRect, from: Rgba8, to: Rgba8, tolerance: u8) -> bool {
+    for y in clip.y..clip.bottom() {
+        for x in clip.x..clip.right() {
+            if sel.is_none_or(|m| m.get(x, y)) {
+                let c = buf.get(x, y);
+                if c != to && color::max_channel_delta(c, from) <= tolerance {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 /// Fill the selection (or the whole `clip` window when there's no selection) with a solid color.
 pub fn fill_region(buf: &mut RgbaBuffer, sel: Option<&Mask>, clip: IRect, color: Rgba8) {
     for y in clip.y..clip.bottom() {

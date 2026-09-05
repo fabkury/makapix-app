@@ -1,7 +1,7 @@
 //! Action-script DSL: parsing (`name(args)` lines) and execution against a `Session`
 //! (SPEC §9). The same DSL drives the CLI harness, unit tests, and recorded sessions.
 
-use super::Session;
+use super::{ReplaceScope, Session};
 use crate::color::Rgba8;
 use crate::document::{BlendMode, LoopMode};
 use crate::geom::{MAX_DIM, MIN_DIM};
@@ -78,6 +78,12 @@ pub enum Action {
     /// Mirror drawing (ADR 0026): `SetSymmetry(off|h|v|both, ax, ay)` with each axis an integer
     /// in half-pixel canvas units or `c` (centered); `SetSymmetry(off)` alone is accepted.
     SetSymmetry(Symmetry),
+    /// `ReplaceColor(#from, #to, layer|frame|all, tolerance)` (2026-09-04 rider): recolor every
+    /// pixel within the Bucket-metric tolerance of `from` to `to`; one undo step; arms Repeat.
+    ReplaceColor(Rgba8, Rgba8, ReplaceScope, u8),
+    /// `Outline(#color, outside|inside, round|square, width)` (2026-09-04 rider): a ring around the
+    /// active layer's opaque pixels; one undo step; arms Repeat.
+    Outline(Rgba8, bool, bool, u8),
     SetOverscanView(bool),
     SetCleanEdge(bool),
     SetCleanEdgeWidth(i32), // thousandths, 0..=2000 = 0.0..=2.0 (the SetShapeRotation convention)
@@ -290,6 +296,8 @@ impl Session {
             SetAA(b) => self.settings.aa = b,
             SetPattern(p) => self.settings.pattern = p,
             SetSymmetry(s) => self.settings.symmetry = s,
+            ReplaceColor(from, to, scope, tol) => self.replace_color(from, to, scope, tol),
+            Outline(color, inside, square, width) => self.outline(color, inside, square, width),
             SetOverscanView(b) => self.settings.overscan_view = b,
             SetEyedropSource(b) => self.settings.eyedrop_layer = b,
             SetSelectColorSource(b) => self.settings.select_color_layer = b,
@@ -690,6 +698,33 @@ fn parse_line(line: &str) -> Result<Action, String> {
                 }
             };
             SetSymmetry(Symmetry { mode, ax: axis(1)?, ay: axis(2)? })
+        }
+        "ReplaceColor" => {
+            let scope_tok = args.get(2).copied().map(str::trim).unwrap_or("layer");
+            let scope = ReplaceScope::parse(scope_tok)
+                .ok_or_else(|| format!("bad replace scope '{}' (layer, frame, all)", scope_tok))?;
+            let tol = if args.len() > 3 { u8a(3)? } else { 0 };
+            ReplaceColor(color(0)?, color(1)?, scope, tol)
+        }
+        "Outline" => {
+            let side = args.get(1).copied().map(str::trim).unwrap_or("outside");
+            let inside = if side.eq_ignore_ascii_case("outside") {
+                false
+            } else if side.eq_ignore_ascii_case("inside") {
+                true
+            } else {
+                return Err(format!("bad outline side '{}' (outside, inside)", side));
+            };
+            let corners = args.get(2).copied().map(str::trim).unwrap_or("round");
+            let square = if corners.eq_ignore_ascii_case("round") {
+                false
+            } else if corners.eq_ignore_ascii_case("square") {
+                true
+            } else {
+                return Err(format!("bad outline corners '{}' (round, square)", corners));
+            };
+            let width = if args.len() > 3 { u8a(3)?.max(1) } else { 1 };
+            Outline(color(0)?, inside, square, width)
         }
         "SetOverscanView" => SetOverscanView(boola(0)?),
         "SetCleanEdge" => SetCleanEdge(boola(0)?),
