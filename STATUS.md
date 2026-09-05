@@ -175,8 +175,10 @@ The editor pillar covers the whole core of SPEC.md (engine, tools, selections, a
 through C3 plus most of C4. Verified against the code 2026-07-26:
 
 **Editor — SPEC.md items not yet built:**
-1. **Mirror/symmetry drawing** (SPEC §28.3; pulled into v1 by §26.6) — nothing in engine or UI (the only
-   "mirror" code is the Flip tool).
+1. ~~**Mirror/symmetry drawing** (SPEC §28.3; pulled into v1 by §26.6)~~ — **✅ implemented 2026-09-05,
+   unreleased** (ADR 0026, `docs/symmetry/DESIGN.md`): H · V · Both through a half-pixel axis on
+   Pencil/Brush/Eraser/Airbrush/Dodge/Burn/Bucket/Line/Shape, the row-1 Mirror chip (J), Move-axis
+   mode, ghost cursor; plus the riders **Replace color** (swatch sheet) and the **Outline** tool (Q).
 2. **APNG export** (a §26.4 *must-have*) — the codec decodes APNG but has no encoder; the export dialog
    offers PNG/GIF/WebP only (animated WebP, the nice-to-have, *is* done).
 3. **Sprite-sheet export UI** — supported in `crates/codec`, not wired into the export dialog.
