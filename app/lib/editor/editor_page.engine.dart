@@ -259,8 +259,9 @@ extension _EditorEngine on _EditorPageState {
   void _rebuildOutlineEdges() {
     if (_eraserX != null && _eraserY != null) {
       // While erasing, outline the eraser footprint at its current position so the user sees
-      // exactly which pixels are being erased.
-      _outlineEdges = [..._selectionEdges, ..._footprintEdges(_eraserX!, _eraserY!, airbrush: false)];
+      // exactly which pixels are being erased — and, under symmetry, its mirrored images too.
+      final fp = _footprintEdges(_eraserX!, _eraserY!, airbrush: false);
+      _outlineEdges = [..._selectionEdges, ...fp, ..._mirrorEdges(fp)];
     } else {
       _outlineEdges = _selectionEdges;
     }
@@ -329,6 +330,28 @@ extension _EditorEngine on _EditorPageState {
       if (!cov(x, y + 1)) edges.add([x, y + 1, x + 1, y + 1, t]);
     }
     return edges;
+  }
+
+  // The images of a footprint's edges under the current symmetry (ADR 0026), for the ghost
+  // cursor. Edges are in canvas-CORNER coordinates: a pixel column x spans corners x..x+1 and
+  // reflects to A − x, so a corner c reflects to A + 1 − c. Empty when symmetry is Off.
+  List<List<int>> _mirrorEdges(List<List<int>> edges) {
+    if (!_symOn || edges.isEmpty) return const [];
+    final h = _symHAxis, v = _symVAxis;
+    final out = <List<int>>[];
+    void add(bool fx, bool fy) {
+      for (final e in edges) {
+        final x1 = fx ? h! + 1 - e[0] : e[0];
+        final x2 = fx ? h! + 1 - e[2] : e[2];
+        final y1 = fy ? v! + 1 - e[1] : e[1];
+        final y2 = fy ? v! + 1 - e[3] : e[3];
+        out.add([x1, y1, x2, y2, e[4]]);
+      }
+    }
+    if (h != null) add(true, false);
+    if (v != null) add(false, true);
+    if (h != null && v != null) add(true, true);
+    return out;
   }
 
   String _hex(Color c) {
@@ -823,6 +846,7 @@ extension _EditorEngine on _EditorPageState {
     // engine tool; leaving it must drop the engine off Select Layer and redraw so the shading clears.
     final leavingSelectLayer = _tool == 'SelectLayer' && t != 'SelectLayer';
     if (_playing) _pause(); // selecting another tool stops the animation preview
+    if (_movingAxis) _exitMoveAxis(); // a tool switch leaves Move-axis mode (ADR 0026)
     if (_penDown) {
       _send('CursorPenUp()');
       _penDown = false;
@@ -928,6 +952,9 @@ extension _EditorEngine on _EditorPageState {
     // tool (per-tool On/Off is a shell concept, like per-tool Precision), and the Gradient's dither.
     _send(_patternDsl);
     _send('SetGradientDither($_gradDither)');
+    // Symmetry (ADR 0026), on its own line for the same line-skip reason. Global, not per tool:
+    // the engine ignores it for the tools that do not mirror.
+    _send(_symDsl);
     _send('SetEyedropSource(${_eyedropLayer ? 'Layer' : 'Frame'})');
     _send('SetSelectColorSource(${_selColorLayer ? 'Layer' : 'Frame'})');
     _send('SetCleanEdge($_cleanEdge); SetCleanEdgeWidth(${(_cleanEdgeWidth * 1000).round()})');

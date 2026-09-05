@@ -282,6 +282,16 @@ extension _EditorCanvas on _EditorPageState {
                   size: Size.infinite,
                 ),
               ),
+            // The symmetry axis (ADR 0026): dashed magenta line(s), above the grid and the onion
+            // skin, below the cursor and handles; hidden during playback (user decision).
+            if (_symOn && !_playing)
+              RepaintBoundary(
+                child: CustomPaint(
+                  painter: SymmetryAxisPainter(engine.width, engine.height, _symHAxis, _symVAxis, vScale, vOff,
+                      moving: _movingAxis),
+                  size: Size.infinite,
+                ),
+              ),
             // Overlays repaint off _overlayVN so a freehand stroke can update them without a
             // full-tree setState (which would rebuild the per-tile-FFI film-roll/layer strips on
             // every pointer move). vScale/vOff are captured from the enclosing LayoutBuilder and are
@@ -307,15 +317,20 @@ extension _EditorCanvas on _EditorPageState {
                   // Amber marching outline around the EXACT pixels the actuate button would draw —
                   // a distinct visual from the selection's black/white ants (the airbrush shows its
                   // spray disc, an approximation, due to its randomized dabs).
-                  CustomPaint(
-                    painter: CursorOutlinePainter(
-                      _footprintEdges(_cursorX, _cursorY, airbrush: _tool == 'Airbrush'),
-                      vScale,
-                      vOff,
-                      _antPhase,
-                    ),
-                    size: Size.infinite,
-                  ),
+                  Builder(builder: (_) {
+                    final fp = _footprintEdges(_cursorX, _cursorY, airbrush: _tool == 'Airbrush');
+                    return CustomPaint(
+                      painter: CursorOutlinePainter(
+                        fp,
+                        vScale,
+                        vOff,
+                        _antPhase,
+                        // The mirrored ghost reticle(s) under symmetry (ADR 0026).
+                        ghost: _kMirrorTools.contains(_tool) ? _mirrorEdges(fp) : const [],
+                      ),
+                      size: Size.infinite,
+                    );
+                  }),
                 if (_isDraftTool && _hasShapeDraft)
                   // draggable endpoint handles for the uncommitted figure
                   CustomPaint(
@@ -470,6 +485,10 @@ extension _EditorCanvas on _EditorPageState {
       _panDragLast = pos;
       return;
     }
+    if (_movingAxis) {
+      _beginAxisDrag(pos, box); // Move-axis mode (ADR 0026): one finger drags the axis
+      return;
+    }
     if (_isRotateHandleActive) {
       _beginRotateHandle(pos, box);
       return;
@@ -539,6 +558,10 @@ extension _EditorCanvas on _EditorPageState {
     if (_panDragLast != null) {
       _panBy(pos - _panDragLast!);
       _panDragLast = pos;
+      return;
+    }
+    if (_axisDrag != null) {
+      _continueAxisDrag(pos, box);
       return;
     }
     if (_isRotateHandleActive) {
@@ -642,6 +665,10 @@ extension _EditorCanvas on _EditorPageState {
       _panDragLast = null; // a pan drag ends without touching any tool pathway
       return;
     }
+    if (_axisDrag != null) {
+      _endAxisDrag(cancel: false);
+      return;
+    }
     if (_isRotateHandleActive) {
       _rotateDragging = false; // releasing leaves the angle/position where dragged (awaiting Commit)
       _rotDraftMoveLast = null;
@@ -700,11 +727,82 @@ extension _EditorCanvas on _EditorPageState {
     _redraw();
   }
 
+  // ---- Move-axis drag (ADR 0026) ---------------------------------------------------------------
+  // One finger anywhere on the canvas moves the axis by the drag DELTA in half-pixel steps; the
+  // Slow chip gears the delta (draftGearDivisor at the view scale captured at begin); a tap on
+  // the handle (no travel) opens tap-to-type. The journal sees ONE SetSymmetry on release.
+
+  void _beginAxisDrag(Offset pos, Size box) {
+    final (scale, _) = _view(box);
+    _axisDrag = _AxisDrag(
+      start: pos,
+      last: pos,
+      ax0: _symHAxis,
+      ay0: _symVAxis,
+      divisor: _slowDrafts ? draftGearDivisor(scale) : 1.0,
+      scale: scale,
+    );
+  }
+
+  void _continueAxisDrag(Offset pos, Size box) {
+    final d = _axisDrag;
+    if (d == null) return;
+    d.last = pos;
+    // Total drag in canvas px (geared), then in half-pixels — applied from the START values so
+    // the axis never drifts from the finger.
+    final total = (pos - d.start) / d.scale / d.divisor;
+    final hx = (total.dx * 2).round();
+    final hy = (total.dy * 2).round();
+    var changed = false;
+    if (d.ax0 != null) {
+      final a = (d.ax0! + hx).clamp(0, 2 * (engine.width - 1));
+      if (a != _symAx) {
+        _symAx = a;
+        changed = true;
+      }
+    }
+    if (d.ay0 != null) {
+      final a = (d.ay0! + hy).clamp(0, 2 * (engine.height - 1));
+      if (a != _symAy) {
+        _symAy = a;
+        changed = true;
+      }
+    }
+    if (changed) setState(() {}); // the axis painter + the ghost cursor follow live
+  }
+
+  void _endAxisDrag({required bool cancel}) {
+    final d = _axisDrag;
+    _axisDrag = null;
+    if (d == null) return;
+    final moved = (d.last - d.start).distance;
+    if (!cancel && moved < 6) {
+      // A tap: on the handle it opens tap-to-type; elsewhere it is nothing.
+      final box = context.size;
+      if (box != null) {
+        final (scale, off) = _view(box);
+        final c = SymmetryAxisPainter.handleCenter(engine.width, engine.height, _symHAxis, _symVAxis, scale, off);
+        if (c != null && (d.start - c).distance <= SymmetryAxisPainter.handleRadius + 12) {
+          _editAxisValue();
+          return;
+        }
+      }
+      return;
+    }
+    // The axis is wherever the drag left it (a second finger's interruption keeps it too).
+    _send(_symDsl);
+    _redraw(full: false, refetchSelection: false);
+  }
+
   // Abort an in-progress draw, discarding its marks without an undo step (used when a second finger
   // interrupts a nascent stroke to begin pan/zoom).
   void _cancelDraw() {
     if (_panDragLast != null) {
       _panDragLast = null; // the second finger's pinch takes over from the pan drag
+      return;
+    }
+    if (_axisDrag != null) {
+      _endAxisDrag(cancel: true); // a second finger interrupted; the axis stays where it got to
       return;
     }
     if (_isRotateHandleActive) {
@@ -1424,4 +1522,22 @@ extension _EditorCanvas on _EditorPageState {
     return (t, maxSide);
   }
 
+}
+
+/// An in-flight Move-axis drag (ADR 0026). `ax0`/`ay0` are the resolved half-pixel sums at the
+/// start (null = that direction is not mirrored); the drag applies its total to them.
+class _AxisDrag {
+  _AxisDrag({
+    required this.start,
+    required this.last,
+    required this.ax0,
+    required this.ay0,
+    required this.divisor,
+    required this.scale,
+  });
+  final Offset start;
+  Offset last;
+  final int? ax0, ay0;
+  final double divisor; // Slow gearing (1.0 = ungeared)
+  final double scale; // screen px per canvas px at begin
 }

@@ -577,6 +577,8 @@ extension _EditorControls on _EditorPageState {
       }
       children.add(_patternSwatch());
     }
+    // Symmetry (ADR 0026): the shared Mirror chip, last in row-1 on every tool that mirrors.
+    if (_kMirrorTools.contains(_tool)) children.add(_mirrorChip());
     if (_tool == 'SelectLayer') {
       // Alpha cutoff: pixels with alpha > threshold (the opaque pixels) are "selected"
       // (0 = all non-transparent; raise to keep only more-opaque pixels).
@@ -1152,6 +1154,182 @@ extension _EditorControls on _EditorPageState {
   // checker glyph if no tile was ever picked). Tap opens the page; long-press / right-click
   // toggles Off ↔ the last tile without opening it. The Gradient's variant shows its Bayer dither
   // at the 50 % level and toggles Off ↔ the last size.
+  // ---- Symmetry / mirror drawing (ADR 0026) --------------------------------------------------
+  // One global mode across the mirroring tools (the AA chip's pattern), cycled by tap and picked
+  // directly from the long-press sheet, which also holds the axis actions. Session-only state.
+
+  Widget _mirrorChip() {
+    final on = _symOn;
+    final label = _movingAxis ? 'Moving axis…' : _symLabel;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 3),
+      child: Tooltip(
+        message: _movingAxis
+            ? 'Drag the canvas to move the axis; tap to finish'
+            : 'Mirror drawing: tap to cycle Off · H · V · Both, hold for the axis',
+        child: GestureDetector(
+          onLongPress: _mirrorMenu,
+          onSecondaryTap: _mirrorMenu,
+          child: FilterChip(
+            selected: on,
+            label: Text(label),
+            selectedColor: _movingAxis ? SymmetryAxisPainter.magenta : const Color(0xFF30A050),
+            onSelected: (_) {
+              if (_movingAxis) {
+                _exitMoveAxis(); // the chip is the exit from Move-axis mode
+              } else {
+                _cycleSymmetry();
+              }
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Off → H → V → Both → Off. From the keyboard (`fromKey`) on a tool without the chip, a toast
+  /// names the new mode, since nothing else on screen would.
+  void _cycleSymmetry({bool fromKey = false}) {
+    _setSymmetry((_symMode + 1) % 4);
+    if (fromKey && !_kMirrorTools.contains(_tool)) {
+      _toast(_symOn ? _symLabel.replaceAll(' ✔', '') : 'Mirror off');
+    }
+  }
+
+  /// Set the mode (and optionally the axes), send the one verb, and refresh the overlay, the
+  /// ghost cursor, and any pending figure preview (its mirror renders live, like AA).
+  void _setSymmetry(int mode, {int? ax, int? ay, bool keepAxes = true}) {
+    setState(() {
+      _symMode = mode;
+      if (!keepAxes || ax != null) _symAx = ax;
+      if (!keepAxes || ay != null) _symAy = ay;
+      if (!_symOn && _movingAxis) _movingAxis = false;
+    });
+    _send(_symDsl);
+    _redraw(full: false, refetchSelection: false);
+  }
+
+  void _recenterAxis() {
+    setState(() {
+      _symAx = null;
+      _symAy = null;
+    });
+    _send(_symDsl);
+    _redraw(full: false, refetchSelection: false);
+  }
+
+  void _enterMoveAxis() {
+    if (!_symOn) return;
+    if (_playing) _pause();
+    setState(() => _movingAxis = true);
+  }
+
+  void _exitMoveAxis() {
+    if (!_movingAxis) return;
+    setState(() => _movingAxis = false);
+    _axisDrag = null;
+  }
+
+  /// The chip's long-press sheet: direct mode picks plus the axis actions (enabled only while a
+  /// mode is on; Recenter also needs an axis that is not already centered).
+  void _mirrorMenu() {
+    if (_playing) _pause();
+    final centered = _symAx == null && _symAy == null;
+    showAppSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const ListTile(
+            leading: Icon(Icons.flip),
+            title: Text('Mirror drawing'),
+            subtitle: Text('Every stroke, figure, and fill lands on both sides of the axis'),
+            dense: true,
+          ),
+          const Divider(height: 1),
+          for (final (i, name) in const [(0, 'Off'), (1, 'Horizontal (left ↔ right)'), (2, 'Vertical (top ↔ bottom)'), (3, 'Both')].indexed)
+            ListTile(
+              leading: Icon(_symMode == i ? Icons.radio_button_checked : Icons.radio_button_off),
+              title: Text(name.$2),
+              selected: _symMode == i,
+              onTap: () {
+                Navigator.pop(ctx);
+                _setSymmetry(name.$1);
+              },
+            ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.open_with),
+            title: const Text('Move axis…'),
+            subtitle: const Text('Drag anywhere on the canvas; Slow gears it; tap the handle to type a value'),
+            enabled: _symOn,
+            onTap: () {
+              Navigator.pop(ctx);
+              _enterMoveAxis();
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.center_focus_strong),
+            title: const Text('Recenter axis'),
+            enabled: _symOn && !centered,
+            onTap: () {
+              Navigator.pop(ctx);
+              _recenterAxis();
+            },
+          ),
+        ]),
+      ),
+    );
+  }
+
+  /// Tap-to-type on the axis handle: the axis position in canvas pixels (`15.5` = between
+  /// columns 15 and 16, `15` = through column 15), one field per active direction.
+  Future<void> _editAxisValue() async {
+    if (!_symOn) return;
+    String fmt(int a) => (a / 2).toStringAsFixed(a.isOdd ? 1 : 0);
+    final hCtrl = TextEditingController(text: _symH ? fmt(_symHAxis!) : '');
+    final vCtrl = TextEditingController(text: _symV ? fmt(_symVAxis!) : '');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Mirror axis'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          if (_symH)
+            TextField(
+              controller: hCtrl,
+              autofocus: true,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(labelText: 'Vertical axis at x (0 – ${engine.width - 1}, .5 = between columns)'),
+            ),
+          if (_symV)
+            TextField(
+              controller: vCtrl,
+              autofocus: !_symH,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(labelText: 'Horizontal axis at y (0 – ${engine.height - 1}, .5 = between rows)'),
+            ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('OK')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    int? parse(String s, int extent) {
+      final v = double.tryParse(s.trim());
+      if (v == null || !v.isFinite) return null;
+      return (v * 2).round().clamp(0, 2 * (extent - 1));
+    }
+    final ax = _symH ? parse(hCtrl.text, engine.width) : _symAx;
+    final ay = _symV ? parse(vCtrl.text, engine.height) : _symAy;
+    setState(() {
+      if (_symH && ax != null) _symAx = ax;
+      if (_symV && ay != null) _symAy = ay;
+    });
+    _send(_symDsl);
+    _redraw(full: false, refetchSelection: false);
+  }
+
   Widget _patternSwatch() {
     final gradient = _tool == 'Gradient';
     final on = gradient ? _gradDither != 0 : _patternActive;

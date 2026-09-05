@@ -110,36 +110,134 @@ class OutlinePainter extends CustomPainter {
 /// a pixel selection. A continuous dark backing with amber dashes marching along it.
 class CursorOutlinePainter extends CustomPainter {
   final List<List<int>> edges; // [x1,y1,x2,y2,t] in canvas-corner coords
+  /// The mirrored ghost outlines (ADR 0026): the same footprint at every image of the reticle
+  /// under the symmetry axis, drawn dimmer so the primary stays the eye's anchor. Empty when off.
+  final List<List<int>> ghost;
   final double scale;
   final Offset off;
   final ValueListenable<int> phaseVN; // marching phase, 0..3 (see OutlinePainter)
-  CursorOutlinePainter(this.edges, this.scale, this.off, this.phaseVN)
+  CursorOutlinePainter(this.edges, this.scale, this.off, this.phaseVN, {this.ghost = const []})
       : super(repaint: phaseVN);
 
   static const _amber = Color(0xFFFFC400);
+  static const _ghostAmber = Color(0x88FFC400);
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (edges.isEmpty || scale <= 0) return;
+    if ((edges.isEmpty && ghost.isEmpty) || scale <= 0) return;
     final ox = off.dx, oy = off.dy;
     final phase = phaseVN.value; // 4-unit marching period
-    final back = <Offset>[]; // full dark backing (continuous outline, for contrast)
-    final dash = <Offset>[]; // amber dashes (the marching "on" segments)
-    for (final e in edges) {
-      final p1 = Offset(ox + e[0] * scale, oy + e[1] * scale);
-      final p2 = Offset(ox + e[2] * scale, oy + e[3] * scale);
-      back..add(p1)..add(p2);
-      if (((e[4] + phase) % 4) < 2) dash..add(p1)..add(p2);
+    void draw(List<List<int>> es, Color dashColor, double backWidth) {
+      if (es.isEmpty) return;
+      final back = <Offset>[]; // full dark backing (continuous outline, for contrast)
+      final dash = <Offset>[]; // amber dashes (the marching "on" segments)
+      for (final e in es) {
+        final p1 = Offset(ox + e[0] * scale, oy + e[1] * scale);
+        final p2 = Offset(ox + e[2] * scale, oy + e[3] * scale);
+        back..add(p1)..add(p2);
+        if (((e[4] + phase) % 4) < 2) dash..add(p1)..add(p2);
+      }
+      canvas.drawPoints(
+          ui.PointMode.lines, back, Paint()..color = Colors.black54..strokeWidth = backWidth..isAntiAlias = false);
+      canvas.drawPoints(
+          ui.PointMode.lines, dash, Paint()..color = dashColor..strokeWidth = 1.6..isAntiAlias = false);
     }
-    canvas.drawPoints(
-        ui.PointMode.lines, back, Paint()..color = Colors.black..strokeWidth = 2.5..isAntiAlias = false);
-    canvas.drawPoints(
-        ui.PointMode.lines, dash, Paint()..color = _amber..strokeWidth = 1.6..isAntiAlias = false);
+    draw(ghost, _ghostAmber, 1.6);
+    draw(edges, _amber, 2.5);
   }
 
   @override
   bool shouldRepaint(CursorOutlinePainter old) =>
-      old.edges != edges || old.scale != scale || old.off != off; // phase repaints via the notifier
+      old.edges != edges || old.ghost != ghost || old.scale != scale || old.off != off; // phase repaints via the notifier
+}
+
+/// The symmetry axis overlay (ADR 0026): a dashed line per active axis, in a hue no other
+/// overlay uses (magenta — the ruler is cyan, the cursor amber, the draft ants cyan-on-dark,
+/// the grid black). `hAxis` / `vAxis` are the resolved half-pixel sums `A` (`x' = A − x`), so the
+/// line sits at `(A + 1) / 2` canvas units: through the middle of a pixel column when `A` is
+/// even, on the boundary between two columns when `A` is odd. In Move-axis mode a fingertip
+/// handle (ADR 0011's ring) marks the drag anchor: the axis midpoint, or the intersection.
+class SymmetryAxisPainter extends CustomPainter {
+  final int cols, rows; // canvas size in pixels
+  final int? hAxis, vAxis; // half-pixel sums; null = that direction is not mirrored
+  final double scale;
+  final Offset off;
+  final bool moving; // Move-axis mode: draw the handle
+  const SymmetryAxisPainter(this.cols, this.rows, this.hAxis, this.vAxis, this.scale, this.off,
+      {this.moving = false});
+
+  static const magenta = Color(0xFFFF4FD8);
+  static const handleRadius = 14.0;
+
+  /// Screen x of the H axis line (null when H is off).
+  static double? lineX(int? hAxis, double scale, Offset off) =>
+      hAxis == null ? null : off.dx + (hAxis + 1) / 2 * scale;
+  static double? lineY(int? vAxis, double scale, Offset off) =>
+      vAxis == null ? null : off.dy + (vAxis + 1) / 2 * scale;
+
+  /// Where the handle sits on screen (the intersection, or the midpoint of the single axis).
+  static Offset? handleCenter(int cols, int rows, int? hAxis, int? vAxis, double scale, Offset off) {
+    final x = lineX(hAxis, scale, off);
+    final y = lineY(vAxis, scale, off);
+    if (x == null && y == null) return null;
+    return Offset(x ?? off.dx + cols * scale / 2, y ?? off.dy + rows * scale / 2);
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (scale <= 0 || cols <= 0 || rows <= 0) return;
+    final x0 = off.dx, y0 = off.dy;
+    final right = x0 + cols * scale, bottom = y0 + rows * scale;
+    final line = Paint()
+      ..color = magenta
+      ..strokeWidth = 1
+      ..isAntiAlias = false;
+    final back = Paint()
+      ..color = Colors.black45
+      ..strokeWidth = 3
+      ..isAntiAlias = false;
+    void dashed(Offset a, Offset b) {
+      // 6-on / 4-off dashes along the segment, over a soft dark backing for contrast.
+      final len = (b - a).distance;
+      if (len <= 0) return;
+      final dir = (b - a) / len;
+      canvas.drawLine(a, b, back);
+      var t = 0.0;
+      while (t < len) {
+        final e = math.min(t + 6, len);
+        canvas.drawLine(a + dir * t, a + dir * e, line);
+        t += 10;
+      }
+    }
+    final lx = lineX(hAxis, scale, off);
+    if (lx != null) dashed(Offset(lx, y0), Offset(lx, bottom));
+    final ly = lineY(vAxis, scale, off);
+    if (ly != null) dashed(Offset(x0, ly), Offset(right, ly));
+    if (moving) {
+      final c = handleCenter(cols, rows, hAxis, vAxis, scale, off);
+      if (c != null) {
+        canvas.drawCircle(c, handleRadius, Paint()..color = Colors.black45..style = PaintingStyle.fill);
+        canvas.drawCircle(
+            c,
+            handleRadius,
+            Paint()
+              ..color = magenta
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 2);
+        canvas.drawCircle(c, 2.5, Paint()..color = magenta);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(SymmetryAxisPainter o) =>
+      o.cols != cols ||
+      o.rows != rows ||
+      o.hAxis != hAxis ||
+      o.vAxis != vAxis ||
+      o.scale != scale ||
+      o.off != off ||
+      o.moving != moving;
 }
 
 /// Marching ants for an UNCOMMITTED selection draft (the Select Shape tool's draw → adjust → commit

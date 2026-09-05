@@ -65,6 +65,9 @@ abstract class EditorAccess {
   void zoomFit();
   void zoom100();
 
+  // ---- symmetry (ADR 0026) ----
+  void cycleSymmetry(); // Off → H → V → Both → Off; toasts the new mode when no Mirror chip shows
+
   // ---- color / brush ----
   void swapWithPreviousColor();
   void brushSizeBy(int delta);

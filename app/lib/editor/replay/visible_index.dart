@@ -139,7 +139,7 @@ bool _statementVisible(String verb, String tool, bool penHeld) {
     'SetHsvScope', 'SetHsvShift', 'SetIntensity', 'SetLevels', 'SetLevelsScope',
     'SetLineWidth', 'SetMemBudget', 'SetOverscanView', 'SetPattern', 'SetPixelPerfect', 'SetPrimaryColor',
     'SetProtectPixels', 'SetScaleCleanEdge', 'SetScaleCleanEdgeWidth', 'SetSecondaryColor',
-    'SetSeed', 'SetSelectColorSource', 'SetSelectionMode', 'SetShapeFill',
+    'SetSeed', 'SetSelectColorSource', 'SetSelectionMode', 'SetShapeFill', 'SetSymmetry',
     'SetShapeRotation', 'SetSpacing', 'SetThreshold', 'SetTriangleTip', 'SetWrap',
   };
   if (invisible.contains(verb)) return false;

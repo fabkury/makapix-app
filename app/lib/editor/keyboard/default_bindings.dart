@@ -75,6 +75,7 @@ BindingTable defaultBindings() {
     'view.zoomFit': [p(LogicalKeyboardKey.digit0)],
     'view.zoom100': [p(LogicalKeyboardKey.digit1)],
     // Color / brush
+    'symmetry.cycle': [c(LogicalKeyboardKey.keyJ)], // J and Q were the unbound letters (ADR 0026)
     'color.swap': [c(LogicalKeyboardKey.keyX)],
     'brush.sizeUp': [c(LogicalKeyboardKey.bracketRight)],
     'brush.sizeDown': [c(LogicalKeyboardKey.bracketLeft)],

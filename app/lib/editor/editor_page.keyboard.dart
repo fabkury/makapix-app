@@ -127,6 +127,8 @@ class _EditorKeyboardHost implements EditorAccess {
   void zoom100() => _s._zoomActualPixels();
 
   @override
+  void cycleSymmetry() => _s._cycleSymmetry(fromKey: true);
+  @override
   void swapWithPreviousColor() => _s._setPrimary(_s._previousPrimary);
   @override
   void brushSizeBy(int delta) => _s._brushSizeBy(delta);

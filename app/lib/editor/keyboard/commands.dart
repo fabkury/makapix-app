@@ -239,6 +239,14 @@ List<CommandDef> buildCommands() {
       enabled: _always,
       invoke: (a) => a.zoom100(),
     ),
+    // ---- Symmetry (ADR 0026): cycles Off → H → V → Both like the row-1 Mirror chip ----
+    CommandDef(
+      id: 'symmetry.cycle',
+      label: 'Mirror (cycle Off · H · V · Both)',
+      category: 'Tools',
+      enabled: _always,
+      invoke: (a) => a.cycleSymmetry(),
+    ),
     // ---- Color / brush ----
     CommandDef(
       id: 'color.swap',

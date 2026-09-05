@@ -124,6 +124,10 @@ const _kBrushSizeTools = {'Pencil', 'Brush', 'Airbrush', 'Eraser', 'Dodge', 'Bur
 // The tools a pattern gates (ADR 0025). The Gradient has its own Bayer dither instead and never
 // reads the pattern; every other tool paints ungated.
 const _kPatternTools = {'Pencil', 'Brush', 'Eraser', 'Bucket'};
+// The tools whose writes mirror under Symmetry (ADR 0026) — the ones that show the Mirror chip.
+// Gradient, Move/Paste, the selections, Eyedropper, Ruler, the adjustments, and the transforms
+// never mirror (design decision 2026-09-04).
+const _kMirrorTools = {'Pencil', 'Brush', 'Eraser', 'Airbrush', 'Dodge', 'Burn', 'Bucket', 'Line', 'Shape'};
 
 class EditorPage extends ConsumerStatefulWidget {
   const EditorPage({super.key});
@@ -224,6 +228,14 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // The shared AA (anti-alias) flag (ADR 0008): one engine setting for round Brush, the shapes
   // (Line/Rect/Ellipse/Triangle), and the round Eraser. Default OFF; persisted (_kAaPref).
   bool _aa = false;
+  // Symmetry / mirror drawing (ADR 0026): a session setting — Off with a centered axis on every
+  // editor open, never persisted, never in .mkpx. Mode 0 Off · 1 H (left ↔ right, vertical
+  // axis line) · 2 V (top ↔ bottom) · 3 Both. Each axis is an integer in HALF-PIXEL canvas
+  // units (`x' = A − x`; even = through a pixel column, odd = between two), null = centered
+  // (follows resizes). `_movingAxis` is the transient Move-axis mode (one finger drags the axis).
+  int _symMode = 0;
+  int? _symAx, _symAy;
+  bool _movingAxis = false;
   bool _eyedropLayer = false; // Eyedropper source: false = composited frame (default), true = active layer's raw pixels
   bool _selColorLayer = false; // Select Color source: false = composited frame (default), true = active layer's raw pixels
   bool _perfect = false; // Pencil pixel-perfect: drop L-corner doubles on a 1px stroke
@@ -432,6 +444,9 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // mid-drag press/release never changes a gesture's meaning under the finger.
   bool _spacePanning = false;
   Offset? _panDragLast; // last screen position of an in-flight hold-Space pan drag
+  // An in-flight Move-axis drag (ADR 0026): screen start, the last screen position, the axis
+  // values at the start (half-pixel sums), and the accumulated canvas-px delta not yet applied.
+  _AxisDrag? _axisDrag;
   String? _holdPickPrevTool; // tool to restore when the hold-Alt Eyedropper is released
   // Held Shift (DESIGN.md §2.4): directional drags snap/lock while true. Fixed gesture
   // grammar, not a Binding; mid-drag changes re-evaluate on the next pointer event.
@@ -543,6 +558,22 @@ class _EditorPageState extends ConsumerState<EditorPage>
   bool get _patternActive => _kPatternTools.contains(_tool) && (_patternOn[_tool] ?? false) && _pattern != null;
   // The pattern line the engine needs for the current tool — what _pushToolSettings emits.
   String get _patternDsl => _patternActive ? _pattern!.dsl : 'SetPattern(off)';
+  // ---- symmetry (ADR 0026) ----
+  bool get _symOn => _symMode != 0;
+  bool get _symH => _symMode == 1 || _symMode == 3;
+  bool get _symV => _symMode == 2 || _symMode == 3;
+  static const _kSymModeTokens = ['off', 'h', 'v', 'both'];
+  // The verb the engine needs (what _pushToolSettings emits and every change sends).
+  String get _symDsl => 'SetSymmetry(${_kSymModeTokens[_symMode]},${_symAx ?? 'c'},${_symAy ?? 'c'})';
+  String get _symLabel => const ['Mirror', 'Mirror H ✔', 'Mirror V ✔', 'Mirror H+V ✔'][_symMode];
+  // The resolved half-pixel sums the engine will use (its own clamp mirrored here), or null for
+  // a direction that is not mirrored — the overlay, the ghost cursor, and the drag read these.
+  int? get _symHAxis => _symH ? _resolveAxis(_symAx, engine.width) : null;
+  int? get _symVAxis => _symV ? _resolveAxis(_symAy, engine.height) : null;
+  static int _resolveAxis(int? explicit, int extent) {
+    final hi = 2 * (extent - 1);
+    return (explicit ?? (extent - 1)).clamp(0, hi < 0 ? 0 : hi);
+  }
   // Whether the current tool is *in* precision mode right now.
   bool get _isPrecision => _precisionOn.contains(_tool);
 

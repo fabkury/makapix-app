@@ -92,6 +92,8 @@ class FakeEditorAccess implements EditorAccess {
   @override
   void zoom100() => calls.add('zoom100');
   @override
+  void cycleSymmetry() => calls.add('cycleSymmetry');
+  @override
   void swapWithPreviousColor() => calls.add('swapWithPreviousColor');
   @override
   void brushSizeBy(int delta) => calls.add('brushSizeBy:$delta');
