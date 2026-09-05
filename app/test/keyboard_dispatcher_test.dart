@@ -165,7 +165,8 @@ void main() {
 
   testWidgets('unbound keys are left alone', (tester) async {
     final a = await pumpKeyboard(tester);
-    await chord(tester, LogicalKeyboardKey.keyQ);
+    // Every letter is bound since 2026-09-04 (J = Mirror, Q = Outline); F9 and the arrows are not.
+    await chord(tester, LogicalKeyboardKey.f9);
     await chord(tester, LogicalKeyboardKey.arrowLeft); // reserved, deliberately unbound
     expect(a.calls, isEmpty);
   });

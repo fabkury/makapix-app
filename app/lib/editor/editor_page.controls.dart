@@ -775,6 +775,36 @@ extension _EditorControls on _EditorPageState {
         }, integer: true);
       });
     }
+    if (_tool == 'Outline') {
+      // Outline (2026-09-04 rider of the Symmetry release): a ring around the active layer's
+      // opaque pixels (the selection's, when one exists) in the primary color. Apply commits one
+      // undo step and arms Repeat; the canvas is inert (an action group, like Flip).
+      label(_outlineEdges.isNotEmpty ? 'Outline selection' : 'Outline layer');
+      children.add(_toggle(const ['Outside', 'Inside'], _outlineInside ? 1 : 0, (i) => setState(() => _outlineInside = i == 1)));
+      children.add(_toggle(const ['Round', 'Square'], _outlineSquare ? 1 : 0, (i) => setState(() => _outlineSquare = i == 1)));
+      Widget step(String s, VoidCallback? onTap) => Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 3),
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(0, 30),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                backgroundColor: const Color(0xFF2E3237),
+              ),
+              onPressed: onTap,
+              child: Text(s, style: const TextStyle(fontSize: 11)),
+            ),
+          );
+      children.add(step('−', _outlineWidth > 1 ? () => setState(() => _outlineWidth--) : null));
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: Text('$_outlineWidth px', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+      ));
+      children.add(step('+', _outlineWidth < 4 ? () => setState(() => _outlineWidth++) : null));
+      children.add(_miniBtn(
+          'Apply',
+          () => _act(
+              'Outline(${_hex(_primary)},${_outlineInside ? 'inside' : 'outside'},${_outlineSquare ? 'square' : 'round'},$_outlineWidth)')));
+    }
     if (_tool == 'Flip') {
       label(_flipFrame ? 'Flip frame' : (_outlineEdges.isNotEmpty ? 'Flip selection' : 'Flip layer'));
       children.add(_toggle(const ['Layer', 'Frame'], _flipFrame ? 1 : 0, (i) => setState(() => _flipFrame = i == 1)));
@@ -1582,6 +1612,15 @@ extension _EditorControls on _EditorPageState {
               _pickColor(initial: color, onPick: (nc) => _act('EditPaletteColor($cur, ${_hex(nc)})'));
             }),
             ListTile(
+              leading: const Icon(Icons.find_replace),
+              title: const Text('Replace in artwork…'),
+              subtitle: const Text('Recolor this color to the primary'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _replaceColorDialog(color);
+              },
+            ),
+            ListTile(
               leading: AlphaSwatch(color: _primary, width: 24, height: 24, borderRadius: 4),
               title: const Text('Overwrite with primary color'),
               onTap: () async {
@@ -1610,6 +1649,62 @@ extension _EditorControls on _EditorPageState {
         );
       }),
     );
+  }
+
+  /// Replace color (2026-09-04 rider of the Symmetry release): recolor every pixel within a
+  /// tolerance of [from] to the primary, over the layer, the frame, or all frames. One undo
+  /// step, Repeat-able, clipped by the selection; locked and hidden layers are skipped by the
+  /// engine. Transparent is allowed on both sides (a transparent primary erases the color).
+  Future<void> _replaceColorDialog(Color from) async {
+    if (_playing) _pause();
+    var tolerance = 0;
+    var scope = 'layer';
+    final to = _primary;
+    final same = from.toARGB32() == to.toARGB32();
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
+        return AlertDialog(
+          title: const Text('Replace color'),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              AlphaSwatch(color: from, width: 32, height: 32, borderRadius: 4),
+              const Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Icon(Icons.arrow_forward)),
+              AlphaSwatch(color: to, width: 32, height: 32, borderRadius: 4),
+              const SizedBox(width: 10),
+              Expanded(child: Text(same ? 'Pick a different primary color first' : '${_hex(from)} → ${_hex(to)} (the primary)', style: const TextStyle(fontSize: 12))),
+            ]),
+            const SizedBox(height: 12),
+            Text('Tolerance $tolerance', style: const TextStyle(fontSize: 12)),
+            Slider(
+              value: tolerance.toDouble(),
+              min: 0,
+              max: 255,
+              onChanged: (v) => setS(() => tolerance = v.round()),
+            ),
+            const Text('0 replaces the exact color; higher values also take nearby colors (the Bucket threshold metric).',
+                style: TextStyle(fontSize: 11, color: Colors.white60)),
+            const SizedBox(height: 12),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'layer', label: Text('Layer')),
+                ButtonSegment(value: 'frame', label: Text('Frame')),
+                ButtonSegment(value: 'all', label: Text('All frames')),
+              ],
+              selected: {scope},
+              onSelectionChanged: (s) => setS(() => scope = s.first),
+              showSelectedIcon: false,
+            ),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: same ? null : () => Navigator.pop(ctx, true), child: const Text('Replace')),
+          ],
+        );
+      }),
+    );
+    if (go != true || same) return;
+    _act('ReplaceColor(${_hex(from)},${_hex(to)},$scope,$tolerance)');
   }
 
   /// Reconfirm an irreversible palette operation (palette edits sit outside undo).

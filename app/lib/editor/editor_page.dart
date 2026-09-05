@@ -108,7 +108,9 @@ const _kPatternOnPref = 'editor.patternOn_v1';
 const _kGradDitherPref = 'editor.gradientDither_v1';
 const _kPatternRecentsPref = 'editor.patternRecents_v1';
 const _kPatternColorsPref = 'editor.patternColors_v1'; // [ON, OFF] preview colors as #RRGGBBAA
-const _transformTools = {'Flip', 'Rotate', 'Resize', 'Invert'};
+// Outline (2026-09-04 rider) rides the same "UI-only action group" rails: row-1 buttons, no
+// engine draw tool, an inert canvas.
+const _transformTools = {'Flip', 'Rotate', 'Resize', 'Invert', 'Outline'};
 // Row-3 "action" tools in the reorderable grid: tapping fires an action/toggle immediately rather
 // than selecting a draw tool (handled in _toolTile / _doToolAction). Undo/Redo are NOT here — they
 // are pinned at the left of row-3 (see _buildToolBar / _pinnedActionTile). Play is NOT here either —
@@ -363,6 +365,10 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // every layer of the active frame (FlipFrame*/RotateFrame/InvertFrame/SetHsvScope/SetBcScope/
   // SetLevelsScope in the engine). Layer is the default.
   bool _flipFrame = false, _rotateFrame = false, _resizeFrame = false, _invertFrame = false, _hsvFrame = false, _bcFrame = false, _lvFrame = false;
+  // Outline tool (2026-09-04 rider): Side (outside/inside), Corners (round = 4-connected,
+  // square = 8-connected), Width 1–4. Session-only, like the other row-1 action options.
+  bool _outlineInside = false, _outlineSquare = false;
+  int _outlineWidth = 1;
   // Rotate tool cleanEdge resampling (SetCleanEdge/SetCleanEdgeWidth): free-angle rotations
   // sample the edge-aware cleanEdge reconstruction instead of nearest-neighbor. On by default
   // (must match the engine's ToolSettings default). Width 0–2 like the reference site's slider.

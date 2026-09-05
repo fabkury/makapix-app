@@ -38,6 +38,7 @@ BindingTable defaultBindings() {
     'tool.airbrush': [c(LogicalKeyboardKey.keyA)],
     'tool.eraser': [c(LogicalKeyboardKey.keyE)],
     'tool.fill': [c(LogicalKeyboardKey.keyG)],
+    'tool.outline': [c(LogicalKeyboardKey.keyQ)], // the last unbound letter (2026-09-04 rider)
     'tool.gradient': [s(LogicalKeyboardKey.keyG)],
     'tool.line': [c(LogicalKeyboardKey.keyL)],
     'tool.shape': [c(LogicalKeyboardKey.keyU)],

@@ -35,6 +35,7 @@ const toolCommandIds = <String, String>{
   'Airbrush': 'tool.airbrush',
   'Eraser': 'tool.eraser',
   'Bucket': 'tool.fill',
+  'Outline': 'tool.outline',
   'Gradient': 'tool.gradient',
   'Line': 'tool.line',
   'Shape': 'tool.shape',

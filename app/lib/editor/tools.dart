@@ -24,6 +24,10 @@ const tools = <ToolDef>[
   ToolDef.custom('Airbrush', MpxIcons.airbrush, 'Airbrush'),
   ToolDef.custom('Eraser', MpxIcons.eraser, 'Eraser'),
   ToolDef.custom('Bucket', MpxIcons.fill, 'Fill'),
+  // Outline (2026-09-04 rider of the Symmetry release): a UI-only action group like the
+  // transforms — row-1 holds Side / Corners / Width and an Apply button, the canvas is inert.
+  // Stock Material glyph until a generated painter is approved (tools/icons/).
+  ToolDef('Outline', Icons.border_outer, 'Outline'),
   ToolDef('Gradient', Icons.gradient, 'Gradient'),
   ToolDef.custom('Line', MpxIcons.line, 'Line'),
   ToolDef('Shape', Icons.category_outlined, 'Shape'),
@@ -133,6 +137,7 @@ const toolTips = <String, String>{
   'Airbrush': 'Drag to spray the primary color. Dots, Soft, and Mist lay different paint.',
   'Eraser': 'Drag to erase pixels to transparent.',
   'Bucket': 'Tap an area to flood-fill. Threshold sets color tolerance.',
+  'Outline': 'Apply draws a ring around the layer\'s pixels in the primary color. Side, Corners and Width shape it.',
   'Gradient': 'Drag to set the gradient fill.',
   'Line': 'Drag to place a line.',
   'Shape': 'Drag to place a shape (Ellipse / Triangle / Rectangle toggle).',
