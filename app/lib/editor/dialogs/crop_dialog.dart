@@ -176,6 +176,18 @@ class CropView {
     pan = Offset.zero;
   }
 
+  /// One tap of the zoom-in / zoom-out buttons (2026-09-06): a [stepFactor] step about the
+  /// viewport center, clamped like every other zoom. The buttons exist because pinch, double-tap
+  /// and the wheel were the only ways in, and nothing on screen said so.
+  static const double stepFactor = 1.5;
+  bool get canZoomIn => zoom < maxZoom - 0.0001;
+  void zoomStep({required bool inward}) =>
+      zoomAt(Offset(view.width / 2, view.height / 2), inward ? zoom * stepFactor : zoom / stepFactor);
+
+  /// The status readout. "View", not "Zoom: fit": the import dialog's scaling chooser already
+  /// has a "Fit" option, and a user who picked Crop read "Zoom: fit" as the mode having changed.
+  String get label => isFit ? 'View: fit to screen' : 'View: ${(zoom * 100).round()}%';
+
   /// Double-tap: back to fit when zoomed, else 4× fit about the tapped point.
   void toggleDoubleTap(Offset p) {
     if (isFit) {
@@ -204,6 +216,42 @@ class CropView {
   }
 }
 
+/// The zoom cluster both the Crop and the Place pages put at the end of their status row:
+/// zoom-out · readout · zoom-in, each button disabled at its bound. Rebuilds through [onChanged]
+/// so the owner's `setState` repaints the preview.
+class ViewZoomControls extends StatelessWidget {
+  final CropView view;
+  final VoidCallback onChanged;
+  const ViewZoomControls({super.key, required this.view, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    Widget btn(IconData icon, String tip, bool enabled, bool inward) => IconButton(
+          tooltip: tip,
+          icon: Icon(icon, size: 20),
+          visualDensity: VisualDensity.compact,
+          onPressed: enabled
+              ? () {
+                  view.zoomStep(inward: inward);
+                  onChanged();
+                }
+              : null,
+        );
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      btn(Icons.zoom_out, 'Zoom out', !view.isFit, false),
+      Text(view.label, style: const TextStyle(fontSize: 12, color: Colors.white60)),
+      btn(Icons.zoom_in, 'Zoom in', view.canZoomIn, true),
+    ]);
+  }
+}
+
+/// The one-line gesture legend under the status row: the view gestures were undiscoverable
+/// (a user asked how to change "Zoom: fit" and tried the app-bar icons).
+Widget viewGestureHint(String oneFinger) => Text(
+      'Pinch, double-tap, or scroll to zoom. One finger $oneFinger.',
+      style: const TextStyle(fontSize: 11, color: Colors.white54),
+    );
+
 /// How a raster to import relates to the canvas (2026-09-01): the Fit / Stretch / Crop chooser
 /// only earns its place for a source larger than the canvas in at least one dimension. A source
 /// no larger than the canvas is placed 1:1 centered unless the user asks to scale it up; one the
@@ -230,8 +278,9 @@ ImportSizeClass importSizeClass(int srcW, int srcH, int canvasW, int canvasH) {
 /// View gestures (user decisions 2026-09-01): one finger always edits the crop (a corner reticle
 /// or the rect body); two fingers pan and pinch-zoom about the pinch point; a trackpad pan/pinch
 /// does the same; the mouse wheel zooms about the cursor (the editor canvas's step); a right- or
-/// middle-button drag pans; double-tap toggles fit ↔ 4× at the tapped point; the app bar's
-/// "Fit view" resets. Zoom runs from fit to 32 screen px per source px.
+/// middle-button drag pans; double-tap toggles fit ↔ 4× at the tapped point; the status row's
+/// zoom buttons step 1.5× and the app bar's "Fit to screen" resets. Zoom runs from fit to 32
+/// screen px per source px.
 class CropPage extends StatefulWidget {
   /// The shared decoded-frames preview (the import flow owns and disposes it; the Place page
   /// reuses the same instance so a many-frame GIF is decoded once).
@@ -486,7 +535,7 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
         title: const Text('Crop'),
         actions: [
           IconButton(
-            tooltip: 'Fit view',
+            tooltip: 'Fit to screen',
             icon: const Icon(Icons.fit_screen),
             onPressed: _view.isFit ? null : () => setState(_view.fit),
           ),
@@ -587,11 +636,9 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
                       style: TextStyle(fontSize: 11, color: Colors.white54)),
                 ),
               const Spacer(),
-              Text(
-                _view.isFit ? 'Zoom: fit' : 'Zoom ${(_view.zoom * 100).round()}%',
-                style: const TextStyle(fontSize: 12, color: Colors.white60),
-              ),
+              ViewZoomControls(view: _view, onChanged: () => setState(() {})),
             ]),
+            viewGestureHint('moves the crop'),
             const SizedBox(height: 4),
             Wrap(spacing: 6, runSpacing: 4, children: [
               _coordChip('x', 'X', _geo.x),

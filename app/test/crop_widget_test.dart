@@ -170,6 +170,27 @@ void main() {
       expect((v.zoom, v.pan), (1.0, Offset.zero));
     });
 
+    test('zoom buttons: 1.5x steps about the viewport center, clamped, with the View readout', () {
+      final v = view();
+      expect(v.label, 'View: fit to screen');
+      expect(v.canZoomIn, isTrue);
+      v.zoomStep(inward: false); // at fit already: stays at fit
+      expect(v.isFit, isTrue);
+      v.zoomStep(inward: true);
+      expect(v.zoom, closeTo(1.5, 1e-9));
+      expect(v.label, 'View: 150%');
+      // Stepping about the center keeps the image centered (pan stays zero).
+      expect(v.pan, Offset.zero);
+      while (v.canZoomIn) {
+        v.zoomStep(inward: true);
+      }
+      expect(v.zoom, closeTo(v.maxZoom, 1e-9));
+      v.zoomStep(inward: true); // no-op past the ceiling
+      expect(v.zoom, closeTo(v.maxZoom, 1e-9));
+      v.zoomStep(inward: false);
+      expect(v.zoom, closeTo(v.maxZoom / CropView.stepFactor, 1e-9));
+    });
+
     test('a viewport change re-clamps the pan instead of stranding the image', () {
       final v = view();
       v.zoomAt(const Offset(216, 116), 4);

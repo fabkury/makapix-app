@@ -5,8 +5,8 @@
 //
 // Gestures mirror the crop editor: one finger drags the import (from anywhere on the view, snapped
 // to whole canvas pixels); two fingers / trackpad pan and pinch the view; wheel zooms about the
-// cursor; right- or middle-drag pans; double-tap toggles fit <-> 4x; the app bar resets the view
-// and re-centers the import. X/Y chips type the offset; arrows nudge one canvas pixel.
+// cursor; right- or middle-drag pans; double-tap toggles fit <-> 4x; the status row's zoom buttons
+// step 1.5x; the app bar resets the view and re-centers the import. X/Y chips type the offset; arrows nudge one canvas pixel.
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -14,7 +14,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
-import 'crop_dialog.dart' show CropView, fitNoUpscale;
+import 'crop_dialog.dart' show CropView, ViewZoomControls, fitNoUpscale, viewGestureHint;
 import 'raster_preview.dart';
 
 /// The on-canvas size (canvas pixels) an import will have, mirroring the engine's placement math
@@ -297,7 +297,7 @@ class _PlacePageState extends State<PlacePage> with SingleTickerProviderStateMix
         title: const Text('Place'),
         actions: [
           IconButton(
-            tooltip: 'Fit view',
+            tooltip: 'Fit to screen',
             icon: const Icon(Icons.fit_screen),
             onPressed: _view.isFit ? null : () => setState(_view.fit),
           ),
@@ -375,9 +375,9 @@ class _PlacePageState extends State<PlacePage> with SingleTickerProviderStateMix
                       style: TextStyle(fontSize: 11, color: Colors.white54)),
                 ),
               const Spacer(),
-              Text(_view.isFit ? 'Zoom: fit' : 'Zoom ${(_view.zoom * 100).round()}%',
-                  style: const TextStyle(fontSize: 12, color: Colors.white60)),
+              ViewZoomControls(view: _view, onChanged: () => setState(() {})),
             ]),
+            viewGestureHint('moves the import'),
             const SizedBox(height: 4),
             Row(children: [
               ActionChip(label: Text('X ${_geo.x}'), onPressed: () => _editField('X', _geo.x, (v) => _geo.x = v)),
