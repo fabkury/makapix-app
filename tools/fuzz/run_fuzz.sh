@@ -9,6 +9,11 @@
 #   --targets "fuzz_session_actions:240 fuzz_load_mkpx:180 fuzz_webp_differential:90"
 # (targets without a suffix share whatever --minutes leaves over, equally).
 #
+# --from-head builds from the committed HEAD (git archive) instead of the live working
+# tree, so a run can start while someone else is editing the checkout: the snapshot can
+# never catch a half-applied edit. Only results (logs, artifacts, the load_mkpx corpus)
+# ever flow back into the checkout, exactly as without the flag.
+#
 # Design: /mnt/c is slow for builds, so sources are rsynced into ~/makapix-fuzz on the
 # ext4 filesystem, built and fuzzed there, and corpus + crash artifacts + logs are
 # synced back into the repo afterwards (also on Ctrl+C). The corpus merges both ways;
@@ -20,6 +25,7 @@ LABEL=adhoc
 WORKERS=4
 MINUTES=60
 CMIN=0
+FROM_HEAD=0
 TARGETS="fuzz_load_mkpx fuzz_session_actions"
 
 while [[ $# -gt 0 ]]; do
@@ -29,6 +35,7 @@ while [[ $# -gt 0 ]]; do
     --minutes) MINUTES=$2; shift 2 ;;
     --targets) TARGETS=$2; shift 2 ;;
     --cmin)    CMIN=1;     shift ;;
+    --from-head) FROM_HEAD=1; shift ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -61,17 +68,32 @@ STAMP="$(date +%Y%m%d-%H%M)"
 # shellcheck disable=SC1091
 source "$HOME/.cargo/env"
 
-echo "== makapix fuzz: label=$LABEL workers=$WORKERS minutes=$MINUTES cmin=$CMIN"
+echo "== makapix fuzz: label=$LABEL workers=$WORKERS minutes=$MINUTES cmin=$CMIN from_head=$FROM_HEAD"
 echo "== targets: $(for T in $TARGETS; do printf '%s:%smin ' "$T" "${TMIN[$T]}"; done)"
 echo "== repo: $REPO"
 echo "== work: $WORK"
 
 # ---- Sync sources into the ext4 work tree -------------------------------------------
 mkdir -p "$WORK"
-rsync -a "$REPO/Cargo.toml" "$REPO/Cargo.lock" "$WORK/"
-rsync -a --delete --exclude target "$REPO/crates/" "$WORK/crates/"
+SRC="$REPO"
+if [[ $FROM_HEAD == 1 ]]; then
+  # Export the committed tree, never the checkout: a parallel editor cannot leave a
+  # half-applied edit in the snapshot. git reads /mnt/c as foreign-owned, hence the
+  # safe.directory override.
+  SRC="$WORK/.head-export"
+  rm -rf "$SRC"; mkdir -p "$SRC"
+  HEAD_SHA=$(git -C "$REPO" -c safe.directory='*' rev-parse --short HEAD)
+  echo "== source: committed HEAD $HEAD_SHA (git archive), not the working tree"
+  if ! git -C "$REPO" -c safe.directory='*' archive --format=tar HEAD \
+      Cargo.toml Cargo.lock crates fuzz | tar -x -C "$SRC"; then
+    echo "!! git archive HEAD failed" >&2
+    exit 2
+  fi
+fi
+rsync -a "$SRC/Cargo.toml" "$SRC/Cargo.lock" "$WORK/"
+rsync -a --delete --exclude target "$SRC/crates/" "$WORK/crates/"
 rsync -a --delete --exclude target --exclude corpus --exclude artifacts --exclude logs \
-  "$REPO/fuzz/" "$WORK/fuzz/"
+  "$SRC/fuzz/" "$WORK/fuzz/"
 mkdir -p "$WORK/fuzz/logs" "$WORK/fuzz/artifacts"
 # Merge (never delete) repo corpus into the work corpus.
 if [[ -d "$REPO/fuzz/corpus" ]]; then
