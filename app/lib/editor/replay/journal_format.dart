@@ -169,26 +169,35 @@ ParsedJournal? parseJournal(String text) {
   return ParsedJournal(chapters, epoch: epoch);
 }
 
-/// A [ParsedJournal] flattened for sequential execution: the actions in journal order plus
-/// the chapter-base file to load BEFORE the action at each boundary index. Shared by the
+/// A [ParsedJournal] flattened for sequential execution: the actions in journal order, the
+/// chapter-base file to load BEFORE the action at each boundary index, and each action's
+/// recorded delta (the pacing signal — `visible_index.dart`'s working time). Shared by the
 /// Replay viewer's host and the Timelapse export pipeline so the two can never disagree
 /// about what a position means.
 class FlatJournal {
-  FlatJournal._(this.actions, this.chapterBaseAt);
+  FlatJournal._(this.actions, this.chapterBaseAt, this.deltasMs);
 
   final List<String> actions; // verbatim DSL, prefix-stripped
   final Map<int, String> chapterBaseAt; // action index -> base file name
 
+  /// `deltasMs[i]` = milliseconds between action `i` and the previous line of its chapter (the
+  /// chapter header's `t` for a chapter's first action). Saturated at the Int32 maximum (~24.8
+  /// days): every consumer clamps gaps far below that, and a month-long pause must not wrap
+  /// into a negative delta.
+  final Int32List deltasMs;
+
   static FlatJournal from(ParsedJournal parsed) {
     final actions = <String>[];
     final baseAt = <int, String>{};
+    final deltas = Int32List(parsed.actionCount);
     for (final c in parsed.chapters) {
       if (c.base != null) baseAt[actions.length] = c.base!;
       for (final a in c.actions) {
+        deltas[actions.length] = a.deltaMs > 0x7FFFFFFF ? 0x7FFFFFFF : a.deltaMs;
         actions.add(a.dsl);
       }
     }
-    return FlatJournal._(actions, baseAt);
+    return FlatJournal._(actions, baseAt, deltas);
   }
 }
 
