@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:typed_data' show Uint32List;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ import 'package:makapix_club/engine_ffi.dart' show premultiplyRgbaInPlace;
 
 import 'journal_format.dart' show kJournalEpoch;
 import 'replay_host.dart';
+import 'timelapse_plan.dart' show kProgressFrameUs, paceTimeline, progressDurationUs, tickIndexAt;
 
 /// The remembered sweep-duration choice (15/30/60 s), shared across replay sessions.
 const String _kSweepSecondsPref = 'replay.sweepSeconds_v1';
@@ -20,9 +22,11 @@ const List<int> kSweepSecondsChoices = [15, 30, 60];
 
 /// The Replay viewer (CONTEXT.md "Replay"): a read-only, scrubbable "making-of" of one
 /// drawing, backed by its own engine via [ReplayHost] — the live editing session is never
-/// touched. The time axis is the action index (dense: every slider pixel is work
-/// happening); auto-play sweeps the whole journal in ~30–60 s. No HUD — the drawing is
-/// the star; the canvas follows the frame the artist was editing.
+/// touched. The time axis is VIDEO time: the Journal's timeline paced by working time into
+/// the chosen 15/30/60 s (ADR 0029, `timelapse_plan.dart`), so the sweep and the slider match
+/// the exported Timelapse frame for frame — an apply holds, a scribble compresses, a pause
+/// costs one short beat. No HUD — the drawing is the star; the canvas follows the frame the
+/// artist was editing.
 class ReplayPage extends StatefulWidget {
   const ReplayPage({super.key, required this.host, required this.title, this.onShareTimelapse});
 
@@ -39,20 +43,43 @@ class ReplayPage extends StatefulWidget {
 class _ReplayPageState extends State<ReplayPage> with WidgetsBindingObserver {
   final ValueNotifier<ui.Image?> _image = ValueNotifier(null);
   int _imageGen = 0; // staleness stamp: decodes can land out of order (the editor's idiom)
-  // The slider thumb in VISIBLE-CHANGE index space (0..visibleCount) — every tick of the
-  // sweep and every pixel of the slider is a change you can see; draft fiddling and
-  // settings churn never consume playback time. Advanced fractionally by the sweep.
-  double _uiIdx = 0;
+  // The slider thumb in VIDEO time (µs, 0.._totalUs): the paced axis of the timeline, the
+  // same one the Timelapse export samples. Advanced one frame per sweep tick.
+  double _uiUs = 0;
+  // The paced axis for the current preset: cumulative video µs at the end of each tick.
+  Uint32List _cum = Uint32List(0);
   bool _playing = false;
   Timer? _sweep;
   bool _seekBusy = false;
 
   ReplayHost get host => widget.host;
 
-  int get _visibleCount => host.visiblePositions.length;
+  /// The progress portion's length for the chosen preset, µs.
+  int get _totalUs => progressDurationUs(_sweepSeconds);
 
-  /// The journal position a visible-index thumb value maps to (0 = the starting state).
-  int _positionOf(int idx) => idx <= 0 ? 0 : host.visiblePositions[idx.clamp(1, _visibleCount) - 1];
+  /// The journal position on screen at video instant [us] (0 = the starting state).
+  int _positionAt(double us) {
+    final tl = host.timeline;
+    if (tl.isEmpty) return 0;
+    final k = tickIndexAt(_cum, us.round());
+    return k < 0 ? 0 : tl.positions[k];
+  }
+
+  void _repace() => _cum = paceTimeline(host.timeline, _sweepSeconds);
+
+  /// Adopt a preset. Once the host is ready this re-paces the axis and keeps the SAME tick on
+  /// screen (re-entering the new axis at the end of that tick), so a mid-sweep switch neither
+  /// jumps nor restarts.
+  void _adoptSweepSeconds(int seconds) {
+    if (!host.ready) {
+      _sweepSeconds = seconds;
+      return;
+    }
+    final k = tickIndexAt(_cum, _uiUs.round());
+    _sweepSeconds = seconds;
+    _repace();
+    _uiUs = k < 0 ? 0 : _cum[k].toDouble();
+  }
 
   @override
   void initState() {
@@ -79,15 +106,15 @@ class _ReplayPageState extends State<ReplayPage> with WidgetsBindingObserver {
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getInt(_kSweepSecondsPref);
       if (mounted && saved != null && kSweepSecondsChoices.contains(saved)) {
-        setState(() => _sweepSeconds = saved);
+        setState(() => _adoptSweepSeconds(saved));
       }
     } catch (_) {/* prefs unavailable → keep the default */}
   }
 
   void _setSweepSeconds(int seconds) {
-    setState(() => _sweepSeconds = seconds);
-    // The sweep rate is recomputed every tick, so a mid-replay switch takes effect on the
-    // next tick without restarting; position is kept.
+    // A mid-replay switch re-paces the axis in place (O(events)); the tick on screen is kept
+    // and the sweep keeps running at one video frame per tick over the new axis.
+    setState(() => _adoptSweepSeconds(seconds));
     unawaited(SharedPreferences.getInstance()
         .then((p) => p.setInt(_kSweepSecondsPref, seconds))
         .catchError((_) => true));
@@ -96,6 +123,7 @@ class _ReplayPageState extends State<ReplayPage> with WidgetsBindingObserver {
   Future<void> _start() async {
     await host.init();
     if (!mounted) return;
+    if (host.ready) _repace();
     setState(() {});
     if (host.ready) {
       unawaited(_showCurrent());
@@ -103,27 +131,25 @@ class _ReplayPageState extends State<ReplayPage> with WidgetsBindingObserver {
     }
   }
 
-  /// The chosen sweep duration: the whole journal's VISIBLE changes in this many seconds
+  /// The chosen sweep duration: the whole journal's timeline paced into this many seconds
   /// (the timelapse presets, live). Remembered across sessions.
   int _sweepSeconds = 30;
 
   void _play() {
     if (!host.ready || _playing) return;
     if (host.position >= host.actionCount) {
-      _uiIdx = 0; // replay from the start when play is hit at the end
+      _uiUs = 0; // replay from the start when play is hit at the end
     }
     setState(() => _playing = true);
     _sweep = Timer.periodic(const Duration(milliseconds: 33), (_) {
       if (!_playing) return;
       if (_seekBusy) return; // coalesce: never queue ticks behind a slow seek
-      // Recomputed per tick so the duration chips retune a running sweep instantly.
-      final perTick = _visibleCount / (_sweepSeconds * 30);
-      _uiIdx = (_uiIdx + perTick).clamp(0, _visibleCount.toDouble());
-      final idx = _uiIdx.round();
-      if (idx >= _visibleCount) {
+      // One video frame per tick: the duration chips change the AXIS (_cum), never the rate.
+      _uiUs = (_uiUs + kProgressFrameUs).clamp(0, _totalUs.toDouble());
+      if (_uiUs >= _totalUs) {
         _pause(); // stop ON the final state
       }
-      unawaited(_seekAndShow(_positionOf(idx)));
+      unawaited(_seekAndShow(_positionAt(_uiUs)));
       setState(() {});
     });
   }
@@ -281,12 +307,12 @@ class _ReplayPageState extends State<ReplayPage> with WidgetsBindingObserver {
                       ),
                       Expanded(
                         child: Slider(
-                          value: _uiIdx.clamp(0, _visibleCount.toDouble()),
-                          max: _visibleCount.toDouble(),
+                          value: _uiUs.clamp(0, _totalUs.toDouble()),
+                          max: _totalUs.toDouble(),
                           onChanged: (v) {
                             _pause(); // dragging takes over from the sweep
-                            _uiIdx = v;
-                            unawaited(_seekAndShow(_positionOf(v.round())));
+                            _uiUs = v;
+                            unawaited(_seekAndShow(_positionAt(v)));
                             setState(() {});
                           },
                         ),

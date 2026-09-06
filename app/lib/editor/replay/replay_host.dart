@@ -15,10 +15,11 @@ abstract class ReplayHost {
   /// Total action lines across all chapters (positions 0..actionCount).
   int get actionCount;
 
-  /// The positions whose transition visibly changes the canvas (ascending, ends at
-  /// [actionCount]) — the tick axis the sweep and slider step through, so draft fiddling
-  /// and settings churn never consume playback time. See visible_index.dart.
-  List<int> get visiblePositions;
+  /// The Replay timeline — the visible positions (ascending, ending at [actionCount]) with
+  /// each tick's class and working time: the shared axis the sweep, the slider, and the
+  /// Timelapse export pace through, so draft fiddling and settings churn never consume
+  /// playback time and an apply never flashes by. See visible_index.dart (ADR 0029).
+  vi.ReplayTimeline get timeline;
 
   /// True once [init] finished and seeking works.
   bool get ready;
@@ -74,7 +75,7 @@ class EngineReplayHost implements ReplayHost {
   Engine? _engine;
   final List<String> _actions = []; // flat, prefix-stripped DSL in journal order
   final Map<int, String> _chapterBaseAt = {}; // action index -> base file to load first
-  List<int> _visible = const [];
+  vi.ReplayTimeline _timeline = vi.ReplayTimeline.empty;
   final List<(int pos, int id)> _checkpoints = []; // ascending by pos
   List<int> _endDurations = const [];
   (int, int) _endSize = (64, 64);
@@ -89,7 +90,7 @@ class EngineReplayHost implements ReplayHost {
   @override
   int get actionCount => _actions.length;
   @override
-  List<int> get visiblePositions => _visible;
+  vi.ReplayTimeline get timeline => _timeline;
   @override
   bool get ready => _ready;
   @override
@@ -127,7 +128,7 @@ class EngineReplayHost implements ReplayHost {
         _error = 'This drawing has no replayable history yet.';
         return;
       }
-      _visible = vi.visiblePositions(flat);
+      _timeline = vi.buildTimeline(flat);
       _engine = Engine(64, 64);
       // One forward pass to the end, checkpointing on a fixed stride plus at every chapter
       // start (so a seek never straddles a chapter boundary). ≤300 checkpoints ≈ the

@@ -1,19 +1,27 @@
+import 'dart:typed_data' show Uint32List;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:makapix_club/editor/replay/journal_format.dart' show kJournalEpoch;
 import 'package:makapix_club/editor/replay/replay_host.dart';
 import 'package:makapix_club/editor/replay/replay_page.dart';
+import 'package:makapix_club/editor/replay/timelapse_plan.dart' show kEventFloorDivisor, progressDurationUs;
+import 'package:makapix_club/editor/replay/visible_index.dart';
 import 'package:makapix_club/editor/widgets/painters.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Engine-free host: 4×4 frames whose top-left pixel encodes the position, seeks recorded.
+/// The timeline defaults to uniform stream ticks at every position (the legacy pacing).
 class FakeReplayHost implements ReplayHost {
-  FakeReplayHost({this.actions = 9000, this.failWith, this.epoch = kJournalEpoch});
+  FakeReplayHost({this.actions = 9000, this.failWith, this.epoch = kJournalEpoch, ReplayTimeline? timeline})
+      : timeline = timeline ?? ReplayTimeline.uniform(actions);
 
   final int actions;
   final String? failWith;
   final int epoch;
+  @override
+  final ReplayTimeline timeline;
   final List<int> seeks = [];
   int _pos = 0;
   bool _ready = false;
@@ -22,8 +30,6 @@ class FakeReplayHost implements ReplayHost {
 
   @override
   int get actionCount => actions;
-  @override
-  List<int> get visiblePositions => List<int>.generate(actions, (i) => i + 1);
   @override
   bool get ready => _ready;
   @override
@@ -206,6 +212,47 @@ void main() {
     expect(prefs.getInt('replay.sweepSeconds_v1'), 15);
     await tester.tap(find.byIcon(Icons.pause));
     await tester.pump();
+  });
+
+  testWidgets('the sweep ends ON the final position after exactly the preset', (tester) async {
+    final host = FakeReplayHost(actions: 300);
+    await pumpReplay(tester, host);
+    await tester.pump(const Duration(seconds: 29));
+    expect(find.byIcon(Icons.pause), findsOneWidget, reason: 'still sweeping at 29 s');
+    expect(host.seeks.last, lessThan(300));
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.byIcon(Icons.play_arrow), findsOneWidget, reason: 'paused at the end');
+    expect(host.seeks.last, 300, reason: 'the final state is on screen');
+  });
+
+  testWidgets('paced axis: an event holds for its floor while stream ticks flow', (tester) async {
+    // 60 stream ticks of 0.5 s each, then an apply 10 ms later. At 30 s the apply gets the
+    // floor (T/100 = 9 frames); each stream tick shares the rest (about 14.85 frames).
+    const n = 61;
+    final timeline = ReplayTimeline(
+      Int32List.fromList([for (var i = 1; i <= n; i++) i]),
+      Uint8List.fromList([for (var i = 0; i < 60; i++) 0, 1]),
+      Uint32List.fromList([for (var i = 0; i < 60; i++) 500, 10]),
+    );
+    final host = FakeReplayHost(actions: n, timeline: timeline);
+    await pumpReplay(tester, host);
+    await tester.pump(const Duration(seconds: 31));
+    expect(find.byIcon(Icons.play_arrow), findsOneWidget);
+    final floorFrames = progressDurationUs(30) ~/ kEventFloorDivisor ~/ 33333;
+    expect(host.seeks.where((p) => p == 61).length, closeTo(floorFrames, 1),
+        reason: 'the apply is on screen for its floor, not one frame');
+    expect(host.seeks.where((p) => p == 1).length, closeTo(15, 1),
+        reason: 'a stream tick gets its proportional share');
+  });
+
+  testWidgets('switching the preset keeps the tick on screen', (tester) async {
+    final host = FakeReplayHost(actions: 9000);
+    await pumpReplay(tester, host);
+    await tester.pump(const Duration(milliseconds: 500)); // ~15 ticks: ~position 150 at 30 s
+    final before = host.seeks.last;
+    await tester.tap(find.text('60s'));
+    await tester.pump(const Duration(milliseconds: 40));
+    expect(host.seeks.last, closeTo(before + 5, 6), reason: '60 s halves the rate from where it was');
   });
 
   testWidgets('a remembered duration is applied on open', (tester) async {
