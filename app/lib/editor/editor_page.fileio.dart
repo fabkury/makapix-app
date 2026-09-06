@@ -777,7 +777,8 @@ extension _EditorFileIo on _EditorPageState {
   Future<void> _cropCanvasPage() async {
     final w = engine.width, h = engine.height;
     final n = engine.frameCount;
-    final frames = (_state['frames'] as List?) ?? const [];
+    // `frame_detail` is the per-frame list (`frames` is the count) — the frame sheet reads the same.
+    final frames = (_state['frame_detail'] as List?) ?? const [];
     final durationsUs = [
       for (var i = 0; i < n; i++)
         i < frames.length ? (((frames[i] as Map)['duration_us'] as num?) ?? 100000).toInt() : 100000,
