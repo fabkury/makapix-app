@@ -6,7 +6,7 @@
 //! Regenerate (after such a change) with:
 //!   cargo test --test patterns print_pattern_pins -- --ignored --nocapture
 
-use makapix_engine::tool::{bayer_threshold, Pattern};
+use makapix_engine::tool::{bayer_threshold, DitherKind, Pattern};
 use makapix_engine::util::hash_hex;
 use makapix_engine::{Rgba8, Session};
 
@@ -205,10 +205,10 @@ fn larger_tiles_up_to_16x16_are_accepted_on_the_wire() {
 fn malformed_pattern_lines_are_rejected() {
     let mut s = Session::empty();
     s.run_script("NewDocument(4,4)").unwrap();
-    for bad in ["SetPattern(17,1,1)", "SetPattern(0,2,1)", "SetPattern(2,2,10)", "SetPattern(2,2,zz)", "SetPattern(2,2)", "SetPattern(2,2,)", "SetGradientDither(3)", "SetGradientDither(16)"] {
+    for bad in ["SetPattern(17,1,1)", "SetPattern(0,2,1)", "SetPattern(2,2,10)", "SetPattern(2,2,zz)", "SetPattern(2,2)", "SetPattern(2,2,)", "SetGradientDither(3)", "SetGradientDither(16)", "SetGradientDither(bayer3)", "SetGradientDither(halftone2)", "SetGradientDither()"] {
         assert!(s.run_script(bad).is_err(), "{bad} must not parse");
     }
-    for good in ["SetPattern(2,2,f)", "SetPattern(2,2,000f)", "SetPattern(OFF)", "SetPattern(off)", "SetGradientDither(0)", "SetGradientDither(8)"] {
+    for good in ["SetPattern(2,2,f)", "SetPattern(2,2,000f)", "SetPattern(OFF)", "SetPattern(off)", "SetGradientDither(0)", "SetGradientDither(8)", "SetGradientDither(off)", "SetGradientDither(Bayer4)", "SetGradientDither(blue)", "SetGradientDither(halftone8)", "SetGradientDither(hlines2)", "SetGradientDither(vlines8)", "SetGradientDither(diag4)", "SetGradientDither(noise)", "SetGradientDither(IGN)"] {
         assert!(s.run_script(good).is_ok(), "{good} must parse");
     }
 }
@@ -236,6 +236,55 @@ fn gradient_dither_yields_exactly_the_two_stop_colors_with_a_monotone_ladder() {
     }
     assert_eq!(s.pixel(0, 0, 0, 0), RED);
     assert_eq!(s.pixel(0, 0, 63, 7), blue);
+}
+
+#[test]
+fn every_dither_family_yields_only_stop_colors_with_a_monotone_density_ladder() {
+    // ADR 0028: the same contract as Bayer for every family — exactly the two bounding stop
+    // colors, and the blue density over each 8-column band never decreases along a 128-px ramp
+    // (bands are wider than any periodic family's period and tall enough for the noises).
+    let blue = Rgba8::new(0, 0, 255, 255);
+    for kind in DitherKind::ALL.iter().filter(|k| **k != DitherKind::Off) {
+        let s = run(&format!(
+            "NewDocument(128,64)\nSelectTool(Gradient); SetGradientType(Linear); SetGradientStops(#FF0000FF@0,#0000FFFF@1); SetGradientDither({})\nShapeSet(0,0,127,0); ShapeCommit()",
+            kind.to_dsl()
+        ));
+        assert_eq!(s.settings.gradient.dither, *kind);
+        let mut prev = 0;
+        for bx in 0..16 {
+            let mut blues = 0;
+            for x in bx * 8..bx * 8 + 8 {
+                for y in 0..64 {
+                    let p = s.pixel(0, 0, x, y);
+                    assert!(p == RED || p == blue, "{kind:?} ({x},{y}) = {p:?} is not a stop color");
+                    if p == blue {
+                        blues += 1;
+                    }
+                }
+            }
+            assert!(blues >= prev, "{kind:?}: band {bx} has {blues} blues after {prev}");
+            prev = blues;
+        }
+        assert_eq!(s.pixel(0, 0, 0, 0), RED, "{kind:?}: the first stop is solid");
+        assert_eq!(s.pixel(0, 0, 127, 63), blue, "{kind:?}: the last stop is solid");
+        // A 4-level ladder (Bayer 2×2, lines of period 2) is only 75 % blue short of t = 1.
+        assert!(prev > 256 && prev <= 512, "{kind:?}: the last band is mostly blue ({prev})");
+    }
+}
+
+#[test]
+fn gradient_dither_families_pass_the_closed_form_oracle_and_replay_identically() {
+    // The fill and `assert.gradient` evaluate the same expression for every family, the same
+    // script hashes the same in a fresh session, and the undo invariant holds.
+    const SCRIPT: &str = "NewDocument(48,48)\nSelectTool(Gradient); SetGradientType(Radial); SetGradientStops(#FFFFFFFF@0,#00000080@0.6,#FF00FFFF@1); SetGradientSmoothstep(true); SetGradientDither({})\nShapeSet(24,24,44,30); ShapeCommit()";
+    for kind in DitherKind::ALL {
+        let script = SCRIPT.replace("{}", &kind.to_dsl());
+        let mut s = run(&script);
+        let o = s.assert_last_gradient(0).expect("a gradient was applied");
+        assert!(o.ok, "{kind:?}: oracle max delta {} at {:?}", o.max_delta, o.worst);
+        assert_eq!(hash(&s, 0, 0), hash(&run(&script), 0, 0), "{kind:?}");
+        assert!(s.assert_undo_restores(), "{kind:?}: undo invariant");
+    }
 }
 
 #[test]
@@ -318,6 +367,48 @@ const PINS: &[(&str, &str, &str)] = &[
         "gradient_radial_bayer2",
         "NewDocument(32,32)\nSelectTool(Gradient); SetGradientType(Radial); SetGradientStops(#FFFFFFFF@0,#000000FF@1); SetGradientDither(2)\nShapeSet(16,16,30,16); ShapeCommit()",
         "fb38c5d421f07bc97fc1ad6004e83b2d",
+    ),
+    // ADR 0028 families, one pin each: the tables, the line/diagonal ranks, the noise seed, and
+    // the IGN fixed-point constants are all frozen by these.
+    (
+        "gradient_linear_blue_noise",
+        "NewDocument(64,64)\nSelectTool(Gradient); SetGradientType(Linear); SetGradientStops(#FF0000FF@0,#0000FFFF@1); SetGradientDither(blue)\nShapeSet(0,0,63,63); ShapeCommit()",
+        "005c62e1bcafbd05bfc5c40eed64f8a9",
+    ),
+    (
+        "gradient_radial_halftone8",
+        "NewDocument(32,32)\nSelectTool(Gradient); SetGradientType(Radial); SetGradientStops(#FFFFFFFF@0,#000000FF@1); SetGradientDither(halftone8)\nShapeSet(16,16,31,16); ShapeCommit()",
+        "7b995a0210bee33157d91d11e86db501",
+    ),
+    (
+        "gradient_linear_halftone4_smoothstep",
+        "NewDocument(32,16)\nSelectTool(Gradient); SetGradientType(Linear); SetGradientStops(#00FF00FF@0,#000000FF@1); SetGradientSmoothstep(true); SetGradientDither(halftone4)\nShapeSet(0,0,31,0); ShapeCommit()",
+        "1803c7f96e3913eb609caeecfa254aea",
+    ),
+    (
+        "gradient_linear_hlines4",
+        "NewDocument(32,16)\nSelectTool(Gradient); SetGradientType(Linear); SetGradientStops(#FF0000FF@0,#0000FFFF@1); SetGradientDither(hlines4)\nShapeSet(0,0,31,0); ShapeCommit()",
+        "ff5422d2c6c2ad4b85e3476285090c2a",
+    ),
+    (
+        "gradient_linear_vlines8",
+        "NewDocument(32,16)\nSelectTool(Gradient); SetGradientType(Linear); SetGradientStops(#FF0000FF@0,#0000FFFF@1); SetGradientDither(vlines8)\nShapeSet(0,0,0,15); ShapeCommit()",
+        "6ac9ed62edf3d0cb29fd8912bfbffa2a",
+    ),
+    (
+        "gradient_linear_diag8_3stops",
+        "NewDocument(32,32)\nSelectTool(Gradient); SetGradientType(Linear); SetGradientStops(#FF0000FF@0,#00FF00FF@0.5,#0000FFFF@1); SetGradientDither(diag8)\nShapeSet(0,0,31,31); ShapeCommit()",
+        "1d8ce98bfac69ec2f0cae994366c20ac",
+    ),
+    (
+        "gradient_linear_white_noise",
+        "NewDocument(32,32)\nSelectTool(Gradient); SetGradientType(Linear); SetGradientStops(#FF0000FF@0,#0000FFFF@1); SetGradientDither(noise)\nShapeSet(0,0,31,0); ShapeCommit()",
+        "f966b6b84e08c9f0f81b2b46e1bdbab0",
+    ),
+    (
+        "gradient_linear_ign",
+        "NewDocument(32,32)\nSelectTool(Gradient); SetGradientType(Linear); SetGradientStops(#FF0000FF@0,#0000FFFF@1); SetGradientDither(ign)\nShapeSet(0,0,31,0); ShapeCommit()",
+        "7b9758d605668c607260c04442157b18",
     ),
 ];
 

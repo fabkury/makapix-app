@@ -236,7 +236,11 @@ fn render(act: &Act, out: &mut String) {
         Act::SetAA(b) => writeln!(out, "SetAA({})", b),
         Act::SetPattern(w, h, bits) => writeln!(out, "SetPattern({},{},{:x})", w % 17, h % 17, bits),
         Act::SetPatternOff => writeln!(out, "SetPattern(off)"),
-        Act::SetGradientDither(n) => writeln!(out, "SetGradientDither({})", [0u8, 2, 4, 8, 3][(*n % 5) as usize]),
+        Act::SetGradientDither(n) => writeln!(
+            out,
+            "SetGradientDither({})",
+            ["0", "2", "4", "8", "3", "blue", "halftone4", "halftone8", "hlines2", "hlines4", "hlines8", "vlines2", "vlines4", "vlines8", "diag4", "diag8", "noise", "ign", "junk"][(*n % 19) as usize]
+        ),
         Act::SetContiguous(b) => writeln!(out, "SetContiguous({})", b),
         Act::SetPixelPerfect(b) => writeln!(out, "SetPixelPerfect({})", b),
         Act::SetWrap(b) => writeln!(out, "SetWrap({})", b),

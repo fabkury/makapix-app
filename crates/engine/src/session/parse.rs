@@ -6,7 +6,7 @@ use crate::color::Rgba8;
 use crate::document::{BlendMode, LoopMode};
 use crate::geom::{MAX_DIM, MIN_DIM};
 use crate::selection::CombineMode;
-use crate::tool::{BrushShape, GradientKind, Pattern, Stop, SymMode, Symmetry, ToolKind};
+use crate::tool::{BrushShape, DitherKind, GradientKind, Pattern, Stop, SymMode, Symmetry, ToolKind};
 
 #[derive(Clone, Debug)]
 pub enum Action {
@@ -54,8 +54,9 @@ pub enum Action {
     SetGradientType(GradientKind),
     SetGradientStops(Vec<Stop>),
     SetGradientSmoothstep(bool),
-    /// The Gradient's ordered dither (ADR 0025): 0 = off, else the Bayer size 2 | 4 | 8.
-    SetGradientDither(u8),
+    /// The Gradient's ordered dither (ADR 0025 / 0028): `0` = off, the Bayer sizes `2 | 4 | 8`
+    /// as bare numbers, the other families as words (`DitherKind::parse`).
+    SetGradientDither(DitherKind),
     SetHsvShift(f32, f32, f32),
     SetHsvScope(bool), // true = the whole active frame, false = the active layer / selection
     SetBrightnessContrast(i32, f32), // brightness delta [-255,255], contrast factor around 128
@@ -658,9 +659,14 @@ fn parse_line(line: &str) -> Result<Action, String> {
             o => return Err(format!("bad gradient '{}'", o)),
         }),
         "SetGradientSmoothstep" => SetGradientSmoothstep(boola(0)?),
-        "SetGradientDither" => SetGradientDither(match u8a(0)? {
-            n @ (0 | 2 | 4 | 8) => n,
-            o => return Err(format!("bad gradient dither {} (0, 2, 4 or 8)", o)),
+        "SetGradientDither" => SetGradientDither(match args.first().and_then(|a| DitherKind::parse(a)) {
+            Some(k) => k,
+            None => {
+                return Err(format!(
+                    "bad gradient dither '{}' (0, 2, 4, 8, blue, halftone4|8, hlines2|4|8, vlines2|4|8, diag4|8, noise, ign)",
+                    args.first().copied().unwrap_or("")
+                ))
+            }
         }),
         "SetHsvShift" => SetHsvShift(f32a(0)?, f32a(1)?, f32a(2)?),
         "SetHsvScope" => SetHsvScope(args.first().map(|s| s.eq_ignore_ascii_case("frame")).unwrap_or(false)),

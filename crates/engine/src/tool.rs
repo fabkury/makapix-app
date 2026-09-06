@@ -2,6 +2,9 @@
 //! optionally clipped to a selection `Mask`. The `Session` (session.rs) drives these from
 //! pointer/DSL input and wraps each committed change in one undo record.
 
+#[path = "tool/dither_tables.g.rs"]
+pub mod dither_tables;
+
 use crate::buffer::RgbaBuffer;
 use crate::color::{self, Rgba8};
 use crate::geom::{IRect, Point};
@@ -471,11 +474,163 @@ pub fn bayer_threshold(n: u8, x: i32, y: i32) -> u16 {
     }
 }
 
-/// The Gradient's ordered dither in force for one fill: the Bayer size and the canvas origin the
-/// matrix is anchored to (storage coordinates, like `PatternGate::origin`).
+/// The bit-reversal rank of `v mod n` for `n ∈ {2, 4, 8}`: the order in which the lines of a
+/// period-`n` line dither fill in (0, n/2, n/4, 3n/4, …), so every density step spreads evenly.
+#[inline]
+fn bitrev_rank(v: i32, n: u8) -> u32 {
+    let v = v.rem_euclid(n as i32) as u32;
+    match n {
+        8 => ((v & 1) << 2) | (v & 2) | ((v & 4) >> 2),
+        4 => ((v & 1) << 1) | ((v & 2) >> 1),
+        _ => v & 1,
+    }
+}
+
+/// The seed of the white-noise dither: fixed forever, so a journal replays the same grain, and
+/// mixed through `util::hash_xy` so the (x, y) lattice never shows.
+const WHITE_NOISE_SEED: u64 = 0x4D4B_5058_4449_5448; // "MKPXDITH"
+
+/// The Gradient's ordered-dither family (ADR 0025 for Bayer, ADR 0028 for the rest). Every kind
+/// is a per-pixel threshold `0..levels()` at a canvas coordinate — a closed form, so the fill,
+/// its draft preview, the `assert.gradient` oracle, and a journal replay all evaluate the same
+/// expression. `Off` is the smooth ramp.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum DitherKind {
+    #[default]
+    Off,
+    /// Bayer `n`×`n`, `n ∈ {2, 4, 8}`: `n²` thresholds.
+    Bayer(u8),
+    /// A 64×64 void-and-cluster blue-noise matrix (`dither_tables::BLUE_NOISE`): 4096 thresholds.
+    BlueNoise,
+    /// Clustered-dot halftone `n`×`n`, `n ∈ {4, 8}`: a round dot growing from the tile center,
+    /// the corners (where four tiles meet) last.
+    Halftone(u8),
+    /// Horizontal lines of period `n ∈ {2, 4, 8}`: rows fill in bit-reversed order, each row
+    /// along a bit-reversed column order — `n²` steps, solid alternate rows at 50 %.
+    HLines(u8),
+    /// The same, columns.
+    VLines(u8),
+    /// Diagonal "/" lines (`x + y` constant) of period `n ∈ {4, 8}`.
+    Diagonal(u8),
+    /// Per-pixel hash white noise (`util::hash_xy`): 256 thresholds.
+    WhiteNoise,
+    /// Interleaved gradient noise (Jimenez 2014) in 32-bit fixed point: 256 thresholds.
+    Ign,
+}
+
+impl DitherKind {
+    /// Every kind the DSL accepts, in the shell's page order (Off first).
+    pub const ALL: [DitherKind; 17] = [
+        DitherKind::Off,
+        DitherKind::Bayer(2),
+        DitherKind::Bayer(4),
+        DitherKind::Bayer(8),
+        DitherKind::BlueNoise,
+        DitherKind::Halftone(4),
+        DitherKind::Halftone(8),
+        DitherKind::HLines(2),
+        DitherKind::HLines(4),
+        DitherKind::HLines(8),
+        DitherKind::VLines(2),
+        DitherKind::VLines(4),
+        DitherKind::VLines(8),
+        DitherKind::Diagonal(4),
+        DitherKind::Diagonal(8),
+        DitherKind::WhiteNoise,
+        DitherKind::Ign,
+    ];
+
+    /// The number of density steps: thresholds run `0..levels()`.
+    pub fn levels(self) -> u32 {
+        match self {
+            DitherKind::Off => 1,
+            DitherKind::Bayer(n) | DitherKind::Halftone(n) | DitherKind::HLines(n) | DitherKind::VLines(n) | DitherKind::Diagonal(n) => {
+                n as u32 * n as u32
+            }
+            DitherKind::BlueNoise => 4096,
+            DitherKind::WhiteNoise | DitherKind::Ign => 256,
+        }
+    }
+
+    /// The threshold at canvas coordinate (x, y), in `0..levels()`. Negative coordinates wrap
+    /// like positive ones (the noises are continuous across zero).
+    pub fn threshold(self, x: i32, y: i32) -> u32 {
+        match self {
+            DitherKind::Off => 0,
+            DitherKind::Bayer(n) => bayer_threshold(n, x, y) as u32,
+            DitherKind::BlueNoise => {
+                let s = dither_tables::BLUE_NOISE_SIDE as i32;
+                dither_tables::BLUE_NOISE[(y.rem_euclid(s) * s + x.rem_euclid(s)) as usize] as u32
+            }
+            DitherKind::Halftone(8) => dither_tables::HALFTONE8[y.rem_euclid(8) as usize][x.rem_euclid(8) as usize] as u32,
+            DitherKind::Halftone(_) => dither_tables::HALFTONE4[y.rem_euclid(4) as usize][x.rem_euclid(4) as usize] as u32,
+            DitherKind::HLines(n) => bitrev_rank(y, n) * n as u32 + bitrev_rank(x, n),
+            DitherKind::VLines(n) => bitrev_rank(x, n) * n as u32 + bitrev_rank(y, n),
+            DitherKind::Diagonal(n) => bitrev_rank(x.wrapping_add(y), n) * n as u32 + bitrev_rank(x, n),
+            DitherKind::WhiteNoise => (crate::util::hash_xy(x, y, WHITE_NOISE_SEED) >> 56) as u32,
+            DitherKind::Ign => {
+                // fract(52.9829189 · fract(0.06711056·x + 0.00583715·y)) in 0.32 fixed point: the
+                // three constants times 2³², the products wrapped, the top byte the threshold.
+                // Integer-only, so it is the same on every platform and continuous across x < 0.
+                let f = (x as u32).wrapping_mul(288_237_660).wrapping_add((y as u32).wrapping_mul(25_070_368));
+                let g = f.wrapping_mul(52).wrapping_add(((f as u64 * 4_221_604_530u64) >> 32) as u32);
+                g >> 24
+            }
+        }
+    }
+
+    /// The DSL token `SetGradientDither` carries: the Bayer sizes stay the bare numbers they have
+    /// been since ADR 0025 (`0` = off), the other families are words.
+    pub fn to_dsl(self) -> String {
+        match self {
+            DitherKind::Off => "0".into(),
+            DitherKind::Bayer(n) => n.to_string(),
+            DitherKind::BlueNoise => "blue".into(),
+            DitherKind::Halftone(n) => format!("halftone{n}"),
+            DitherKind::HLines(n) => format!("hlines{n}"),
+            DitherKind::VLines(n) => format!("vlines{n}"),
+            DitherKind::Diagonal(n) => format!("diag{n}"),
+            DitherKind::WhiteNoise => "noise".into(),
+            DitherKind::Ign => "ign".into(),
+        }
+    }
+
+    /// Parse a DSL token (case-insensitive; `off` and `bayerN` are accepted spellings).
+    pub fn parse(s: &str) -> Option<DitherKind> {
+        let s = s.trim().to_ascii_lowercase();
+        Some(match s.as_str() {
+            "0" | "off" => DitherKind::Off,
+            "2" | "bayer2" => DitherKind::Bayer(2),
+            "4" | "bayer4" => DitherKind::Bayer(4),
+            "8" | "bayer8" => DitherKind::Bayer(8),
+            "blue" => DitherKind::BlueNoise,
+            "halftone4" => DitherKind::Halftone(4),
+            "halftone8" => DitherKind::Halftone(8),
+            "hlines2" => DitherKind::HLines(2),
+            "hlines4" => DitherKind::HLines(4),
+            "hlines8" => DitherKind::HLines(8),
+            "vlines2" => DitherKind::VLines(2),
+            "vlines4" => DitherKind::VLines(4),
+            "vlines8" => DitherKind::VLines(8),
+            "diag4" => DitherKind::Diagonal(4),
+            "diag8" => DitherKind::Diagonal(8),
+            "noise" => DitherKind::WhiteNoise,
+            "ign" => DitherKind::Ign,
+            _ => return None,
+        })
+    }
+
+    /// The dither in force for a fill anchored at `origin`, or `None` when off.
+    pub fn at(self, origin: Point) -> Option<Dither> {
+        (self != DitherKind::Off).then_some(Dither { kind: self, origin })
+    }
+}
+
+/// The Gradient's ordered dither in force for one fill: the family and the canvas origin its
+/// threshold matrix is anchored to (storage coordinates, like `PatternGate::origin`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Dither {
-    pub n: u8,
+    pub kind: DitherKind,
     pub origin: Point,
 }
 
@@ -505,17 +660,16 @@ pub struct GradientSpec {
     pub stops: Vec<Stop>,
     /// Ease each color transition with the smoothstep curve instead of a linear ramp.
     pub smoothstep: bool,
-    /// Ordered dither (ADR 0025): 0 = off (a smooth ramp); 2, 4, or 8 = the Bayer matrix size.
-    /// When on, every pixel is exactly one of the two stop colors bounding it (alpha included),
-    /// chosen by comparing the (smoothstepped) local fraction against the Bayer threshold at the
-    /// pixel's canvas coordinate. Independent from `ToolSettings::pattern`, which the Gradient
-    /// never reads.
-    pub dither: u8,
+    /// Ordered dither (ADR 0025, families ADR 0028): `Off` = a smooth ramp. When on, every pixel
+    /// is exactly one of the two stop colors bounding it (alpha included), chosen by comparing
+    /// the (smoothstepped) local fraction against the family's threshold at the pixel's canvas
+    /// coordinate. Independent from `ToolSettings::pattern`, which the Gradient never reads.
+    pub dither: DitherKind,
 }
 impl GradientSpec {
     /// The dither in force for a fill anchored at `origin`, or `None` when off.
     pub fn dither_at(&self, origin: Point) -> Option<Dither> {
-        matches!(self.dither, 2 | 4 | 8).then_some(Dither { n: self.dither, origin })
+        self.dither.at(origin)
     }
 }
 impl Default for GradientSpec {
@@ -524,7 +678,7 @@ impl Default for GradientSpec {
             kind: GradientKind::Linear,
             stops: vec![Stop::new(Rgba8::BLACK, 0.0), Stop::new(Rgba8::WHITE, 1.0)],
             smoothstep: false,
-            dither: 0,
+            dither: DitherKind::Off,
         }
     }
 }
@@ -885,13 +1039,14 @@ pub fn gradient_t(kind: GradientKind, p0: Point, p1: Point, x: i32, y: i32) -> f
 }
 
 /// Sample a gradient at `t` for the pixel at storage coordinate (x, y) over **sorted** stops,
-/// honoring an optional ordered dither (ADR 0025). With `dither = Some(d)`, the pixel is exactly
-/// one of the two stop colors bounding `t` (alpha included): stop `i+1` when
-/// `floor(local · n²) > bayer_n(cx, cy)`, else stop `i`, where `local` is the (smoothstepped) local
-/// fraction and (cx, cy) the pixel's canvas coordinate. So `local = 0` is all stop `i`, `local = 1`
-/// all stop `i+1`, and the density between is the classic ordered-dither ladder. Pixels at or past
-/// the first/last stop take that stop's color as without dithering. Integer compare on a truncated
-/// product: the same IEEE `f32` fraction the smooth ramp already puts on the wire.
+/// honoring an optional ordered dither (ADR 0025, ADR 0028). With `dither = Some(d)`, the pixel is
+/// exactly one of the two stop colors bounding `t` (alpha included): stop `i+1` when
+/// `floor(local · levels) > threshold(cx, cy)`, else stop `i`, where `local` is the (smoothstepped)
+/// local fraction, `levels`/`threshold` the family's (`DitherKind`), and (cx, cy) the pixel's canvas
+/// coordinate. So `local = 0` is all stop `i`, `local = 1` all stop `i+1`, and the density between
+/// is the classic ordered-dither ladder. Pixels at or past the first/last stop take that stop's
+/// color as without dithering. Integer compare on a truncated product: the same IEEE `f32`
+/// fraction the smooth ramp already puts on the wire.
 pub fn gradient_sample_sorted(s: &[Stop], t: f32, smooth: bool, dither: Option<Dither>, x: i32, y: i32) -> Rgba8 {
     let Some(d) = dither else {
         return gradient_color_at_sorted(s, t, smooth);
@@ -912,9 +1067,9 @@ pub fn gradient_sample_sorted(s: &[Stop], t: f32, smooth: bool, dither: Option<D
             if smooth {
                 local = smoothstep(local);
             }
-            let cells = d.n as i32 * d.n as i32;
+            let cells = d.kind.levels() as i32;
             let q = (local * cells as f32) as i32; // truncation == floor for a non-negative fraction
-            let th = bayer_threshold(d.n, x - d.origin.x, y - d.origin.y) as i32;
+            let th = d.kind.threshold(x.wrapping_sub(d.origin.x), y.wrapping_sub(d.origin.y)) as i32;
             return if q > th { s[i + 1].color } else { s[i].color };
         }
     }
@@ -957,8 +1112,8 @@ pub fn gradient_eval_sorted(
 /// clipped to selection and the canvas `clip` (SPEC §11.3). Transparent and semi-transparent stops
 /// composite onto existing content instead of overwriting it (behavior change 2026-08-16; earlier
 /// journals with gradients over content replay with the new blend). Deterministic per pixel.
-/// `origin` is the canvas origin in storage coordinates — what the dither's Bayer matrix is
-/// anchored to (ADR 0025); irrelevant when `spec.dither == 0`.
+/// `origin` is the canvas origin in storage coordinates — what the dither's threshold matrix is
+/// anchored to (ADR 0025); irrelevant when the dither is `Off`.
 #[allow(clippy::too_many_arguments)]
 pub fn apply_gradient(
     buf: &mut RgbaBuffer,
@@ -1394,7 +1549,7 @@ mod tests {
             kind: GradientKind::Linear,
             stops: vec![Stop::new(Rgba8::rgb(255, 0, 0), 0.0), Stop::new(Rgba8::rgb(0, 0, 255), 1.0)],
             smoothstep: false,
-            dither: 0,
+            dither: DitherKind::Off,
         };
         apply_gradient(&mut b, None, IRect::new(0, 0, 16, 1), &spec, Point::new(0, 0), Point::new(15, 0), Point::new(0, 0));
         assert_eq!(b.get(0, 0), Rgba8::rgb(255, 0, 0));
@@ -1426,7 +1581,7 @@ mod tests {
                 Stop::new(Rgba8::rgb(0, 0, 255), 1.0),
             ],
             smoothstep: false,
-            dither: 0,
+            dither: DitherKind::Off,
         };
         let (p0, p1) = (Point::new(16, 16), Point::new(16, 0));
         apply_gradient(&mut b, None, IRect::new(0, 0, 32, 32), &spec, p0, p1, Point::new(0, 0));
@@ -1543,7 +1698,7 @@ mod pattern_tests {
     #[test]
     fn dithered_sample_is_exactly_one_of_two_stops_and_the_ends_are_solid() {
         let stops = [Stop::new(Rgba8::rgb(255, 0, 0), 0.0), Stop::new(Rgba8::rgb(0, 0, 255), 1.0)];
-        let d = Some(Dither { n: 4, origin: Point::new(0, 0) });
+        let d = Some(Dither { kind: DitherKind::Bayer(4), origin: Point::new(0, 0) });
         for y in 0..4 {
             for x in 0..4 {
                 assert_eq!(gradient_sample_sorted(&stops, 0.0, false, d, x, y), Rgba8::rgb(255, 0, 0));
@@ -1555,18 +1710,126 @@ mod pattern_tests {
             }
         }
         // The dither honors the origin: shifting it by one column swaps the checker phase.
-        let shifted = Some(Dither { n: 2, origin: Point::new(1, 0) });
+        let shifted = Some(Dither { kind: DitherKind::Bayer(2), origin: Point::new(1, 0) });
         let a = gradient_sample_sorted(&stops, 0.5, false, shifted, 1, 0);
-        let b = gradient_sample_sorted(&stops, 0.5, false, Some(Dither { n: 2, origin: Point::new(0, 0) }), 0, 0);
+        let b = gradient_sample_sorted(&stops, 0.5, false, Some(Dither { kind: DitherKind::Bayer(2), origin: Point::new(0, 0) }), 0, 0);
         assert_eq!(a, b);
         // dither = None is the smooth ramp.
         assert_eq!(gradient_sample_sorted(&stops, 0.5, false, None, 0, 0), gradient_color_at_sorted(&stops, 0.5, false));
-        // GradientSpec::dither_at maps 0 and junk to None.
+        // GradientSpec::dither_at maps Off to None.
         let mut spec = GradientSpec::default();
         assert!(spec.dither_at(Point::new(0, 0)).is_none());
-        spec.dither = 8;
-        assert_eq!(spec.dither_at(Point::new(2, 2)), Some(Dither { n: 8, origin: Point::new(2, 2) }));
-        spec.dither = 3;
+        spec.dither = DitherKind::Bayer(8);
+        assert_eq!(spec.dither_at(Point::new(2, 2)), Some(Dither { kind: DitherKind::Bayer(8), origin: Point::new(2, 2) }));
+        spec.dither = DitherKind::Off;
         assert!(spec.dither_at(Point::new(0, 0)).is_none());
+    }
+
+    #[test]
+    fn dither_kinds_round_trip_through_their_dsl_tokens() {
+        for k in DitherKind::ALL {
+            assert_eq!(DitherKind::parse(&k.to_dsl()), Some(k), "{k:?}");
+            assert_eq!(DitherKind::parse(&k.to_dsl().to_uppercase()), Some(k), "{k:?} upper");
+        }
+        assert_eq!(DitherKind::parse("off"), Some(DitherKind::Off));
+        assert_eq!(DitherKind::parse("bayer8"), Some(DitherKind::Bayer(8)));
+        for bad in ["3", "16", "bayer3", "blue64", "halftone2", "hlines3", "diag2", "", "on"] {
+            assert_eq!(DitherKind::parse(bad), None, "{bad:?}");
+        }
+        // Bayer keeps the pre-ADR-0028 wire (bare numbers), so old journals replay verbatim.
+        assert_eq!(DitherKind::Bayer(4).to_dsl(), "4");
+        assert_eq!(DitherKind::Off.to_dsl(), "0");
+    }
+
+    #[test]
+    fn every_matrix_dither_is_a_permutation_of_its_levels_over_one_period() {
+        // Each periodic family hits every threshold exactly once per period, so its density ladder
+        // has exactly `levels` equal steps (the noises are unconstrained by design).
+        for (k, w, h) in [
+            (DitherKind::Bayer(2), 2, 2),
+            (DitherKind::Bayer(4), 4, 4),
+            (DitherKind::Bayer(8), 8, 8),
+            (DitherKind::BlueNoise, 64, 64),
+            (DitherKind::Halftone(4), 4, 4),
+            (DitherKind::Halftone(8), 8, 8),
+            (DitherKind::HLines(2), 2, 2),
+            (DitherKind::HLines(4), 4, 4),
+            (DitherKind::HLines(8), 8, 8),
+            (DitherKind::VLines(2), 2, 2),
+            (DitherKind::VLines(4), 4, 4),
+            (DitherKind::VLines(8), 8, 8),
+            (DitherKind::Diagonal(4), 4, 4),
+            (DitherKind::Diagonal(8), 8, 8),
+        ] {
+            let levels = k.levels();
+            assert_eq!(levels, (w * h) as u32, "{k:?}");
+            let mut seen = vec![false; levels as usize];
+            for y in 0..h {
+                for x in 0..w {
+                    let th = k.threshold(x, y);
+                    assert!(th < levels, "{k:?} ({x},{y}) = {th}");
+                    assert!(!seen[th as usize], "{k:?} threshold {th} repeats");
+                    seen[th as usize] = true;
+                    // Periodic, and negative coordinates wrap like positive ones.
+                    assert_eq!(k.threshold(x - w, y - h), th, "{k:?} wrap");
+                    assert_eq!(k.threshold(x + 3 * w, y + 5 * h), th, "{k:?} period");
+                }
+            }
+        }
+        for k in [DitherKind::WhiteNoise, DitherKind::Ign] {
+            for (x, y) in [(0, 0), (-1, -1), (511, 511), (i32::MIN, i32::MAX)] {
+                assert!(k.threshold(x, y) < 256, "{k:?} ({x},{y})");
+            }
+        }
+    }
+
+    #[test]
+    fn dither_tables_are_the_generated_ones() {
+        // The blue-noise table is pinned by the checksum the generator prints (the Dart preview
+        // tables pin the same number), and the 4×4 halftone is the textbook clustered-dot matrix.
+        let mut h: u32 = 0x811C_9DC5;
+        for v in dither_tables::BLUE_NOISE {
+            for b in v.to_le_bytes() {
+                h = (h ^ b as u32).wrapping_mul(0x0100_0193);
+            }
+        }
+        assert_eq!(h, dither_tables::BLUE_NOISE_CHECKSUM);
+        assert_eq!(h, 0xE2B2_6121);
+        assert_eq!(dither_tables::HALFTONE4, [[12, 5, 6, 13], [4, 0, 1, 7], [11, 3, 2, 8], [15, 10, 9, 14]]);
+        assert_eq!(dither_tables::HALFTONE8[3][3], 0, "the 8×8 dot grows from the center");
+        assert_eq!(dither_tables::HALFTONE8[0][0], 60);
+        assert_eq!(dither_tables::HALFTONE8[7][0], 63, "the corners come last");
+    }
+
+    #[test]
+    fn line_dithers_are_solid_alternate_lines_at_half_density() {
+        // At 50 % (threshold < n²/2) HLines(n) lights whole rows at a time — every other row;
+        // VLines is its transpose; Diagonal lights every other x+y class.
+        for n in [2u8, 4, 8] {
+            let half = (n as u32 * n as u32) / 2;
+            for y in 0..n as i32 {
+                let row_on = DitherKind::HLines(n).threshold(0, y) < half;
+                for x in 0..n as i32 {
+                    assert_eq!(DitherKind::HLines(n).threshold(x, y) < half, row_on, "hlines{n} ({x},{y})");
+                    assert_eq!(DitherKind::VLines(n).threshold(y, x) < half, row_on, "vlines{n} is hlines transposed");
+                }
+            }
+            let on_rows: Vec<i32> = (0..n as i32).filter(|&y| DitherKind::HLines(n).threshold(0, y) < half).collect();
+            assert_eq!(on_rows, (0..n as i32).step_by(2).collect::<Vec<_>>(), "hlines{n}: every other row");
+        }
+        for n in [4u8, 8] {
+            let half = (n as u32 * n as u32) / 2;
+            for y in 0..n as i32 {
+                for x in 0..n as i32 {
+                    let on = DitherKind::Diagonal(n).threshold(x, y) < half;
+                    assert_eq!(on, DitherKind::Diagonal(n).threshold(x + 1, y - 1) < half, "diag{n}: constant along x+y");
+                    assert_eq!(on, (x + y) % 2 == 0, "diag{n}: every other diagonal at 50 %");
+                }
+            }
+        }
+        // The IGN fixed-point constants and the white-noise seed are frozen by the pattern pins
+        // (crates/engine/tests/patterns.rs); this pins the first IGN thresholds directly.
+        assert_eq!([(0, 0), (1, 0), (0, 1), (7, 3)].map(|(x, y)| DitherKind::Ign.threshold(x, y)), [0, 142, 79, 209]);
+        assert_eq!([(0, 0), (1, 0), (0, 1), (7, 3)].map(|(x, y)| DitherKind::WhiteNoise.threshold(x, y)), [114, 139, 224, 175]);
     }
 }

@@ -482,13 +482,15 @@ pub struct GradientOracle {
     pub worst: Option<(i32, i32, Rgba8, Rgba8)>,
 }
 
-/// Closed-form gradient oracle (SPEC §22, §3.4): compare each pixel to the math.
-/// `apply_gradient` blends source-over, so the closed form only equals the buffer where blending
-/// is an identity — a layer that was empty under the gradient, or fully opaque stops. Scripts
-/// using `assert.gradient` must apply the gradient to an empty layer (or use opaque stops).
+/// Closed-form gradient oracle (SPEC §22, §3.4): compare each pixel of `clip` (the canvas rect —
+/// the fill never touches the overscan gutter) to the math. `apply_gradient` blends source-over,
+/// so the closed form only equals the buffer where blending is an identity — a layer that was
+/// empty under the gradient, or fully opaque stops. Scripts using `assert.gradient` must apply the
+/// gradient to an empty layer (or use opaque stops).
 #[allow(clippy::too_many_arguments)]
 pub fn gradient_oracle(
     buf: &RgbaBuffer,
+    clip: IRect,
     kind: GradientKind,
     stops: &[Stop],
     p0: Point,
@@ -499,8 +501,8 @@ pub fn gradient_oracle(
 ) -> GradientOracle {
     let mut max_delta = 0u8;
     let mut worst = None;
-    for y in 0..buf.height() as i32 {
-        for x in 0..buf.width() as i32 {
+    for y in clip.y..clip.bottom() {
+        for x in clip.x..clip.right() {
             let expected = gradient_eval(kind, stops, p0, p1, x, y, smooth, dither);
             let actual = buf.get(x, y);
             let d = crate::color::max_channel_delta(expected, actual);

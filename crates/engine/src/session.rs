@@ -27,9 +27,9 @@ pub use parse::Action;
 type TileSnapshot = std::sync::Arc<crate::buffer::TileTable>;
 
 /// The last applied gradient, kept for the `assert.gradient` test oracle:
-/// (kind, stops, p0, p1, smoothstep, dither (0 = off), frame id, layer id). Shared with the replay
+/// (kind, stops, p0, p1, smoothstep, dither, frame id, layer id). Shared with the replay
 /// checkpoint capture (`session/checkpoint.rs`).
-pub(crate) type LastGradient = Option<(GradientKind, Vec<Stop>, Point, Point, bool, u8, u32, u32)>;
+pub(crate) type LastGradient = Option<(GradientKind, Vec<Stop>, Point, Point, bool, tool::DitherKind, u32, u32)>;
 
 /// A pre-edit snapshot pinned to the exact (frame id, layer id) it was taken from. The matching
 /// commit/cancel resolves that target *by id* rather than acting on "whatever is active now", so a
@@ -4239,9 +4239,10 @@ impl Session {
         let fi = self.doc.frame_index_by_id(*fid)?;
         let li = self.doc.frames[fi].layer_index_by_id(*lid)?;
         // The dither is anchored where the canvas sits NOW — the fill's own anchor at the time.
-        let dither = matches!(*dither, 2 | 4 | 8).then_some(tool::Dither { n: *dither, origin: self.doc.origin() });
+        let dither = dither.at(self.doc.origin());
         Some(crate::probe::gradient_oracle(
             &self.doc.frames[fi].layers[li].pixels,
+            self.doc.canvas_rect(),
             *kind,
             stops,
             *p0,
@@ -7062,7 +7063,7 @@ mod tests {
             kind: GradientKind::Linear,
             stops: vec![Stop::new(Rgba8::rgb(255, 0, 0), 0.0), Stop::new(Rgba8::rgb(0, 0, 255), 1.0)],
             smoothstep: false,
-            dither: 0,
+            dither: tool::DitherKind::Off,
         };
         s.shape_set(0, 0, 15, 0); // horizontal red→blue gradient, drafted but not committed
 
@@ -7098,7 +7099,7 @@ mod tests {
             kind: GradientKind::Linear,
             stops: vec![Stop::new(Rgba8::new(255, 255, 0, 255), 0.0), Stop::new(Rgba8::new(255, 255, 0, 0), 1.0)],
             smoothstep: false,
-            dither: 0,
+            dither: tool::DitherKind::Off,
         };
         s.shape_set(0, 0, 15, 0); // opaque yellow at x=0 fading to fully transparent at x=15
 
