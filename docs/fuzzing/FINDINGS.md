@@ -22,6 +22,8 @@ release gates until the fix lands.
 | 2026-08-26 | 14 workers, 22.5 min/target (night burst) | 2.53M execs, **2292 edges**, 0 crashes | 2.98M execs, **6947 edges**, **8 crashes** → FZ-4 |
 | 2026-08-26 | 14 workers, 15 min, actions only (FZ-4 fix verification) | — | 2.35M execs, 6946 edges, **0 crashes** |
 | 2026-08-26 | 14 workers, 30 min, actions only (post-fix soak) | — | 4.41M execs, **6948 edges**, **0 crashes** |
+| 2026-09-05 | 6 workers, 90/45/45 min actions/webp/import, HEAD e56fbf9d, alongside another agent (`--from-head`, loader skipped) | — | 4.59M execs, **7194 edges**, 0 crashes (webp 8.76M/848, import 11.97M/5163, 0 crashes) |
+| 2026-09-05 | 6 workers, 12-h queue (actions 6 h / webp 3 h / import 3 h), HEAD e56fbf9d | — | 15.3M execs, **7207 edges**, **2 crashes** (~4.5 h in) → FZ-5; webp 24.5M/848, import 26.5M/**5180**, 0 crashes; cmin |
 
 Post-FZ-4, a 30-minute actions soak (4.41M execs) reached a new coverage high for that
 target — 6948 edges, above both the 6947 of the run that found FZ-4 and the 6940 of the
@@ -371,3 +373,142 @@ FZ-4 never panicked the engine at all; the panic was the fuzz target's own oracl
 **Artifacts:** `fuzz/artifacts/fuzz_session_actions/crash-{2193f3e4, 2f8595d0,
 475ec510, 4904768f, 4e48dc6f, 58a9683d, e6dfc2ac, f91ff3be}...` (8, git-ignored),
 plus `minimized-from-7a6acc12...` from `cargo fuzz tmin`.
+
+## FZ-5 — a layer-move drag settled by another verb can still go unrecorded (FIXED 2026-09-06)
+
+**Found:** 2026-09-05, `fuzz_session_actions`, about 4.5 h into the actions leg of a
+12-hour run (6 workers, HEAD `e56fbf9d`). Two artifacts, one root cause.
+**Oracle:** 2 — undo coherence (`Undo()` changed the document but `Redo()` did not
+restore it).
+**Status:** FIXED 2026-09-06. Deterministic, reduced, root cause located; the fix was
+first verified in a scratch tree (both artifacts and every reduced variant pass), then
+landed with the regression test `settled_layer_move_records_from_content` (session.rs
+tests: the reduced scripts under the fuzz oracle settled through the verb, the mechanism
+directly, and the gate's other side), verified to FAIL against the old guard first. **Not a Symmetry-release regression:** both artifacts reproduce unchanged on
+`f0f59d29`, the last commit before the Symmetry/Outline engine work. This is the FZ-4
+hole from the other door.
+
+**Root cause** — `crates/engine/src/session.rs`, `settle_open_edits`, the layer-move
+branch:
+
+```rust
+if let Some((fid, before)) = self.move_before.take() {
+    if stroke.start != stroke.last {          // <-- the FZ-4 proxy, still here
+        if let Some(fi) = self.doc.frame_index_by_id(fid) {
+            let after = self.doc.frames[fi].clone();
+            ...
+            self.doc.record_frame_content(fid, before, after, sel_before);
+        }
+    }
+}
+```
+
+FZ-4 replaced the pointer-coordinate proxy in `pointer_up` with a content comparison
+against the `move_before` snapshot, and hardened `move_draft_commit` the same way. The
+third copy of the assumption — the settle path that commits an open layer-move drag when
+some other verb needs a clean state (`begin_edit`, `edit_frame`, `edit_doc`, `repeat`,
+Undo/Redo, the resize/crop family) — kept the proxy. The live re-blit in `pointer_move`
+has already mutated the document by the time the settle runs; when the proxy says
+"no drag", the mutation is neither recorded nor reverted (this path, like the old
+`pointer_up`, does not restore `before`).
+
+**Why the earlier bursts missed it.** The hole is only *visible* to a one-step oracle
+when the verb that triggers the settle records nothing itself. A recording verb
+(`FlipV` on a real canvas, `AddLayer`, anything with a diff) absorbs the untracked
+mutation into its own `before` snapshot, so Undo/Redo of that one step looks coherent —
+the damage moves one step deeper into the stack, where the oracle does not look. The
+fuzzer needed a *no-op* settle-triggering verb right after a zero-delta drag:
+`ApplyLevels()` at default levels, or `FlipV()` on a 1×1 canvas.
+
+Two shapes, every line necessary, checked line-by-line with `mkpx … hash.doc` on the
+`f0f59d29` engine (`*` = the document changed on that line):
+
+**(a) zero-delta wrapped re-blit, settled by a no-op `ApplyLevels`** — FZ-4 shape (a),
+reached through the settle path instead of `pointer_up`:
+
+```
+PointerDown(7,7)      *   paint one pixel
+PointerMove(47,39)    *   stroke to the far corner
+ResizeCanvas(4,6)     *   shrink: pixels now live outside the canvas
+SelectTool(Move)
+PointerDown(7,-9)         layer-move drag begins, move_before snapshotted
+SetWrap(true)
+PointerMove(7,-9)     *   zero delta, but blit_wrapped folds the off-canvas pixels in
+ApplyLevels()             default levels: edit_doc settles the drag (proxy: start == last,
+                          nothing recorded), then records nothing itself
+```
+
+`Undo()` now pops `ResizeCanvas`; `Redo()` restores its `after` snapshot, which predates
+the fold-in. Replacing `ApplyLevels()` with a plain `PointerUp()` passes (that path is
+content-gated since FZ-4); replacing it with `FlipV()`/`AddLayer()`/`Undo()` passes for
+the masking reason above; a non-zero delta passes; wrap off passes.
+
+**(b) clamped pointer on a 1×1 canvas, settled by a no-op `FlipV`:**
+
+```
+PointerDown(7,7)      *   one pixel
+SelectByAlpha(Replace)
+CropToSelection()     *   canvas is now 1×1 around that pixel
+SelectByAlpha(Replace)
+Cut()                 *   pixel removed (selection kept)
+SelectTool(Move)
+Undo()                *   pixel back
+PointerDown(11,-1)        selection move (floating) begins
+PointerMove(9,9)
+PointerDown(5,3)      *   supersedes the drag: the floating move commits, the pixel
+                          lands off-canvas; a new drag starts in layer-move mode
+PointerMove(9,9)      *   the re-blit rewrites the layer
+FlipV()                   1×1 flip is a no-op: settles the drag, records nothing
+```
+
+`pointer_down`/`pointer_move` run the pointer through `clamp_pointer` ("bound
+off-canvas input"), so on a 1×1 canvas `(5,3)` and `(9,9)` both clamp to the same
+point: `start == last` and the proxy declares a no-op drag — while the zero-offset
+re-blit (`clear_in_place` + `blit_over` of a snapshot holding an off-canvas pixel)
+changed the content hash. `Undo()` pops the floating move instead, `Redo()` re-applies
+it, and the layer-move's pixels are gone. Ending the first drag with an explicit
+`PointerUp()`, or making the second drag literally zero-delta, fails identically.
+
+**User-reachable:** the trigger is a document verb arriving while a layer-move drag is
+open — a keyboard shortcut (Flip, Levels, Undo…) with the mouse button still down on
+desktop, or any journaled verb interleaved with a drag. Not reachable from touch alone.
+Shape (a) needs wrap on plus a prior shrink; shape (b) needs a tiny canvas.
+
+**Fix:** gate the settle path on content, exactly as `pointer_up`
+does since FZ-4:
+
+```rust
+if let Some((fid, before)) = self.move_before.take() {
+    if let Some(fi) = self.doc.frame_index_by_id(fid) {
+        if self.doc.frames[fi].content_hash() != before.content_hash() {
+            let after = self.doc.frames[fi].clone();
+            let sel_before = self.doc.selection.clone();
+            self.doc.record_frame_content(fid, before, after, sel_before);
+        }
+    }
+}
+```
+
+With that change both artifacts execute clean under the fuzz binary and all 15 reduced
+variants pass the exact oracle (settle → Undo → skip-if-unchanged → Redo must restore) on
+a patched `mkpx`, including the gate's other side (a true no-op layer drag settled by
+`ApplyLevels` still records nothing). **Doctrine unchanged, now applied to the third
+copy:** never decide whether a mutation happened from pointer coordinates — and note that
+`clamp_pointer` makes coordinates an even weaker proxy than FZ-4 assumed, since distinct
+inputs collapse to one point on small canvases.
+
+**Regression test:** `settled_layer_move_records_from_content` in `session.rs` tests — the
+scripts above under the fuzz oracle, settled through the verb rather than `PointerUp()`,
+plus the mechanism directly and a no-op drag that must still record nothing. It failed
+against the old guard on the first script before the fix went in. Not `fuzz_inputs.rs` —
+never-panic only; the engine never panicked here.
+
+**Gotcha for triage:** the CLI's `assert.undo` probe is *stricter* than the fuzz oracle —
+it also reports FAIL when Undo is a content no-op (e.g. it pops a selection-only
+record). Emulate the oracle with three `hash.doc` runs (script+settle, +Undo, +Undo+Redo)
+and skip when the undone hash equals the settled one; several "failing" variants during
+this triage were that artifact of the probe, not the bug.
+
+**Artifacts:** `fuzz/artifacts/fuzz_session_actions/crash-1a2439cd…` (shape b, 1026
+bytes) and `crash-39fc4a7b…` (shape a, 399 bytes), reduced with `cargo fuzz tmin` to
+74 and 55 bytes (the DSL above is the reduced form; git-ignored).

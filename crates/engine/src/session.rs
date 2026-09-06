@@ -2015,10 +2015,16 @@ impl Session {
     pub(super) fn settle_open_edits(&mut self) {
         if let Some(mut stroke) = self.stroke.take() {
             if self.move_before.is_some() {
-                // Move-layer drag: commit the translation exactly like pointer_up's move branch.
+                // Move-layer drag: commit the translation exactly like pointer_up's move branch —
+                // gated on CONTENT, never on pointer coordinates. `pointer_move` has already
+                // re-blitted the layer, and a drag whose start and end coincide can still have
+                // changed pixels (a wrapped zero-offset blit folds off-canvas pixels in; on a tiny
+                // canvas `clamp_pointer` maps distinct inputs onto one point). This copy of the
+                // FZ-4 proxy outlived the pointer_up fix and stranded the mutation whenever the
+                // settling verb recorded nothing itself. [fuzz FZ-5]
                 if let Some((fid, before)) = self.move_before.take() {
-                    if stroke.start != stroke.last {
-                        if let Some(fi) = self.doc.frame_index_by_id(fid) {
+                    if let Some(fi) = self.doc.frame_index_by_id(fid) {
+                        if self.doc.frames[fi].content_hash() != before.content_hash() {
                             let after = self.doc.frames[fi].clone();
                             let sel_before = self.doc.selection.clone();
                             self.doc.record_frame_content(fid, before, after, sel_before);
@@ -6541,6 +6547,65 @@ mod tests {
         s.pointer_down(8, 8);
         s.pointer_move(8, 8); // zero delta, no wrap, nothing outside the canvas
         s.pointer_up();
+        assert_eq!(s.doc.content_hash(), painted, "the no-op drag changed nothing");
+        assert!(s.doc.undo(), "undo pops the tap, not an empty move record");
+        assert_eq!(s.pixel(0, 0, 4, 4), Rgba8::TRANSPARENT, "the tap itself was undone");
+    }
+
+    #[test]
+    fn settled_layer_move_records_from_content() {
+        // [fuzz FZ-5] FZ-4 content-gated the layer-move commit in `pointer_up`, but the settle
+        // path (`settle_open_edits`, reached whenever another verb needs a clean state) kept the
+        // `stroke.start != stroke.last` proxy. `pointer_move` has already re-blitted the layer by
+        // then, so a drag the proxy calls "empty" leaves an untracked mutation — visible only when
+        // the settling verb records nothing itself (a recording verb absorbs the change into its
+        // own before-snapshot and hides it one step deeper in the stack). Two ways the
+        // coordinates lie: a zero-delta wrapped re-blit after a shrink folds off-canvas pixels in
+        // (the FZ-4 shape, through the other door); and `clamp_pointer` collapses distinct inputs
+        // onto one point on a 1x1 canvas, so a genuine drag reads as zero-delta.
+        // Scripts are the reduced fuzzing reproducers (docs/fuzzing/FINDINGS.md FZ-5); the last
+        // line of each is the settling verb, never a PointerUp.
+        let scripts: &[&str] = &[
+            // Zero-delta wrapped re-blit after a shrink, settled by a default (no-op) Levels apply.
+            "PointerDown(7,7)\nPointerMove(47,39)\nResizeCanvas(4,6)\nSelectTool(Move)\nPointerDown(7,-9)\nSetWrap(true)\nPointerMove(7,-9)\nApplyLevels()",
+            // 1x1 canvas: (5,3) and (9,9) clamp to the same point; FlipV on 1x1 is a no-op.
+            "PointerDown(7,7)\nSelectByAlpha(Replace)\nCropToSelection()\nSelectByAlpha(Replace)\nCut()\nSelectTool(Move)\nUndo()\nPointerDown(11,-1)\nPointerMove(9,9)\nPointerDown(5,3)\nPointerMove(9,9)\nFlipV()",
+            "PointerDown(7,7)\nSelectByAlpha(Replace)\nCropToSelection()\nSelectByAlpha(Replace)\nCut()\nSelectTool(Move)\nUndo()\nPointerDown(11,-1)\nPointerMove(9,9)\nPointerDown(5,3)\nPointerMove(9,9)\nApplyLevels()",
+        ];
+        for s in scripts {
+            let mut sess = Session::new(32, 32);
+            let _ = sess.run_script(s);
+            let _ = sess.run_script("PointerUp()"); // the fuzz oracle's settle; the verb already closed the drag
+            let after = sess.doc.content_hash();
+            let _ = sess.run_script("Undo()");
+            assert_ne!(sess.doc.content_hash(), after, "Undo must change the document for script:\n{s}");
+            let _ = sess.run_script("Redo()");
+            assert!(sess.doc.content_hash() == after, "undo/redo incoherent for script:\n{s}");
+        }
+
+        // The mechanism directly: a zero-delta wrapped drag settled by a no-op verb IS a
+        // document change, and must be exactly one undoable, redoable step.
+        let mut s = Session::new(32, 32);
+        let _ = s.run_script("FillNoise(28079)\nSetWrap(true)\nResizeCanvas(18,45)");
+        let before_move = s.doc.content_hash();
+        let _ = s.run_script("SelectTool(Move)\nPointerDown(7,7)\nPointerMove(7,7)\nApplyLevels()");
+        let after_move = s.doc.content_hash();
+        assert_ne!(after_move, before_move, "a zero-delta wrapped move does change the document");
+        assert!(s.doc.undo(), "that change must be undoable");
+        assert_eq!(s.doc.content_hash(), before_move, "undo restores the pre-move content");
+        assert!(s.doc.redo(), "and redoable");
+        assert_eq!(s.doc.content_hash(), after_move, "redo restores the moved content exactly");
+
+        // The other side of the gate: a drag that changes nothing, settled by a verb, must still
+        // record NOTHING — the first Undo pops the tap, not an empty move step.
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(4, 4);
+        let painted = s.doc.content_hash();
+        s.tool = ToolKind::Move; // no selection → layer move
+        s.pointer_down(8, 8);
+        s.pointer_move(8, 8); // zero delta, no wrap, nothing outside the canvas
+        let _ = s.run_script("ApplyLevels()"); // settles the drag; records nothing itself
         assert_eq!(s.doc.content_hash(), painted, "the no-op drag changed nothing");
         assert!(s.doc.undo(), "undo pops the tap, not an empty move record");
         assert_eq!(s.pixel(0, 0, 4, 4), Rgba8::TRANSPARENT, "the tap itself was undone");
