@@ -808,7 +808,8 @@ extension _EditorFileIo on _EditorPageState {
           canvasH: h,
           initialRect: rect(sel),
           contentBounds: rect(content),
-          sizeNote: (cw, ch) => ClubSizeRules.accepted(cw, ch) ? null : _ClubSizeAlert(cw, ch),
+          // Always a widget, always one line: the panel height must not depend on the rect.
+          sizeNote: (cw, ch) => _ClubSizeStatus(cw, ch),
         ),
       ));
       if (r == null || !mounted) return;

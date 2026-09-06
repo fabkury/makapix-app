@@ -340,7 +340,9 @@ class CropPage extends StatefulWidget {
   /// Null = fully transparent document (the button is disabled).
   final Rect? contentBounds;
   /// Canvas mode: an optional note under the result line for a given result size (the Club size
-  /// alert); return null for nothing.
+  /// status); return null for nothing. Whatever it returns should keep one height across sizes:
+  /// the panel's height feeds the preview's fit scale, and a height that flips during a corner
+  /// drag moves the image under the finger.
   final Widget? Function(int w, int h)? sizeNote;
   const CropPage({
     super.key,

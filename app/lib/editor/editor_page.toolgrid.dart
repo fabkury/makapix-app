@@ -711,6 +711,41 @@ class _GearedSliderState extends State<_GearedSlider> {
 // Red informational alert: the given size isn't accepted by Makapix Club (the hardcoded
 // ClubSizeRules). Shown in the New-document and Resize-canvas dialogs; never blocks either —
 // the editor deliberately allows non-publishable sizes.
+/// The Crop canvas page's Club-size line (2026-09-06): **always present, always one line**, so
+/// the bottom panel never changes height while a corner is being dragged. (The boxed
+/// [_ClubSizeAlert] appearing and vanishing there reflowed the preview above it, which moved the
+/// image under the finger, which changed the rect, which toggled the box again — a feedback loop
+/// visible as flicker.) Accepted → a muted green check; otherwise the amber warning with the
+/// nearest accepted size.
+class _ClubSizeStatus extends StatelessWidget {
+  final int width, height;
+  const _ClubSizeStatus(this.width, this.height);
+
+  static const Color _green = Color(0xFF8BC48F);
+
+  @override
+  Widget build(BuildContext context) {
+    final ok = ClubSizeRules.accepted(width, height);
+    final nearest = ok ? null : ClubSizeRules.nearest(width, height);
+    final color = ok ? _green : Colors.amber;
+    return SizedBox(
+      height: 20,
+      child: Row(children: [
+        Icon(ok ? Icons.check_circle_outline : Icons.warning_amber_rounded, color: color, size: 16),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            ok ? 'Club-accepted size' : 'Not a Club size. Nearest ${nearest![0]} × ${nearest[1]}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 12, color: color),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
 class _ClubSizeAlert extends StatelessWidget {
   final int width, height;
   const _ClubSizeAlert(this.width, this.height);
