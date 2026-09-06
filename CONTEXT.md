@@ -214,3 +214,17 @@ _Avoid_: playback (that is the Editor's frame-animation preview)
 The exported, shareable video rendition of a Replay — upscaled, resampled, and encoded for
 posting outside the app.
 _Avoid_: replay video, movie, GIF (a format it may use, not the artifact)
+
+**Tick**:
+A Journal position whose transition can change what a Replay shows. A **stream tick** is one
+step of a gesture (a stamp-tool contact, a held-pen move, a cursor plot); an **event tick** is
+any other visible change (a fill, a commit, an apply, a structural edit, undo/redo, a frame hop,
+a chapter-base pop). Event ticks get a floor and a ceiling of video time; stream ticks flow.
+_Avoid_: keyframe, sample (that is a Timelapse frame), action (a tick is a position, not a verb)
+
+**Working time**:
+The time a Tick took the artist: the recorded gaps of every Journal line since the previous
+Tick, each gap clamped to a short beat so pauses and resumes do not count. Invisible lines have
+no Tick of their own, so their time flows into the next Tick — tuning a slider lands on its
+Apply. The signal a Replay's and a Timelapse's pacing is proportional to.
+_Avoid_: wall clock, elapsed time (both include the pauses), duration (that is a frame's)
