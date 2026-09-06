@@ -24,6 +24,7 @@ release gates until the fix lands.
 | 2026-08-26 | 14 workers, 30 min, actions only (post-fix soak) | — | 4.41M execs, **6948 edges**, **0 crashes** |
 | 2026-09-05 | 6 workers, 90/45/45 min actions/webp/import, HEAD e56fbf9d, alongside another agent (`--from-head`, loader skipped) | — | 4.59M execs, **7194 edges**, 0 crashes (webp 8.76M/848, import 11.97M/5163, 0 crashes) |
 | 2026-09-05 | 6 workers, 12-h queue (actions 6 h / webp 3 h / import 3 h), HEAD e56fbf9d | — | 15.3M execs, **7207 edges**, **2 crashes** (~4.5 h in) → FZ-5; webp 24.5M/848, import 26.5M/**5180**, 0 crashes; cmin |
+| 2026-09-06 | 14 workers, 4 h, actions only, HEAD 0105c3b6 (FZ-5 fix verification) | — | 22.0M execs, 7206 edges, **0 crashes** |
 
 Post-FZ-4, a 30-minute actions soak (4.41M execs) reached a new coverage high for that
 target — 6948 edges, above both the 6947 of the run that found FZ-4 and the 6940 of the
