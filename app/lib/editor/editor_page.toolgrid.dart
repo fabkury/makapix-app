@@ -721,18 +721,20 @@ class _ClubSizeAlert extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: Colors.red.withValues(alpha: 0.15),
+        // A warning, not an error (2026-09-06): the size is legal in the editor, it just
+        // can't be posted to the Club as is.
+        color: Colors.amber.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: Colors.redAccent),
+        border: Border.all(color: Colors.amber),
       ),
       child: Row(children: [
-        const Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 20),
+        const Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 20),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
             'Makapix Club doesn\'t accept $width × $height artworks, so it can\'t be posted '
             'to the Club at this size.\nNearest accepted size: ${nearest[0]} × ${nearest[1]}.',
-            style: const TextStyle(fontSize: 12, color: Colors.redAccent),
+            style: const TextStyle(fontSize: 12, color: Colors.amber),
           ),
         ),
       ]),

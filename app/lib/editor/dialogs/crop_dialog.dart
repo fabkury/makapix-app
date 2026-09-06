@@ -153,9 +153,14 @@ class CropGeometry {
 /// viewport on each axis, and is pinned to zero at fit. Unit-tested; the page only feeds it
 /// gestures and reads [scale] / [origin].
 class CropView {
-  CropView({required this.srcW, required this.srcH, this.margin = 16});
+  CropView({required this.srcW, required this.srcH, double margin = 16})
+      : marginX = margin,
+        marginY = margin;
   final int srcW, srcH;
-  final double margin;
+  /// Screen px kept free around the image at fit. The horizontal one grows on phones with
+  /// gesture navigation (see [setMargins]): a corner reticle sitting inside the OS back-swipe
+  /// zone can never be grabbed — the system takes the touch before Flutter sees it.
+  double marginX, marginY;
   static const double maxPxPerSource = 32;
   static const double keep = 48;
 
@@ -164,8 +169,8 @@ class CropView {
   Offset pan = Offset.zero;
 
   double get fitScale {
-    final aw = math.max(1.0, view.width - margin * 2);
-    final ah = math.max(1.0, view.height - margin * 2);
+    final aw = math.max(1.0, view.width - marginX * 2);
+    final ah = math.max(1.0, view.height - marginY * 2);
     return math.min(aw / srcW, ah / srcH);
   }
 
@@ -181,6 +186,14 @@ class CropView {
   void setView(Size s) {
     if (s == view) return;
     view = s;
+    _clampPan();
+  }
+
+  /// Adopt new fit margins (re-clamping the pan when they change).
+  void setMargins({required double x, required double y}) {
+    if (x == marginX && y == marginY) return;
+    marginX = x;
+    marginY = y;
     _clampPan();
   }
 
@@ -657,6 +670,16 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
               : !p.loaded
                   ? const Center(child: CircularProgressIndicator())
                   : LayoutBuilder(builder: (ctx, cons) {
+                      // Keep the fit view's corners out of the OS back-swipe zone (Android gesture
+                      // navigation): the system claims a touch that starts there, so a reticle at
+                      // the screen edge could never be grabbed. Desktop and button-nav phones
+                      // report zero insets and keep the tight fit.
+                      final gesture = MediaQuery.systemGestureInsetsOf(ctx);
+                      final edge = math.max(gesture.left, gesture.right);
+                      _view.setMargins(
+                        x: math.max(_view.marginY, edge > 0 ? edge + _reticleRadius + 8 : 0),
+                        y: _view.marginY,
+                      );
                       _view.setView(Size(cons.maxWidth, cons.maxHeight));
                       // Raw pointer layer (wheel zoom, right/middle-drag pan) around the gesture
                       // layer (primary-button scale = crop edit or two-finger view; double-tap).
@@ -743,18 +766,32 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
               _coordChip('y', 'Y', _geo.y),
               _coordChip('w', 'W', _geo.w),
               _coordChip('h', 'H', _geo.h),
-              if (canvasMode)
-                // Size presets (the Resize canvas dialog's), only those that fit some side.
-                for (final p in const [16, 32, 64, 128, 256, 512])
-                  if (p <= math.max(widget.srcW, widget.srcH))
-                    ActionChip(
-                      label: Text('$p²'),
-                      onPressed: () => setState(() {
-                        _endCropDrag();
-                        _geo.setSize(p, p);
-                      }),
-                    ),
             ]),
+            if (canvasMode)
+              // Size presets (the Resize canvas dialog's), only those that fit some side — on
+              // their own captioned row: they set a size, the chips above show the rectangle.
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                  const Padding(
+                    padding: EdgeInsets.only(right: 8),
+                    child: Text('Presets', style: TextStyle(fontSize: 12, color: Colors.white60)),
+                  ),
+                  Expanded(
+                    child: Wrap(spacing: 6, runSpacing: 4, children: [
+                      for (final p in const [16, 32, 64, 128, 256, 512])
+                        if (p <= math.max(widget.srcW, widget.srcH))
+                          ActionChip(
+                            label: Text('$p²'),
+                            onPressed: () => setState(() {
+                              _endCropDrag();
+                              _geo.setSize(p, p);
+                            }),
+                          ),
+                    ]),
+                  ),
+                ]),
+              ),
             const SizedBox(height: 6),
             Text(
               canvasMode

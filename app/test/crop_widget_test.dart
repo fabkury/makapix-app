@@ -192,6 +192,19 @@ void main() {
       expect(v.zoom, closeTo(v.maxZoom / CropView.stepFactor, 1e-9));
     });
 
+    test('setMargins: a wider horizontal margin shrinks the fit and re-clamps the pan', () {
+      final v = view(); // 100x50 in 432x232 at margin 16 → 4 px/px
+      expect(v.fitScale, closeTo(4, 1e-9));
+      v.setMargins(x: 41, y: 16); // (432 − 82) / 100 = 3.5
+      expect(v.fitScale, closeTo(3.5, 1e-9));
+      expect(v.origin.dx, closeTo(41, 1e-9)); // centered: the image starts past the margin
+      expect(v.pan, Offset.zero); // still at fit
+      v.setMargins(x: 41, y: 16); // no-op when equal
+      expect(v.fitScale, closeTo(3.5, 1e-9));
+      v.setMargins(x: 16, y: 16);
+      expect(v.fitScale, closeTo(4, 1e-9));
+    });
+
     test('a viewport change re-clamps the pan instead of stranding the image', () {
       final v = view();
       v.zoomAt(const Offset(216, 116), 4);
@@ -281,6 +294,7 @@ void main() {
       expect(find.text('Crop canvas'), findsOneWidget);
       expect(find.text('New canvas: 8 × 8 px'), findsOneWidget);
       expect(find.text('note 8×8'), findsOneWidget);
+      expect(find.text('Presets'), findsOneWidget);
       final crop = tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Crop'));
       expect(crop.onPressed, isNull, reason: 'the whole canvas has nothing to crop');
       await tester.tap(find.byTooltip('Trim to content'));
