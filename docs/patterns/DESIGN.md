@@ -25,8 +25,9 @@ following commit). Every decision below was taken with the user in a four-round 
   inverse are the Bayer 4×4 half-density tiles, so the ladder keeps them), the catalog holds 116 tiles,
   none duplicated (tiles the ladders already contain — the 2×2 checker, the single-dot 2×2, the
   2-px grid — are not repeated under a second name), none all-ON or all-OFF.
-- The `assert.gradient` CLI oracle compares the whole storage buffer, so it fails on any document
-  with an overscan gutter, dithered or not — a pre-existing limitation of the probe, left as is.
+- The `assert.gradient` CLI oracle used to compare the whole storage buffer, so it failed on any
+  document with an overscan gutter, dithered or not; since ADR 0028 (2026-09-06) it compares the
+  canvas rect only, and every dither family passes it.
 
 ## What it is
 
@@ -47,7 +48,7 @@ catalog (~110 built-in tiles) and a recently-used strip.
 | Catalog | **Built-in, ~110 tiles up to 8×8**; custom patterns (from selection, or a mini editor) are a documented follow-up, needing no new verb |
 | Bayer ladders | **Flat entries at coarse steps**: 2×2 all 5 levels · 4×4 all 17 · 8×8 at 17 steps (every 4th level). No density slider |
 | Other families | Lines H/V at 2/3/4-px pitch · diagonals + crosshatch at 2/3/4-px pitch · dots, grids, bricks, checker cells 2×2/3×3/4×4. Inverses generated automatically. Stipple/noise and waves/scales: **not in v1** |
-| Gradient | **Own state**: Bayer 2×2 / 4×4 / 8×8 as *families* (not density entries) + Off, remembered separately from the global pattern. Dither applies **pairwise between adjacent stops**, Linear and Radial, with Smoothstep still shaping the blend factor before thresholding |
+| Gradient | **Own state**: Bayer 2×2 / 4×4 / 8×8 as *families* (not density entries) + Off, remembered separately from the global pattern. Dither applies **pairwise between adjacent stops**, Linear and Radial, with Smoothstep still shaping the blend factor before thresholding. *Since ADR 0028 (2026-09-06) the families also include blue noise, halftone 4/8, lines (horizontal/vertical 2/4/8, diagonal 4/8), white noise, and interleaved gradient noise — all per-pixel threshold matrices under the same contract.* |
 | Scope of the selection | **One global pattern; On/Off per tool.** Pick Bayer 4×4 once; Pencil can be On while Bucket is Off |
 | On/Off UX | The page lists **Off** first; **long-press** (right-click on desktop) on the swatch toggles Off ↔ last pattern without opening the page. Swatch: dimmed with a slash when Off; the tile in the primary color when On |
 | Placement and name | **End of row-1**, called **"Pattern"**; page title **"Patterns"** |
@@ -84,7 +85,7 @@ on(x, y) = (bits >> ((y mod h) * w + (x mod w))) & 1   // x, y in CANVAS coordin
 - `pub struct Pattern { w, h, bits }` with `Pattern::parse(w, h, hex) -> Option<Pattern>` (rejects
   w/h outside 1..=8 and bits beyond `w*h`), `Pattern::on(x, y)`, `Pattern::to_dsl()`.
 - `Settings.pattern: Option<Pattern>` (global; `None` = Off).
-- `GradientSpec.dither: u8` ∈ {0, 2, 4, 8} (0 = Off).
+- `GradientSpec.dither: DitherKind` (`Off` = a smooth ramp; was a `u8` Bayer size before ADR 0028).
 - Bayer matrices as `const` tables (2×2, 4×4, 8×8) in `tool.rs`, integer thresholds
   `bayer_n[y][x] ∈ 0..n²`. One helper `bayer_threshold(n, x, y) -> u16`.
 
@@ -94,7 +95,7 @@ on(x, y) = (bits >> ((y mod h) * w + (x mod w))) & 1   // x, y in CANVAS coordin
 |---|---|
 | `SetPattern(w, h, hexbits)` | `settings.pattern = Some(..)`. Hex is up to 16 digits, no `0x`. Malformed → parse error (the line is dropped under the replay line-skip rule) |
 | `SetPattern(off)` | `settings.pattern = None` |
-| `SetGradientDither(n)` | `settings.gradient.dither = n`, n ∈ {0, 2, 4, 8}; anything else → parse error |
+| `SetGradientDither(token)` | `settings.gradient.dither = DitherKind::parse(token)`: `0 \| 2 \| 4 \| 8` (Bayer, unchanged wire), `blue`, `halftone4\|8`, `hlines2\|4\|8`, `vlines2\|4\|8`, `diag4\|8`, `noise`, `ign` (ADR 0028); anything else → parse error |
 
 Both are settings verbs: applied immediately, **frozen at stroke start** for the coat tools
 (ADR 0007 — `PaintCtx` gains `pattern: Option<Pattern>` and `origin: Point`), read at tap time for
