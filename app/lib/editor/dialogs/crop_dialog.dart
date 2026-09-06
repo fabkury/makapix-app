@@ -374,6 +374,21 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
     });
   }
 
+  /// Step one frame forward or back (2026-09-06), wrapping at either end like the loop itself.
+  /// Stepping pauses playback: a scrubbed frame that kept advancing would be gone before the
+  /// crop could be judged against it.
+  void _stepFrame(int delta) {
+    final n = widget.preview.frames.length;
+    if (n < 2) return;
+    setState(() {
+      if (_playing) {
+        _playing = false;
+        _ticker.stop();
+      }
+      _current = (_current + delta) % n;
+    });
+  }
+
   // ---- gestures ----
 
   void _endCropDrag() {
@@ -622,8 +637,22 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               IconButton(
+                tooltip: 'Previous frame',
+                icon: const Icon(Icons.skip_previous, size: 20),
+                visualDensity: VisualDensity.compact,
+                onPressed: animated ? () => _stepFrame(-1) : null,
+              ),
+              IconButton(
+                tooltip: _playing ? 'Pause' : 'Play',
                 icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
+                visualDensity: VisualDensity.compact,
                 onPressed: animated ? _togglePlay : null,
+              ),
+              IconButton(
+                tooltip: 'Next frame',
+                icon: const Icon(Icons.skip_next, size: 20),
+                visualDensity: VisualDensity.compact,
+                onPressed: animated ? () => _stepFrame(1) : null,
               ),
               Text(
                 animated ? 'Frame ${_current + 1} / ${p.frames.length}' : 'Static',
