@@ -1,9 +1,11 @@
 // The Patterns page (ADR 0025): the tap hint, the two preview colors (defaults, pick, swap,
 // reported to the host), Off first, the recents strip (order, hidden when empty), the catalog
 // sections, tap-selects-and-pops with the tile, Off pops PatternOff, the selected state, and the
-// Gradient's "Dither" variant (three Bayer sizes + Off, popping an int). No engine.
+// Gradient's "Dither" variant (every dither family by section + Off, popping a DitherKind). No
+// engine.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:makapix_club/editor/patterns/gradient_dither.dart';
 import 'package:makapix_club/editor/patterns/pattern_tile.dart';
 import 'package:makapix_club/editor/patterns/patterns_catalog.dart';
 import 'package:makapix_club/editor/patterns/patterns_page.dart';
@@ -171,28 +173,51 @@ void main() {
     }
   });
 
-  testWidgets('the Gradient variant offers Off and the three Bayer sizes in the preview colors and pops an int', (t) async {
-    final result = await _open<int>(t, const PatternsPage.gradient(dither: 4, onColor: Colors.red, offColor: Colors.blue));
+  testWidgets('the Gradient variant offers Off and the dither families by section in the preview colors and pops a kind',
+      (t) async {
+    final result = await _open<DitherKind>(
+        t, const PatternsPage.gradient(dither: DitherKind.bayer4, onColor: Colors.red, offColor: Colors.blue));
     expect(find.text('Dither'), findsOneWidget);
-    expect(find.textContaining('Tap a matrix size'), findsOneWidget);
+    expect(find.textContaining('Tap a dither'), findsOneWidget);
+    expect(find.text(DitherKind.familyBayer), findsOneWidget);
     expect(find.text('Bayer 2×2'), findsOneWidget);
     expect(find.text('Bayer 4×4'), findsOneWidget);
     expect(find.text('Bayer 8×8'), findsOneWidget);
     expect(t.widget<ListTile>(find.widgetWithText(ListTile, 'Bayer 4×4')).selected, isTrue);
-    expect(find.text('Lines'), findsNothing, reason: 'the mask catalog is not offered');
-    final box = t.widget<PatternTileBox>(find.byType(PatternTileBox).first);
+    expect(t.widget<ListTile>(find.widgetWithText(ListTile, 'Bayer 2×2')).selected, isFalse);
+    expect(find.byType(PatternTileBox), findsNothing, reason: 'the mask catalog is not offered');
+    expect(find.text('Horizontal · 2 px'), findsNothing);
+    final box = t.widget<DitherTileBox>(find.byType(DitherTileBox).first);
     expect(box.onColor, Colors.red);
     expect(box.offColor, Colors.blue);
-    await t.tap(find.text('Bayer 8×8'));
+    expect(box.kind, DitherKind.bayer2, reason: 'page order = DitherKind.all');
+    // Every family has a section, in order, with every one of its kinds (the list is lazy: scroll).
+    for (final family in DitherKind.families) {
+      var first = true;
+      for (final k in DitherKind.inFamily(family)) {
+        await t.dragUntilVisible(find.widgetWithText(ListTile, k.name), find.byType(ListView), const Offset(0, -120));
+        expect(find.widgetWithText(ListTile, k.name), findsOneWidget);
+        // The section header sits right above the family's first kind — built, possibly just
+        // scrolled out of view ("Blue noise" names both a header and a kind, hence findsWidgets).
+        if (first) expect(find.text(family, skipOffstage: false), findsWidgets, reason: family);
+        first = false;
+      }
+    }
+    // Back to the top (the lazy list has dropped the early rows), then pick Blue noise.
+    await t.drag(find.byType(ListView), const Offset(0, 4000));
     await t.pumpAndSettle();
-    expect(await result(), 8);
+    await t.dragUntilVisible(find.widgetWithText(ListTile, 'Blue noise'), find.byType(ListView), const Offset(0, -120));
+    await t.tap(find.widgetWithText(ListTile, 'Blue noise'));
+    await t.pumpAndSettle();
+    expect(await result(), DitherKind.blueNoise);
   });
 
-  testWidgets('the Gradient variant: Off pops 0', (t) async {
-    final result = await _open<int>(t, const PatternsPage.gradient(dither: 2));
+  testWidgets('the Gradient variant: Off pops DitherKind.off', (t) async {
+    final result = await _open<DitherKind>(t, const PatternsPage.gradient(dither: DitherKind.bayer2));
     await t.tap(find.text('Off'));
     await t.pumpAndSettle();
-    expect(await result(), 0);
+    expect(await result(), DitherKind.off);
+    expect((await result())!.isOff, isTrue);
   });
 
   test('PatternTilePainter repaints only when the tile, a color, or the scale changes', () {

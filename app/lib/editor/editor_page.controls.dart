@@ -1182,7 +1182,7 @@ extension _EditorControls on _EditorPageState {
   // The row-1 swatch: the tile in force, repeated at 2 px per cell in the two preview colors
   // (never the primary: it could match the toolbar); dimmed with a slash while Off (a generic
   // checker glyph if no tile was ever picked). Tap opens the page; long-press / right-click
-  // toggles Off ↔ the last tile without opening it. The Gradient's variant shows its Bayer dither
+  // toggles Off ↔ the last tile without opening it. The Gradient's variant shows its dither family
   // at the 50 % level and toggles Off ↔ the last size.
   // ---- Symmetry / mirror drawing (ADR 0026) --------------------------------------------------
   // One global mode across the mirroring tools (the AA chip's pattern), cycled by tap and picked
@@ -1362,13 +1362,14 @@ extension _EditorControls on _EditorPageState {
 
   Widget _patternSwatch() {
     final gradient = _tool == 'Gradient';
-    final on = gradient ? _gradDither != 0 : _patternActive;
-    final tile = gradient
-        ? bayerTile(_gradDither == 0 ? _gradDitherLast : _gradDither, (_gradDither == 0 ? _gradDitherLast : _gradDither) * 2)
-        : (_pattern ?? bayerTile(2, 2));
+    final on = gradient ? !_gradDither.isOff : _patternActive;
+    // The Gradient's swatch previews the dither family in force (the last one while Off) at its
+    // 50 % density; the gated tools' swatch shows the tile itself.
+    final dither = _gradDither.isOff ? _gradDitherLast : _gradDither;
+    final tile = _pattern ?? bayerTile(2, 2);
     final label = gradient ? 'Dither' : 'Pattern';
     final name = gradient
-        ? (on ? 'Bayer $_gradDither×$_gradDither' : 'Off')
+        ? (on ? _gradDither.name : 'Off')
         : (on ? (patternName(_pattern!) ?? 'Custom pattern') : 'Off');
     // The swatch reads like the row's other toggles (user decision 2026-09-04): while On it
     // sits in the same green chip the active FilterChips wear, with a check to its right;
@@ -1385,8 +1386,9 @@ extension _EditorControls on _EditorPageState {
         Opacity(
           opacity: on ? 1 : 0.35,
           child: CustomPaint(
-              painter: PatternTilePainter(
-                  tile: tile, onColor: _patternOnColor, offColor: _patternOffColor, scale: 2)),
+              painter: gradient
+                  ? DitherTilePainter(kind: dither, onColor: _patternOnColor, offColor: _patternOffColor, scale: 2)
+                  : PatternTilePainter(tile: tile, onColor: _patternOnColor, offColor: _patternOffColor, scale: 2)),
         ),
         if (!on) const CustomPaint(painter: _SlashPainter()),
       ]),
@@ -1423,7 +1425,7 @@ extension _EditorControls on _EditorPageState {
   Future<void> _openPatternsPage() async {
     if (_playing) _pause();
     if (_tool == 'Gradient') {
-      final n = await Navigator.of(context).push<int>(MaterialPageRoute(
+      final k = await Navigator.of(context).push<DitherKind>(MaterialPageRoute(
         builder: (_) => PatternsPage.gradient(
           dither: _gradDither,
           onColor: _patternOnColor,
@@ -1432,8 +1434,8 @@ extension _EditorControls on _EditorPageState {
           onDisplayColorsChanged: _setPatternDisplayColors,
         ),
       ));
-      if (!mounted || n == null) return;
-      _setGradDither(n);
+      if (!mounted || k == null) return;
+      _setGradDither(k);
       return;
     }
     final tool = _tool;
@@ -1480,7 +1482,7 @@ extension _EditorControls on _EditorPageState {
   // page. A no-op with a hint until a pattern was picked at least once.
   void _togglePattern() {
     if (_tool == 'Gradient') {
-      _setGradDither(_gradDither == 0 ? _gradDitherLast : 0);
+      _setGradDither(_gradDither.isOff ? _gradDitherLast : DitherKind.off);
       return;
     }
     if (_pattern == null) {
@@ -1492,12 +1494,12 @@ extension _EditorControls on _EditorPageState {
     _persistPattern();
   }
 
-  void _setGradDither(int n) {
+  void _setGradDither(DitherKind k) {
     setState(() {
-      _gradDither = n;
-      if (n != 0) _gradDitherLast = n;
+      _gradDither = k;
+      if (!k.isOff) _gradDitherLast = k;
     });
-    _send('SetGradientDither($_gradDither)');
+    _send('SetGradientDither(${_gradDither.dsl})');
     if (_hasShapeDraft) _redraw(); // the pending gradient preview reflects it live
     _persistPattern();
   }

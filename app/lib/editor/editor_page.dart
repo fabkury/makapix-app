@@ -37,6 +37,7 @@ import 'levels_math.dart';
 import 'open_file.dart';
 import 'palette_io.dart';
 import 'palette_page.dart';
+import 'patterns/gradient_dither.dart';
 import 'patterns/pattern_tile.dart';
 import 'patterns/patterns_catalog.dart';
 import 'patterns/patterns_page.dart';
@@ -102,10 +103,13 @@ const _kAaPref = 'editor.aa_v1'; // the shared AA (anti-alias) toggle (ADR 0008)
 const _kGradExtraPref = 'editor.gradientColors_v1';
 const _kGradCountPref = 'editor.gradientCount_v1';
 // Patterns (ADR 0025): the global tile (`w,h,hex`), the tools that have it On, the Gradient's
-// dither size, and the recents strip — editor-wide preferences like the gradient roster.
+// dither, and the recents strip — editor-wide preferences like the gradient roster. The dither
+// moved from a Bayer size (v1, an int) to a `DitherKind` token (v2, a string) with ADR 0028; v1
+// is still read for the migration (its numbers are valid v2 tokens).
 const _kPatternPref = 'editor.pattern_v1';
 const _kPatternOnPref = 'editor.patternOn_v1';
 const _kGradDitherPref = 'editor.gradientDither_v1';
+const _kGradDitherPrefV2 = 'editor.gradientDither_v2';
 const _kPatternRecentsPref = 'editor.patternRecents_v1';
 const _kPatternColorsPref = 'editor.patternColors_v1'; // [ON, OFF] preview colors as #RRGGBBAA
 // Outline (2026-09-04 rider) rides the same "UI-only action group" rails: row-1 buttons, no
@@ -342,12 +346,13 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // with an On/Off flag per gated tool — pick Bayer 4×4 once, have the Pencil On and the Bucket
   // Off. The engine holds only what is in force for the current tool: _pushToolSettings resolves
   // the pair into `SetPattern(w,h,hex)` or `SetPattern(off)` on every tool switch, so a journal
-  // replays the same lines the live session ran. The Gradient keeps its own Bayer dither size
-  // (0 = off) and the last non-zero one for the long-press toggle. All persisted editor-wide.
+  // replays the same lines the live session ran. The Gradient keeps its own dither family
+  // (ADR 0028; Off = a smooth ramp) and the last non-Off one for the long-press toggle. All
+  // persisted editor-wide.
   PatternTile? _pattern;
   final Map<String, bool> _patternOn = {};
   final List<PatternTile> _patternRecents = [];
-  int _gradDither = 0, _gradDitherLast = 4;
+  DitherKind _gradDither = DitherKind.off, _gradDitherLast = DitherKind.bayer4;
   // The two colors patterns are PREVIEWED in (the row-1 swatch and the Patterns/Dither pages),
   // never the primary color: a primary close to the toolbar would hide the tile. Black on white
   // by default (user decision 2026-09-04), editable on the page, persisted editor-wide. The tool

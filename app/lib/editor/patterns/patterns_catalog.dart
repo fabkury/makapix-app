@@ -60,9 +60,6 @@ PatternTile bayerTile(int n, int level) {
   return PatternTile.generate(n, n, (x, y) => m[y][x] < level)!;
 }
 
-/// The three Bayer families the Gradient's dither picks from, previewed at their 50 % level.
-const List<int> kGradientDitherSizes = [2, 4, 8];
-
 List<PatternFamily>? _catalog;
 
 /// The catalog, built on first use.

@@ -22,7 +22,7 @@ extension _EditorEngine on _EditorPageState {
       final gradCount = prefs.getInt(_kGradCountPref);
       final patSaved = prefs.getString(_kPatternPref);
       final patOnSaved = prefs.getStringList(_kPatternOnPref);
-      final gradDither = prefs.getInt(_kGradDitherPref);
+      final gradDither = prefs.getString(_kGradDitherPrefV2) ?? prefs.getInt(_kGradDitherPref)?.toString();
       final patRecents = prefs.getStringList(_kPatternRecentsPref);
       final patColors = prefs.getStringList(_kPatternColorsPref);
       final all = tools.map((t) => t.dsl).toList();
@@ -89,12 +89,13 @@ extension _EditorEngine on _EditorPageState {
             _patternOnColor = _tryParseHex(patColors[0]) ?? _patternOnColor;
             _patternOffColor = _tryParseHex(patColors[1]) ?? _patternOffColor;
           }
-          if (gradDither != null && const [0, 2, 4, 8].contains(gradDither)) {
-            _gradDither = gradDither;
-            if (gradDither != 0) _gradDitherLast = gradDither;
+          final dither = gradDither == null ? null : DitherKind.parse(gradDither);
+          if (dither != null) {
+            _gradDither = dither;
+            if (!dither.isOff) _gradDitherLast = dither;
           }
           if (_patternActive) _send(_patternDsl);
-          if (_gradDither != 0) _send('SetGradientDither($_gradDither)');
+          if (!_gradDither.isOff) _send('SetGradientDither(${_gradDither.dsl})');
         });
       }
     } catch (_) {/* prefs unavailable → keep defaults */}
@@ -153,7 +154,7 @@ extension _EditorEngine on _EditorPageState {
         await prefs.setString(_kPatternPref, pat.pref);
       }
       await prefs.setStringList(_kPatternOnPref, [for (final e in _patternOn.entries) if (e.value) e.key]);
-      await prefs.setInt(_kGradDitherPref, _gradDither);
+      await prefs.setString(_kGradDitherPrefV2, _gradDither.dsl);
       await prefs.setStringList(_kPatternRecentsPref, [for (final t in _patternRecents) t.pref]);
       await prefs.setStringList(_kPatternColorsPref, [_hex(_patternOnColor), _hex(_patternOffColor)]);
     } catch (_) {}
@@ -951,7 +952,7 @@ extension _EditorEngine on _EditorPageState {
     // Patterns (ADR 0025), each on its own line for the same reason: the tile in force for THIS
     // tool (per-tool On/Off is a shell concept, like per-tool Precision), and the Gradient's dither.
     _send(_patternDsl);
-    _send('SetGradientDither($_gradDither)');
+    _send('SetGradientDither(${_gradDither.dsl})');
     // Symmetry (ADR 0026), on its own line for the same line-skip reason. Global, not per tool:
     // the engine ignores it for the tools that do not mirror.
     _send(_symDsl);

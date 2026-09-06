@@ -3,13 +3,15 @@
 // colors (ON and OFF, black on white by default, editable on the page and persisted by the
 // editor), never in the primary color: a primary close to the page background would make the
 // tiles unreadable, and the preview is about the tile's shape, not the paint. The tool itself
-// still paints ON cells in the primary color. The Gradient's variant ("Dither") offers only the
-// three Bayer families plus Off. The page owns no editor state beyond the two preview colors it
-// edits: it takes plain values and pops a [PatternPick] (or an `int` dither size for the
-// Gradient), so widget tests drive it without the engine.
+// still paints ON cells in the primary color. The Gradient's variant ("Dither") offers the dither
+// families of ADR 0028 (Bayer, blue noise, halftone, lines, noise) plus Off, each previewed at its
+// 50 % density. The page owns no editor state beyond the two preview colors it edits: it takes
+// plain values and pops a [PatternPick] (or a [DitherKind] for the Gradient), so widget tests
+// drive it without the engine.
 import 'package:flutter/material.dart';
 
 import '../widgets/painters.dart' show AlphaSwatch;
+import 'gradient_dither.dart';
 import 'pattern_tile.dart';
 import 'patterns_catalog.dart';
 
@@ -111,9 +113,9 @@ class PatternsPage extends StatefulWidget {
     this.pickColor,
     this.onDisplayColorsChanged,
   })  : gradient = false,
-        dither = 0;
+        dither = DitherKind.off;
 
-  /// The Gradient's variant: the three Bayer families and Off. Pops an `int` (0, 2, 4, 8).
+  /// The Gradient's variant: every dither family and Off. Pops a [DitherKind].
   const PatternsPage.gradient({
     super.key,
     required this.dither,
@@ -132,7 +134,7 @@ class PatternsPage extends StatefulWidget {
   final bool on;
   final List<PatternTile> recents;
   final bool gradient;
-  final int dither;
+  final DitherKind dither;
   final Color onColor, offColor;
   final PatternColorPicker? pickColor;
   final void Function(Color onColor, Color offColor)? onDisplayColorsChanged;
@@ -231,24 +233,26 @@ class _PatternsPageState extends State<PatternsPage> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
       children: [
-        _hint('Tap a matrix size to dither the gradient. Each pixel takes one of the two nearest gradient colors, '
-            'never a blended shade; larger matrices give more density steps.'),
+        _hint('Tap a dither to use it on the gradient. Each pixel takes one of the two nearest gradient colors, '
+            'never a blended shade; the pattern decides which pixels flip first as the ramp advances. '
+            'Previews show each pattern at half density.'),
         _colorsRow(),
         _offTile(context,
-            selected: widget.dither == 0,
-            subtitle: 'A smooth ramp between the colors',
-            onTap: () => Navigator.pop(context, 0)),
-        _header('Bayer ordered dither'),
-        for (final n in kGradientDitherSizes)
-          ListTile(
-            leading: PatternTileBox(
-                tile: bayerTile(n, n * n ~/ 2), onColor: _on, offColor: _off, size: 44, scale: n == 8 ? 3 : 4),
-            title: Text('Bayer $n×$n'),
-            subtitle: Text('${n * n} density steps'),
-            selected: widget.dither == n,
-            selectedTileColor: Colors.white10,
-            onTap: () => Navigator.pop(context, n),
-          ),
+            selected: widget.dither.isOff,
+            subtitle: DitherKind.off.hint,
+            onTap: () => Navigator.pop(context, DitherKind.off)),
+        for (final family in DitherKind.families) ...[
+          _header(family),
+          for (final k in DitherKind.inFamily(family))
+            ListTile(
+              leading: DitherTileBox(kind: k, onColor: _on, offColor: _off, size: 44, scale: k.previewScale),
+              title: Text(k.name),
+              subtitle: Text(k.hint),
+              selected: widget.dither == k,
+              selectedTileColor: Colors.white10,
+              onTap: () => Navigator.pop(context, k),
+            ),
+        ],
       ],
     );
   }
