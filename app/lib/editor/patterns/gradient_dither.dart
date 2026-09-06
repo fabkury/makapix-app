@@ -44,20 +44,20 @@ class DitherKind {
   bool get isOff => _fam == _Family.off;
 
   static const String familyBayer = 'Bayer ordered dither';
-  static const String familyBlue = 'Blue noise';
   static const String familyHalftone = 'Halftone';
   static const String familyLines = 'Lines';
   static const String familyNoise = 'Noise';
 
-  /// The page's section order.
-  static const List<String> families = [familyBayer, familyBlue, familyHalftone, familyLines, familyNoise];
+  /// The page's section order. Blue noise lists under Noise (user decision 2026-09-06), so the
+  /// page order differs from [all] there.
+  static const List<String> families = [familyBayer, familyHalftone, familyLines, familyNoise];
 
   static const off = DitherKind._(_Family.off, 0, '0', 'Off', '', 1, 'A smooth ramp between the colors', 4);
   static const bayer2 = DitherKind._(_Family.bayer, 2, '2', 'Bayer 2×2', familyBayer, 4, '4 density steps', 4);
   static const bayer4 = DitherKind._(_Family.bayer, 4, '4', 'Bayer 4×4', familyBayer, 16, '16 density steps', 4);
   static const bayer8 = DitherKind._(_Family.bayer, 8, '8', 'Bayer 8×8', familyBayer, 64, '64 density steps', 3);
   static const blueNoise =
-      DitherKind._(_Family.blue, 64, 'blue', 'Blue noise', familyBlue, 4096, '4096 steps, no visible pattern', 2);
+      DitherKind._(_Family.blue, 64, 'blue', 'Blue noise', familyNoise, 4096, '4096 steps, no visible pattern', 2);
   static const halftone4 =
       DitherKind._(_Family.halftone, 4, 'halftone4', 'Halftone 4×4', familyHalftone, 16, 'Dots growing from the cell center', 4);
   static const halftone8 =

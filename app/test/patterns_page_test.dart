@@ -198,8 +198,8 @@ void main() {
         await t.dragUntilVisible(find.widgetWithText(ListTile, k.name), find.byType(ListView), const Offset(0, -120));
         expect(find.widgetWithText(ListTile, k.name), findsOneWidget);
         // The section header sits right above the family's first kind — built, possibly just
-        // scrolled out of view ("Blue noise" names both a header and a kind, hence findsWidgets).
-        if (first) expect(find.text(family, skipOffstage: false), findsWidgets, reason: family);
+        // scrolled out of view.
+        if (first) expect(find.text(family, skipOffstage: false), findsOneWidget, reason: family);
         first = false;
       }
     }
@@ -207,6 +207,11 @@ void main() {
     await t.drag(find.byType(ListView), const Offset(0, 4000));
     await t.pumpAndSettle();
     await t.dragUntilVisible(find.widgetWithText(ListTile, 'Blue noise'), find.byType(ListView), const Offset(0, -120));
+    expect(find.text('Noise', skipOffstage: false), findsOneWidget, reason: 'blue noise lists under Noise');
+    // dragUntilVisible stops once the row is BUILT (it may still hang below the 600 px test
+    // viewport, near the end of the list): bring it fully in before tapping.
+    await t.ensureVisible(find.widgetWithText(ListTile, 'Blue noise'));
+    await t.pumpAndSettle();
     await t.tap(find.widgetWithText(ListTile, 'Blue noise'));
     await t.pumpAndSettle();
     expect(await result(), DitherKind.blueNoise);

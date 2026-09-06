@@ -122,11 +122,13 @@ void main() {
     }
   });
 
-  test('the page grouping covers every kind but Off exactly once, in order', () {
+  test('the page grouping covers every kind but Off exactly once; blue noise lists under Noise', () {
     final listed = [for (final f in DitherKind.families) ...DitherKind.inFamily(f)];
-    expect(listed, DitherKind.all.where((k) => !k.isOff).toList());
+    expect(listed.toSet(), DitherKind.all.where((k) => !k.isOff).toSet());
+    expect(listed.length, 16);
+    expect(DitherKind.families, [DitherKind.familyBayer, DitherKind.familyHalftone, DitherKind.familyLines, DitherKind.familyNoise]);
     expect(DitherKind.inFamily(DitherKind.familyLines).length, 8);
-    expect(DitherKind.inFamily(DitherKind.familyNoise), [DitherKind.whiteNoise, DitherKind.ign]);
+    expect(DitherKind.inFamily(DitherKind.familyNoise), [DitherKind.blueNoise, DitherKind.whiteNoise, DitherKind.ign]);
   });
 
   test('DitherTilePainter repaints only when the kind, a color, or the scale changes', () {

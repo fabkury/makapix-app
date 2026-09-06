@@ -1181,9 +1181,11 @@ extension _EditorControls on _EditorPageState {
 
   // The row-1 swatch: the tile in force, repeated at 2 px per cell in the two preview colors
   // (never the primary: it could match the toolbar); dimmed with a slash while Off (a generic
-  // checker glyph if no tile was ever picked). Tap opens the page; long-press / right-click
-  // toggles Off ↔ the last tile without opening it. The Gradient's variant shows its dither family
-  // at the 50 % level and toggles Off ↔ the last size.
+  // checker glyph if no tile was ever picked). A tap on the tile opens the page; while On, a tap
+  // on the green chip area around the tile turns the pattern Off in one tap (user decision
+  // 2026-09-06); long-press / right-click anywhere toggles Off ↔ the last tile without opening
+  // the page. The Gradient's variant shows its dither family at the 50 % level and toggles Off ↔
+  // the last family.
   // ---- Symmetry / mirror drawing (ADR 0026) --------------------------------------------------
   // One global mode across the mirroring tools (the AA chip's pattern), cycled by tap and picked
   // directly from the long-press sheet, which also holds the axis actions. Session-only state.
@@ -1374,31 +1376,38 @@ extension _EditorControls on _EditorPageState {
     // The swatch reads like the row's other toggles (user decision 2026-09-04): while On it
     // sits in the same green chip the active FilterChips wear, with a check to its right;
     // while Off it is a plain dark chip holding the dimmed, slashed tile.
-    final tileBox = Container(
-      width: 26,
-      height: 26,
-      decoration: BoxDecoration(
-        border: Border.all(color: on ? Colors.white : Colors.white38),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(fit: StackFit.expand, children: [
-        Opacity(
-          opacity: on ? 1 : 0.35,
-          child: CustomPaint(
-              painter: gradient
-                  ? DitherTilePainter(kind: dither, onColor: _patternOnColor, offColor: _patternOffColor, scale: 2)
-                  : PatternTilePainter(tile: tile, onColor: _patternOnColor, offColor: _patternOffColor, scale: 2)),
+    // Two tap zones while On: the tile opens the page, the green area around it (the chip's
+    // padding and the check) is a one-tap Off. The inner detector only claims taps, so a
+    // long-press or right-click on the tile still reaches the outer one.
+    final tileBox = GestureDetector(
+      onTap: _openPatternsPage,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: 26,
+        height: 26,
+        decoration: BoxDecoration(
+          border: Border.all(color: on ? Colors.white : Colors.white38),
+          borderRadius: BorderRadius.circular(4),
         ),
-        if (!on) const CustomPaint(painter: _SlashPainter()),
-      ]),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(fit: StackFit.expand, children: [
+          Opacity(
+            opacity: on ? 1 : 0.35,
+            child: CustomPaint(
+                painter: gradient
+                    ? DitherTilePainter(kind: dither, onColor: _patternOnColor, offColor: _patternOffColor, scale: 2)
+                    : PatternTilePainter(tile: tile, onColor: _patternOnColor, offColor: _patternOffColor, scale: 2)),
+          ),
+          if (!on) const CustomPaint(painter: _SlashPainter()),
+        ]),
+      ),
     );
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 3),
       child: Tooltip(
-        message: '$label: $name',
+        message: on ? '$label: $name · tap the tile to change, the green edge to turn off' : '$label: $name',
         child: GestureDetector(
-          onTap: _openPatternsPage,
+          onTap: on ? _togglePattern : _openPatternsPage,
           onLongPress: _togglePattern,
           onSecondaryTap: _togglePattern,
           child: Container(
