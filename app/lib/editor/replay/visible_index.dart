@@ -25,7 +25,7 @@ const Set<String> _kAlwaysVisible = {
   'NudgeLayers', 'NudgeMove',
   // Whole-canvas / frame / layer transforms.
   'FlipCanvasH', 'FlipCanvasV', 'FlipFrameH', 'FlipFrameV', 'FlipH', 'FlipV',
-  'Invert', 'InvertFrame', 'ResizeCanvas', 'CropToSelection',
+  'Invert', 'InvertFrame', 'ResizeCanvas', 'CropToSelection', 'CropCanvas',
   'Rotate', 'RotateFrame', 'RotateLayer', 'ScaleFrame', 'ScaleLayer',
   // Draft commits + adjustment applies (the moment pixels land).
   'ShapeCommit', 'PasteCommit', 'MoveDraftCommit', 'RotateDraftCommit', 'ScaleDraftCommit',

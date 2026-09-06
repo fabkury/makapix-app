@@ -322,6 +322,28 @@ pub extern "C" fn mkpx_used_colors_sorted_json(ptr: *mut Session) -> *mut c_char
     }
 }
 
+/// Bounding box of every non-transparent canvas pixel across all frames and layers, as a
+/// malloc'd `"x,y,w,h"` C string in canvas px — or `""` when the document is fully transparent.
+/// The Crop canvas page's "Trim to content" (ADR 0027). Free with `mkpx_free_string`.
+#[no_mangle]
+pub extern "C" fn mkpx_content_bounds(ptr: *mut Session) -> *mut c_char {
+    match session(ptr).and_then(|s| s.content_bounds()) {
+        Some(r) => cstring(&format!("{},{},{},{}", r.x, r.y, r.w, r.h)),
+        None => cstring(""),
+    }
+}
+
+/// Bounding box of the current selection mask in canvas px (gutter reachable as negative /
+/// past-edge values), as a malloc'd `"x,y,w,h"` C string — or `""` without a selection. Seeds the
+/// Crop canvas page's rectangle (ADR 0027). Free with `mkpx_free_string`.
+#[no_mangle]
+pub extern "C" fn mkpx_selection_bounds(ptr: *mut Session) -> *mut c_char {
+    match session(ptr).and_then(|s| s.bounds_of_selection()) {
+        Some(r) => cstring(&format!("{},{},{},{}", r.x, r.y, r.w, r.h)),
+        None => cstring(""),
+    }
+}
+
 /// Upper-bound estimate of the `.mkpx` payload the document saves to (bytes) — check before
 /// `mkpx_save` on constrained platforms (SPEC §8.2b).
 #[no_mangle]

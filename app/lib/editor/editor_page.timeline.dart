@@ -325,6 +325,7 @@ extension _EditorTimeline on _EditorPageState {
   // or selection; these are the document-wide versions.
   void _canvasMenu() => _editorSubMenu('Canvas', (ctx) => [
         _sheetItem(ctx, Icons.aspect_ratio, 'Resize canvas…', _resizeCanvasDialog),
+        _sheetItem(ctx, Icons.crop, 'Crop canvas…', _cropCanvasPage),
         const Divider(height: 1),
         _sheetItem(ctx, Icons.rotate_right, 'Rotate 90° CW', () => _act('Rotate(1)')),
         _sheetItem(ctx, Icons.rotate_left, 'Rotate 90° CCW', () => _act('Rotate(3)')),

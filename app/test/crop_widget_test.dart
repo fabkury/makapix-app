@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -219,6 +220,80 @@ void main() {
     });
   });
 
+  group('Crop canvas geometry (ADR 0027)', () {
+    test('setRect clips to the source and rejects an empty clip; isWhole', () {
+      final g = CropGeometry(srcW: 32, srcH: 32, canvasW: 32, canvasH: 32);
+      expect(g.isWhole, isTrue); // canvas == source: the default rect is the whole canvas
+      expect(g.setRect(-4, -4, 12, 12), isTrue); // a selection reaching into the gutter
+      expect((g.x, g.y, g.w, g.h), (0, 0, 8, 8));
+      expect(g.isWhole, isFalse);
+      expect(g.setRect(40, 40, 4, 4), isFalse); // fully outside: unchanged
+      expect((g.x, g.y, g.w, g.h), (0, 0, 8, 8));
+      expect(g.setRect(28, 30, 10, 10), isTrue);
+      expect((g.x, g.y, g.w, g.h), (28, 30, 4, 2));
+    });
+
+    test('setSize keeps the top-left, shifts to stay inside, and releases a violated lock', () {
+      final g = CropGeometry(srcW: 64, srcH: 32, canvasW: 64, canvasH: 32);
+      g.setRect(50, 20, 4, 4);
+      g.setSize(32, 32); // would overflow both edges → shifted, never shrunk
+      expect((g.x, g.y, g.w, g.h), (32, 0, 32, 32));
+      g.setSize(128, 128); // larger than the source → the whole source
+      expect(g.isWhole, isTrue);
+      g.toggleAspectLock(); // 2:1
+      g.setSize(16, 16); // a square preset on a 2:1 canvas releases the lock
+      expect(g.aspectLocked, isFalse);
+      expect((g.w, g.h), (16, 16));
+    });
+  });
+
+  testWidgets('CropPage in canvas mode: composited preview, disabled OK on the whole canvas, Trim', (tester) async {
+    await tester.runAsync(() async {
+      var composites = 0;
+      final preview = CanvasPreview(
+        srcW: 8,
+        srcH: 8,
+        totalFrames: 2,
+        durationsUs: const [100000, 200000],
+        composite: (f) {
+          composites++;
+          return _solidImage(8, 8);
+        },
+      );
+      await tester.pumpWidget(MaterialApp(
+        home: CropPage(
+          mode: CropPageMode.canvas,
+          preview: preview,
+          srcW: 8,
+          srcH: 8,
+          canvasW: 8,
+          canvasH: 8,
+          contentBounds: const Rect.fromLTWH(2, 2, 3, 3),
+          sizeNote: (w, h) => Text('note $w×$h'),
+        ),
+      ));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      await tester.pump();
+      expect(preview.loaded, isTrue);
+      expect(preview.animated, isTrue);
+      expect(composites, 2);
+      expect(preview.durations, const [Duration(milliseconds: 100), Duration(milliseconds: 200)]);
+      expect(find.text('Crop canvas'), findsOneWidget);
+      expect(find.text('New canvas: 8 × 8 px'), findsOneWidget);
+      expect(find.text('note 8×8'), findsOneWidget);
+      final crop = tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Crop'));
+      expect(crop.onPressed, isNull, reason: 'the whole canvas has nothing to crop');
+      await tester.tap(find.byTooltip('Trim to content'));
+      await tester.pump();
+      expect(find.text('New canvas: 3 × 3 px'), findsOneWidget);
+      expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Crop')).onPressed, isNotNull);
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      await tester.pump();
+      preview.dispose();
+    });
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('CropPage pumps and disposes cleanly (no tick-after-dispose)', (tester) async {
     // Real image decoding (`instantiateImageCodec`/`toImage`) needs the real event loop, so the
     // whole flow runs inside `runAsync` — the fake test clock never resolves dart:ui codec futures.
@@ -239,6 +314,12 @@ void main() {
     });
     expect(tester.takeException(), isNull);
   });
+}
+
+Future<ui.Image> _solidImage(int w, int h) {
+  final c = Completer<ui.Image>();
+  ui.decodeImageFromPixels(Uint8List.fromList(List.filled(w * h * 4, 255)), w, h, ui.PixelFormat.rgba8888, c.complete);
+  return c.future;
 }
 
 Future<Uint8List> _solidPng(int w, int h) async {

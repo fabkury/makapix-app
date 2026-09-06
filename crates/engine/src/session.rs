@@ -5180,6 +5180,88 @@ mod tests {
     }
 
     #[test]
+    fn crop_canvas_crops_every_frame_and_layer_in_one_undo_step() {
+        let mut s = Session::new(32, 32);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(10, 10); // frame 0, layer 0
+        s.add_layer();
+        s.settings.primary = Rgba8::new(255, 0, 0, 255);
+        s.tap(12, 12); // frame 0, layer 1
+        s.add_frame();
+        s.tap(9, 9); // frame 1
+        s.crop_canvas(8, 8, 8, 8);
+        assert_eq!(s.size(), (8, 8));
+        assert_eq!(s.pixel(0, 0, 2, 2), Rgba8::WHITE);
+        assert_eq!(s.pixel(0, 1, 4, 4), Rgba8::new(255, 0, 0, 255));
+        assert_eq!(s.pixel(1, 0, 1, 1), Rgba8::new(255, 0, 0, 255));
+        assert!(s.doc.undo()); // ONE step restores everything
+        assert_eq!(s.size(), (32, 32));
+        assert_eq!(s.pixel(0, 0, 10, 10), Rgba8::WHITE);
+        assert_eq!(s.pixel(1, 0, 9, 9), Rgba8::new(255, 0, 0, 255));
+    }
+
+    #[test]
+    fn crop_canvas_clips_and_ignores_no_ops() {
+        let mut s = Session::new(16, 16);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(15, 15);
+        // Whole canvas → no-op, no undo step.
+        s.crop_canvas(0, 0, 16, 16);
+        assert_eq!(s.size(), (16, 16));
+        assert!(s.doc.undo()); // the next undo reverts the tap itself: no crop step was added
+        assert_eq!(s.pixel(0, 0, 15, 15).a, 0);
+        assert!(s.doc.redo());
+        assert_eq!(s.pixel(0, 0, 15, 15), Rgba8::WHITE);
+        // Overshooting rect is clipped to the canvas.
+        s.crop_canvas(8, 8, 100, 100);
+        assert_eq!(s.size(), (8, 8));
+        assert_eq!(s.pixel(0, 0, 7, 7), Rgba8::WHITE);
+        assert!(s.doc.undo());
+        // Fully outside → no-op.
+        s.crop_canvas(16, 16, 4, 4);
+        assert_eq!(s.size(), (16, 16));
+        s.crop_canvas(4, 4, 0, 3);
+        assert_eq!(s.size(), (16, 16));
+        // The DSL spelling.
+        s.run_script("CropCanvas(4, 4, 4, 4)").unwrap();
+        assert_eq!(s.size(), (4, 4));
+        assert!(s.doc.undo());
+        assert_eq!(s.size(), (16, 16));
+    }
+
+    #[test]
+    fn crop_canvas_consumes_the_selection() {
+        let mut s = Session::new(16, 16);
+        s.tool = ToolKind::SelectRect;
+        s.stroke_path(&[(2, 2), (6, 6)]);
+        assert!(s.doc.selection.is_some());
+        s.crop_canvas(1, 1, 8, 8);
+        assert!(s.doc.selection.is_none());
+        assert!(s.doc.undo());
+        assert!(s.doc.selection.is_some());
+    }
+
+    #[test]
+    fn content_bounds_unions_frames_and_layers_within_the_canvas() {
+        let mut s = Session::new(32, 32);
+        assert_eq!(s.content_bounds(), None);
+        s.settings.primary = Rgba8::WHITE;
+        s.tap(10, 12);
+        assert_eq!(s.content_bounds(), Some(IRect::new(10, 12, 1, 1)));
+        s.add_layer();
+        s.tap(20, 5);
+        s.add_frame();
+        s.tap(3, 30);
+        assert_eq!(s.content_bounds(), Some(IRect::new(3, 5, 18, 26)));
+        // Gutter content (nudged off-canvas) does not count.
+        let mut g = Session::new(8, 8);
+        g.settings.primary = Rgba8::WHITE;
+        g.tap(0, 0);
+        g.nudge_layers(-1, 0);
+        assert_eq!(g.content_bounds(), None);
+    }
+
+    #[test]
     fn crop_to_selection_resizes() {
         let mut s = Session::new(32, 32);
         s.settings.primary = Rgba8::WHITE;

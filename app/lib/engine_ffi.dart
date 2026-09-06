@@ -276,6 +276,8 @@ class Engine {
   late final _StateD _usedColors = _lib.lookupFunction<_StateC, _StateD>('mkpx_used_colors_json');
   late final _StateD _usedColorsSorted = _lib.lookupFunction<_StateC, _StateD>('mkpx_used_colors_sorted_json');
   late final _U64D _saveEstimate = _lib.lookupFunction<_U64C, _U64D>('mkpx_save_estimate');
+  late final _StateD _contentBounds = _lib.lookupFunction<_StateC, _StateD>('mkpx_content_bounds');
+  late final _StateD _selectionBounds = _lib.lookupFunction<_StateC, _StateD>('mkpx_selection_bounds');
   late final _OutlineD _outline = _lib.lookupFunction<_OutlineC, _OutlineD>('mkpx_outline_mask');
   late final _U32D _outlinePresent = _lib.lookupFunction<_U32C, _U32D>('mkpx_outline_present');
   late final _U64D _playStatusRaw = _lib.lookupFunction<_U64C, _U64D>('mkpx_play_status');
@@ -429,6 +431,23 @@ class Engine {
     final s = p.toDartString();
     _freeStr(p);
     return s;
+  }
+
+  /// Bounding box of every non-transparent canvas pixel across all frames and layers (canvas px),
+  /// or null when the document is fully transparent — the Crop canvas page's "Trim to content".
+  ({int x, int y, int w, int h})? contentBounds() => _bounds(_contentBounds);
+
+  /// Bounding box of the current selection mask in canvas px (may reach into the gutter as
+  /// negative / past-edge values), or null without a selection — seeds the Crop canvas rectangle.
+  ({int x, int y, int w, int h})? selectionBounds() => _bounds(_selectionBounds);
+
+  ({int x, int y, int w, int h})? _bounds(_StateD fn) {
+    final p = fn(_s);
+    final s = p.toDartString();
+    _freeStr(p);
+    if (s.isEmpty) return null;
+    final v = s.split(',').map(int.parse).toList();
+    return (x: v[0], y: v[1], w: v[2], h: v[3]);
   }
 
   /// [usedColorsSortedJson] **off the UI thread**: a background isolate builds its own engine

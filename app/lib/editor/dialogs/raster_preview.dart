@@ -1,18 +1,19 @@
-// The decoded-frames preview shared by the import flow's Crop and Place pages (2026-09-01): one
-// decode of the source raster (with the crop page's soft caps), frame durations, and a tiny
-// playback clock. The import flow creates it, hands the same instance to both pages, and
-// disposes it once when the flow ends — so a many-frame GIF is decoded once, not per page.
+// The decoded-frames preview shared by the import flow's Crop and Place pages (2026-09-01) and,
+// since the Crop canvas page (ADR 0027, 2026-09-06), by the document itself: one decode of the
+// frames (with the crop page's soft caps), frame durations, and a tiny playback clock. The owner
+// creates it, hands the same instance to every page that draws it, and disposes it once when the
+// flow ends — so a many-frame GIF is decoded once, not per page.
 //
-// The preview is spatial and cosmetic: a truncated preview never affects the actual import (the
-// engine decodes the full animation independently on its own isolate).
+// The preview is spatial and cosmetic: a truncated preview never affects the actual import or
+// crop (the engine works on the full document / animation independently).
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 
-class RasterPreview extends ChangeNotifier {
-  RasterPreview(this.bytes, {required this.srcW, required this.srcH});
+/// Frames + durations + playback clock; subclasses say where the frames come from.
+abstract class FramePreview extends ChangeNotifier {
+  FramePreview({required this.srcW, required this.srcH});
 
-  final Uint8List bytes;
   final int srcW, srcH;
 
   // Soft caps: a big source can allocate ~1 GB+ of GPU textures across 1,024 frames, which OOMs
@@ -30,21 +31,28 @@ class RasterPreview extends ChangeNotifier {
   bool get loaded => frames.isNotEmpty;
   bool get animated => frames.length > 1;
 
+  /// How many frames the source has (may open a codec).
+  @protected
+  Future<int> frameCount();
+
+  /// The next frame in order, with its duration (0 = use the default).
+  @protected
+  Future<(ui.Image, Duration)> nextFrame(int index);
+
   /// Decode once; further calls are no-ops. Notifies on completion (or error).
   Future<void> load() async {
     if (_loading || loaded || loadError) return;
     _loading = true;
     try {
-      final codec = await ui.instantiateImageCodec(bytes);
-      final count = codec.frameCount;
+      final count = await frameCount();
       final fs = <ui.Image>[];
       final ds = <Duration>[];
       var pixels = 0;
       var trunc = false;
       for (var i = 0; i < count; i++) {
-        final fi = await codec.getNextFrame();
-        fs.add(fi.image);
-        ds.add(fi.duration.inMicroseconds <= 0 ? const Duration(milliseconds: 100) : fi.duration);
+        final (image, duration) = await nextFrame(i);
+        fs.add(image);
+        ds.add(duration.inMicroseconds <= 0 ? const Duration(milliseconds: 100) : duration);
         pixels += srcW * srcH;
         if (fs.length >= kMaxFrames || pixels >= kMaxPixels) {
           trunc = i + 1 < count;
@@ -90,4 +98,47 @@ class RasterPreview extends ChangeNotifier {
     frames.clear();
     super.dispose();
   }
+}
+
+/// A raster file's frames (the import flow).
+class RasterPreview extends FramePreview {
+  RasterPreview(this.bytes, {required super.srcW, required super.srcH});
+
+  final Uint8List bytes;
+  ui.Codec? _codec;
+
+  @override
+  Future<int> frameCount() async {
+    _codec = await ui.instantiateImageCodec(bytes);
+    return _codec!.frameCount;
+  }
+
+  @override
+  Future<(ui.Image, Duration)> nextFrame(int index) async {
+    final fi = await _codec!.getNextFrame();
+    return (fi.image, fi.duration);
+  }
+}
+
+/// The open document's composited frames (the Crop canvas page): the owner supplies the frame
+/// count, each frame's duration, and a compositor that yields frame `i` as a [ui.Image].
+class CanvasPreview extends FramePreview {
+  CanvasPreview({
+    required super.srcW,
+    required super.srcH,
+    required this.totalFrames,
+    required List<int> durationsUs,
+    required this.composite,
+  }) : _durations = [for (final us in durationsUs) Duration(microseconds: us)];
+
+  final int totalFrames;
+  final List<Duration> _durations;
+  final Future<ui.Image> Function(int frame) composite;
+
+  @override
+  Future<int> frameCount() async => totalFrames;
+
+  @override
+  Future<(ui.Image, Duration)> nextFrame(int index) async =>
+      (await composite(index), index < _durations.length ? _durations[index] : Duration.zero);
 }

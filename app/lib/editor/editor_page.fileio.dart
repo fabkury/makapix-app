@@ -770,6 +770,53 @@ extension _EditorFileIo on _EditorPageState {
   // 1–512, [Engine.maxDim]).
   // The geared slider accumulates fractions, so every read rounds — the label, the Club check,
   // and the committed size agree (toInt() would truncate 63.7 to 63 under a "64" label).
+  /// ☰ → Canvas → Crop canvas… (ADR 0027, 2026-09-06): the import flow's crop editor, opened over
+  /// the document's own composited frames. Opens on the selection's bounds when there is one,
+  /// else the whole canvas; "Trim to content" targets the engine's content bounds; OK issues one
+  /// `CropCanvas(x, y, w, h)` verb (one undo step, journaled like any other canvas op).
+  Future<void> _cropCanvasPage() async {
+    final w = engine.width, h = engine.height;
+    final n = engine.frameCount;
+    final frames = (_state['frames'] as List?) ?? const [];
+    final durationsUs = [
+      for (var i = 0; i < n; i++)
+        i < frames.length ? (((frames[i] as Map)['duration_us'] as num?) ?? 100000).toInt() : 100000,
+    ];
+    final sel = engine.selectionBounds();
+    final content = engine.contentBounds();
+    Rect? rect(({int x, int y, int w, int h})? b) =>
+        b == null ? null : Rect.fromLTWH(b.x.toDouble(), b.y.toDouble(), b.w.toDouble(), b.h.toDouble());
+    // Each frame's composite is copied out of the engine's reused scratch buffer before _decode
+    // premultiplies it in place (the Place step does the same).
+    final preview = CanvasPreview(
+      srcW: w,
+      srcH: h,
+      totalFrames: n,
+      durationsUs: durationsUs,
+      composite: (f) => _decode(Uint8List.fromList(engine.compositeFrame(f)), w, h),
+    );
+    unawaited(preview.load());
+    try {
+      final r = await Navigator.of(context).push<Rect>(MaterialPageRoute(
+        builder: (_) => CropPage(
+          mode: CropPageMode.canvas,
+          preview: preview,
+          srcW: w,
+          srcH: h,
+          canvasW: w,
+          canvasH: h,
+          initialRect: rect(sel),
+          contentBounds: rect(content),
+          sizeNote: (cw, ch) => ClubSizeRules.accepted(cw, ch) ? null : _ClubSizeAlert(cw, ch),
+        ),
+      ));
+      if (r == null || !mounted) return;
+      _act('CropCanvas(${r.left.round()}, ${r.top.round()}, ${r.width.round()}, ${r.height.round()})');
+    } finally {
+      preview.dispose();
+    }
+  }
+
   Future<void> _resizeCanvasDialog() async {
     double w = engine.width.toDouble();
     double h = engine.height.toDouble();

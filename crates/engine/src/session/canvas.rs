@@ -289,12 +289,58 @@ impl Session {
             Some(b) => b,
             None => return,
         };
+        self.crop_storage(bounds);
+    }
+
+    /// Crop the canvas to an explicit rectangle in **canvas coordinates** — the `CropCanvas(x, y,
+    /// w, h)` verb behind the Crop canvas page (ADR 0027, 2026-09-06). The rectangle is clipped to
+    /// the canvas; an empty result or one that covers the whole canvas is a no-op (no undo step),
+    /// so an unchanged page closing with OK never dirties the history. Every frame and layer is
+    /// cropped in one undo step; the selection is consumed like `crop_to_selection`.
+    pub fn crop_canvas(&mut self, x: u16, y: u16, w: u16, h: u16) {
+        let canvas = IRect::new(0, 0, self.doc.size.w as u32, self.doc.size.h as u32);
+        let r = IRect::new(x as i32, y as i32, w as u32, h as u32).intersect(&canvas);
+        if r.w == 0 || r.h == 0 || r == canvas {
+            return;
+        }
+        let o = self.doc.origin();
+        self.shape_draft = None; // endpoints reference the old dimensions
+        self.crop_storage(IRect::new(r.x + o.x, r.y + o.y, r.w, r.h));
+    }
+
+    /// Bounding box of every non-transparent pixel on the canvas across all frames and layers, in
+    /// canvas coordinates — what the Crop canvas page's "Trim to content" sets the rectangle to.
+    /// Gutter content (pixels moved off-canvas) does not count: trimming is about what shows.
+    /// `None` when the document is entirely transparent.
+    pub fn content_bounds(&self) -> Option<IRect> {
+        let o = self.doc.origin();
+        let canvas = IRect::new(0, 0, self.doc.size.w as u32, self.doc.size.h as u32);
+        let mut acc: Option<IRect> = None;
+        for f in &self.doc.frames {
+            for l in &f.layers {
+                if let Some(b) = l.pixels.opaque_bounds() {
+                    let b = IRect::new(b.x - o.x, b.y - o.y, b.w, b.h).intersect(&canvas);
+                    if b.w == 0 || b.h == 0 {
+                        continue;
+                    }
+                    acc = Some(match acc {
+                        Some(a) => a.union(&b),
+                        None => b,
+                    });
+                }
+            }
+        }
+        acc
+    }
+
+    /// Shared crop: `bounds` is in **storage** coords. Shifts the whole old storage so the region's
+    /// top-left lands at the new canvas top-left, keeping whatever surrounding gutter still fits.
+    /// [SPEC §8]
+    fn crop_storage(&mut self, bounds: IRect) {
         self.settle_open_edits(); // the rebuild invalidates an open stroke's snapshot [fuzz FZ-1]
         let nw = (bounds.w as u16).clamp(MIN_DIM, MAX_DIM);
         let nh = (bounds.h as u16).clamp(MIN_DIM, MAX_DIM);
         let new_size = Size::new(nw, nh);
-        // `bounds` is in storage coords; shift the whole old storage so the selection's top-left lands
-        // at the new canvas top-left, keeping whatever surrounding gutter still fits. [SPEC §8]
         let old_storage = self.doc.storage();
         let new_margin = crate::document::Document::gutter_for(new_size);
         let new_storage = Size::new(new_size.w + 2 * new_margin.w, new_size.h + 2 * new_margin.h);

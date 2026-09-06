@@ -127,7 +127,7 @@ that build their own engine from `.mkpx` bytes — the session pointer never cro
 - A `Session` lives behind an opaque pointer; **no panic ever crosses the boundary** (errors come back as
   C strings / status codes; the workspace aborts on panic).
 
-Rust side: `crates/ffi/src/lib.rs` (~56 exports — the authoritative list). Dart side:
+Rust side: `crates/ffi/src/lib.rs` (~60 exports — the authoritative list). Dart side:
 `app/lib/engine_ffi.dart` — the `_open()` loader finds `makapix_ffi.dll` next to the exe (Windows),
 `libmakapix_ffi.so` via jniLibs (Android), and `MakapixFFI.framework/MakapixFFI` (iOS).
 

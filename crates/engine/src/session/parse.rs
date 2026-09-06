@@ -168,6 +168,7 @@ pub enum Action {
     ScaleDraftCancel,
     ResizeCanvas(u16, u16, u8, u8), // (w, h, anchor-x, anchor-y): 0 = left/top, 1 = center, 2 = right/bottom
     CropToSelection,
+    CropCanvas(u16, u16, u16, u16), // (x, y, w, h) in canvas px — ADR 0027; clipped, whole-canvas = no-op
     AddPaletteColor(Rgba8),
     RemovePaletteColor(usize),
     EditPaletteColor(usize, Rgba8),
@@ -378,6 +379,7 @@ impl Session {
             ScaleDraftCancel => self.scale_draft_cancel(),
             ResizeCanvas(w, h, ax, ay) => self.resize_canvas(w, h, ax, ay),
             CropToSelection => self.crop_to_selection(),
+            CropCanvas(x, y, w, h) => self.crop_canvas(x, y, w, h),
             AddPaletteColor(c) => self.add_palette_color(c),
             RemovePaletteColor(i) => self.remove_palette_color(i),
             EditPaletteColor(i, c) => self.set_palette_color(i, c),
@@ -825,6 +827,7 @@ fn parse_line(line: &str) -> Result<Action, String> {
             ResizeCanvas(u16a(0)?, u16a(1)?, ax, ay)
         }
         "CropToSelection" => CropToSelection,
+        "CropCanvas" => CropCanvas(u16a(0)?, u16a(1)?, u16a(2)?, u16a(3)?),
         "AddPaletteColor" => AddPaletteColor(color(0)?),
         "RemovePaletteColor" => RemovePaletteColor(usza(0)?),
         "EditPaletteColor" => EditPaletteColor(usza(0)?, color(1)?),

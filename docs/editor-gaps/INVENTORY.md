@@ -84,7 +84,7 @@ architecture cheaply. Any one of them is a sensible next feature.
 | A7 | **Reference image underlay** (opacity, lock to canvas, not part of the document) — plus the **remix source as reference** (§4 N4) | M–H | H | M | S | Aseprite, Pixelorama, Lospec, Pixaki (full-res layers), Pixquare, Dots (tracing template) |
 | A8 | **Onion skin range · opacity · tint** (prev/next counts, per-side toggle) | M | H | S–M | E F | Aseprite, LibreSprite, Pixelorama, Pixaki (10 frames), Pixquare |
 | A9 | **Loop mode UI** — Loop / Once / Ping-pong for playback **and** GIF/WebP export | M | M | S | S C | Aseprite, Pixelorama, LibreSprite, Pixquare |
-| A10 | **Trim to content** (canvas to the union of non-transparent bounds across all frames) | M | H | S | E | Aseprite (export), Lospec, Pixquare (export) |
+| A10 | ~~**Trim to content**~~ ✅ 2026-09-06 (the Crop canvas page's Trim button, ADR 0027) | M | H | S | E | Aseprite (export), Lospec, Pixquare (export) |
 | A11 | **Grid options** (spacing e.g. 8/16 px tile grid, color, subdivisions) + **checker/background settings** (colors, cell size, solid color) | M | H | S–M | S | every desktop tool; Pixaki, Pixquare |
 | A12 | **Canvas presets in New** (Game Boy 160×144, PICO-8 128×128, NES 256×240, C64 320×200, Club sizes) with an optional paired palette | M | M | S | S | Lospec, Pixaki, Pixel Studio |
 
@@ -317,9 +317,9 @@ The notes below are the original brainstorm.
 
 ### A10 — Trim to content
 
-- **Engine.** `TrimCanvas()` computes the union bounding box of non-transparent pixels over **all
-  frames and layers** (tile-sparse scan is cheap), then reuses `ResizeCanvas` machinery with an
-  explicit offset. One undo record; canvas size travels with the edit as today.
+- **Done 2026-09-06 (ADR 0027)** as a button on the Crop canvas page rather than a verb of its own:
+  `Session::content_bounds()` (union over all frames and layers, clipped to the canvas) seeds the
+  crop rectangle; the crop itself is `CropCanvas(x,y,w,h)`. One undo record.
 
 ### A11 — Grid options + checker settings
 

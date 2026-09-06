@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../widgets/painters.dart' show CanvasPainter;
 import 'raster_preview.dart';
 
 /// Fit `(rw, rh)` inside `(cw, ch)` preserving aspect ratio, **never upscaling** — the engine's
@@ -114,6 +115,34 @@ class CropGeometry {
 
   /// The on-canvas size this crop will produce — [fitNoUpscale].
   (int, int) resultDims() => fitNoUpscale(w, h, canvasW, canvasH);
+
+  /// Whether the rect is the entire source — nothing to crop.
+  bool get isWhole => x == 0 && y == 0 && w == srcW && h == srcH;
+
+  /// Adopt a rectangle in source px, clipped to the source (a selection reaching into the gutter
+  /// arrives with negative / past-edge values). Returns false — rect unchanged — when the clip is
+  /// empty.
+  bool setRect(int nx, int ny, int nw, int nh) {
+    final l = nx.clamp(0, srcW), t = ny.clamp(0, srcH);
+    final r = (nx + nw).clamp(0, srcW), b = (ny + nh).clamp(0, srcH);
+    if (r <= l || b <= t) return false;
+    x = l;
+    y = t;
+    w = r - l;
+    h = b - t;
+    _clamp();
+    return true;
+  }
+
+  /// A size preset: `nw`×`nh` anchored at the current top-left, shifted (never shrunk) to stay
+  /// inside the source. A locked aspect the preset does not satisfy is released rather than
+  /// silently reshaping the preset.
+  void setSize(int nw, int nh) {
+    w = nw.clamp(1, srcW);
+    h = nh.clamp(1, srcH);
+    if (aspectLocked && (w * canvasH != h * canvasW)) aspectLocked = false;
+    _clamp();
+  }
 }
 
 /// Pure view transform for the crop editor (2026-09-01): the source is drawn at
@@ -281,11 +310,25 @@ ImportSizeClass importSizeClass(int srcW, int srcH, int canvasW, int canvasH) {
 /// middle-button drag pans; double-tap toggles fit ↔ 4× at the tapped point; the status row's
 /// zoom buttons step 1.5× and the app bar's "Fit to screen" resets. Zoom runs from fit to 32
 /// screen px per source px.
+/// Which document the crop editor is cropping: a raster being imported, or the open canvas
+/// itself (Crop canvas, ADR 0027 — same page, same gestures, same controls).
+enum CropPageMode { import, canvas }
+
 class CropPage extends StatefulWidget {
-  /// The shared decoded-frames preview (the import flow owns and disposes it; the Place page
-  /// reuses the same instance so a many-frame GIF is decoded once).
-  final RasterPreview preview;
+  /// The shared decoded-frames preview (the owner creates and disposes it; the import flow's
+  /// Place page reuses the same instance so a many-frame GIF is decoded once).
+  final FramePreview preview;
   final int srcW, srcH, canvasW, canvasH;
+  final CropPageMode mode;
+  /// Canvas mode: the rectangle to open with (source px; clipped, a selection's bounds). Null or
+  /// fully outside = the whole source.
+  final Rect? initialRect;
+  /// Canvas mode: the tight box around all non-transparent pixels — the "Trim to content" target.
+  /// Null = fully transparent document (the button is disabled).
+  final Rect? contentBounds;
+  /// Canvas mode: an optional note under the result line for a given result size (the Club size
+  /// alert); return null for nothing.
+  final Widget? Function(int w, int h)? sizeNote;
   const CropPage({
     super.key,
     required this.preview,
@@ -293,6 +336,10 @@ class CropPage extends StatefulWidget {
     required this.srcH,
     required this.canvasW,
     required this.canvasH,
+    this.mode = CropPageMode.import,
+    this.initialRect,
+    this.contentBounds,
+    this.sizeNote,
   });
   @override
   State<CropPage> createState() => _CropPageState();
@@ -335,6 +382,8 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
   void initState() {
     super.initState();
     _geo = CropGeometry(srcW: widget.srcW, srcH: widget.srcH, canvasW: widget.canvasW, canvasH: widget.canvasH);
+    final init = widget.initialRect;
+    if (init != null) _geo.setRect(init.left.round(), init.top.round(), init.width.round(), init.height.round());
     _view = CropView(srcW: widget.srcW, srcH: widget.srcH);
     _ticker = createTicker(_onTick);
     widget.preview.addListener(_onPreview);
@@ -545,15 +594,34 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
     final animated = p.animated;
     final (rw, rh) = _geo.resultDims();
     final downscaled = rw < _geo.w || rh < _geo.h;
+    final canvasMode = widget.mode == CropPageMode.canvas;
+    final trim = widget.contentBounds;
+    final trimIsCurrent = trim != null &&
+        _geo.x == trim.left.round() &&
+        _geo.y == trim.top.round() &&
+        _geo.w == trim.width.round() &&
+        _geo.h == trim.height.round();
+    final sizeNote = canvasMode ? widget.sizeNote?.call(_geo.w, _geo.h) : null;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Crop'),
+        title: Text(canvasMode ? 'Crop canvas' : 'Crop'),
         actions: [
           IconButton(
             tooltip: 'Fit to screen',
             icon: const Icon(Icons.fit_screen),
             onPressed: _view.isFit ? null : () => setState(_view.fit),
           ),
+          if (canvasMode)
+            IconButton(
+              tooltip: trim == null ? 'Nothing to trim: the drawing is empty' : 'Trim to content',
+              icon: const Icon(Icons.crop_free),
+              onPressed: trim == null || trimIsCurrent
+                  ? null
+                  : () => setState(() {
+                        _endCropDrag();
+                        _geo.setRect(trim.left.round(), trim.top.round(), trim.width.round(), trim.height.round());
+                      }),
+            ),
           IconButton(
             tooltip: _geo.aspectLocked ? 'Aspect locked to canvas' : 'Lock to canvas aspect',
             icon: Icon(_geo.aspectLocked ? Icons.lock : Icons.lock_open),
@@ -625,6 +693,7 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
                                 scale: _view.scale,
                                 origin: _view.origin,
                                 reticleRadius: _reticleRadius,
+                                checker: canvasMode,
                               ),
                             ),
                           ),
@@ -674,14 +743,28 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
               _coordChip('y', 'Y', _geo.y),
               _coordChip('w', 'W', _geo.w),
               _coordChip('h', 'H', _geo.h),
+              if (canvasMode)
+                // Size presets (the Resize canvas dialog's), only those that fit some side.
+                for (final p in const [16, 32, 64, 128, 256, 512])
+                  if (p <= math.max(widget.srcW, widget.srcH))
+                    ActionChip(
+                      label: Text('$p²'),
+                      onPressed: () => setState(() {
+                        _endCropDrag();
+                        _geo.setSize(p, p);
+                      }),
+                    ),
             ]),
             const SizedBox(height: 6),
             Text(
-              downscaled
-                  ? 'On canvas: $rw × $rh px (downscaled to fit ${widget.canvasW}×${widget.canvasH})'
-                  : 'On canvas: $rw × $rh px (placed 1:1)',
+              canvasMode
+                  ? 'New canvas: ${_geo.w} × ${_geo.h} px'
+                  : downscaled
+                      ? 'On canvas: $rw × $rh px (downscaled to fit ${widget.canvasW}×${widget.canvasH})'
+                      : 'On canvas: $rw × $rh px (placed 1:1)',
               style: const TextStyle(fontSize: 12, color: Colors.white60),
             ),
+            if (sizeNote != null) Padding(padding: const EdgeInsets.only(top: 8), child: sizeNote),
           ]),
         ),
       ]),
@@ -692,8 +775,9 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
             const SizedBox(width: 8),
             FilledButton(
-              onPressed: !p.loaded ? null : () => Navigator.pop(context, _geo.toRect()),
-              child: const Text('Use crop'),
+              // Canvas mode: a whole-canvas rect has nothing to crop, so OK stays disabled.
+              onPressed: !p.loaded || (canvasMode && _geo.isWhole) ? null : () => Navigator.pop(context, _geo.toRect()),
+              child: Text(canvasMode ? 'Crop' : 'Use crop'),
             ),
           ]),
         ),
@@ -708,17 +792,22 @@ class _CropPreviewPainter extends CustomPainter {
   final double scale;
   final Offset origin;
   final double reticleRadius;
+  /// Draw the editor's transparency checker under the image (the document itself is being
+  /// cropped, so transparency must read as it does on the canvas).
+  final bool checker;
   _CropPreviewPainter({
     required this.image,
     required this.geo,
     required this.scale,
     required this.origin,
     required this.reticleRadius,
+    this.checker = false,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     final imgRect = Rect.fromLTWH(origin.dx, origin.dy, geo.srcW * scale, geo.srcH * scale);
+    if (checker) canvas.drawRect(imgRect, CanvasPainter.checkerPaint);
     final src = Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
     // Nearest-neighbor so pixel art stays crisp.
     canvas.drawImageRect(image, src, imgRect, Paint()..filterQuality = FilterQuality.none);
@@ -760,6 +849,7 @@ class _CropPreviewPainter extends CustomPainter {
   @override
   bool shouldRepaint(_CropPreviewPainter old) =>
       old.image != image ||
+      old.checker != checker ||
       old.scale != scale ||
       old.origin != origin ||
       old.geo.x != geo.x ||

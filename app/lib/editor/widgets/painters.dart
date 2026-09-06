@@ -24,7 +24,8 @@ class CanvasPainter extends CustomPainter {
   // VIEWPORT (identity matrix), not the image: zooming moves the image origin on screen, so an
   // origin-anchored pattern darts around during a pinch — a perfectly still backdrop is what
   // reads as "not part of the drawing".
-  static final Paint _checkerPaint = _buildCheckerPaint();
+  /// Public so the Crop canvas page draws the very same checker under the document preview.
+  static final Paint checkerPaint = _buildCheckerPaint();
 
   static Paint _buildCheckerPaint() {
     const c = checkerCell;
@@ -47,7 +48,7 @@ class CanvasPainter extends CustomPainter {
     final iw = image!.width.toDouble(), ih = image!.height.toDouble();
     final dst = Rect.fromLTWH(off.dx, off.dy, iw * scale, ih * scale);
     // The transparency checker, under the artwork: fixed to the screen, clipped to the image.
-    canvas.drawRect(dst, _checkerPaint);
+    canvas.drawRect(dst, checkerPaint);
     final paint = Paint()
       ..filterQuality = FilterQuality.none
       ..isAntiAlias = false;

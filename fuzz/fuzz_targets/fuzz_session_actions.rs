@@ -140,6 +140,7 @@ enum Act {
     NudgeLayers(i8, i8),
     ResizeCanvas(u8, u8),
     CropToSelection,
+    CropCanvas(u8, u8, u8, u8),
     SetLevels(u8, i8, u8),
     ApplyLevels,
     SetHsvShift(i8, i8, i8),
@@ -223,6 +224,7 @@ fn render(act: &Act, out: &mut String) {
             (*h as u16 % 64) + 1
         ),
         Act::CropToSelection => writeln!(out, "CropToSelection()"),
+        Act::CropCanvas(x, y, w, h) => writeln!(out, "CropCanvas({},{},{},{})", x, y, w, h),
         Act::SetLevels(lo, mid, hi) => writeln!(out, "SetLevels({},{},{})", lo, mid, hi),
         Act::ApplyLevels => writeln!(out, "ApplyLevels()"),
         Act::SetHsvShift(h, s, v) => writeln!(out, "SetHsvShift({},{},{})", h, s, v),
