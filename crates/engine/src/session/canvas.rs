@@ -149,16 +149,7 @@ impl Session {
         self.edit_doc("flip", |s| {
             for f in &mut s.doc.frames {
                 for l in &mut f.layers {
-                    let src = l.pixels.clone();
-                    l.pixels.clear();
-                    for y in 0..h {
-                        for x in 0..w {
-                            let c = if horizontal { src.get(w - 1 - x, y) } else { src.get(x, h - 1 - y) };
-                            if c.a != 0 {
-                                l.pixels.set(x, y, c);
-                            }
-                        }
-                    }
+                    flip_storage(&mut l.pixels, w, h, horizontal);
                 }
             }
             if let Some(m) = s.selection_clone() {
@@ -184,20 +175,8 @@ impl Session {
         let storage = self.doc.storage();
         let (w, h) = (storage.w as i32, storage.h as i32);
         self.edit_doc("flip_frame", |s| {
-            {
-                let f = s.doc.active_frame_mut();
-                for l in &mut f.layers {
-                    let src = l.pixels.clone();
-                    l.pixels.clear();
-                    for y in 0..h {
-                        for x in 0..w {
-                            let c = if horizontal { src.get(w - 1 - x, y) } else { src.get(x, h - 1 - y) };
-                            if c.a != 0 {
-                                l.pixels.set(x, y, c);
-                            }
-                        }
-                    }
-                }
+            for l in &mut s.doc.active_frame_mut().layers {
+                flip_storage(&mut l.pixels, w, h, horizontal);
             }
             if let Some(m) = s.selection_clone() {
                 let mut nm = Mask::new(w as u32, h as u32);
@@ -230,7 +209,7 @@ impl Session {
         self.rotate_draft = None; // never stack on a half-open Angle draft
         self.rotate_draft_begin_frame();
         if self.rotate_draft.is_some() {
-            self.rotate_draft_set_angle((q as f32 * std::f32::consts::FRAC_PI_2 * 1000.0).round() as i32);
+            self.rotate_draft_set_angle(quarter_turn_mrad(q));
             self.rotate_draft_commit();
         }
     }
@@ -385,7 +364,7 @@ impl Session {
         self.rotate_draft = None; // never stack on a half-open Angle draft
         self.rotate_draft_begin();
         if self.rotate_draft.is_some() {
-            self.rotate_draft_set_angle((q as f32 * std::f32::consts::FRAC_PI_2 * 1000.0).round() as i32);
+            self.rotate_draft_set_angle(quarter_turn_mrad(q));
             self.rotate_draft_commit();
         }
     }
@@ -474,6 +453,14 @@ impl Session {
         }
         self.settle_open_edits(); // the lift must not absorb untracked stroke pixels [fuzz FZ-1]
         let fi = self.doc.active_frame;
+        self.rotate_draft = Some(self.frame_rotate_draft(fi));
+    }
+
+    /// The frame-scope rotate draft of frame `fi` at angle 0: every layer lifted, pivot at the
+    /// storage center, cleanEdge captured from the settings. Shared by `rotate_draft_begin_frame`
+    /// and the frame-set `RotateFrames` (ADR 0031), which applies one such draft per member so a
+    /// batch rotation is byte-identical to the single verb by construction.
+    pub(super) fn frame_rotate_draft(&self, fi: usize) -> RotateDraft {
         let fid = self.doc.frames[fi].id;
         // Rotate over the whole storage about its center (= the canvas center for a centered gutter),
         // so the canvas rotates in place and the gutter rotates with it. [SPEC §8]
@@ -483,7 +470,7 @@ impl Session {
             .iter()
             .map(|l| RotateDraftLayer { lid: l.id, src: l.pixels.clone() })
             .collect();
-        self.rotate_draft = Some(RotateDraft {
+        RotateDraft {
             fid,
             is_selection: false,
             frame_scope: true,
@@ -498,7 +485,7 @@ impl Session {
             off: Point::new(0, 0),
             clean_edge: self.settings.clean_edge,
             clean_edge_width: self.settings.clean_edge_width,
-        });
+        }
     }
 
     /// Set the open rotate draft's angle (milliradians, clockwise — matching `SetShapeRotation`).
@@ -1065,11 +1052,34 @@ fn rotate_resample(d: &RotateDraft, src: &RgbaBuffer, cw: i32, ch: i32) -> (Rgba
     (out, out_mask)
 }
 
+/// Mirror a storage-sized layer buffer in place across the X axis (`horizontal`) or the Y axis:
+/// the loop `flip_document` / `flip_frame` always ran, shared with the frame-set `FlipFramesH/V`
+/// (ADR 0031) so a batch flip is byte-identical to the single verb.
+pub(super) fn flip_storage(buf: &mut RgbaBuffer, w: i32, h: i32, horizontal: bool) {
+    let src = buf.clone();
+    buf.clear();
+    for y in 0..h {
+        for x in 0..w {
+            let c = if horizontal { src.get(w - 1 - x, y) } else { src.get(x, h - 1 - y) };
+            if c.a != 0 {
+                buf.set(x, y, c);
+            }
+        }
+    }
+}
+
+/// The rotate draft's angle for `q` quarter turns, in the milliradians `rotate_draft_set_angle`
+/// takes — one conversion for the instant Rotate buttons and the frame-set `RotateFrames`.
+pub(super) fn quarter_turn_mrad(q: u8) -> i32 {
+    (q as f32 * std::f32::consts::FRAC_PI_2 * 1000.0).round() as i32
+}
+
 /// Apply a rotate draft to `frame`: for each lifted layer, clear the origin pixels (the selected
 /// pixels, or the whole layer) and blit the resampled, rotated content alpha-over. Shared by the
-/// display preview (on a throwaway clone) and `rotate_draft_commit` (on the real frame) so both
-/// render identically. Returns the rotated selection mask for a selection rotation, else `None`.
-fn apply_rotation_to_frame(d: &RotateDraft, frame: &mut Frame, cw: i32, ch: i32) -> Option<Mask> {
+/// display preview (on a throwaway clone), `rotate_draft_commit` (on the real frame), and the
+/// frame-set `RotateFrames` so all render identically. Returns the rotated selection mask for a
+/// selection rotation, else `None`.
+pub(super) fn apply_rotation_to_frame(d: &RotateDraft, frame: &mut Frame, cw: i32, ch: i32) -> Option<Mask> {
     let mut rotated_mask = None;
     for entry in &d.layers {
         let li = match frame.layer_index_by_id(entry.lid) {

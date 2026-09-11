@@ -735,3 +735,39 @@ fn levels_end_to_end() {
     // Determinism: an identical run produces the identical document.
     assert_eq!(run(SCRIPT).doc.content_hash(), baked);
 }
+
+#[test]
+fn doc_structure_records_bill_retained_tiles() {
+    // ADR 0031: a structural record is billed by the payload it pins — the tables and tiles of
+    // the layers it replaced or removed — not just the 256 B/layer metadata floor. A frame-set
+    // flip over painted frames retains every old tile; a reorder retains nothing.
+    let mut s = run("NewDocument(64,64)\nFillNoise(1)\nDuplicateFrames(0)\nDuplicateFrames(0-1)");
+    assert_eq!(s.doc.frames.len(), 4);
+    // Give every frame its own tiles (the duplicates share until written).
+    for i in 0..4 {
+        s.run_script(&format!("SetActiveFrame({})\nFillNoise({})", i, i + 2)).unwrap();
+    }
+    let per_frame = s.doc.frames[0].layers[0].pixels.memory_bytes();
+    assert!(per_frame >= 4 * 4096, "a 64x64 noise fill materializes four tiles");
+
+    let before = s.doc.history.retained_bytes();
+    s.run_script("FlipFramesH(0-3)").unwrap();
+    let flip = s.doc.history.retained_bytes() - before;
+    assert!(flip >= 4 * per_frame, "flip record pins four frames of old tiles: {} < {}", flip, 4 * per_frame);
+
+    let before = s.doc.history.retained_bytes();
+    s.run_script("ShiftFrames(0-1, 2)").unwrap();
+    let shift = s.doc.history.retained_bytes() - before;
+    assert!(shift < per_frame, "a reorder pins no tiles: {} >= {}", shift, per_frame);
+
+    let before = s.doc.history.retained_bytes();
+    s.run_script("RemoveFrames(0-1)").unwrap();
+    let remove = s.doc.history.retained_bytes() - before;
+    assert!(remove >= 2 * per_frame, "removal pins the removed frames' tiles: {} < {}", remove, 2 * per_frame);
+
+    // The whole chain still undoes cleanly.
+    for _ in 0..3 {
+        assert!(s.doc.undo());
+    }
+    assert_eq!(s.doc.frames.len(), 4);
+}

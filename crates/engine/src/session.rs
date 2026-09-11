@@ -19,8 +19,10 @@ use std::sync::Arc;
 
 mod canvas; // flip/rotate/resize/crop — extracted impl Session block [audit F-17]
 mod checkpoint; // replay checkpoints (Journal scrubbing) — same private-state seam as canvas
+mod frames; // frame-set batch verbs (ADR 0031) — same seam
 mod parse;
 pub use checkpoint::{CHECKPOINT_BYTE_BUDGET, MAX_CHECKPOINTS};
+pub use frames::FrameSet;
 pub use parse::Action;
 
 /// A captured pre-edit pixel snapshot of one layer's tiles.
@@ -484,6 +486,14 @@ pub struct Session {
     mem_refusals: u32,
     /// Human-readable label of the last budget refusal.
     mem_last_refusal: Option<String>,
+    /// Count of verbs refused for ANY reason (monotonic; memory refusals bump it too). The
+    /// frame-set batch verbs (ADR 0031) decline as a whole — an out-of-range set, the frame or
+    /// layer cap, a delete that would empty the roll — and the shell tells a new refusal from
+    /// the last one by this sequence. Like `mem_refusals`, it is telemetry: not restored by
+    /// checkpoints, reset only by the `NewDocument` whole-session replacement.
+    refusal_seq: u64,
+    /// Human-readable reason of the last refusal of any kind (user-facing, 1-based frames).
+    last_refusal: Option<String>,
     /// Replay checkpoints (Journal scrubbing). Lives on Session so the FFI stays a plain
     /// method call, but is explicitly carried across the `NewDocument` whole-session reset
     /// (the `NewDocument` arm in parse.rs) — any future whole-`*self` replacement must
@@ -534,6 +544,8 @@ impl Session {
             mem_slack: 0,
             mem_refusals: 0,
             mem_last_refusal: None,
+            refusal_seq: 0,
+            last_refusal: None,
             checkpoints: checkpoint::CheckpointStore::default(),
             repeat_record: None,
         }
@@ -1240,8 +1252,12 @@ impl Session {
         let tables = self.doc.live_table_bytes();
         let budgeted = unique + tables;
         let (soft, hard) = self.mem_budgets();
+        let quoted = |m: &Option<String>| match m {
+            Some(m) => format!("\"{}\"", m.replace('"', "'")),
+            None => "null".to_string(),
+        };
         let mem = format!(
-            ",\"mem_unique_bytes\":{},\"mem_table_bytes\":{},\"mem_budgeted_bytes\":{},\"mem_soft_budget\":{},\"mem_hard_budget\":{},\"mem_soft_exceeded\":{},\"mem_refusals\":{},\"mem_last_refusal\":{}",
+            ",\"mem_unique_bytes\":{},\"mem_table_bytes\":{},\"mem_budgeted_bytes\":{},\"mem_soft_budget\":{},\"mem_hard_budget\":{},\"mem_soft_exceeded\":{},\"mem_refusals\":{},\"mem_last_refusal\":{},\"refusal_seq\":{},\"last_refusal\":{}",
             unique,
             tables,
             budgeted,
@@ -1249,10 +1265,9 @@ impl Session {
             hard,
             budgeted > soft,
             self.mem_refusals,
-            match &self.mem_last_refusal {
-                Some(m) => format!("\"{}\"", m.replace('"', "'")),
-                None => "null".to_string(),
-            },
+            quoted(&self.mem_last_refusal),
+            self.refusal_seq,
+            quoted(&self.last_refusal),
         );
         s.insert_str(s.len() - 1, &mem);
         s
@@ -1357,6 +1372,18 @@ impl Session {
         (self.mem_refusals, self.mem_last_refusal.as_deref())
     }
 
+    /// Generic refusal telemetry (any verb, memory included): (monotonic sequence, last reason).
+    pub fn refusal_state(&self) -> (u64, Option<&str>) {
+        (self.refusal_seq, self.last_refusal.as_deref())
+    }
+
+    /// Register a refused verb: nothing changed, and `what` says why (ADR 0031). Every refusal
+    /// is a pure function of the document, so a journaled refusal replays as a refusal.
+    pub(crate) fn refuse(&mut self, what: &str) {
+        self.refusal_seq += 1;
+        self.last_refusal = Some(what.to_string());
+    }
+
     /// Exact budgeted-bytes census (unique tile payload + live tile tables); resets the slack
     /// accumulator. Tables are counted so a many-layer document can't sit over the wall on table
     /// memory the payload cap never saw (audit P-2/#7). The hot pixel path tracks only tile growth
@@ -1372,6 +1399,7 @@ impl Session {
     fn mem_refuse(&mut self, what: &str) {
         self.mem_refusals += 1;
         self.mem_last_refusal = Some(what.to_string());
+        self.refuse(what); // the generic channel sees every refusal
     }
 
     /// Post-mutation budget gate for the two structural chokepoints (`edit_frame`/`edit_doc`).

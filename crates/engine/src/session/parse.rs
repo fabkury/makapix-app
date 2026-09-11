@@ -1,7 +1,7 @@
 //! Action-script DSL: parsing (`name(args)` lines) and execution against a `Session`
 //! (SPEC §9). The same DSL drives the CLI harness, unit tests, and recorded sessions.
 
-use super::{ReplaceScope, Session};
+use super::{FrameSet, ReplaceScope, Session};
 use crate::color::Rgba8;
 use crate::document::{BlendMode, LoopMode};
 use crate::geom::{MAX_DIM, MIN_DIM};
@@ -39,6 +39,25 @@ pub enum Action {
     PreviewLayerBlend(usize, BlendMode),
     RenameLayer(usize, String),
     DuplicateLayerToFrames(Vec<usize>),
+    /// Frame-set batch verbs (ADR 0031): one `FrameSet` argument (`12-32 40`, 0-based), one
+    /// undo record each, all-or-nothing (`session/frames.rs`).
+    RemoveFrames(FrameSet),
+    DuplicateFrames(FrameSet),
+    RepeatFramesAfter(FrameSet),
+    /// `true` = a blank after each member, `false` = before.
+    InsertBlankFrames(FrameSet, bool),
+    ShiftFrames(FrameSet, i32),
+    ReverseFrames(FrameSet),
+    SetFrameDurations(FrameSet, f32),
+    ScaleFrameDurations(FrameSet, u32),
+    FlipFramesH(FrameSet),
+    FlipFramesV(FrameSet),
+    RotateFrames(FrameSet, u8),
+    InvertFrames(FrameSet),
+    CopyLayerToFrames(FrameSet),
+    RemoveLayersNamed(FrameSet, String),
+    SetLayersVisibleNamed(FrameSet, bool, String),
+    SetLayersLockedNamed(FrameSet, bool, String),
     SelectTool(ToolKind),
     SetPrimaryColor(Rgba8),
     SetSecondaryColor(Rgba8),
@@ -263,6 +282,22 @@ impl Session {
             PreviewLayerBlend(i, b) => self.preview_layer_blend(i, b),
             RenameLayer(i, name) => self.rename_layer(i, name),
             DuplicateLayerToFrames(t) => self.duplicate_layer_to_frames(&t),
+            RemoveFrames(s) => self.remove_frames(&s),
+            DuplicateFrames(s) => self.duplicate_frames(&s),
+            RepeatFramesAfter(s) => self.repeat_frames_after(&s),
+            InsertBlankFrames(s, after) => self.insert_blank_frames(&s, after),
+            ShiftFrames(s, d) => self.shift_frames(&s, d),
+            ReverseFrames(s) => self.reverse_frames(&s),
+            SetFrameDurations(s, ms) => self.set_frame_durations(&s, ms_to_us(ms)),
+            ScaleFrameDurations(s, p) => self.scale_frame_durations(&s, p),
+            FlipFramesH(s) => self.flip_frames(&s, true),
+            FlipFramesV(s) => self.flip_frames(&s, false),
+            RotateFrames(s, q) => self.rotate_frames(&s, q),
+            InvertFrames(s) => self.map_frames(&s, crate::color::invert),
+            CopyLayerToFrames(s) => self.copy_layer_to_frames(&s),
+            RemoveLayersNamed(s, name) => self.remove_layers_named(&s, &name),
+            SetLayersVisibleNamed(s, v, name) => self.set_layers_visible_named(&s, v, &name),
+            SetLayersLockedNamed(s, v, name) => self.set_layers_locked_named(&s, v, &name),
             SelectTool(t) => self.tool = t,
             SetPrimaryColor(c) => self.settings.primary = c,
             SetSecondaryColor(c) => self.settings.secondary = c,
@@ -562,6 +597,11 @@ fn parse_line(line: &str) -> Result<Action, String> {
     let u64a = |k: usize| -> Result<u64, String> {
         args.get(k).ok_or(format!("missing arg {}", k))?.parse().map_err(|_| format!("bad u64 {}", k))
     };
+    let u32a = |k: usize| -> Result<u32, String> {
+        args.get(k).ok_or(format!("missing arg {}", k))?.parse().map_err(|_| format!("bad u32 {}", k))
+    };
+    // A frame set is one whitespace-separated argument (ADR 0031); an empty one is an error.
+    let seta = |k: usize| -> Result<FrameSet, String> { FrameSet::parse(args.get(k).copied().unwrap_or("")) };
     let f32a = |k: usize| -> Result<f32, String> {
         let v: f32 = args.get(k).ok_or(format!("missing arg {}", k))?.parse().map_err(|_| format!("bad f32 {}", k))?;
         if !v.is_finite() {
@@ -630,6 +670,48 @@ fn parse_line(line: &str) -> Result<Action, String> {
                 v.push(usza(k)?);
             }
             DuplicateLayerToFrames(v)
+        }
+        // ---- frame-set batch verbs (ADR 0031): the set is one whitespace-separated argument ----
+        "RemoveFrames" => RemoveFrames(seta(0)?),
+        "DuplicateFrames" => DuplicateFrames(seta(0)?),
+        "RepeatFramesAfter" => RepeatFramesAfter(seta(0)?),
+        "InsertBlankFrames" => InsertBlankFrames(
+            seta(0)?,
+            match args.get(1).map(|s| s.to_ascii_lowercase()).as_deref() {
+                None | Some("after") => true,
+                Some("before") => false,
+                Some(o) => return Err(format!("bad side '{}' (before, after)", o)),
+            },
+        ),
+        "ShiftFrames" => ShiftFrames(seta(0)?, i32a(1)?),
+        "ReverseFrames" => ReverseFrames(seta(0)?),
+        "SetFrameDurations" => SetFrameDurations(seta(0)?, f32a(1)?),
+        "ScaleFrameDurations" => ScaleFrameDurations(seta(0)?, u32a(1)?),
+        "FlipFramesH" => FlipFramesH(seta(0)?),
+        "FlipFramesV" => FlipFramesV(seta(0)?),
+        "RotateFrames" => RotateFrames(seta(0)?, u8a(1)?),
+        "InvertFrames" => InvertFrames(seta(0)?),
+        "CopyLayerToFrames" => CopyLayerToFrames(seta(0)?),
+        "RemoveLayersNamed" => {
+            // set, then the rest is the (free-text) name — the RenameLayer rule, commas allowed.
+            let (set, rest) = inner.split_once(',').ok_or("RemoveLayersNamed needs set, name")?;
+            RemoveLayersNamed(FrameSet::parse(set)?, rest.trim().to_string())
+        }
+        "SetLayersVisibleNamed" | "SetLayersLockedNamed" => {
+            let (set, rest) = inner.split_once(',').ok_or("needs set, flag, name")?;
+            let (flag, rest) = rest.split_once(',').ok_or("needs set, flag, name")?;
+            let v = match flag.trim() {
+                "true" | "1" => true,
+                "false" | "0" => false,
+                o => return Err(format!("bad bool '{}'", o)),
+            };
+            let set = FrameSet::parse(set)?;
+            let layer_name = rest.trim().to_string();
+            if name == "SetLayersVisibleNamed" {
+                SetLayersVisibleNamed(set, v, layer_name)
+            } else {
+                SetLayersLockedNamed(set, v, layer_name)
+            }
         }
         "SelectTool" => SelectTool(parse_tool(args.first().copied().unwrap_or(""))?),
         "SetPrimaryColor" => SetPrimaryColor(color(0)?),

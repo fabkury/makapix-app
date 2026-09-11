@@ -74,6 +74,13 @@ fn known_adversarial_scripts_never_panic() {
         "",
         "\n\n\n",
         "Undo()\nUndo()\nUndo()\nRedo()\nRedo()", // undo/redo past the ends
+        // ADR 0031 frame-set batch verbs: hostile sets, caps, and extremes must refuse or clamp.
+        "RemoveFrames(0)\nRemoveFrames(0-1023)\nDuplicateFrames(0-1023)\nRepeatFramesAfter(0-1023)",
+        "ShiftFrames(0,-2147483648)\nShiftFrames(0,2147483647)\nScaleFrameDurations(0,4294967295)\nScaleFrameDurations(0,0)",
+        "RotateFrames(0,255)\nFlipFramesH(0)\nFlipFramesV(0)\nInvertFrames(0)\nReverseFrames(0)",
+        "RemoveLayersNamed(0, Layer 1)\nRemoveLayersNamed(0, Layer 1)\nSetLayersVisibleNamed(0,1,)\nSetLayersLockedNamed(0,0,)",
+        "InsertBlankFrames(0, sideways)\nInsertBlankFrames(0)\nInsertBlankFrames(0, BEFORE)\nCopyLayerToFrames(0)",
+        "RemoveFrames()\nRemoveFrames(1-0)\nRemoveFrames(0-99999999999999999999)\nRemoveFrames(0,1)\nSetFrameDurations(0)",
     ];
     for s in scripts {
         let mut sess = Session::new(64, 64);
@@ -90,6 +97,11 @@ fn random_dsl_never_panics() {
         "SetBrushSize", "AddLayer", "AddFrame", "RemoveFrame", "RemoveLayer", "SetActiveLayer",
         "SetActiveFrame", "ApplyHsvShift", "Bucket", "ResizeCanvas", "Crop", "Undo", "Redo",
         "DuplicateFrame", "ReorderFrame", "Fill", "Invert", "SetLevels", "ApplyLevels",
+        // ADR 0031 frame-set batch verbs (random args rarely form a valid set — the point).
+        "RemoveFrames", "DuplicateFrames", "RepeatFramesAfter", "InsertBlankFrames", "ShiftFrames",
+        "ReverseFrames", "SetFrameDurations", "ScaleFrameDurations", "FlipFramesH", "FlipFramesV",
+        "RotateFrames", "InvertFrames", "CopyLayerToFrames", "RemoveLayersNamed",
+        "SetLayersVisibleNamed", "SetLayersLockedNamed",
     ];
     for _ in 0..6000 {
         let name = names[(rng.next() as usize) % names.len()];

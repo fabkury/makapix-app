@@ -9,8 +9,47 @@ use crate::buffer::TilePatch;
 use crate::document::{Document, Frame};
 use crate::geom::Size;
 use crate::selection::Mask;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+
+/// Bytes `other` holds beyond `base`: tile tables of `other` not pointer-shared with `base`,
+/// plus tiles absent from `base`'s tile set (deduped within `other` as well). One
+/// O(base tiles + other tiles) pointer walk — the census the replay checkpoint store uses for
+/// its per-checkpoint delta, and the history budget for a `DocStructure` record's retained
+/// payload (ADR 0031): `frames_delta_bytes(&live, &before)` is what the record pins alive.
+pub(crate) fn frames_delta_bytes(base: &[Frame], other: &[Frame]) -> usize {
+    const TILE_BYTES: usize = 4096;
+    let mut base_tables: HashSet<usize> = HashSet::new();
+    let mut base_tiles: HashSet<usize> = HashSet::new();
+    for f in base {
+        for l in &f.layers {
+            if base_tables.insert(l.pixels.table_ptr() as usize) {
+                l.pixels.visit_tile_arcs(&mut |t| {
+                    base_tiles.insert(Arc::as_ptr(t) as usize);
+                });
+            }
+        }
+    }
+    let mut other_tables: HashSet<usize> = HashSet::new();
+    let mut other_tiles: HashSet<usize> = HashSet::new();
+    let mut bytes = 0usize;
+    for f in other {
+        for l in &f.layers {
+            let tp = l.pixels.table_ptr() as usize;
+            if base_tables.contains(&tp) || !other_tables.insert(tp) {
+                continue; // whole table shared with base (or already counted within other)
+            }
+            bytes += l.pixels.tile_table_bytes();
+            l.pixels.visit_tile_arcs(&mut |t| {
+                let p = Arc::as_ptr(t) as usize;
+                if !base_tiles.contains(&p) && other_tiles.insert(p) {
+                    bytes += TILE_BYTES;
+                }
+            });
+        }
+    }
+    bytes
+}
 
 pub const PER_FRAME_CAP: usize = 128;
 pub const TOTAL_CAP: usize = 8192;
@@ -41,6 +80,11 @@ pub enum Edit {
         after_active: usize,
         before_size: Size,
         after_size: Size,
+        /// Bytes the `before` side keeps alive beyond the live document at record time — the tile
+        /// tables and tiles of every layer the edit replaced or removed (ADR 0031). Stored so push
+        /// and eviction bill the same number; a frame-set flip over hundreds of frames retains
+        /// hundreds of frames of old tiles, and the byte budget must see them.
+        retained_bytes: usize,
     },
     /// A pure selection change (marquee/invert/select-all/none/…) with no pixel or structural
     /// payload. The mask transition lives on the enclosing [`Record`]; this variant only marks the
@@ -110,10 +154,12 @@ fn weight_of(rec: &Record) -> usize {
         Edit::FrameContent { before, after, .. } => {
             (before.layers.len() + after.layers.len()) * LAYER_W
         }
-        Edit::DocStructure { before, after, .. } => {
+        Edit::DocStructure { before, after, retained_bytes, .. } => {
             let layers: usize =
                 before.iter().chain(after.iter()).map(|f| f.layers.len()).sum();
-            layers * LAYER_W + (before.len() + after.len()) * 64
+            // Metadata floor + the payload the record actually pins (ADR 0031): the tiles of
+            // the layers it replaced or removed, which the live document no longer references.
+            layers * LAYER_W + (before.len() + after.len()) * 64 + retained_bytes
         }
         Edit::Selection => 0,
     };
@@ -266,6 +312,8 @@ impl Document {
         let after_active = self.active_frame;
         let after_size = self.size;
         let sel_after = self.sel_now();
+        // What `before` retains beyond the live frames: replaced/removed layers' tables + tiles.
+        let retained_bytes = frames_delta_bytes(&after, &before);
         self.history.push(Record {
             edit: Edit::DocStructure {
                 label: label.into(),
@@ -275,6 +323,7 @@ impl Document {
                 after_active,
                 before_size,
                 after_size,
+                retained_bytes,
             },
             sel_before,
             sel_after,

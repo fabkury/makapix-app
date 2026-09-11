@@ -1,0 +1,37 @@
+# Frame-set batch verbs (ADR 0031): the Frames page's engine half, driven headlessly.
+# Run:  cargo run -p makapix-cli -- run examples/frames.txt state assert.undo assert.roundtrip.bytes
+# Sets are one whitespace-separated argument of `N` / `N-M` items, 0-based (the UI shows 1-based).
+NewDocument(16, 16)
+
+# --- two painted frames on a named layer ---
+SelectTool(Pencil); SetPrimaryColor(#FF4040FF); SetBrushSize(1)
+RenameLayer(0, Sky, dawn)
+Tap(2,2); Tap(3,3)
+AddFrame()
+SetPrimaryColor(#4040FFFF); Tap(12,12)
+
+# --- structural batches: duplicate both, shift the copies left, repeat the first pair ---
+DuplicateFrames(0-1)
+ShiftFrames(2-3, -1)
+RepeatFramesAfter(0-1)
+InsertBlankFrames(5, after)
+ReverseFrames(0 2 4)
+
+# --- timing on a set, and a scale that pins the fast frames at the floor ---
+SetFrameDurations(0-3, 50)
+ScaleFrameDurations(0-6, 500)
+
+# --- layer ops by name: hide, lock, copy, remove (the emptied frames get a blank "Layer 1") ---
+SetLayersVisibleNamed(0-6, 0, Sky, dawn)
+SetLayersVisibleNamed(0-6, 1, Sky, dawn)
+CopyLayerToFrames(0-2)
+RemoveLayersNamed(3-6, Sky, dawn)
+
+# --- refusals change nothing (a set past the roll, then a delete that would empty it) ---
+RemoveFrames(0 40)
+RemoveFrames(0-6)
+
+# --- content batches last, so assert.undo sees a visible change ---
+InvertFrames(0-1)
+RotateFrames(0-2, 1)
+FlipFramesH(0-6)

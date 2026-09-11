@@ -13,9 +13,6 @@
 //! eviction (the history-budget pattern) so adversarial content cannot pin
 //! `checkpoints × document` bytes against the ~1 GiB Android allocator wall.
 
-use std::collections::HashSet;
-use std::sync::Arc;
-
 use super::{LastGradient, RepeatOp, Session};
 use crate::buffer::RgbaBuffer;
 use crate::document::Document;
@@ -36,9 +33,6 @@ pub const MAX_CHECKPOINTS: usize = 512;
 
 /// Fixed per-entry overhead charge (Vec/struct/String slop) — same spirit as history's +128.
 const ENTRY_OVERHEAD: usize = 4096;
-
-/// One tile's pixel payload (32×32×4) — the same private constant io.rs and probe.rs keep.
-const TILE_BYTES: usize = 4096;
 
 /// Everything replay-visible about a quiescent session at one journal position.
 struct Checkpoint {
@@ -157,40 +151,11 @@ impl CheckpointStore {
 }
 
 /// Bytes `new` retains beyond `prev`: tile tables of `new` not pointer-shared with `prev`,
-/// plus tiles absent from `prev`'s tile set (deduped within `new` as well). One
-/// O(prev tiles + new tiles) pointer walk — the same census machinery direction as
-/// `probe::mem_report`, restricted to two documents.
+/// plus tiles absent from `prev`'s tile set. The census itself lives in
+/// `history::frames_delta_bytes`, which the undo byte budget asks the same question of a
+/// `DocStructure` record's before-side (ADR 0031).
 fn doc_delta_bytes(prev: &Document, new: &Document) -> usize {
-    let mut prev_tables: HashSet<usize> = HashSet::new();
-    let mut prev_tiles: HashSet<usize> = HashSet::new();
-    for f in &prev.frames {
-        for l in &f.layers {
-            if prev_tables.insert(l.pixels.table_ptr() as usize) {
-                l.pixels.visit_tile_arcs(&mut |t| {
-                    prev_tiles.insert(Arc::as_ptr(t) as usize);
-                });
-            }
-        }
-    }
-    let mut new_tables: HashSet<usize> = HashSet::new();
-    let mut new_tiles: HashSet<usize> = HashSet::new();
-    let mut bytes = 0usize;
-    for f in &new.frames {
-        for l in &f.layers {
-            let tp = l.pixels.table_ptr() as usize;
-            if prev_tables.contains(&tp) || !new_tables.insert(tp) {
-                continue; // whole table shared with prev (or already counted within new)
-            }
-            bytes += l.pixels.tile_table_bytes();
-            l.pixels.visit_tile_arcs(&mut |t| {
-                let p = Arc::as_ptr(t) as usize;
-                if !prev_tiles.contains(&p) && new_tiles.insert(p) {
-                    bytes += TILE_BYTES;
-                }
-            });
-        }
-    }
-    bytes
+    crate::history::frames_delta_bytes(&prev.frames, &new.frames)
 }
 
 fn palette_bytes(doc: &Document) -> usize {
