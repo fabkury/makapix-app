@@ -214,6 +214,20 @@ in the enforcement section changes. CPU cost is the other axis: full-layer Scale
 Rotate measured ~83 → ~385 ms and ~26 → ~108 ms per operation on the workstation, i.e. about a
 second on a phone.
 
+## Addendum — frame-set content batches (2026-09-11, ADR 0031; device pass pending)
+
+The Frames page's `FlipFramesH/V`, `RotateFrames`, and `InvertFrames` rewrite every layer of every
+selected frame in ONE `DocStructure` record. That record's before-side pins the old tiles of every
+changed layer; since ADR 0031 history bills the record by exactly those retained tables and tiles
+(`history::frames_delta_bytes`, the checkpoint store's census), so the 96 MiB budget evicts it
+like any other — but the `MIN_RECORDS` floor still keeps the newest eight records regardless of
+size, and the document census walks only live frames. The transient peak of a whole-roll flip is
+therefore ~2× the selected frames' unique payload (old tiles in the record + new tiles live),
+invisible to the document gate. By decision the batch is never refused; the More sheet warns
+above 64 MiB. **To measure on the Pixel:** a 512² × 300-frame noise document, select all, Flip H,
+watch `mem.os` and the retained-history figure; the expectation is a peak well under the wall for
+any document the loader admits, but the number belongs in this report.
+
 ## Reproducing
 
 ```powershell

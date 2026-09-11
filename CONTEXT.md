@@ -110,6 +110,21 @@ The set of layers the Move tool transforms together, held by layer id and badged
 strip. A transient selection: it clears on frame change and on document change.
 _Avoid_: layer selection, linked layers, multi-select
 
+**Frame set**:
+The frames one batch verb acts on (ADR 0031): on the wire one argument of `N` / `N-M` items,
+0-based (`RemoveFrames(12-32 40)`); in the shell a set of frame ids. A batch is one verb, one
+undo step, all-or-nothing — a set past the roll, the frame or layer cap, or a delete that would
+empty the roll is refused and changes nothing.
+_Avoid_: frame range (a set may be discontiguous), selection (that word belongs to the mask)
+
+**Frames page**:
+The grid of every frame reached from the film roll's ⊞ button, ☰ → Frames…, or Shift+T: select
+any set of frames, then delete, duplicate, repeat, insert, shift, reverse, retime, flip, rotate,
+invert, or touch a layer by name across them at once. Its selection is transient like the Move
+group — discarded when the page closes — and a double-tap on a tile goes to that frame.
+_Avoid_: timeline (the Animator's tracks-and-keys view, and the Replay timeline), contact sheet
+in UI copy (the grid widget's name in code)
+
 **Playhead**:
 The frame playback is currently showing — distinct from the Active target, which is where
 Strokes land. Playback starts at the Active target and pause returns to it, so the Playhead

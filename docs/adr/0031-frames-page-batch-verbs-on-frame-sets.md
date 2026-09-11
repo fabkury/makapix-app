@@ -1,8 +1,17 @@
 # The Frames page acts on frame sets through atomic batch verbs
 
-**Proposed 2026-09-10 — DRAFT, not implemented.** Decided in a design interview (every choice is
-the user's; the design and its edge-case policy live in `docs/frames-page/DESIGN.md`). To be
-marked *Decided and implemented* with the engine/shell pointers when the work lands.
+**Decided 2026-09-10 in a design interview, implemented 2026-09-11** (every choice is the
+user's; the design, its edge-case policy, and the as-built deviations live in
+`docs/frames-page/DESIGN.md`). Engine: `crates/engine/src/session/frames.rs` (`FrameSet` + the
+sixteen verbs), the `Action` variants and parser arms in `session/parse.rs`, the generic
+refusal channel (`Session::refuse`, `refusal_seq` / `last_refusal` in `state_json`), the
+retained-bytes billing of `DocStructure` records (`history::frames_delta_bytes`), the
+`flip_storage` / `frame_rotate_draft` / `apply_rotation_to_frame` extractions in
+`session/canvas.rs`, `render::FrameSampler` and the memoized `RgbaBuffer::content_hash`.
+Shell: `app/lib/editor/frames/` (the page, the id-keyed selection, the frame-set helpers, the
+grid geometry, the LRU), `editor_page.frames.dart` (the host and the route), the ⊞ roll button,
+☰ → Frames…, the `page.frames` Command on Shift+T, the batch verbs in the context-change and
+frame-structure lists and in the replay classifier's event set.
 
 The film roll is the Editor's only frame control, and it is a one-frame-at-a-time control: tap to
 activate, long-press for a sheet whose Move / Duplicate / Delete / Duration act on that frame.
@@ -72,14 +81,24 @@ Alternatives rejected:
   timeline (ADR 0029), and the film roll's part file. The page is **Frames**.
 
 Consequences: sixteen new verbs and a frame-set parser in `crates/engine/src/session/parse.rs`, a
-generalized refusal field beside the memory-specific ones in the state JSON (assumption: the
-alternative changes `exec`'s signature), and additions to the shell's context-change and
-frame-structure verb lists and to the replay classifier's event-tick set so a 300-frame delete is
-one beat. The journal epoch stays at 3: these are new verbs with self-contained semantics, not
-changed semantics of existing ones. One accounting hole surfaced by this design and provisionally
-decided in `DESIGN.md`: a content batch's `DocStructure` record retains the old tiles of every
-changed layer while history bills it by layer count and the document census walks only live
-frames, so content-batch records must be billed by the unique payload they retain, and a content
-batch is refused when that payload exceeds the document budget headroom. `Frame set` and `Frames
-page` join CONTEXT.md; STATUS.md gains a row; the transient peak of a content batch joins the next
-memlab device pass.
+generalized refusal field beside the memory-specific ones in the state JSON (`exec` keeps its
+signature; memory refusals bump the generic counter too), and additions to the shell's
+context-change and frame-structure verb lists and to the replay classifier's event-tick set so a
+300-frame delete is one beat. The journal epoch stays at 3: these are new verbs with
+self-contained semantics, not changed semantics of existing ones. One accounting hole surfaced by
+this design: a content batch's `DocStructure` record retains the old tiles of every changed layer
+while history billed it by layer count and the document census walks only live frames. **Decided
+2026-09-10: every `DocStructure` record is billed by the tables and tiles its before-side pins
+beyond the live document** (the checkpoint store's census, now shared), so the 96 MiB history
+budget evicts such records properly — and the batch is **never refused** on that account; the
+More sheet shows an unobtrusive "Undo will hold about N MB" note above 64 MiB instead. The
+transient peak (old tiles in the record + new tiles live) stays invisible to the document gate and
+joins the next memlab device pass. `Frame set` and `Frames page` join CONTEXT.md; STATUS.md gains
+a row.
+
+Refinements decided during implementation (2026-09-10/11): the Move group clears only when the
+active frame's id or its active layer's id changed (the shipped single verbs' rule, narrower than
+the design's sentence); the pixel-selection mask is never touched, even by a batch flip or
+rotation whose set contains the active frame (the single twins mirror or clear it — one rule beats
+two special cases); a memory-gate refusal is reported twice, by the editor's snackbar and by the
+page's status line (accepted); `NewDocument` resets `refusal_seq` like `mem_refusals`.

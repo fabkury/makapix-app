@@ -1,9 +1,41 @@
 # The Frames page — design
 
 **Decided 2026-09-10** in a design interview (every decision below is the user's; assumptions are
-marked). **Not implemented.** Doctrine: ADR 0031 (draft). Motivation: the film roll is the only
-way to manipulate animation frames, and it is a one-frame-at-a-time control — "delete frames 12 to
-32" or "shift frames 20–28 right by 2" is twenty-one taps, or impossible.
+marked). **Implemented 2026-09-11** (see "As built"). Doctrine: ADR 0031. Motivation: the film
+roll is the only way to manipulate animation frames, and it is a one-frame-at-a-time control —
+"delete frames 12 to 32" or "shift frames 20–28 right by 2" is twenty-one taps, or impossible.
+
+## As built (deviations from the decisions below, each asked and approved on 2026-09-10/11)
+
+- **Content batches are never refused on memory grounds.** The provisional policy (refuse when the
+  retained payload exceeds the document headroom) was replaced by: bill every `DocStructure`
+  record by the tables and tiles its before-side pins beyond the live document
+  (`history::frames_delta_bytes`, the checkpoint store's census, now shared), let the 96 MiB
+  history budget evict, and **warn unobtrusively** — a fixed 20 px amber slot in the More sheet's
+  Transform section reads "Undo will hold about N MB" above 64 MiB. Nothing blocks.
+- **Move group: the narrow rule.** Cleared only when the active frame's id changed (`RemoveFrames`
+  removed it) or the active frame's active-layer id changed (`RemoveLayersNamed` removed it) —
+  what the shipped single verbs do. Copy/show/hide/lock across frames leave it alone.
+- **The mask is never touched**, including by a batch flip or rotation whose set contains the
+  active frame (the single `FlipFrame` mirrors it, `RotateFrame` clears it). One rule; a marquee
+  over a flipped active frame may sit misaligned until reselected.
+- **Double-tap is detected by hand** (a second tap on the same tile within the double-tap window)
+  so the first tap toggles instantly; `onDoubleTap` would delay every tap ~300 ms.
+- **Refusals and reports use the fixed 22 px status line** between the grid and the action bar,
+  not a SnackBar (a SnackBar would cover the bar for 4 s and double the editor's own memory-gate
+  snackbar, which still surfaces on this page — accepted).
+- **The refusal channel** is `refusal_seq` / `last_refusal` in `state_json` (memory refusals bump
+  it too); `exec` keeps its signature. `NewDocument` resets it like `mem_refusals`.
+- **Frame-set parse errors** (empty set, reversed range, an index at or beyond the 1024 cap) are
+  script errors like any bad argument; an in-cap index beyond the roll is a refusal at execution.
+- **Undo inside the page takes the editor's tile path** (ADR 0017): a pending Move draft is
+  discarded first, exactly as the editor's own Undo tile does.
+- **Grid density lives in the page's overflow menu** ("Bigger tiles" / "Smaller tiles") and in a
+  two-finger pinch; persisted editor-wide (`editor.framesColumns_v1`).
+- **Undo/redo inside the page re-validate only the visible tiles** through the (now memoized)
+  frame hash; the single-frame sheet opened from a tile does the same on return.
+- **The rotate note** ("Not square: a rotated overhang parks in the gutter") is a second fixed
+  slot in the Transform section, shown only for a non-square canvas.
 
 The page's name is **Frames** (UI label "Frames", menu item "Frames…", code `FramesPage`). The
 codename "Timeline" was retired before design: CONTEXT.md gives the Animator pillar a timeline of
