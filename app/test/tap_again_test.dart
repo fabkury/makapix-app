@@ -128,5 +128,40 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(kTapAgainWindow); // no pending-timer or setState-after-dispose failure
     });
+
+    testWidgets('an external arm is shared: a keyboard arm shows on the button and one tap confirms', (tester) async {
+      var fired = 0;
+      var rebuilds = 0;
+      late StateSetter setS;
+      final arm = TapAgainArm(onChanged: () => setS(() => rebuilds++));
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(builder: (ctx, s) {
+            setS = s;
+            return TapAgainDeleteButton(
+              label: 'Delete',
+              armedText: 'Tap again',
+              arm: arm,
+              armKey: 'sel',
+              onConfirmed: () => fired++,
+            );
+          }),
+        ),
+      ));
+      expect(arm.tap('sel'), isFalse, reason: 'the keyboard arms');
+      await tester.pump();
+      expect(find.text('Tap again'), findsOneWidget, reason: 'the button shows the shared armed state');
+      await tester.tap(find.text('Tap again'));
+      await tester.pump();
+      expect(fired, 1, reason: 'the button confirms the keyboard arm');
+      expect(arm.armed, isFalse);
+      // Armed for another key: the button stays resting (it never confirms a foreign target).
+      arm.tap('other');
+      await tester.pump();
+      expect(find.text('Delete'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+      expect(arm.armed, isTrue, reason: 'unmounting does not dispose an external arm');
+      arm.dispose();
+    });
   });
 }

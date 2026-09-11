@@ -1511,16 +1511,7 @@ extension _EditorCanvas on _EditorPageState {
     return Offset(c.dx + dx * cs - dy * sn, c.dy + dx * sn + dy * cs);
   }
 
-  (int, int) _thumbSize() {
-    final w = engine.width, h = engine.height;
-    const maxSide = 64;
-    if (w >= h) {
-      final t = (maxSide * h / w).round().clamp(1, maxSide).toInt();
-      return (maxSide, t);
-    }
-    final t = (maxSide * w / h).round().clamp(1, maxSide).toInt();
-    return (t, maxSide);
-  }
+  (int, int) _thumbSize() => thumbSizeFor(engine.width, engine.height);
 
 }
 

@@ -624,12 +624,10 @@ extension _EditorEngine on _EditorPageState {
 
   Future<ui.Image> _decode(Uint8List bytes, int w, int h) {
     BatteryStats.decode();
-    final c = Completer<ui.Image>();
-    // The engine emits straight alpha; the raw decode expects premultiplied. Matters now that
-    // the display buffer carries real transparency (the checker is no longer baked into it).
-    premultiplyRgbaInPlace(bytes);
-    ui.decodeImageFromPixels(bytes, w, h, ui.PixelFormat.rgba8888, c.complete);
-    return c.future;
+    // The engine emits straight alpha; the raw decode expects premultiplied (the shared helper
+    // premultiplies in place). Matters now that the display buffer carries real transparency
+    // (the checker is no longer baked into it).
+    return decodeRgbaImage(bytes, w, h);
   }
 
   Future<ui.Image> _decodeBytes(Uint8List bytes) async {

@@ -68,6 +68,7 @@ import 'dialogs/crop_dialog.dart';
 import 'dialogs/place_dialog.dart';
 import 'dialogs/raster_preview.dart';
 import 'dialogs/color_picker_dialog.dart';
+import 'dialogs/duration_dialog.dart';
 import 'dialogs/rename_drawing_dialog.dart';
 
 // The editor screen's implementation is split across part files (each a private

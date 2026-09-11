@@ -64,11 +64,15 @@ class TapAgainArm {
   }
 }
 
-/// The destructive button at the bottom of the frame and layer sheets. Resting: a red-text
-/// `TextButton`. Armed: a filled red button reading [armedLabel]. [armKey] identifies WHAT the
-/// button acts on (the frame or layer index, plus the host's engine-traffic stamp); when it
-/// changes between builds the button disarms, so a confirm can never land on a target the user
-/// did not arm. A `null` [onConfirmed] disables the button and clears any armed state.
+/// The destructive button at the bottom of the frame and layer sheets (and the Frames page's
+/// action bar). Resting: a red-text `TextButton`. Armed: a filled red button reading
+/// [armedText]. [armKey] identifies WHAT the button acts on (the frame or layer index, plus the
+/// host's engine-traffic stamp); when it changes between builds the button disarms, so a confirm
+/// can never land on a target the user did not arm. A `null` [onConfirmed] disables the button
+/// and clears any armed state.
+///
+/// An external [arm] lets a keyboard command share the same state machine (the Frames page's
+/// Delete key arms this very button); the owner disposes it and rebuilds on its `onChanged`.
 class TapAgainDeleteButton extends StatefulWidget {
   const TapAgainDeleteButton({
     super.key,
@@ -77,6 +81,8 @@ class TapAgainDeleteButton extends StatefulWidget {
     this.armKey,
     this.window = kTapAgainWindow,
     this.icon = Icons.delete_outline,
+    this.arm,
+    this.armedText = armedLabel,
   });
 
   final String label;
@@ -85,6 +91,12 @@ class TapAgainDeleteButton extends StatefulWidget {
   final Duration window;
   final IconData icon;
 
+  /// A shared arm owned by the caller; `null` = the button owns a private one.
+  final TapAgainArm? arm;
+
+  /// The armed label ("Tap again to confirm" by default; the action bar uses a shorter one).
+  final String armedText;
+
   static const String armedLabel = 'Tap again to confirm';
 
   @override
@@ -92,12 +104,17 @@ class TapAgainDeleteButton extends StatefulWidget {
 }
 
 class _TapAgainDeleteButtonState extends State<TapAgainDeleteButton> {
-  late final TapAgainArm _arm = TapAgainArm(
-    window: widget.window,
-    onChanged: () {
-      if (mounted) setState(() {});
-    },
-  );
+  TapAgainArm? _own;
+
+  TapAgainArm get _arm {
+    if (widget.arm != null) return widget.arm!;
+    return _own ??= TapAgainArm(
+      window: widget.window,
+      onChanged: () {
+        if (mounted) setState(() {});
+      },
+    );
+  }
 
   @override
   void didUpdateWidget(covariant TapAgainDeleteButton old) {
@@ -107,7 +124,7 @@ class _TapAgainDeleteButtonState extends State<TapAgainDeleteButton> {
 
   @override
   void dispose() {
-    _arm.dispose();
+    _own?.dispose(); // an external arm belongs to its owner
     super.dispose();
   }
 
@@ -119,12 +136,12 @@ class _TapAgainDeleteButtonState extends State<TapAgainDeleteButton> {
   Widget build(BuildContext context) {
     final enabled = widget.onConfirmed != null;
     final icon = Icon(widget.icon, size: 18);
-    if (_arm.armed && enabled) {
+    if (_arm.armed && _arm.armedKey == widget.armKey && enabled) {
       return FilledButton.icon(
         style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700, foregroundColor: Colors.white),
         onPressed: _tap,
         icon: icon,
-        label: const Text(TapAgainDeleteButton.armedLabel),
+        label: Text(widget.armedText),
       );
     }
     return TextButton.icon(

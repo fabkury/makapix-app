@@ -548,11 +548,12 @@ extension _EditorSheets on _EditorPageState {
   // the sheet open so repeated taps chain (move-move-move, duplicate-duplicate, delete-delete):
   // `cur` tracks the frame across reorders, follows a new duplicate/blank, and the builder's
   // clamp catches it after a delete. Duration lives in the state zone (tap opens the existing
-  // duration dialog for this frame).
-  void _frameMenu(int initial) {
+  // duration dialog for this frame). Completes when the sheet closes, so a caller that lent
+  // the frame to it (the Frames page) can re-sync afterwards.
+  Future<void> _frameMenu(int initial) async {
     if (_playing) _pause();
     int cur = initial;
-    showAppSheet(
+    await showAppSheet<void>(
       context: context,
       showDragHandle: true,
       backgroundColor: const Color(0xFF1A1C1F),
