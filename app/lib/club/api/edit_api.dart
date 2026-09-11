@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 
 import '../config/club_config.dart';
 import '../models/club_error.dart';
+import 'club_user_agent.dart';
 
 /// Downloads raw artwork bytes from a vault URL (public; no auth) so the editor
 /// can open a Club artwork for remix/replace.
@@ -14,6 +15,7 @@ class EditApi {
             Dio(BaseOptions(
               connectTimeout: ClubConfig.connectTimeout, // [audit F-7]
               receiveTimeout: ClubConfig.ioTimeout,
+              headers: ClubUserAgent.headers,
             ));
 
   Future<Uint8List> downloadArtwork(String url) async {

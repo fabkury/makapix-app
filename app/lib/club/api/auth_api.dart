@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import '../config/club_config.dart';
 import '../models/account.dart';
 import '../models/club_error.dart';
+import 'club_user_agent.dart';
 
 /// The **unauthenticated** account-lifecycle endpoints: registration, the email /
 /// password numeric-OTP flows, and the public handle-availability check.
@@ -23,6 +24,7 @@ class AuthApi {
               connectTimeout: ClubConfig.connectTimeout,
               receiveTimeout: ClubConfig.ioTimeout,
               sendTimeout: ClubConfig.ioTimeout,
+              headers: ClubUserAgent.headers,
             ));
 
   Future<T> _guard<T>(Future<T> Function() call) async {

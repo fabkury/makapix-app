@@ -55,6 +55,7 @@ dependencies:
   sign_in_with_apple: ^6.1.0      # iOS "Sign in with Apple" (Apple guideline 4.8). Gated off until the
                                   # server /auth/token apple grant ships — see kAppleSignInEnabled.
   package_info_plus: ^9.0.1       # runtime app version for the About dialog
+  device_info_plus: ^12.4.0       # OS version + model for the Club User-Agent (api/club_user_agent.dart)
 
 dev_dependencies:
   flutter_test:

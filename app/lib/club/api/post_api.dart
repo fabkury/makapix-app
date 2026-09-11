@@ -41,12 +41,16 @@ class PostApi {
         return Post.fromJson((resp.data as Map).cast<String, dynamic>());
       });
 
-  /// Fire-and-forget view registration (server-throttled to 1/3 s). Never surfaces — so it keeps
-  /// its own swallowing catch rather than going through `guard` (which would rethrow).
-  Future<void> registerView(int postId, {String? channel, String? channelContext}) async {
+  /// Fire-and-forget view registration. The server dedups per visitor per artwork per UTC day
+  /// (a re-fire answers 204); [intent] names the event explicitly (`view` / `impression`) on top
+  /// of the [channel] inference, per the artwork-views thread. Never surfaces — so it keeps its
+  /// own swallowing catch rather than going through `guard` (which would rethrow).
+  Future<void> registerView(int postId,
+      {String? channel, String? channelContext, String? intent}) async {
     try {
       final body = <String, dynamic>{};
       if (channel != null) body['channel'] = channel;
+      if (intent != null) body['intent'] = intent;
       if (channelContext != null) body['channel_context'] = channelContext;
       await client.dio.post('/post/$postId/view', data: body.isEmpty ? null : body);
     } on DioException catch (_) {

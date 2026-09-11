@@ -41,7 +41,8 @@ class _FakePostApi extends PostApi {
   @override
   Future<Post> getBySqid(String sqid) async => post;
   @override
-  Future<void> registerView(int postId, {String? channel, String? channelContext}) async {}
+  Future<void> registerView(int postId,
+      {String? channel, String? channelContext, String? intent}) async {}
   @override
   Future<ReactionTotals> reactions(int postId) async => const ReactionTotals();
   @override

@@ -12,7 +12,7 @@ import 'auth_controller.dart';
 final postDetailProvider = FutureProvider.autoDispose.family<Post, String>((ref, sqid) async {
   final api = ref.watch(postApiProvider);
   final post = await api.getBySqid(sqid);
-  api.registerView(post.id, channel: 'artwork');
+  api.registerView(post.id, channel: 'artwork', intent: 'view');
   return post;
 });
 

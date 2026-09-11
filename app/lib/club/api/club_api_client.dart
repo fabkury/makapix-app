@@ -10,6 +10,7 @@ import '../auth/club_session.dart';
 import '../config/club_config.dart';
 import '../models/account.dart';
 import '../models/club_error.dart';
+import 'club_user_agent.dart';
 
 /// Authenticated Dio for all Club endpoints. Attaches the bearer token and, on
 /// 401, performs a single-flight refresh (via [ClubSession]) and retries the
@@ -35,6 +36,7 @@ class ClubApiClient {
       connectTimeout: ClubConfig.connectTimeout, // [audit F-7]
       receiveTimeout: ClubConfig.ioTimeout,
       sendTimeout: ClubConfig.ioTimeout,
+      headers: ClubUserAgent.headers, // MakapixClub/<ver> (<platform>; …) — server device buckets
     ));
     // Keep pooled connections alive past the app's periodic-request cadences: dart:io's
     // default idleTimeout is exactly 15 s — the player poll's period — so recurring

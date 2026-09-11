@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 
+import '../api/club_user_agent.dart';
 import '../config/club_config.dart';
 import '../models/auth_tokens.dart';
 import '../models/club_error.dart';
@@ -29,6 +30,7 @@ class ClubSession {
               connectTimeout: ClubConfig.connectTimeout, // [audit F-7]
               receiveTimeout: ClubConfig.ioTimeout,
               sendTimeout: ClubConfig.ioTimeout,
+              headers: ClubUserAgent.headers,
             ));
 
   AuthTokens? get tokens => _tokens;
