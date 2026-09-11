@@ -25,6 +25,7 @@ extension _EditorEngine on _EditorPageState {
       final gradDither = prefs.getString(_kGradDitherPrefV2) ?? prefs.getInt(_kGradDitherPref)?.toString();
       final patRecents = prefs.getStringList(_kPatternRecentsPref);
       final patColors = prefs.getStringList(_kPatternColorsPref);
+      final framesColumns = prefs.getInt(_kFramesColumnsPref);
       final all = tools.map((t) => t.dsl).toList();
       List<String>? reconciled;
       if (saved != null) {
@@ -37,6 +38,7 @@ extension _EditorEngine on _EditorPageState {
       if (mounted) {
         setState(() {
           if (reconciled != null) _toolOrder = reconciled;
+          if (framesColumns != null) _framesColumns = framesColumns.clamp(kFramesMinColumns, kFramesMaxColumns);
           _threeRowPref = threeRow;
           // validate against the catalog — a stale/removed dsl in old prefs falls back to the default
           if (pinned3 != null && tools.any((t) => t.dsl == pinned3)) _pinnedThirdTool = pinned3;
@@ -675,16 +677,46 @@ extension _EditorEngine on _EditorPageState {
   static bool _isFrameStructureVerb(String dsl) {
     for (final part in dsl.split(';')) {
       final name = part.trim().split('(').first.trim();
-      if (name == 'AddFrame' ||
-          name == 'AddFrameAt' ||
-          name == 'DuplicateFrame' ||
-          name == 'RemoveFrame' ||
-          name == 'ReorderFrame') {
+      if (const {
+        'AddFrame',
+        'AddFrameAt',
+        'DuplicateFrame',
+        'RemoveFrame',
+        'ReorderFrame',
+        // The frame-set batch verbs that add, remove, or reorder frames (ADR 0031).
+        'RemoveFrames',
+        'DuplicateFrames',
+        'RepeatFramesAfter',
+        'InsertBlankFrames',
+        'ShiftFrames',
+        'ReverseFrames',
+      }.contains(name)) {
         return true;
       }
     }
     return false;
   }
+
+  /// The sixteen frame-set batch verbs (ADR 0031). Every one is a context change: a batch may
+  /// remove, reorder, or rewrite the frame a Draft was made on, so the Draft dies first.
+  static const Set<String> _kBatchVerbs = {
+    'RemoveFrames',
+    'DuplicateFrames',
+    'RepeatFramesAfter',
+    'InsertBlankFrames',
+    'ShiftFrames',
+    'ReverseFrames',
+    'SetFrameDurations',
+    'ScaleFrameDurations',
+    'FlipFramesH',
+    'FlipFramesV',
+    'RotateFrames',
+    'InvertFrames',
+    'CopyLayerToFrames',
+    'RemoveLayersNamed',
+    'SetLayersVisibleNamed',
+    'SetLayersLockedNamed',
+  };
 
   /// Verbs that may run while playback is running (ADR 0012): transport, plus pure-view verbs
   /// that change nothing in the document (SetOverscanView only resizes the editing display).
@@ -714,16 +746,17 @@ extension _EditorEngine on _EditorPageState {
     for (final part in dsl.split(';')) {
       final name = part.trim().split('(').first.trim();
       if (const {
-        'SetActiveFrame',
-        'SetActiveLayer',
-        'AddFrame',
-        'AddFrameAt',
-        'DuplicateFrame',
-        'RemoveFrame',
-        'DuplicateLayer',
-        'RemoveLayer',
-        'MergeDown',
-      }.contains(name)) {
+            'SetActiveFrame',
+            'SetActiveLayer',
+            'AddFrame',
+            'AddFrameAt',
+            'DuplicateFrame',
+            'RemoveFrame',
+            'DuplicateLayer',
+            'RemoveLayer',
+            'MergeDown',
+          }.contains(name) ||
+          _kBatchVerbs.contains(name)) {
         return true;
       }
     }

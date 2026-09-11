@@ -62,6 +62,13 @@ void main() {
     ]);
   });
 
+  testWidgets('T opens the frame sheet; Shift+T opens the Frames page (ADR 0031)', (tester) async {
+    final a = await pumpKeyboard(tester);
+    await chord(tester, LogicalKeyboardKey.keyT);
+    await chord(tester, LogicalKeyboardKey.keyT, modifiers: [LogicalKeyboardKey.shiftLeft]);
+    expect(a.calls, ['openFrameSheet', 'setConstrain:true', 'openFramesPage', 'setConstrain:false']);
+  });
+
   testWidgets('undo fires only when available, but the chord is always consumed', (tester) async {
     final a = await pumpKeyboard(tester);
     await chord(tester, LogicalKeyboardKey.keyZ, modifiers: [LogicalKeyboardKey.controlLeft]);

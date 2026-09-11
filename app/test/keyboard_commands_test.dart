@@ -121,6 +121,7 @@ void main() {
     byId['layer.up']!.invoke(a);
     byId['frame.next']!.invoke(a);
     byId['color.swap']!.invoke(a);
+    byId['page.frames']!.invoke(a);
     expect(a.calls, [
       'undo',
       'selectTool:Pencil',
@@ -128,6 +129,7 @@ void main() {
       'moveLayer:1',
       'stepFrame:1',
       'swapWithPreviousColor',
+      'openFramesPage',
     ]);
   });
 

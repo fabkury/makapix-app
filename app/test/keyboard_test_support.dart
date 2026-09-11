@@ -104,6 +104,8 @@ class FakeEditorAccess implements EditorAccess {
   @override
   void openFrameSheet() => calls.add('openFrameSheet');
   @override
+  void openFramesPage() => calls.add('openFramesPage');
+  @override
   void openLayerSheet() => calls.add('openLayerSheet');
   @override
   void setSpacePan(bool held) => calls.add('setSpacePan:$held');

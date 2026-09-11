@@ -125,6 +125,8 @@ extension _EditorTimeline on _EditorPageState {
             _act('AddFrameAt(${engine.activeFrame + 1})'); // right after the active frame, not at the end
           },
           icon: const Icon(Icons.add_box)),
+      // ⊞ — the Frames page (ADR 0031): every frame as a grid, multi-select, batch operations.
+      IconButton(iconSize: 20, tooltip: 'Frames', onPressed: _openFramesPage, icon: const Icon(Icons.grid_view)),
     ];
     return Container(
       height: vertical ? null : 70 * s,
@@ -234,6 +236,7 @@ extension _EditorTimeline on _EditorPageState {
         // The system share sheet is a mobile concept; desktop users export to a file instead.
         if (Platform.isAndroid || Platform.isIOS) _menuRow('shareTo', Icons.share, 'Share…'),
         _menuRow('watchReplay', Icons.replay, 'Watch replay'),
+        _menuRow('frames', Icons.grid_view, 'Frames…'),
         const PopupMenuDivider(),
         _menuRow('file', Icons.folder_outlined, 'File', submenu: true),
         _menuRow('share', Icons.import_export, 'Import & export', submenu: true),
@@ -260,6 +263,9 @@ extension _EditorTimeline on _EditorPageState {
         break;
       case 'watchReplay':
         _watchReplay();
+        break;
+      case 'frames':
+        _openFramesPage();
         break;
       case 'file':
         _fileMenu();

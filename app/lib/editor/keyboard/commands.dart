@@ -295,6 +295,13 @@ List<CommandDef> buildCommands() {
       invoke: (a) => a.openFrameSheet(),
     ),
     CommandDef(
+      id: 'page.frames',
+      label: 'Frames page',
+      category: 'Panels',
+      enabled: _always,
+      invoke: (a) => a.openFramesPage(),
+    ),
+    CommandDef(
       id: 'sheet.layers',
       label: 'Layer options',
       category: 'Panels',

@@ -187,6 +187,21 @@ void main() {
       expect(tl.isEvent, [1]);
     });
 
+    test('the frame-set batch verbs are one event beat each, retiming included (ADR 0031)', () {
+      final tl = buildTimeline(flatOf([
+        'RemoveFrames(12-32 40)', // 1 EVENT
+        'SetFrameDuration(0, 50)', // 2 invisible (a single-frame setting)
+        'SetFrameDurations(0-3, 50)', // 3 EVENT (a batch is an act on the roll)
+        'ScaleFrameDurations(0-3, 500)', // 4 EVENT
+        'ShiftFrames(1 3, 2)', // 5 EVENT
+        'RotateFrames(0-1, 1)', // 6 EVENT
+        'SetAllDurations(80)', // 7 invisible
+        'SetLayersVisibleNamed(0-2, 0, Sky, dawn)', // 8 EVENT
+      ]));
+      expect(tl.positions, [1, 3, 4, 5, 6, 8]);
+      expect(tl.isEvent, [1, 1, 1, 1, 1, 1]);
+    });
+
     test('a chapter-base pop is an event', () {
       final tl = buildTimeline(flatOf(
         ['Tap(1,1)', 'SetSeed(7)', 'SetBrushSize(2)'],

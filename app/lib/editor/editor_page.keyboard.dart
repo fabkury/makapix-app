@@ -148,6 +148,8 @@ class _EditorKeyboardHost implements EditorAccess {
   @override
   void openFrameSheet() => _s._frameMenu(_s.engine.activeFrame); // pauses playback itself
   @override
+  void openFramesPage() => _s._openFramesPage(); // pauses playback itself
+  @override
   void openLayerSheet() => _s._layerOptions(_s._activeLayerIndex()); // pauses playback itself
   @override
   void openKeyboardHelp() => _s._openKeyboardHelp();

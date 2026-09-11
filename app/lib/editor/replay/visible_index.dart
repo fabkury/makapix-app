@@ -104,6 +104,12 @@ const Set<String> _kAlwaysEvent = {
   'FillNoise', 'FillCursor',
   // Aborting a stroke restores pre-stroke pixels (visible when anything was painted).
   'CancelStroke',
+  // Frame-set batch verbs (ADR 0031): one beat each, the retiming verbs included — a batch is
+  // a deliberate act on the roll, not a settings tweak (unlike the single SetFrameDuration).
+  'RemoveFrames', 'DuplicateFrames', 'RepeatFramesAfter', 'InsertBlankFrames', 'ShiftFrames',
+  'ReverseFrames', 'SetFrameDurations', 'ScaleFrameDurations', 'FlipFramesH', 'FlipFramesV',
+  'RotateFrames', 'InvertFrames', 'CopyLayerToFrames', 'RemoveLayersNamed',
+  'SetLayersVisibleNamed', 'SetLayersLockedNamed',
 };
 
 /// Verbs that stamp one step of a gesture at the cursor — stream ticks. The precision pen's
