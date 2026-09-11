@@ -1,6 +1,7 @@
 // The Place step's pure math (ADR 0019): the on-canvas size an import produces (mirroring the
 // engine's placement paths), when the step applies, the placement geometry (engine-identical
-// centering, free movement, clipping flags), and the shared preview's playback clock.
+// centering, free movement, clipping flags), the off-canvas gutter (ADR 0030: parked vs dropped,
+// the memory estimate), and the shared preview's playback clock.
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -26,14 +27,76 @@ void main() {
       final small = smallSourceImportArgs(scaleUp: false, srcW: 16, srcH: 12);
       expect(importPlacedSize(srcW: 16, srcH: 12, canvasW: 64, canvasH: 64, mode: small.mode, crop: small.crop), (w: 16, h: 12));
     });
+
+    test('1:1 (Native, ADR 0030) is the source size, offered only within storage', () {
+      expect(importPlacedSize(srcW: 300, srcH: 100, canvasW: 64, canvasH: 64, mode: kImportModeNative), (w: 300, h: 100));
+      expect(nativeSizeOffered(300, 100, 192, 192), isFalse, reason: 'wider than the 3× storage');
+      expect(nativeSizeOffered(192, 100, 192, 192), isTrue);
+      expect(nativeSizeOffered(65, 65, 192, 192), isTrue);
+    });
   });
 
   group('placementApplies', () {
-    test('only when the result leaves canvas uncovered', () {
+    test('whenever the result is not exactly the canvas', () {
       expect(placementApplies((w: 64, h: 64), 64, 64), isFalse, reason: 'exact / Stretch');
       expect(placementApplies((w: 64, h: 21), 64, 64), isTrue, reason: 'letterbox');
       expect(placementApplies((w: 16, h: 12), 64, 64), isTrue, reason: '1:1 small');
       expect(placementApplies((w: 20, h: 64), 64, 64), isTrue, reason: 'one dimension');
+      expect(placementApplies((w: 300, h: 100), 64, 64), isTrue, reason: '1:1 oversize overhangs (ADR 0030)');
+      expect(placementApplies((w: 64, h: 100), 64, 64), isTrue, reason: 'overhang on one axis only');
+    });
+  });
+
+  group('PlaceGeometry gutter (ADR 0030)', () {
+    // A 4×4 canvas with a full-canvas gutter: storage spans (-4,-4)…(8,8).
+    PlaceGeometry g(int w, int h) => PlaceGeometry(canvasW: 4, canvasH: 4, w: w, h: h, gutterW: 4, gutterH: 4);
+
+    test('storageRect and no-gutter default', () {
+      expect(g(2, 2).storageRect, const Rect.fromLTWH(-4, -4, 12, 12));
+      final plain = PlaceGeometry(canvasW: 4, canvasH: 4, w: 2, h: 2);
+      expect(plain.storageRect, plain.canvasRect);
+      plain.x = 5;
+      expect(plain.nothingKept, isTrue, reason: 'without a gutter, off-canvas is beyond storage');
+    });
+
+    test('an oversize 1:1 import centers by truncating division and parks its overhang', () {
+      final geo = g(6, 2);
+      expect((geo.x, geo.y), (-1, 1)); // (4-6)/2 = -1, as the engine's i32 division
+      expect(geo.fullyInside, isFalse);
+      expect(geo.fullyKept, isTrue);
+      expect(geo.visibleRect, const Rect.fromLTWH(0, 1, 4, 2));
+      expect(geo.keptRect, geo.placedRect);
+      expect(geo.parkedPixels, 4);
+      expect(geo.droppedPixels, 0);
+    });
+
+    test('entirely off the canvas but inside storage is kept; beyond storage is dropped', () {
+      final geo = g(2, 2);
+      geo.x = 5;
+      geo.y = -4;
+      expect(geo.fullyOutside, isTrue);
+      expect(geo.nothingKept, isFalse);
+      expect(geo.parkedPixels, 4);
+      geo.x = 7;
+      geo.y = 7;
+      expect(geo.keptRect, const Rect.fromLTWH(7, 7, 1, 1));
+      expect(geo.droppedPixels, 3);
+      expect(geo.parkedPixels, 1);
+      geo.x = -9;
+      geo.y = 0;
+      expect(geo.nothingKept, isTrue);
+      expect(geo.keptRect, Rect.zero);
+    });
+  });
+
+  group('import memory estimate (ADR 0030)', () {
+    test('frames × kept area × 4, never negative; the budget check needs a known budget', () {
+      expect(importBytesEstimate(frames: 3, kept: const Rect.fromLTWH(-1, 0, 6, 2)), 3 * 12 * 4);
+      expect(importBytesEstimate(frames: 0, kept: const Rect.fromLTWH(0, 0, 6, 2)), 0);
+      expect(importBytesEstimate(frames: 2, kept: Rect.zero), 0);
+      expect(importMayExceedBudget(estimate: 100, budgetedBytes: 50, hardBudget: 0), isFalse, reason: 'unknown budget');
+      expect(importMayExceedBudget(estimate: 100, budgetedBytes: 50, hardBudget: 150), isFalse, reason: 'exactly at');
+      expect(importMayExceedBudget(estimate: 101, budgetedBytes: 50, hardBudget: 150), isTrue);
     });
   });
 

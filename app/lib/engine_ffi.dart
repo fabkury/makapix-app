@@ -271,6 +271,10 @@ class Engine {
   late final _U32D _primary = _lib.lookupFunction<_U32C, _U32D>('mkpx_primary_color');
   late final _DisplayD _display = _lib.lookupFunction<_DisplayC, _DisplayD>('mkpx_display');
   late final _CompositeD _composite = _lib.lookupFunction<_CompositeC, _CompositeD>('mkpx_composite_frame');
+  late final _U32D _storageWidth = _lib.lookupFunction<_U32C, _U32D>('mkpx_storage_width');
+  late final _U32D _storageHeight = _lib.lookupFunction<_U32C, _U32D>('mkpx_storage_height');
+  late final _CompositeD _compositeStorage =
+      _lib.lookupFunction<_CompositeC, _CompositeD>('mkpx_composite_frame_storage');
   late final _StateD _state = _lib.lookupFunction<_StateC, _StateD>('mkpx_state_json');
   late final _StateD _memJson = _lib.lookupFunction<_StateC, _StateD>('mkpx_mem_json');
   late final _StateD _usedColors = _lib.lookupFunction<_StateC, _StateD>('mkpx_used_colors_json');
@@ -337,6 +341,12 @@ class Engine {
   /// (canvas + off-canvas gutter) when the overscan view is on, else the canvas.
   int get displayWidth => _displayWidth(_s);
   int get displayHeight => _displayHeight(_s);
+
+  /// The storage (canvas + off-canvas gutter) dimensions of every layer buffer, regardless of
+  /// the overscan view — what [compositeFrameStorage] fills. The gutter per side is
+  /// `(storageWidth - width) / 2`.
+  int get storageWidth => _storageWidth(_s);
+  int get storageHeight => _storageHeight(_s);
   int get frameCount => _frameCount(_s);
   int get activeFrame => _activeFrame(_s);
   int get playFrame => _playFrame(_s);
@@ -391,6 +401,17 @@ class Engine {
     final cap = width * height * 4;
     final out = _ensureScratch(cap);
     final n = _composite(_s, frame, out, cap);
+    return out.asTypedList(n < 0 ? 0 : n);
+  }
+
+  /// One frame composited over the whole storage area (canvas + gutter, undimmed), sized
+  /// [storageWidth] × [storageHeight] — the import Place page's backdrop (ADR 0030). Same
+  /// reused-scratch-buffer contract as [display]. Never an export path.
+  Uint8List compositeFrameStorage(int frame) {
+    BatteryStats.composite();
+    final cap = storageWidth * storageHeight * 4;
+    final out = _ensureScratch(cap);
+    final n = _compositeStorage(_s, frame, out, cap);
     return out.asTypedList(n < 0 ? 0 : n);
   }
 
@@ -751,7 +772,9 @@ class Engine {
   }
 
   /// Apply a [DecodedImage] (from [decodeImageInBackground]) to the document — the placement
-  /// half of [importImage], same `mode`/`asLayer`/crop semantics. Runs on the calling isolate
+  /// half of [importImage], same `mode`/`asLayer`/crop semantics (`mode` 0 Fit · 1 Stretch ·
+  /// 2 Crop · 3 Native, the whole source 1:1 — ADR 0030; the part of a placement outside the
+  /// canvas is parked in the off-canvas gutter). Runs on the calling isolate
   /// against the live session, so it belongs on the UI isolate; the expensive decode already
   /// happened in the background. The caller still owns `img` (dispose it in a `finally`).
   ImportStatus importDecoded(DecodedImage img,

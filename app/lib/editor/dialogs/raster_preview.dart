@@ -24,6 +24,9 @@ abstract class FramePreview extends ChangeNotifier {
   final List<ui.Image> frames = [];
   final List<Duration> durations = [];
   bool truncated = false;
+  /// How many frames the source has — the count the import will create, even when the preview
+  /// itself is [truncated]. 0 until [load] has opened the source.
+  int sourceFrames = 0;
   bool loadError = false;
   bool _loading = false;
   bool _disposed = false;
@@ -45,6 +48,7 @@ abstract class FramePreview extends ChangeNotifier {
     _loading = true;
     try {
       final count = await frameCount();
+      sourceFrames = count;
       final fs = <ui.Image>[];
       final ds = <Duration>[];
       var pixels = 0;

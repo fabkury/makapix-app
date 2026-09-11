@@ -147,16 +147,21 @@ class CropGeometry {
 
 /// Pure view transform for the crop editor (2026-09-01): the source is drawn at
 /// `fitScale × zoom` screen px per source px, centered in the viewport, then shifted by [pan].
-/// `zoom` runs from 1 (fit to screen — never below: there is nothing to see out there) up to
+/// `zoom` runs from 1 (fit to screen — never below when there is nothing to see out there) up to
 /// [maxZoom], the zoom that puts [maxPxPerSource] screen px on one source pixel (the editor
 /// canvas's own ceiling). Pan is clamped so at least [keep] px of the image stay inside the
-/// viewport on each axis, and is pinned to zero at fit. Unit-tested; the page only feeds it
-/// gestures and reads [scale] / [origin].
+/// viewport on each axis, and is pinned to zero at fit. With an [overscanX]/[overscanY] band
+/// (the Place page's off-canvas gutter, ADR 0030) fit still frames the image alone, but the view
+/// may pan onto the band and zoom out to [minZoom], where the whole extended area fits.
+/// Unit-tested; the page only feeds it gestures and reads [scale] / [origin].
 class CropView {
-  CropView({required this.srcW, required this.srcH, double margin = 16})
+  CropView({required this.srcW, required this.srcH, double margin = 16, this.overscanX = 0, this.overscanY = 0})
       : marginX = margin,
         marginY = margin;
   final int srcW, srcH;
+  /// Source px of pannable content beyond each edge of the `srcW`×`srcH` image (0 = none).
+  final int overscanX, overscanY;
+  bool get hasOverscan => overscanX > 0 || overscanY > 0;
   /// Screen px kept free around the image at fit. The horizontal one grows on phones with
   /// gesture navigation (see [setMargins]): a corner reticle sitting inside the OS back-swipe
   /// zone can never be grabbed — the system takes the touch before Flutter sees it.
@@ -176,7 +181,20 @@ class CropView {
 
   double get scale => fitScale * zoom;
   double get maxZoom => math.max(1.0, maxPxPerSource / fitScale);
-  bool get isFit => zoom <= 1.0001;
+  /// The zoom floor: 1 (fit) without overscan; with it, the zoom at which the whole extended
+  /// area fits the viewport.
+  double get minZoom {
+    if (!hasOverscan) return 1;
+    final aw = math.max(1.0, view.width - marginX * 2);
+    final ah = math.max(1.0, view.height - marginY * 2);
+    final ext = math.min(aw / (srcW + 2 * overscanX), ah / (srcH + 2 * overscanY));
+    return math.min(1.0, ext / fitScale);
+  }
+  bool get isFit => (zoom - 1).abs() <= 0.0001;
+  bool get canZoomOut => zoom > minZoom + 0.0001;
+  /// At fit with no pan — the state the Fit button restores (with overscan, fit alone still
+  /// allows a pan onto the band).
+  bool get isHome => isFit && pan == Offset.zero;
 
   /// The image's top-left on screen at the current zoom and pan.
   Offset get origin => _centeredOrigin + pan;
@@ -201,7 +219,7 @@ class CropView {
   void zoomAt(Offset p, double newZoom) {
     final oldScale = scale;
     final oldOrigin = origin;
-    zoom = newZoom.clamp(1.0, maxZoom);
+    zoom = newZoom.clamp(minZoom, maxZoom);
     final k = scale / oldScale;
     final desiredOrigin = p - (p - oldOrigin) * k;
     pan = desiredOrigin - _centeredOrigin;
@@ -244,17 +262,20 @@ class CropView {
   int srcY(double localY) => ((localY - origin.dy) / scale).round();
 
   void _clampPan() {
-    if (isFit) {
+    if (isFit && !hasOverscan) {
       pan = Offset.zero;
       return;
     }
-    final base = _centeredOrigin;
+    // Clamp against the extended area (image + overscan band): its origin sits `overscan × scale`
+    // up-left of the image's.
+    final base = _centeredOrigin - Offset(overscanX * scale, overscanY * scale);
     double axis(double p, double b, double disp, double extent) {
       // origin allowed in [keep − disp, extent − keep]; too small a viewport stays centered
       final lo = keep - disp - b, hi = extent - keep - b;
       return lo > hi ? 0 : p.clamp(lo, hi);
     }
-    pan = Offset(axis(pan.dx, base.dx, srcW * scale, view.width), axis(pan.dy, base.dy, srcH * scale, view.height));
+    pan = Offset(axis(pan.dx, base.dx, (srcW + 2 * overscanX) * scale, view.width),
+        axis(pan.dy, base.dy, (srcH + 2 * overscanY) * scale, view.height));
   }
 }
 
@@ -280,7 +301,7 @@ class ViewZoomControls extends StatelessWidget {
               : null,
         );
     return Row(mainAxisSize: MainAxisSize.min, children: [
-      btn(Icons.zoom_out, 'Zoom out', !view.isFit, false),
+      btn(Icons.zoom_out, 'Zoom out', view.canZoomOut, false),
       Text(view.label, style: const TextStyle(fontSize: 12, color: Colors.white60)),
       btn(Icons.zoom_in, 'Zoom in', view.canZoomIn, true),
     ]);
@@ -305,6 +326,13 @@ ImportSizeClass importSizeClass(int srcW, int srcH, int canvasW, int canvasH) {
   if (srcW <= canvasW && srcH <= canvasH) return ImportSizeClass.small;
   return ImportSizeClass.large;
 }
+
+/// The engine's `mode` codes for `mkpx_import` (0 Fit · 1 Stretch · 2 Crop · 3 Native).
+const int kImportModeFit = 0, kImportModeStretch = 1, kImportModeCrop = 2, kImportModeNative = 3;
+
+/// Whether the 1:1 choice is offered for a large source (ADR 0030): only when the whole source
+/// fits within the storage area (canvas + gutter), so every pixel has somewhere to land.
+bool nativeSizeOffered(int srcW, int srcH, int storageW, int storageH) => srcW <= storageW && srcH <= storageH;
 
 /// Engine arguments for a source no larger than the canvas: [scaleUp] → Fit (mode 0, the
 /// aspect-kept upscale to fill the canvas); otherwise the whole source as an explicit crop
@@ -624,7 +652,7 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
           IconButton(
             tooltip: 'Fit to screen',
             icon: const Icon(Icons.fit_screen),
-            onPressed: _view.isFit ? null : () => setState(_view.fit),
+            onPressed: _view.isHome ? null : () => setState(_view.fit),
           ),
           if (canvasMode)
             IconButton(

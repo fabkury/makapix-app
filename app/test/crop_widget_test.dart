@@ -212,6 +212,65 @@ void main() {
       v.setView(const Size(232, 232));
       expect(v.origin.dx, lessThanOrEqualTo(232 - CropView.keep));
     });
+
+    test('isHome: at fit with no pan (the Fit button\'s enable rule)', () {
+      final v = view();
+      expect(v.isHome, isTrue);
+      v.zoomAt(const Offset(100, 100), 2);
+      expect(v.isHome, isFalse);
+      v.fit();
+      expect(v.isHome, isTrue);
+    });
+  });
+
+  // The Place page's off-canvas gutter (ADR 0030): fit still frames the image alone, the band
+  // beyond it is pannable, and the zoom floor drops to where the whole extended area fits.
+  group('CropView with an overscan band', () {
+    // A 100×50 image with a full-image band on every side (300×150 extended) in a 432×232 view.
+    CropView view() => CropView(srcW: 100, srcH: 50, overscanX: 100, overscanY: 50)..setView(const Size(432, 232));
+
+    test('fit is unchanged; the floor is where the extended area fits', () {
+      final v = view();
+      expect(v.fitScale, 4);
+      expect(v.isFit, isTrue);
+      expect(v.origin, const Offset(16, 16));
+      // extended: min(400/300, 200/150) = 4/3 px/px → zoom 1/3
+      expect(v.minZoom, closeTo(1 / 3, 1e-9));
+      expect(v.canZoomOut, isTrue);
+      v.zoomAt(const Offset(216, 116), 0.01);
+      expect(v.zoom, closeTo(1 / 3, 1e-9));
+      expect(v.label, 'View: 33%');
+      expect(v.isFit, isFalse);
+      // The extended area is centered when it is smaller than the viewport.
+      expect(v.origin.dx - 100 * v.scale, closeTo((432 - 300 * v.scale) / 2, 1e-9));
+      v.zoomStep(inward: false); // no-op at the floor
+      expect(v.zoom, closeTo(1 / 3, 1e-9));
+    });
+
+    test('at fit the view may pan onto the band, clamped to the extended area', () {
+      final v = view();
+      v.panBy(const Offset(50, 0));
+      expect(v.pan.dx, 50, reason: 'not pinned: there is a band to see');
+      expect(v.isFit, isTrue);
+      expect(v.isHome, isFalse);
+      v.panBy(const Offset(99999, 99999));
+      // extended origin = image origin − band; allowed up to extent − keep
+      expect(v.origin.dx - 100 * v.scale, 432 - CropView.keep);
+      expect(v.origin.dy - 50 * v.scale, 232 - CropView.keep);
+      v.panBy(const Offset(-99999, -99999));
+      expect(v.origin.dx - 100 * v.scale, CropView.keep - 300 * v.scale);
+      v.fit();
+      expect(v.isHome, isTrue);
+    });
+
+    test('a plain view keeps its floor at fit and its pin at fit', () {
+      final v = CropView(srcW: 100, srcH: 50)..setView(const Size(432, 232));
+      expect(v.hasOverscan, isFalse);
+      expect(v.minZoom, 1);
+      expect(v.canZoomOut, isFalse);
+      v.panBy(const Offset(50, 50));
+      expect(v.pan, Offset.zero);
+    });
   });
 
   group('import size class (streamlined dialog)', () {

@@ -3,10 +3,21 @@
 // chosen top-left offset (canvas pixels) is what the import commits with. A pre-import page, never
 // an editor Draft: no engine draft state, undo and the Journal chapter cut are unchanged.
 //
+// Since ADR 0030 (2026-09-09) the import may land anywhere in the document's storage area: the
+// part outside the canvas is parked in the off-canvas gutter (the Move tool / Overscan view reach
+// it) instead of being dropped, and only the part beyond the storage boundary is lost. The page
+// shows the dimmed gutter around the canvas — with whatever is already parked there — and fits the
+// view to the canvas as before; the gutter overflows the edges and is reached by panning or zooming
+// out (the zoom floor is storage-fit).
+//
 // Gestures mirror the crop editor: one finger drags the import (from anywhere on the view, snapped
 // to whole canvas pixels); two fingers / trackpad pan and pinch the view; wheel zooms about the
 // cursor; right- or middle-drag pans; double-tap toggles fit <-> 4x; the status row's zoom buttons
 // step 1.5x; the app bar resets the view and re-centers the import. X/Y chips type the offset; arrows nudge one canvas pixel.
+//
+// The status block under the view keeps one height in every state (the panel's height feeds the
+// preview's fit scale; a line that appears mid-drag would move the image under the finger): the
+// off-canvas and memory notes each own a fixed slot that only changes color and text.
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -14,14 +25,14 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
-import 'crop_dialog.dart' show CropView, ViewZoomControls, fitNoUpscale, viewGestureHint;
+import 'crop_dialog.dart' show CropView, ViewZoomControls, fitNoUpscale, kImportModeNative, viewGestureHint;
 import 'raster_preview.dart';
 
 /// The on-canvas size (canvas pixels) an import will have, mirroring the engine's placement math
-/// in `frame_to_buffer`: an explicit crop region is placed 1:1 and downscaled (integer
+/// in `frame_to_storage`: an explicit crop region is placed 1:1 and downscaled (integer
 /// cross-multiply) only when larger than the canvas; Stretch fills the canvas; Fit scales by the
 /// binding axis (the engine's f32 `round`, mirrored in double — the result feeds the preview only,
-/// the engine computes its own size at import time).
+/// the engine computes its own size at import time); Native (1:1, ADR 0030) is the source's own size.
 ({int w, int h}) importPlacedSize({
   required int srcW,
   required int srcH,
@@ -40,23 +51,45 @@ import 'raster_preview.dart';
     case 0: // Fit
       final scale = math.min(canvasW / srcW, canvasH / srcH);
       return (w: (srcW * scale).round(), h: (srcH * scale).round());
+    case kImportModeNative: // 1:1
+      return (w: srcW, h: srcH);
     default: // anchored Crop: a canvas-sized window
       return (w: canvasW, h: canvasH);
   }
 }
 
-/// Whether the Place step has anything to place: the result leaves canvas uncovered in some
-/// dimension. Stretch and an exact-size result skip it.
-bool placementApplies(({int w, int h}) placed, int canvasW, int canvasH) => placed.w < canvasW || placed.h < canvasH;
+/// Whether the Place step has anything to place: the result is not exactly the canvas — it
+/// leaves canvas uncovered, or (1:1, ADR 0030) overhangs it. Stretch and an exact-size result skip it.
+bool placementApplies(({int w, int h}) placed, int canvasW, int canvasH) => placed.w != canvasW || placed.h != canvasH;
+
+/// Upper-bound bytes an import adds to the document: every kept pixel of every source frame at
+/// 4 bytes. An upper bound because layer tiles are allocated lazily — fully transparent 32×32
+/// tiles of the placed image cost nothing — and because the engine dedups identical tiles.
+int importBytesEstimate({required int frames, required Rect kept}) =>
+    math.max(0, frames) * kept.width.round() * kept.height.round() * 4;
+
+/// Whether an import of [estimate] bytes on top of [budgetedBytes] would cross the engine's hard
+/// memory budget (and so be refused wholesale). Never with an unknown (zero) budget.
+bool importMayExceedBudget({required int estimate, required int budgetedBytes, required int hardBudget}) =>
+    hardBudget > 0 && budgetedBytes + estimate > hardBudget;
 
 /// Pure placement state: a `w`x`h` image on a `canvasW`x`canvasH` canvas with its top-left at
-/// (`x`, `y`), both in canvas pixels. Starts centered exactly as the engine centers (truncating
-/// integer division), moves freely (off-canvas allowed — the outside is dropped at import).
+/// (`x`, `y`), both in canvas pixels, inside a storage area that extends `gutterW`/`gutterH` px
+/// beyond each canvas edge (ADR 0030; 0 = no gutter). Starts centered exactly as the engine
+/// centers (truncating integer division) and moves freely: what hangs off the canvas but stays
+/// within storage is *parked* at import; what lies beyond storage is dropped.
 class PlaceGeometry {
-  PlaceGeometry({required this.canvasW, required this.canvasH, required this.w, required this.h}) {
+  PlaceGeometry({
+    required this.canvasW,
+    required this.canvasH,
+    required this.w,
+    required this.h,
+    this.gutterW = 0,
+    this.gutterH = 0,
+  }) {
     center();
   }
-  final int canvasW, canvasH, w, h;
+  final int canvasW, canvasH, w, h, gutterW, gutterH;
   int x = 0, y = 0;
 
   void center() {
@@ -71,15 +104,36 @@ class PlaceGeometry {
 
   Rect get placedRect => Rect.fromLTWH(x.toDouble(), y.toDouble(), w.toDouble(), h.toDouble());
   Rect get canvasRect => Rect.fromLTWH(0, 0, canvasW.toDouble(), canvasH.toDouble());
+  Rect get storageRect => Rect.fromLTWH(
+      -gutterW.toDouble(), -gutterH.toDouble(), (canvasW + 2 * gutterW).toDouble(), (canvasH + 2 * gutterH).toDouble());
 
-  /// The part of the image that lands on the canvas (empty when none does).
-  Rect get visibleRect {
-    final r = placedRect.intersect(canvasRect);
+  static Rect _clip(Rect a, Rect b) {
+    final r = a.intersect(b);
     return (r.width <= 0 || r.height <= 0) ? Rect.zero : r;
   }
 
+  /// The part of the image that lands on the canvas (empty when none does).
+  Rect get visibleRect => _clip(placedRect, canvasRect);
+
+  /// The part of the image that lands anywhere — on the canvas or parked in the gutter.
+  Rect get keptRect => _clip(placedRect, storageRect);
+
   bool get fullyInside => visibleRect == placedRect;
   bool get fullyOutside => visibleRect == Rect.zero;
+
+  /// Every pixel lands somewhere (nothing beyond the storage boundary).
+  bool get fullyKept => keptRect == placedRect;
+
+  /// Nothing lands anywhere: the import lies entirely beyond storage — it cannot be committed.
+  bool get nothingKept => keptRect == Rect.zero;
+
+  static int _area(Rect r) => r.width.round() * r.height.round();
+
+  /// Pixels that will be parked off-canvas (kept, but not on the canvas).
+  int get parkedPixels => _area(keptRect) - _area(visibleRect);
+
+  /// Pixels beyond the storage boundary, dropped at import.
+  int get droppedPixels => _area(placedRect) - _area(keptRect);
 }
 
 class PlacePage extends StatefulWidget {
@@ -92,7 +146,11 @@ class PlacePage extends StatefulWidget {
     required this.placedW,
     required this.placedH,
     required this.startFrame,
+    this.gutterW = 0,
+    this.gutterH = 0,
     this.backdrop,
+    this.memBudgetedBytes = 0,
+    this.memHardBudget = 0,
   });
 
   /// The shared decoded-frames preview (the flow owns and disposes it).
@@ -102,12 +160,22 @@ class PlacePage extends StatefulWidget {
   final Rect srcRect;
   final int canvasW, canvasH;
 
+  /// The off-canvas gutter beyond each canvas edge (ADR 0030): storage = canvas + 2 × gutter.
+  final int gutterW, gutterH;
+
   /// The import's on-canvas size ([importPlacedSize]).
   final int placedW, placedH;
 
   /// The frame the import starts at (0-based; shown 1-based) — whose composite is [backdrop].
   final int startFrame;
+
+  /// The start frame composited over the whole storage area (canvas + gutter, undimmed), so it
+  /// is drawn over `PlaceGeometry.storageRect` — with no gutter that is the canvas itself.
   final ui.Image? backdrop;
+
+  /// The document's current engine-budgeted bytes and the hard budget, for the memory note
+  /// (0 = unknown: the note shows the estimate alone and never warns).
+  final int memBudgetedBytes, memHardBudget;
 
   @override
   State<PlacePage> createState() => _PlacePageState();
@@ -138,8 +206,16 @@ class _PlacePageState extends State<PlacePage> with SingleTickerProviderStateMix
   @override
   void initState() {
     super.initState();
-    _geo = PlaceGeometry(canvasW: widget.canvasW, canvasH: widget.canvasH, w: widget.placedW, h: widget.placedH);
-    _view = CropView(srcW: widget.canvasW, srcH: widget.canvasH);
+    _geo = PlaceGeometry(
+      canvasW: widget.canvasW,
+      canvasH: widget.canvasH,
+      w: widget.placedW,
+      h: widget.placedH,
+      gutterW: widget.gutterW,
+      gutterH: widget.gutterH,
+    );
+    // Fit frames the canvas alone (the pre-gutter look); the gutter is the pannable overscan band.
+    _view = CropView(srcW: widget.canvasW, srcH: widget.canvasH, overscanX: widget.gutterW, overscanY: widget.gutterH);
     _ticker = createTicker(_onTick);
     widget.preview.addListener(_onPreview);
     widget.preview.load();
@@ -288,10 +364,59 @@ class _PlacePageState extends State<PlacePage> with SingleTickerProviderStateMix
         onPressed: () => setState(() => _geo.nudge(dx, dy)),
       );
 
+  // ---- the fixed-height status block ----
+
+  /// One status slot: a fixed 20 px row with an icon and a single ellipsized line, so the block
+  /// never changes height (see the file header).
+  static Widget _slot(IconData icon, String text, Color color) => SizedBox(
+        height: 20,
+        child: Row(children: [
+          Icon(icon, color: color, size: 16),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: color)),
+          ),
+        ]),
+      );
+
+  static String _mb(int bytes) => (bytes / (1024 * 1024)).toStringAsFixed(bytes < 10 * 1024 * 1024 ? 1 : 0);
+
+  /// Where the pixels go: on the canvas, parked off-canvas, or dropped beyond storage.
+  Widget _placementSlot() {
+    if (_geo.nothingKept) {
+      return _slot(Icons.block, 'Entirely beyond the storage area — nothing would land.', Colors.amber);
+    }
+    if (!_geo.fullyKept) {
+      return _slot(Icons.warning_amber_rounded,
+          '${_geo.droppedPixels} px beyond the storage area are dropped; ${_geo.parkedPixels} px are parked off-canvas.', Colors.amber);
+    }
+    if (_geo.parkedPixels > 0) {
+      return _slot(Icons.open_in_full, '${_geo.parkedPixels} px are parked off-canvas (Move tool / Overscan view reach them).',
+          Colors.white60);
+    }
+    return _slot(Icons.check_circle_outline, 'Fits on the canvas.', Colors.white60);
+  }
+
+  /// The memory note (user decision 2026-09-09: a warning only — the engine's budget gate stays
+  /// the authority and refuses wholesale; this just says so before a long decode).
+  Widget _memorySlot() {
+    final p = widget.preview;
+    final frames = p.sourceFrames;
+    if (!p.loaded || frames <= 0) return _slot(Icons.memory, 'Memory: estimating…', Colors.white38);
+    final est = importBytesEstimate(frames: frames, kept: _geo.keptRect);
+    final over = importMayExceedBudget(estimate: est, budgetedBytes: widget.memBudgetedBytes, hardBudget: widget.memHardBudget);
+    final free = math.max(0, widget.memHardBudget - widget.memBudgetedBytes);
+    final text = widget.memHardBudget <= 0
+        ? 'Adds up to ~${_mb(est)} MB ($frames ${frames == 1 ? 'frame' : 'frames'}).'
+        : over
+            ? 'Adds up to ~${_mb(est)} MB, over the ${_mb(free)} MB left — the import may be refused.'
+            : 'Adds up to ~${_mb(est)} MB of the ${_mb(free)} MB left.';
+    return _slot(over ? Icons.warning_amber_rounded : Icons.memory, text, over ? Colors.amber : Colors.white60);
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = widget.preview;
-    final clipped = !_geo.fullyInside;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Place'),
@@ -299,7 +424,7 @@ class _PlacePageState extends State<PlacePage> with SingleTickerProviderStateMix
           IconButton(
             tooltip: 'Fit to screen',
             icon: const Icon(Icons.fit_screen),
-            onPressed: _view.isFit ? null : () => setState(_view.fit),
+            onPressed: _view.isHome ? null : () => setState(_view.fit),
           ),
           IconButton(
             tooltip: 'Center the import',
@@ -390,12 +515,18 @@ class _PlacePageState extends State<PlacePage> with SingleTickerProviderStateMix
               _nudge(Icons.keyboard_arrow_right, 1, 0, 'Right 1 px'),
             ]),
             const SizedBox(height: 6),
-            Text(
-              'Import ${_geo.w} × ${_geo.h} px at (${_geo.x}, ${_geo.y}) on the ${widget.canvasW}×${widget.canvasH} canvas. '
-              'Backdrop: frame ${widget.startFrame + 1}.'
-              '${clipped ? _geo.fullyOutside ? ' The import is entirely off the canvas — nothing would land.' : ' The part outside the canvas is dropped.' : ''}',
-              style: TextStyle(fontSize: 12, color: clipped ? Colors.amber : Colors.white60),
+            SizedBox(
+              height: 18,
+              child: Text(
+                'Import ${_geo.w} × ${_geo.h} px at (${_geo.x}, ${_geo.y}) on the ${widget.canvasW}×${widget.canvasH} canvas. '
+                'Backdrop: frame ${widget.startFrame + 1}.',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12, color: Colors.white60),
+              ),
             ),
+            _placementSlot(),
+            _memorySlot(),
           ]),
         ),
       ]),
@@ -406,7 +537,7 @@ class _PlacePageState extends State<PlacePage> with SingleTickerProviderStateMix
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('Back')),
             const SizedBox(width: 8),
             FilledButton(
-              onPressed: p.loaded && !_geo.fullyOutside ? () => Navigator.pop(context, (_geo.x, _geo.y)) : null,
+              onPressed: p.loaded && !_geo.nothingKept ? () => Navigator.pop(context, (_geo.x, _geo.y)) : null,
               child: const Text('Import'),
             ),
           ]),
@@ -432,14 +563,21 @@ class _PlacePainter extends CustomPainter {
     required this.origin,
   });
 
+  /// The engine's overscan-view wash (`dim_gutter`: black at alpha 130), so the gutter reads the
+  /// same here as in the editor.
+  static const Color _gutterWash = Color(0x82000000);
+
   Rect _toScreen(Rect r) => Rect.fromLTWH(origin.dx + r.left * scale, origin.dy + r.top * scale, r.width * scale, r.height * scale);
 
   @override
   void paint(Canvas canvas, Size size) {
     final canvasRect = _toScreen(geo.canvasRect);
-    // Checker under the canvas (screen-space cells, clipped to the canvas).
+    final storageRect = _toScreen(geo.storageRect);
+    // The storage area: flat dark ground (no checker — transparency is only meaningful on the
+    // canvas), the checker under the canvas, then the storage-sized backdrop over both.
     canvas.save();
-    canvas.clipRect(canvasRect);
+    canvas.clipRect(storageRect);
+    canvas.drawRect(storageRect, Paint()..color = const Color(0xFF2E3034));
     const cell = 8.0;
     final dark = Paint()..color = const Color(0xFF3A3D42);
     final light = Paint()..color = const Color(0xFF50545A);
@@ -447,29 +585,48 @@ class _PlacePainter extends CustomPainter {
     for (var yy = canvasRect.top; yy < canvasRect.bottom; yy += cell) {
       final row = ((yy - canvasRect.top) / cell).floor();
       for (var xx = canvasRect.left + (row.isOdd ? cell : 0); xx < canvasRect.right; xx += cell * 2) {
-        canvas.drawRect(Rect.fromLTWH(xx, yy, cell, cell), light);
+        canvas.drawRect(Rect.fromLTWH(xx, yy, cell, cell).intersect(canvasRect), light);
       }
     }
     if (backdrop != null) {
       canvas.drawImageRect(
           backdrop!,
           Rect.fromLTWH(0, 0, backdrop!.width.toDouble(), backdrop!.height.toDouble()),
-          canvasRect,
+          storageRect,
           Paint()..filterQuality = FilterQuality.none);
+    }
+    // Dim the gutter (storage minus canvas) so the canvas stands out, as the editor's overscan view does.
+    if (storageRect != canvasRect) {
+      final gutter = Path()
+        ..addRect(storageRect)
+        ..addRect(canvasRect)
+        ..fillType = PathFillType.evenOdd;
+      canvas.drawPath(gutter, Paint()..color = _gutterWash);
     }
     canvas.restore();
 
     // The import, at its placed size; nearest-neighbor keeps pixel art crisp.
     final placed = _toScreen(geo.placedRect);
     canvas.drawImageRect(frame, srcRect, placed, Paint()..filterQuality = FilterQuality.none);
-    // Shade the part of the import that hangs off the canvas (it is dropped at import).
-    final visible = geo.visibleRect;
-    final shade = Path()..addRect(placed);
-    if (visible != Rect.zero) shade.addRect(_toScreen(visible));
-    shade.fillType = PathFillType.evenOdd;
-    canvas.drawPath(shade, Paint()..color = const Color(0xAA000000));
+    // Shade the part of the import beyond the storage area (dropped at import). The part over the
+    // gutter is kept, so it stays unshaded — the dimmed ground under it already says "off-canvas".
+    final kept = geo.keptRect;
+    if (kept != geo.placedRect) {
+      final shade = Path()..addRect(placed);
+      if (kept != Rect.zero) shade.addRect(_toScreen(kept));
+      shade.fillType = PathFillType.evenOdd;
+      canvas.drawPath(shade, Paint()..color = const Color(0xAA000000));
+    }
 
-    // Outlines: canvas (thin, white) and import (amber).
+    // Outlines: storage (faint), canvas (thin, white) and import (amber).
+    if (storageRect != canvasRect) {
+      canvas.drawRect(
+          storageRect,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1
+            ..color = Colors.white24);
+    }
     canvas.drawRect(
         canvasRect,
         Paint()

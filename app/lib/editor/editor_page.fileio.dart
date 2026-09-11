@@ -195,7 +195,13 @@ extension _EditorFileIo on _EditorPageState {
     // (2026-09-01): a source no larger than the canvas is placed 1:1 centered unless the user
     // flips "Scale up to fit"; one the exact canvas size has a single outcome and no scaling UI.
     final sizeClass = importSizeClass(srcW, srcH, engine.width, engine.height);
-    int mode = 0; // Fit (large sources)
+    // The off-canvas gutter (ADR 0030): a large source that fits within the storage area gets the
+    // 1:1 choice — the default, since parking the overhang is exactly what the gutter is for.
+    final gutterW = (engine.storageWidth - engine.width) ~/ 2;
+    final gutterH = (engine.storageHeight - engine.height) ~/ 2;
+    final nativeOffered =
+        sizeClass == ImportSizeClass.large && nativeSizeOffered(srcW, srcH, engine.storageWidth, engine.storageHeight);
+    int mode = nativeOffered ? kImportModeNative : kImportModeFit; // large sources
     bool scaleUp = false; // small sources
     bool asLayer = true;
     Rect? cropRect; // in source pixels; set together with mode == 2, never orphaned
@@ -236,8 +242,8 @@ extension _EditorFileIo on _EditorPageState {
               const Text('Scaling', style: caption),
               const SizedBox(height: 4),
               ToggleButtons(
-                isSelected: [mode == 0, mode == 1, mode == 2],
-                // Tapping Crop opens the crop editor at once; Fit/Stretch drop any crop.
+                isSelected: [mode == 0, mode == 1, mode == 2, if (nativeOffered) mode == 3],
+                // Tapping Crop opens the crop editor at once; Fit/Stretch/1:1 drop any crop.
                 onPressed: (i) {
                   if (i == 2) {
                     pickCrop(setS);
@@ -248,8 +254,21 @@ extension _EditorFileIo on _EditorPageState {
                     });
                   }
                 },
-                children: const [Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('Fit')), Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('Stretch')), Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('Crop'))],
+                children: [
+                  const Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('Fit')),
+                  const Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('Stretch')),
+                  const Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('Crop')),
+                  if (nativeOffered) const Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('1:1')),
+                ],
               ),
+              if (mode == kImportModeNative)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    'Placed 1:1. The part beyond the ${engine.width}×${engine.height} canvas is kept off-canvas.',
+                    style: caption,
+                  ),
+                ),
               if (mode == 2 && cropRect != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
@@ -307,8 +326,11 @@ extension _EditorFileIo on _EditorPageState {
         final placed = currentPlaced();
         // The start frame's current composite is the backdrop — copied out of the engine's
         // reused scratch buffer before _decode premultiplies it in place.
+        // Storage-sized (canvas + gutter) so pixels already parked off-canvas show around the
+        // canvas where the import may land (ADR 0030).
         final startFrame = engine.activeFrame;
-        final backdrop = await _decode(Uint8List.fromList(engine.compositeFrame(startFrame)), engine.width, engine.height);
+        final backdrop = await _decode(
+            Uint8List.fromList(engine.compositeFrameStorage(startFrame)), engine.storageWidth, engine.storageHeight);
         if (!mounted) {
           backdrop.dispose();
           return;
@@ -319,10 +341,14 @@ extension _EditorFileIo on _EditorPageState {
             srcRect: args.crop ?? Rect.fromLTWH(0, 0, srcW.toDouble(), srcH.toDouble()),
             canvasW: engine.width,
             canvasH: engine.height,
+            gutterW: gutterW,
+            gutterH: gutterH,
             placedW: placed.w,
             placedH: placed.h,
             startFrame: startFrame,
             backdrop: backdrop,
+            memBudgetedBytes: ((_state['mem_budgeted_bytes'] as num?) ?? 0).toInt(),
+            memHardBudget: ((_state['mem_hard_budget'] as num?) ?? 0).toInt(),
           ),
         ));
         backdrop.dispose();
