@@ -7,7 +7,7 @@
 //!   mkpx new <w> <h> -- <inline; actions; ...> [PROBE ...]
 //!   mkpx gen <w> <h> <frames> <layers> <seed> <out.mkpx> [PROBE ...]
 //!   mkpx load <file.mkpx> [--run <script|->] [PROBE ...]
-//!   mkpx import <w> <h> <image> [--pre <script>] [--as-layer] [--mode fit|stretch|crop]
+//!   mkpx import <w> <h> <image> [--pre <script>] [--as-layer] [--mode fit|stretch|crop|native]
 //!               [--start N] [--times N] [PROBE ...]
 //!
 //! `import` (memory-audit lab tool, 2026-07-29) drives the exact decode+import path the app's
@@ -170,7 +170,7 @@ fn main() {
         "import" => {
             // Memory-audit lab tool: the same codec::decode → import_decoded path as mkpx_import.
             if args.len() < 5 {
-                eprintln!("mkpx import needs <w> <h> <image> [--pre <script>] [--as-layer] [--mode fit|stretch|crop] [--start N] [--times N]");
+                eprintln!("mkpx import needs <w> <h> <image> [--pre <script>] [--as-layer] [--mode fit|stretch|crop|native] [--start N] [--times N]");
                 exit(2);
             }
             let w: u16 = args[2].parse().unwrap_or(64);
@@ -201,6 +201,8 @@ fn main() {
                         mode = match args.get(i).map(String::as_str) {
                             Some("stretch") => makapix_engine::import::ScaleMode::Stretch,
                             Some("crop") => makapix_engine::import::ScaleMode::Crop,
+                            // 1:1 — the overhang of an oversize source parks in the gutter (ADR 0030)
+                            Some("native") | Some("1:1") => makapix_engine::import::ScaleMode::Native,
                             _ => makapix_engine::import::ScaleMode::Fit,
                         };
                     }

@@ -1,7 +1,13 @@
-//! Pure import logic (SPEC §16): place decoded frames into the document by scaling or
+//! Pure import logic (SPEC §13): place decoded frames into the document by scaling or
 //! cropping to the canvas size, starting at any frame, optionally as a new layer in each
 //! existing frame. `makapix-codec` produces the `DecodedFrame`s; this stays dependency-free
 //! and oracle-testable.
+//!
+//! Since ADR 0030 (2026-09-09) an import rasterizes straight into a **storage-sized** layer
+//! buffer: whatever part of the placed image hangs off the canvas is parked in the off-canvas
+//! gutter (recoverable with the Move tool, like a moved or pasted pixel) instead of being
+//! dropped. Only the storage boundary clips. `Stretch` and the anchored `Crop` still fill exactly
+//! the canvas; `Native` places the whole source 1:1.
 
 use crate::buffer::RgbaBuffer;
 use crate::color::Rgba8;
@@ -26,6 +32,10 @@ pub enum ScaleMode {
     Fit,
     /// Take a canvas-sized crop from the source at the anchor.
     Crop,
+    /// Place the whole source **1:1** (ADR 0030): centered on the canvas by default, or at
+    /// `placement`; a source larger than the canvas overhangs into the gutter, clipped only at the
+    /// storage boundary. The shell offers it for sources that fit within the storage area.
+    Native,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,9 +55,10 @@ pub struct ImportConfig {
     /// when larger than the canvas, never upscaled — overriding `mode`.
     pub crop_rect: Option<IRect>,
     /// Explicit placement (ADR 0019): the top-left of the placed image in canvas pixels, replacing
-    /// the centered anchor of the crop-rect and `Fit` paths. May be negative or run past the far
-    /// edge — the outside part is dropped. Ignored by `Stretch` (fills the canvas) and by the
-    /// anchored `Crop` mode. `None` keeps today's centering.
+    /// the centered anchor of the crop-rect, `Fit` and `Native` paths. May be negative or run past
+    /// the far edge — the part outside the canvas lands in the off-canvas gutter (ADR 0030); only
+    /// the part beyond the whole storage area is dropped. Ignored by `Stretch` (fills the canvas)
+    /// and by the anchored `Crop` mode. `None` keeps today's centering.
     pub placement: Option<(i32, i32)>,
 }
 
@@ -96,20 +107,36 @@ fn place_origin(cfg: &ImportConfig, cw: u32, ch: u32, dw: u32, dh: u32) -> (i32,
     cfg.placement.unwrap_or(((cw as i32 - dw as i32) / 2, (ch as i32 - dh as i32) / 2))
 }
 
-/// Set a canvas pixel only when it is on the canvas — a placement may hang off any edge.
-fn set_clipped(out: &mut RgbaBuffer, cw: u32, ch: u32, x: i32, y: i32, c: Rgba8) {
-    if x >= 0 && y >= 0 && (x as u32) < cw && (y as u32) < ch {
-        out.set(x, y, c);
+/// Set a pixel of the storage-sized output when it lies inside it — a placement may hang off
+/// any edge of the canvas (into the gutter) and, past that, off the storage area (dropped).
+/// `x, y` are canvas coordinates; `org` is the canvas origin within the buffer.
+fn set_clipped(out: &mut RgbaBuffer, org: (i32, i32), x: i32, y: i32, c: Rgba8) {
+    let (sx, sy) = (org.0 + x, org.1 + y);
+    if sx >= 0 && sy >= 0 && (sx as u32) < out.width() && (sy as u32) < out.height() {
+        out.set(sx, sy, c);
     }
 }
 
-/// Rasterize one decoded frame into a canvas-sized buffer per the config.
+/// Rasterize one decoded frame into a **canvas-sized** buffer per the config — the no-gutter
+/// twin of [`frame_to_storage`] (everything off the canvas is dropped). Kept for oracle tests
+/// and tools that want the canvas window alone.
 pub fn frame_to_buffer(df: &DecodedFrame, cw: u32, ch: u32, cfg: &ImportConfig) -> RgbaBuffer {
-    let mut out = RgbaBuffer::new(cw, ch);
+    frame_to_storage(df, cw, ch, (0, 0), cfg)
+}
+
+/// Rasterize one decoded frame into a **storage-sized** buffer per the config (ADR 0030): the
+/// canvas is `cw`×`ch` with a `gutter` of `(gw, gh)` pixels on every side, so the buffer is
+/// `(cw + 2·gw) × (ch + 2·gh)` and the canvas top-left sits at `(gw, gh)`. `Stretch` and the
+/// anchored `Crop` fill exactly the canvas; the crop-rect, `Fit` and `Native` paths place an
+/// image whose off-canvas part is kept in the gutter and clipped only at the storage boundary.
+/// An empty gutter costs nothing: the buffer is tiled and lazily allocated.
+pub fn frame_to_storage(df: &DecodedFrame, cw: u32, ch: u32, gutter: (u32, u32), cfg: &ImportConfig) -> RgbaBuffer {
+    let (gw, gh) = gutter;
+    let mut out = RgbaBuffer::new(cw + 2 * gw, ch + 2 * gh);
+    let org = (gw as i32, gh as i32);
     // Explicit interactive crop: place the chosen source region **1:1** — downscaling
     // (aspect-preserved, nearest-neighbor) only when the region is larger than the canvas. Never
-    // upscaled; a smaller region lands with transparent padding, centered unless `placement` says
-    // where (the outside part of an off-canvas placement is dropped).
+    // upscaled; a smaller region lands centered unless `placement` says where.
     if let Some(cr) = cfg.crop_rect {
         let (rw, rh) = (cr.w.max(1), cr.h.max(1));
         let (dw, dh) = fit_no_upscale(rw, rh, cw, ch);
@@ -120,7 +147,7 @@ pub fn frame_to_buffer(df: &DecodedFrame, cw: u32, ch: u32, cfg: &ImportConfig) 
                 let sy = cr.y + (y as u64 * rh as u64 / dh as u64) as i32;
                 let c = src_get(&df.rgba, df.w, df.h, sx, sy);
                 if c.a != 0 {
-                    set_clipped(&mut out, cw, ch, ox + x, oy + y, c);
+                    set_clipped(&mut out, org, ox + x, oy + y, c);
                 }
             }
         }
@@ -134,7 +161,7 @@ pub fn frame_to_buffer(df: &DecodedFrame, cw: u32, ch: u32, cfg: &ImportConfig) 
                     let sy = (y as u64 * df.h as u64 / ch.max(1) as u64) as i32;
                     let c = src_get(&df.rgba, df.w, df.h, sx, sy);
                     if c.a != 0 {
-                        out.set(x, y, c);
+                        out.set(org.0 + x, org.1 + y, c);
                     }
                 }
             }
@@ -150,7 +177,7 @@ pub fn frame_to_buffer(df: &DecodedFrame, cw: u32, ch: u32, cfg: &ImportConfig) 
                     let sy = (y as f32 / scale) as i32;
                     let c = src_get(&df.rgba, df.w, df.h, sx, sy);
                     if c.a != 0 {
-                        set_clipped(&mut out, cw, ch, ox + x, oy + y, c);
+                        set_clipped(&mut out, org, ox + x, oy + y, c);
                     }
                 }
             }
@@ -164,7 +191,20 @@ pub fn frame_to_buffer(df: &DecodedFrame, cw: u32, ch: u32, cfg: &ImportConfig) 
                 for x in 0..cw as i32 {
                     let c = src_get(&df.rgba, df.w, df.h, ox + x, oy + y);
                     if c.a != 0 {
-                        out.set(x, y, c);
+                        out.set(org.0 + x, org.1 + y, c);
+                    }
+                }
+            }
+        }
+        ScaleMode::Native => {
+            // The whole source at its own size; centered by the same truncating division the
+            // shell's Place page mirrors, so an oversize source overhangs symmetrically.
+            let (ox, oy) = place_origin(cfg, cw, ch, df.w, df.h);
+            for y in 0..df.h as i32 {
+                for x in 0..df.w as i32 {
+                    let c = src_get(&df.rgba, df.w, df.h, x, y);
+                    if c.a != 0 {
+                        set_clipped(&mut out, org, ox + x, oy + y, c);
                     }
                 }
             }
@@ -174,7 +214,7 @@ pub fn frame_to_buffer(df: &DecodedFrame, cw: u32, ch: u32, cfg: &ImportConfig) 
 }
 
 impl Session {
-    /// Import decoded frames into the document (SPEC §16.1). Structural & undoable.
+    /// Import decoded frames into the document (SPEC §13). Structural & undoable.
     ///
     /// Runs through [`Session::edit_doc`] — the shared document-mutation chokepoint — so an import
     /// that would push the unique tile payload past the hard memory budget is rolled back wholesale
@@ -191,20 +231,16 @@ impl Session {
         }
         let (cw, ch) = (self.doc.size.w as u32, self.doc.size.h as u32);
         let storage = self.doc.storage();
-        let origin = self.doc.origin();
-
-        // Place a canvas-sized decoded frame into a storage-sized layer buffer, at the canvas origin.
-        let to_storage = |buf: &RgbaBuffer| {
-            let mut sbuf = RgbaBuffer::from_size(storage);
-            sbuf.blit_over(buf, origin);
-            sbuf
-        };
+        let margin = self.doc.margin();
+        // Rasterize straight into a storage-sized layer buffer (ADR 0030): the canvas sits at the
+        // document origin and the placed image's overhang lands in the gutter around it.
+        let gutter = (margin.w as u32, margin.h as u32);
 
         let refusals_before = self.mem_refusal_state().0;
         self.edit_doc("import", |s| {
             for (i, df) in frames.iter().enumerate() {
                 let target = cfg.start_frame + i;
-                let buf = to_storage(&frame_to_buffer(df, cw, ch, &cfg));
+                let buf = frame_to_storage(df, cw, ch, gutter, &cfg);
                 let dur = Document::clamp_duration(df.duration_us.max(1));
 
                 if cfg.as_layer && target < s.doc.frames.len() {
@@ -289,6 +325,7 @@ mod tests {
         assert_eq!(set_pixels(&a, 6, 6), set_pixels(&b, 6, 6), "explicit center == default center");
     }
 
+    // Without a gutter the canvas boundary is the storage boundary, so the outside is dropped.
     #[test]
     fn placement_moves_and_clips_at_every_edge() {
         let df = solid(2, 2);
@@ -315,6 +352,91 @@ mod tests {
         let stretched = frame_to_buffer(
             &df, 4, 4, &ImportConfig { mode: ScaleMode::Stretch, placement: Some((2, 2)), ..Default::default() });
         assert_eq!(set_pixels(&stretched, 4, 4).len(), 16, "Stretch ignores placement");
+    }
+
+    /// Storage-space pixels of a frame_to_storage result, as canvas coordinates (gutter → negative).
+    fn set_pixels_canvas(buf: &RgbaBuffer, gutter: (u32, u32)) -> Vec<(i32, i32)> {
+        let mut v = Vec::new();
+        for y in 0..buf.height() as i32 {
+            for x in 0..buf.width() as i32 {
+                if buf.get(x, y).a != 0 {
+                    v.push((x - gutter.0 as i32, y - gutter.1 as i32));
+                }
+            }
+        }
+        v
+    }
+
+    // ADR 0030: with a gutter, the part of a placement that hangs off the canvas is parked there
+    // instead of dropped; only the storage boundary clips.
+    #[test]
+    fn placement_parks_off_canvas_pixels_in_the_gutter_and_clips_at_storage() {
+        let df = solid(2, 2);
+        let g = (4, 4); // a 4×4 canvas with a full-canvas gutter → 12×12 storage
+        // Hanging off the top-left: every source pixel survives, three of them in the gutter.
+        let buf = frame_to_storage(&df, 4, 4, g, &crop_cfg(2, 2, Some((-1, -1))));
+        assert_eq!(buf.width(), 12);
+        assert_eq!(set_pixels_canvas(&buf, g), vec![(-1, -1), (0, -1), (-1, 0), (0, 0)]);
+        // Entirely off the canvas but inside storage: all parked.
+        let buf = frame_to_storage(&df, 4, 4, g, &crop_cfg(2, 2, Some((5, -4))));
+        assert_eq!(set_pixels_canvas(&buf, g), vec![(5, -4), (6, -4), (5, -3), (6, -3)]);
+        // Straddling the storage edge: the beyond-storage part is dropped, no panic.
+        let buf = frame_to_storage(&df, 4, 4, g, &crop_cfg(2, 2, Some((7, 7))));
+        assert_eq!(set_pixels_canvas(&buf, g), vec![(7, 7)]);
+        // Entirely beyond storage: nothing lands.
+        assert!(set_pixels_canvas(&frame_to_storage(&df, 4, 4, g, &crop_cfg(2, 2, Some((-9, 0)))), g).is_empty());
+    }
+
+    // `Native` places the whole source 1:1; an oversize source overhangs symmetrically (the same
+    // truncating centering the Place page mirrors) and the overhang lives in the gutter.
+    #[test]
+    fn native_places_the_whole_source_1_to_1_with_the_overhang_in_the_gutter() {
+        let df = solid(6, 2);
+        let g = (4, 4);
+        let cfg = ImportConfig { mode: ScaleMode::Native, ..Default::default() };
+        let buf = frame_to_storage(&df, 4, 4, g, &cfg);
+        let px = set_pixels_canvas(&buf, g);
+        assert_eq!(px.len(), 12, "every source pixel lands");
+        assert_eq!(px.iter().map(|p| p.0).min(), Some(-1), "(4-6)/2 = -1: one column parked left");
+        assert_eq!(px.iter().map(|p| p.0).max(), Some(4), "one column parked right");
+        assert_eq!(px.iter().map(|p| p.1).min(), Some(1));
+        // Explicit placement moves it; the no-gutter twin drops the overhang.
+        let placed = frame_to_storage(&df, 4, 4, g, &ImportConfig { placement: Some((0, 0)), ..cfg });
+        assert_eq!(set_pixels_canvas(&placed, g).iter().map(|p| p.0).max(), Some(5));
+        assert_eq!(set_pixels(&frame_to_buffer(&df, 4, 4, &cfg), 4, 4).len(), 8);
+    }
+
+    // Stretch and the anchored Crop still fill exactly the canvas: never a gutter pixel.
+    #[test]
+    fn stretch_and_anchored_crop_never_touch_the_gutter() {
+        let df = checker(8, 8);
+        let g = (4, 4);
+        for mode in [ScaleMode::Stretch, ScaleMode::Crop] {
+            let buf = frame_to_storage(&df, 4, 4, g, &ImportConfig { mode, placement: Some((-3, -3)), ..Default::default() });
+            let px = set_pixels_canvas(&buf, g);
+            assert!(!px.is_empty());
+            assert!(px.iter().all(|&(x, y)| (0..4).contains(&x) && (0..4).contains(&y)), "{:?}", mode);
+        }
+    }
+
+    // End to end: an import's overhang is in the document's gutter (canvas-relative negative
+    // coordinates through `Session::pixel`), export-invisible, and undo takes it away again.
+    #[test]
+    fn import_decoded_parks_the_overhang_in_the_document_gutter() {
+        let mut s = Session::new(4, 4);
+        let ok = s.import_decoded(
+            &[solid(6, 2)],
+            ImportConfig { mode: ScaleMode::Native, as_layer: true, start_frame: 0, ..Default::default() },
+        );
+        assert!(ok);
+        assert_eq!(s.pixel(0, 1, -1, 1).a, 255, "parked left of the canvas");
+        assert_eq!(s.pixel(0, 1, 4, 1).a, 255, "parked right of the canvas");
+        assert_eq!(s.pixel(0, 1, 0, 1).a, 255);
+        assert_eq!(s.pixel(0, 1, -2, 1).a, 0);
+        let composite = s.composite_frame_bytes(0);
+        assert_eq!(composite.len(), 4 * 4 * 4, "export stays canvas-cropped");
+        s.run_script("Undo()").unwrap();
+        assert_eq!(s.pixel(0, 0, -1, 1).a, 0, "undo removes the parked pixels with the layer");
     }
 
     #[test]

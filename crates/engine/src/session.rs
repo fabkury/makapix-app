@@ -605,6 +605,13 @@ impl Session {
         }
     }
 
+    /// The storage (canvas + gutter) dimensions of every layer buffer, regardless of the
+    /// overscan view — what `composite_frame_storage_bytes` fills.
+    pub fn storage_size(&self) -> (u32, u32) {
+        let s = self.doc.storage();
+        (s.w as u32, s.h as u32)
+    }
+
     pub fn composite_active_bytes(&self) -> Vec<u8> {
         // The live coat rides along (matched by frame id inside) so mid-stroke composites —
         // Watch replay scrubbing and Timelapse sampling halt between PointerDown and PointerUp —
@@ -618,6 +625,14 @@ impl Session {
         // Export/publish path: always the canvas window, never the gutter. The live coat rides
         // along (frame-id matched inside) for the mid-stroke replay/timelapse samplers.
         render::composite_frame_ov(f, self.doc.canvas_rect(), self.live_coat()).to_rgba_bytes()
+    }
+
+    /// One frame composited over the **whole storage area** (canvas + gutter), undimmed — the
+    /// backdrop the import Place page draws so parked pixels show around the canvas (ADR 0030).
+    /// Never an export path: exports stay canvas-cropped.
+    pub fn composite_frame_storage_bytes(&self, frame: usize) -> Vec<u8> {
+        let f = &self.doc.frames[frame.min(self.doc.frames.len() - 1)];
+        render::composite_frame_ov(f, self.doc.storage_rect(), self.live_coat()).to_rgba_bytes()
     }
 
     /// Content hash of a frame (low 64 bits) — used by the shell to cache thumbnails.

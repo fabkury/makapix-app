@@ -161,6 +161,34 @@ pub extern "C" fn mkpx_composite_frame(ptr: *mut Session, frame: u32, out: *mut 
     bytes.len() as c_int
 }
 
+/// The storage (canvas + off-canvas gutter) dimensions every layer buffer has — the size of the
+/// buffer `mkpx_composite_frame_storage` fills, independent of the overscan view setting.
+#[no_mangle]
+pub extern "C" fn mkpx_storage_width(ptr: *mut Session) -> u32 {
+    session(ptr).map(|s| s.storage_size().0).unwrap_or(0)
+}
+#[no_mangle]
+pub extern "C" fn mkpx_storage_height(ptr: *mut Session) -> u32 {
+    session(ptr).map(|s| s.storage_size().1).unwrap_or(0)
+}
+
+/// Fill `out` with a specific frame composited over the **whole storage area** (canvas + gutter,
+/// undimmed, no overlays) — the import Place page's backdrop (ADR 0030). Size it from
+/// `mkpx_storage_width/height`. Returns bytes written, or -1 if the buffer is too small.
+#[no_mangle]
+pub extern "C" fn mkpx_composite_frame_storage(ptr: *mut Session, frame: u32, out: *mut u8, cap: usize) -> c_int {
+    let s = match session(ptr) {
+        Some(s) => s,
+        None => return -1,
+    };
+    let bytes = s.composite_frame_storage_bytes(frame as usize);
+    if bytes.len() > cap || out.is_null() {
+        return -1;
+    }
+    unsafe { slice::from_raw_parts_mut(out, bytes.len()).copy_from_slice(&bytes) };
+    bytes.len() as c_int
+}
+
 /// Fill `out` with 1-byte-per-pixel selection coverage (1=selected) for the shell to draw a
 /// thin animated outline. Returns bytes written (= w*h), or 0 when there's nothing to outline.
 #[no_mangle]
@@ -605,6 +633,7 @@ fn import_frames_into(
         mode: match mode {
             1 => ScaleMode::Stretch,
             2 => ScaleMode::Crop,
+            3 => ScaleMode::Native,
             _ => ScaleMode::Fit,
         },
         anchor: Anchor::Center,
@@ -621,11 +650,13 @@ fn import_frames_into(
 }
 
 /// Import an image file (GIF/PNG/APNG/JPEG/BMP/WebP) into the document.
-/// `mode`: 0=Fit, 1=Stretch, 2=Crop. `as_layer`: 0/1. A non-empty crop rect (`crop_w>0 && crop_h>0`,
-/// source pixels) places that region 1:1 centered on the canvas (downscaled to fit only when larger,
-/// never upscaled), overriding `mode`. `place != 0` places the image's top-left at canvas pixel
-/// (`place_x`, `place_y`) instead of centering it (crop-rect and Fit paths; the outside part of an
-/// off-canvas placement is dropped) — ADR 0019. Returns 0 on success, -1 on decode failure, -2 when
+/// `mode`: 0=Fit, 1=Stretch, 2=Crop, 3=Native (the whole source 1:1, ADR 0030). `as_layer`: 0/1.
+/// A non-empty crop rect (`crop_w>0 && crop_h>0`, source pixels) places that region 1:1 centered
+/// on the canvas (downscaled to fit only when larger, never upscaled), overriding `mode`.
+/// `place != 0` places the image's top-left at canvas pixel (`place_x`, `place_y`) instead of
+/// centering it (crop-rect, Fit and Native paths) — ADR 0019. The part of a placement outside the
+/// canvas is parked in the off-canvas gutter; only the part beyond the storage area is dropped
+/// (ADR 0030). Returns 0 on success, -1 on decode failure, -2 when
 /// the memory-budget gate refused the import (document unchanged), -3 when the input is valid but
 /// exceeds the codec's decode size limits (too large — worth telling apart from corrupt).
 #[no_mangle]
