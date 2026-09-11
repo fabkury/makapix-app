@@ -103,6 +103,54 @@ pub fn composite_frame_ov(frame: &Frame, src: IRect, coat: Option<&StrokeCoat>) 
     out
 }
 
+/// A point sampler over a frame's composite: [`sample`](Self::sample) returns the very pixel
+/// [`composite_frame_ov`] would put at storage `(sx, sy)` — one `color::composite` per
+/// contributing layer in stack order, the live coat resolved on its own layer — without
+/// flattening anything. A thumbnail reads a few thousand samples of a frame that may hold
+/// hundreds of thousands of pixels, so this is the Frames page's contact-sheet path (ADR 0031);
+/// the byte-equality with the full composite is pinned by
+/// `sampler_matches_full_composite_on_random_documents`.
+pub struct FrameSampler<'a> {
+    frame: &'a Frame,
+    coat: Option<&'a StrokeCoat>,
+    /// The coat's layer index within `frame` (matched by frame AND layer id, as the full path).
+    coat_layer: Option<usize>,
+    /// The coat's dirty bounds — the only pixels where `resolve` can differ from the layer.
+    bbox: Option<IRect>,
+}
+
+impl<'a> FrameSampler<'a> {
+    pub fn new(frame: &'a Frame, coat: Option<&'a StrokeCoat>) -> Self {
+        let coat_layer = coat.filter(|c| c.ctx.fid == frame.id).and_then(|c| frame.layer_index_by_id(c.ctx.lid));
+        let bbox = match (coat, coat_layer) {
+            (Some(c), Some(_)) => c.bbox(),
+            _ => None,
+        };
+        FrameSampler { frame, coat, coat_layer, bbox }
+    }
+
+    /// The composite at storage `(sx, sy)`; transparent outside every layer's buffer.
+    pub fn sample(&self, sx: i32, sy: i32) -> Rgba8 {
+        let p = Point::new(sx, sy);
+        let mut out = Rgba8::TRANSPARENT;
+        for (li, layer) in self.frame.layers.iter().enumerate() {
+            if !layer.visible || layer.opacity == 0 {
+                continue;
+            }
+            let under = layer.pixels.get(sx, sy);
+            let s = match (self.coat, self.coat_layer, self.bbox) {
+                (Some(c), Some(cli), Some(b)) if cli == li && b.contains(p) => c.resolve(sx, sy, under),
+                _ => under,
+            };
+            if s.a == 0 {
+                continue;
+            }
+            out = color::composite(layer.blend, s, out, layer.opacity);
+        }
+        out
+    }
+}
+
 /// Composite the canvas window of the active frame of a document.
 pub fn composite_active(doc: &Document) -> RgbaBuffer {
     composite_frame(doc.active_frame(), doc.canvas_rect())
@@ -212,6 +260,108 @@ mod tests {
     use crate::coat::PaintCtx;
     use crate::document::Document;
     use crate::tool::{BrushShape, ToolKind};
+
+    /// THE sampler invariant (ADR 0031): at every storage pixel, `FrameSampler::sample` equals
+    /// the full composite — over random sizes (square and not), 1–5 layers with every blend
+    /// mode, edge opacities, hidden layers, gutter content, materialized-transparent tiles, and
+    /// a live coat of every coat tool (sometimes on a foreign frame, which must not preview).
+    #[test]
+    fn sampler_matches_full_composite_on_random_documents() {
+        let mut rng = crate::util::SeededRng::new(0x5EED_F00D);
+        let opacities = [0u8, 1, 7, 128, 254, 255];
+        let tools = [
+            ToolKind::Brush,
+            ToolKind::Airbrush,
+            ToolKind::AirbrushMist,
+            ToolKind::AirbrushSoft,
+            ToolKind::Eraser,
+            ToolKind::Dodge,
+        ];
+        for trial in 0..40u32 {
+            let w = 1 + (rng.next_u64() % 48) as u16;
+            let h = if trial.is_multiple_of(3) { w } else { 1 + (rng.next_u64() % 48) as u16 };
+            let mut d = Document::new(w, h);
+            let storage = d.storage();
+            let nl = 1 + (rng.next_u64() % 5) as usize;
+            for li in 0..nl {
+                if li > 0 {
+                    let l = d.new_layer(format!("L{}", li));
+                    d.active_frame_mut().layers.push(l);
+                }
+                let layer = &mut d.active_frame_mut().layers[li];
+                layer.blend = crate::document::BlendMode::from_u8((rng.next_u64() % 11) as u8);
+                layer.opacity = opacities[(rng.next_u64() % opacities.len() as u64) as usize];
+                layer.visible = !rng.next_u64().is_multiple_of(5);
+                for _ in 0..(1 + rng.next_u64() % 4) {
+                    let x = (rng.next_u64() % storage.w as u64) as i32;
+                    let y = (rng.next_u64() % storage.h as u64) as i32;
+                    let rw = 1 + (rng.next_u64() % 40) as u32;
+                    let rh = 1 + (rng.next_u64() % 40) as u32;
+                    let c = Rgba8::new(
+                        (rng.next_u64() & 255) as u8,
+                        (rng.next_u64() & 255) as u8,
+                        (rng.next_u64() & 255) as u8,
+                        if rng.next_u64().is_multiple_of(4) { 255 } else { (rng.next_u64() & 255) as u8 },
+                    );
+                    layer.pixels.fill_rect(IRect::new(x, y, rw, rh), c);
+                }
+                // A materialized transparent pixel keeps its tile present.
+                let (tx, ty) = ((rng.next_u64() % storage.w as u64) as i32, (rng.next_u64() % storage.h as u64) as i32);
+                layer.pixels.set(tx, ty, Rgba8::rgb(1, 2, 3));
+                layer.pixels.set(tx, ty, Rgba8::TRANSPARENT);
+            }
+            let frame = d.active_frame();
+            let li = (rng.next_u64() % nl as u64) as usize;
+            let foreign = trial % 7 == 6;
+            let tool = tools[(rng.next_u64() % tools.len() as u64) as usize];
+            let ctx = PaintCtx {
+                tool,
+                color: Rgba8::new(
+                    (rng.next_u64() & 255) as u8,
+                    (rng.next_u64() & 255) as u8,
+                    (rng.next_u64() & 255) as u8,
+                    1 + (rng.next_u64() % 255) as u8,
+                ),
+                size: 1 + (rng.next_u64() % 9) as u16,
+                shape: if rng.next_u64().is_multiple_of(2) { BrushShape::Round } else { BrushShape::Square },
+                intensity: 1 + (rng.next_u64() % 255) as u8,
+                aa: rng.next_u64().is_multiple_of(2),
+                pattern: None,
+                mirror: crate::tool::Mirror::NONE,
+                dv: if matches!(tool, ToolKind::Dodge) { 0.3 } else { 0.0 },
+                seed: rng.next_u64(),
+                fid: if foreign { frame.id + 1000 } else { frame.id },
+                lid: frame.layers[li].id,
+            };
+            let o = d.origin();
+            let mut coat = crate::coat::StrokeCoat::new(d.canvas_rect(), ctx);
+            let a = Point::new(o.x + (rng.next_u64() % w as u64) as i32, o.y + (rng.next_u64() % h as u64) as i32);
+            let b = Point::new(o.x + (rng.next_u64() % w as u64) as i32, o.y + (rng.next_u64() % h as u64) as i32);
+            coat.segment(None, a, b);
+            let coat_opt = if trial % 5 == 4 { None } else { Some(&coat) };
+
+            let sampler = FrameSampler::new(frame, coat_opt);
+            let full_storage = composite_frame_ov(frame, d.storage_rect(), coat_opt);
+            for y in 0..storage.h as i32 {
+                for x in 0..storage.w as i32 {
+                    assert_eq!(full_storage.get(x, y), sampler.sample(x, y), "trial {} storage ({}, {})", trial, x, y);
+                }
+            }
+            let full_canvas = composite_frame_ov(frame, d.canvas_rect(), coat_opt);
+            for ly in 0..h as i32 {
+                for lx in 0..w as i32 {
+                    assert_eq!(
+                        full_canvas.get(lx, ly),
+                        sampler.sample(o.x + lx, o.y + ly),
+                        "trial {} canvas ({}, {})",
+                        trial,
+                        lx,
+                        ly
+                    );
+                }
+            }
+        }
+    }
 
     /// A coat over a blend-mode+opacity layer, spanning painted pixels, materialized-transparent
     /// pixels, and wholly absent tiles. THE invariant: previewing the coat composites exactly

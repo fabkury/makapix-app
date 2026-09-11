@@ -9,6 +9,7 @@
 use crate::color::Rgba8;
 use crate::geom::{IRect, Point, Size};
 use crate::util::{Hash, Hasher};
+use std::cell::Cell;
 use std::sync::Arc;
 
 pub const TILE: u32 = 32;
@@ -73,6 +74,12 @@ pub struct RgbaBuffer {
     tiles_x: u32,
     tiles_y: u32,
     tiles: Arc<TileTable>,
+    /// Memoized [`content_hash`](Self::content_hash) (ADR 0031): the frame hash the shell asks
+    /// for per visible thumbnail used to walk every pixel of every layer on every call. Cleared
+    /// by every mutation path — the COW funnel [`tiles_mut`](Self::tiles_mut) plus the three
+    /// direct table swaps — and inherited by a clone (same table, same hash). Interior
+    /// mutability so `&self` readers fill it; nothing in the engine needs `Sync`.
+    hash_memo: Cell<Option<Hash>>,
 }
 
 /// A reversible change to a buffer expressed as changed tiles (COW snapshots). Cheap to
@@ -118,6 +125,7 @@ impl RgbaBuffer {
             tiles_x,
             tiles_y,
             tiles: Arc::new(vec![None; (tiles_x * tiles_y) as usize]),
+            hash_memo: Cell::new(None),
         }
     }
 
@@ -125,6 +133,7 @@ impl RgbaBuffer {
     /// few-KiB memcpy of pointers, paid at most once per divergence — not per write.
     #[inline]
     fn tiles_mut(&mut self) -> &mut TileTable {
+        self.hash_memo.set(None);
         Arc::make_mut(&mut self.tiles)
     }
 
@@ -231,6 +240,7 @@ impl RgbaBuffer {
     }
 
     pub fn clear(&mut self) {
+        self.hash_memo.set(None);
         self.tiles = Arc::new(vec![None; self.tiles.len()]);
     }
 
@@ -241,6 +251,7 @@ impl RgbaBuffer {
     /// the point is to avoid a fresh ~4 KiB-class table allocation on the per-pointer-move paths
     /// (a Move-tool layer drag re-clears its layers every event). [audit C-3]
     pub fn clear_in_place(&mut self) {
+        self.hash_memo.set(None);
         match Arc::get_mut(&mut self.tiles) {
             Some(table) => {
                 for slot in table.iter_mut() {
@@ -266,8 +277,20 @@ impl RgbaBuffer {
         }
     }
 
-    /// Deterministic content hash over present tiles (and their grid positions).
+    /// Deterministic content hash over present tiles (and their grid positions). Memoized: the
+    /// first call after a mutation walks the tiles, later calls return the stored value.
     pub fn content_hash(&self) -> Hash {
+        if let Some(h) = self.hash_memo.get() {
+            return h;
+        }
+        let h = self.content_hash_uncached();
+        self.hash_memo.set(Some(h));
+        h
+    }
+
+    /// The hash computed from the tiles every time — the memo's oracle (tests) and the value
+    /// [`content_hash`](Self::content_hash) must always equal.
+    pub fn content_hash_uncached(&self) -> Hash {
         let mut h = Hasher::new();
         h.write_u32(self.w);
         h.write_u32(self.h);
@@ -363,6 +386,7 @@ impl RgbaBuffer {
     /// mismatch.
     pub fn restore_snapshot(&mut self, snap: &Arc<TileTable>) {
         if snap.len() == self.tiles.len() {
+            self.hash_memo.set(None);
             self.tiles = snap.clone();
         }
     }
@@ -559,6 +583,70 @@ impl RgbaBuffer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The memo (ADR 0031) must never lag the tiles: every mutator, the three direct table
+    /// swaps, clones, and the byte constructors all leave `content_hash` == the uncached walk.
+    #[test]
+    fn hash_memo_stays_equal_to_the_uncached_hash_through_every_mutator() {
+        let check = |b: &RgbaBuffer, what: &str| {
+            assert_eq!(b.content_hash(), b.content_hash_uncached(), "{}", what);
+            assert_eq!(b.content_hash(), b.content_hash(), "{}: stable", what);
+        };
+        let mut b = RgbaBuffer::new(96, 64);
+        check(&b, "fresh");
+        b.set(3, 3, Rgba8::rgb(9, 8, 7));
+        check(&b, "set");
+        b.blend_over(4, 4, Rgba8::new(0, 0, 255, 128));
+        check(&b, "blend_over");
+        b.fill_rect(IRect::new(10, 10, 40, 20), Rgba8::rgb(1, 1, 1));
+        check(&b, "fill_rect");
+        let src = b.subimage(IRect::new(0, 0, 40, 40));
+        check(&src, "subimage");
+        b.blit(&src, Point::new(50, 20));
+        check(&b, "blit");
+        b.blit_over(&src, Point::new(20, 30));
+        check(&b, "blit_over");
+        b.blit_wrapped(&src, 5, 7, IRect::new(0, 0, 96, 64));
+        check(&b, "blit_wrapped");
+        let snap = b.snapshot();
+        b.fill_all(Rgba8::rgb(5, 5, 5));
+        check(&b, "fill_all");
+        let patch = b.diff_from(&snap);
+        b.apply_before(&patch);
+        check(&b, "apply_before");
+        b.apply_after(&patch);
+        check(&b, "apply_after");
+        b.restore_snapshot(&snap);
+        check(&b, "restore_snapshot");
+        b.set(90, 60, Rgba8::WHITE);
+        b.set(90, 60, Rgba8::TRANSPARENT);
+        check(&b, "set transparent");
+        b.compact();
+        check(&b, "compact");
+        let tile_bytes = vec![200u8; TILE_AREA * 4];
+        b.put_tile_bytes(1, &tile_bytes);
+        check(&b, "put_tile_bytes");
+        let t = b.tile_arc(1).cloned();
+        b.set_tile(2, t);
+        check(&b, "set_tile");
+        b.set_tile(2, None);
+        check(&b, "set_tile none");
+        b.clear_in_place();
+        check(&b, "clear_in_place (shared table)");
+        drop(snap);
+        b.set(1, 1, Rgba8::WHITE);
+        b.clear_in_place();
+        check(&b, "clear_in_place (owned table)");
+        b.set(1, 1, Rgba8::WHITE);
+        let c = b.clone();
+        check(&c, "clone");
+        b.clear();
+        check(&b, "clear");
+        check(&c, "clone after the original cleared");
+        let f = RgbaBuffer::from_rgba_bytes(8, 8, &[7u8; 8 * 8 * 4]);
+        check(&f, "from_rgba_bytes");
+        assert_ne!(f.content_hash(), b.content_hash(), "different content, different hash");
+    }
 
     #[test]
     fn set_get_and_sparsity() {

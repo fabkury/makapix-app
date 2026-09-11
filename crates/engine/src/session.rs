@@ -654,18 +654,23 @@ impl Session {
     }
 
     /// A small nearest-downscaled composite of `frame` (`tw`×`th` straight RGBA) for the
-    /// film-roll thumbnails — keeps shell memory bounded for big animations.
+    /// film-roll and Frames-page thumbnails — keeps shell memory bounded for big animations.
+    /// Point-sampled (ADR 0031): only the `tw×th` source pixels are composited, through
+    /// `render::FrameSampler`, so a 96 px thumb of a 512² frame costs ~9k composites instead of
+    /// 262k; byte-identical to sampling the full composite (pinned by
+    /// `frame_thumb_bytes_matches_full_composite_reference`).
     pub fn frame_thumb_bytes(&self, frame: usize, tw: u32, th: u32) -> Vec<u8> {
         let i = frame.min(self.doc.frames.len() - 1);
         let (w, h) = (self.doc.size.w as u32, self.doc.size.h as u32);
-        let flat = render::composite_frame_ov(&self.doc.frames[i], self.doc.canvas_rect(), self.live_coat());
+        let org = self.doc.origin();
+        let smp = render::FrameSampler::new(&self.doc.frames[i], self.live_coat());
         let (tw, th) = (tw.max(1), th.max(1));
         let mut out = vec![0u8; (tw * th * 4) as usize];
         for ty in 0..th {
             for tx in 0..tw {
-                let sx = (tx * w / tw) as i32;
-                let sy = (ty * h / th) as i32;
-                let c = flat.get(sx, sy);
+                let sx = org.x + (tx * w / tw) as i32;
+                let sy = org.y + (ty * h / th) as i32;
+                let c = smp.sample(sx, sy);
                 let o = ((ty * tw + tx) * 4) as usize;
                 out[o] = c.r;
                 out[o + 1] = c.g;
@@ -4334,6 +4339,45 @@ mod tests {
             let o = self.0.doc.origin();
             self.0.doc.selection.as_ref().map(|m| m.get(x + o.x, y + o.y)).unwrap_or(false)
         }
+    }
+
+    /// The point-sampled thumbnail (ADR 0031) equals the pre-2026-09 reference — sampling the
+    /// full canvas composite — over blend modes, opacities, a hidden layer, gutter content, odd
+    /// thumb sizes, and MID-STROKE with a live coat on the sampled frame.
+    #[test]
+    fn frame_thumb_bytes_matches_full_composite_reference() {
+        let reference = |s: &Session, frame: usize, tw: u32, th: u32| -> Vec<u8> {
+            let (w, h) = (s.doc.size.w as u32, s.doc.size.h as u32);
+            let flat = render::composite_frame_ov(&s.doc.frames[frame], s.doc.canvas_rect(), s.live_coat());
+            let (tw, th) = (tw.max(1), th.max(1));
+            let mut out = vec![0u8; (tw * th * 4) as usize];
+            for ty in 0..th {
+                for tx in 0..tw {
+                    let c = flat.get((tx * w / tw) as i32, (ty * h / th) as i32);
+                    let o = ((ty * tw + tx) * 4) as usize;
+                    out[o..o + 4].copy_from_slice(&[c.r, c.g, c.b, c.a]);
+                }
+            }
+            out
+        };
+        let mut s = Session::new(37, 23);
+        s.run_script(
+            "SetSeed(3)\nFillNoise(11)\nAddLayer()\nSetLayerBlend(1, Multiply)\nSetLayerOpacity(1, 150)\nFillNoise(12)\n\
+             AddLayer()\nFillNoise(13)\nSetLayerVisible(2, false)\nAddLayer()\nSetLayerBlend(3, Screen)\n\
+             SelectTool(Pencil)\nSetPrimaryColor(#40C0FF80)\nSetBrushSize(4)\nStroke([(2,2),(30,20)])\n\
+             SelectTool(Move)\nNudgeLayers(-9, 4)\nDuplicateFrame(0)\nSetActiveFrame(0)\n\
+             SelectTool(Brush)\nSetBrushSize(6)\nSetPrimaryColor(#FF3040C0)\nPointerDown(5,5)\nPointerMove(28,17)",
+        )
+        .unwrap();
+        assert!(s.live_coat().is_some(), "mid-stroke: the coat must be live");
+        for frame in 0..2 {
+            for &(tw, th) in &[(1u32, 1u32), (3, 5), (16, 16), (37, 23), (48, 96), (200, 7), (0, 0)] {
+                assert_eq!(s.frame_thumb_bytes(frame, tw, th), reference(&s, frame, tw, th), "frame {} {}x{}", frame, tw, th);
+            }
+        }
+        s.run_script("PointerUp()").unwrap();
+        assert!(s.live_coat().is_none());
+        assert_eq!(s.frame_thumb_bytes(0, 64, 40), reference(&s, 0, 64, 40));
     }
 
     #[test]
