@@ -20,6 +20,10 @@ roll is the only way to manipulate animation frames, and it is a one-frame-at-a-
   moved to the More sheet's Timing section** (above the × chips). **Selection is amber**
   (wash, 2 px border, check-circle; the mouse rubber-band too); the active-frame marker stays
   the strip's blue, and a selected active tile keeps the blue border under the amber wash.
+  Second Pixel pass, same day: **a pinch never selects** — from the moment a second finger
+  lands until every finger lifts, no tile gesture counts; a sweep the first finger had already
+  begun is cancelled and the selection restored to what it was before the touch (no sweep
+  delay; the first tile may flash once).
 
 - **Content batches are never refused on memory grounds.** The provisional policy (refuse when the
   retained payload exceeds the document headroom) was replaced by: bill every `DocStructure`

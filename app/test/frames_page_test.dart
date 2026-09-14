@@ -114,6 +114,34 @@ void main() {
       expect(find.text('4 selected · 2–5'), findsOneWidget);
     });
 
+    testWidgets('a second finger (pinch) cancels the sweep, restores the selection, and its taps never count', (tester) async {
+      final host = FakeFramesHost(fakeFrames(8));
+      await pumpFramesPage(tester, host);
+      await tester.tap(tile(1));
+      await tester.pump();
+      final a = await tester.startGesture(tester.getCenter(tile(2)));
+      await a.moveBy(const Offset(30, 0)); // the first finger drifts sideways: a sweep begins
+      await tester.pump();
+      expect(tester.widget<FrameTile>(tile(2)).selected, isTrue);
+      final b = await tester.startGesture(tester.getCenter(tile(7))); // the second finger lands
+      await tester.pump();
+      expect(tester.widget<FrameTile>(tile(2)).selected, isFalse, reason: 'the sweep is undone');
+      expect(find.text('1 selected · 1'), findsOneWidget);
+      await a.moveBy(const Offset(-3, 0)); // a pinch too small to change the column count
+      await b.moveBy(const Offset(3, 0));
+      await tester.pump();
+      await b.up();
+      await a.up();
+      await tester.pumpAndSettle();
+      expect(find.text('1 selected · 1'), findsOneWidget, reason: 'neither finger counted as a tap');
+      expect(tester.widget<FrameTile>(tile(7)).selected, isFalse);
+
+      // The next touch sequence is a normal one again.
+      await tester.tap(tile(3));
+      await tester.pump();
+      expect(find.text('2 selected · 1, 3'), findsOneWidget);
+    });
+
     testWidgets('an up/down slide scrolls the grid and selects nothing', (tester) async {
       final host = FakeFramesHost(fakeFrames(40));
       await pumpFramesPage(tester, host);

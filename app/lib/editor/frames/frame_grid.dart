@@ -7,8 +7,11 @@
 // nothing) with edge auto-scroll, while a slide that starts up/down scrolls as usual — the
 // horizontal-drag recognizer simply competes with the grid's vertical one in the arena;
 // long-press and a right-click open the tile menu. Mouse: a drag that starts on empty grid
-// space is a rubber-band; two touch pointers pinch the column count. The scroll view keeps
-// the app's own overscroll behavior (no ScrollConfiguration override).
+// space is a rubber-band; two touch pointers pinch the column count — and from the moment a
+// second finger lands until every finger lifts, no tile gesture counts: a sweep already
+// begun is cancelled (the page restores the selection), and the fingers' taps and holds are
+// ignored, so a pinch never selects. The scroll view keeps the app's own overscroll behavior
+// (no ScrollConfiguration override).
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -42,6 +45,7 @@ class FrameGrid extends StatefulWidget {
     required this.onTap,
     required this.onSweepStart,
     required this.onSweepAdd,
+    required this.onSweepCancel,
     required this.onGoTo,
     required this.onTileMenu,
     required this.onBand,
@@ -67,6 +71,9 @@ class FrameGrid extends StatefulWidget {
 
   /// Tiles the sweep crossed since the last sample; the page paints the remembered state.
   final void Function(Iterable<int> ids) onSweepAdd;
+
+  /// A second finger landed mid-sweep: the page puts the selection back as it was before.
+  final VoidCallback onSweepCancel;
   final void Function(int index) onGoTo;
   final void Function(int index) onTileMenu;
 
@@ -101,6 +108,12 @@ class FrameGridState extends State<FrameGrid> {
   // Pinch (touch).
   final Map<int, Offset> _touch = {};
   double? _pinchStart;
+
+  /// Two fingers were down at some point in the current touch sequence. Set when the second
+  /// lands, cleared only when the NEXT sequence begins (not on the last lift: a tile's onTap
+  /// fires after the Listener has already seen that same pointer-up), so the fingers' taps,
+  /// holds, and slides are all ignored for the rest of the sequence.
+  bool _multiTouch = false;
 
   @override
   void dispose() {
@@ -146,6 +159,7 @@ class FrameGridState extends State<FrameGrid> {
   // ---- taps ----
 
   void _tapTile(int index) {
+    if (_multiTouch) return;
     final now = DateTime.now();
     if (_lastTapIndex == index && _lastTapAt != null && now.difference(_lastTapAt!) < kDoubleTapTimeout) {
       _lastTapIndex = null;
@@ -161,6 +175,7 @@ class FrameGridState extends State<FrameGrid> {
   // ---- sweep ----
 
   void _sweepStart(int index, Offset global) {
+    if (_multiTouch) return;
     _sweeping = true;
     _sweepLast = index;
     _sweepGlobal = global;
@@ -217,8 +232,14 @@ class FrameGridState extends State<FrameGrid> {
 
   void _pointerDown(PointerDownEvent e) {
     if (e.kind == PointerDeviceKind.touch) {
+      if (_touch.isEmpty) _multiTouch = false; // a fresh sequence
       _touch[e.pointer] = e.position;
       if (_touch.length == 2) {
+        _multiTouch = true;
+        if (_sweeping) {
+          _sweepEnd();
+          widget.onSweepCancel(); // the first finger's drift was the pinch's opening, not a sweep
+        }
         _pinchStart = _touchDistance();
         setState(() {}); // switch physics off while pinching
       }
@@ -340,7 +361,9 @@ class FrameGridState extends State<FrameGrid> {
             behavior: HitTestBehavior.opaque,
             onTap: () => _tapTile(i),
             onSecondaryTapUp: (_) => widget.onTileMenu(i),
-            onLongPress: () => widget.onTileMenu(i),
+            onLongPress: () {
+              if (!_multiTouch) widget.onTileMenu(i);
+            },
             onHorizontalDragStart: (d) => _sweepStart(i, d.globalPosition),
             onHorizontalDragUpdate: (d) => _sweepMove(d.globalPosition),
             onHorizontalDragEnd: (_) => _sweepEnd(),

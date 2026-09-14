@@ -78,6 +78,10 @@ class _FramesPageState extends State<FramesPage> {
   /// What the running sweep paints: the first tile's state after its flip.
   bool _sweepSelects = true;
 
+  /// The selection as it was before the running sweep, restored when a second finger turns
+  /// the touch into a pinch.
+  FrameSelection? _sweepBase;
+
   @override
   void initState() {
     super.initState();
@@ -541,10 +545,16 @@ class _FramesPageState extends State<FramesPage> {
                 requestThumb: _requestThumb,
                 onTap: (id, {required range}) => _setSel(range ? _sel.rangeTo(id, _ids) : _sel.toggle(id)),
                 onSweepStart: (id) {
+                  _sweepBase = _sel;
                   _sweepSelects = !_sel.contains(id);
                   _setSel(_sweepSelects ? _sel.addAll([id], anchor: id) : _sel.removeAll([id], anchor: id));
                 },
                 onSweepAdd: (ids) => _setSel(_sweepSelects ? _sel.addAll(ids) : _sel.removeAll(ids)),
+                onSweepCancel: () {
+                  final base = _sweepBase;
+                  _sweepBase = null;
+                  if (base != null) _setSel(base.retain(_ids.toSet()));
+                },
                 onGoTo: (index) => Navigator.pop(context, index),
                 onTileMenu: _tileMenu,
                 onBand: (ids, {required additive, required done}) {
