@@ -1,12 +1,14 @@
 // The contact sheet (ADR 0031): a lazily built grid of FrameTiles and every gesture on it.
 //
 // Touch: tap toggles (instantly — no onDoubleTap, which would delay every tap ~300 ms; a
-// second tap on the same tile inside the double-tap window is the Go-to); long-press starts a
-// SWEEP that adds every tile the finger crosses (row-major span between the last and current
-// tile, so a fast diagonal skips nothing) with edge auto-scroll; the tile's ⋮ and a right-click
-// open the tile menu. Mouse: a drag that starts on empty grid space is a rubber-band; two
-// touch pointers pinch the column count. The scroll view keeps the app's own overscroll
-// behavior (no ScrollConfiguration override).
+// second tap on the same tile inside the double-tap window is the Go-to); a slide that starts
+// mostly SIDEWAYS is a SWEEP that paints the first tile's new state onto every tile the finger
+// crosses (row-major span between the last and current tile, so a fast diagonal skips
+// nothing) with edge auto-scroll, while a slide that starts up/down scrolls as usual — the
+// horizontal-drag recognizer simply competes with the grid's vertical one in the arena;
+// long-press and a right-click open the tile menu. Mouse: a drag that starts on empty grid
+// space is a rubber-band; two touch pointers pinch the column count. The scroll view keeps
+// the app's own overscroll behavior (no ScrollConfiguration override).
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -59,7 +61,11 @@ class FrameGrid extends StatefulWidget {
 
   /// A plain tap: toggle, or a Shift-range when [range] is true.
   final void Function(int id, {required bool range}) onTap;
+
+  /// A sweep begins on [id]: the page flips it and remembers the new state to paint.
   final void Function(int id) onSweepStart;
+
+  /// Tiles the sweep crossed since the last sample; the page paints the remembered state.
   final void Function(Iterable<int> ids) onSweepAdd;
   final void Function(int index) onGoTo;
   final void Function(int index) onTileMenu;
@@ -162,6 +168,7 @@ class FrameGridState extends State<FrameGrid> {
     widget.onSweepStart(widget.frames[index].id);
     _edgeTimer?.cancel();
     _edgeTimer = Timer.periodic(_kEdgeTick, (_) => _edgeScroll());
+    _sweepSample(); // the drag start already sits past the touch slop, maybe on a neighbor
   }
 
   void _sweepMove(Offset global) {
@@ -333,10 +340,11 @@ class FrameGridState extends State<FrameGrid> {
             behavior: HitTestBehavior.opaque,
             onTap: () => _tapTile(i),
             onSecondaryTapUp: (_) => widget.onTileMenu(i),
-            onLongPressStart: (d) => _sweepStart(i, d.globalPosition),
-            onLongPressMoveUpdate: (d) => _sweepMove(d.globalPosition),
-            onLongPressEnd: (_) => _sweepEnd(),
-            onLongPressCancel: _sweepEnd,
+            onLongPress: () => widget.onTileMenu(i),
+            onHorizontalDragStart: (d) => _sweepStart(i, d.globalPosition),
+            onHorizontalDragUpdate: (d) => _sweepMove(d.globalPosition),
+            onHorizontalDragEnd: (_) => _sweepEnd(),
+            onHorizontalDragCancel: _sweepEnd,
             child: FrameTile(
               image: img,
               aspect: widget.thumbAspect,
@@ -345,7 +353,6 @@ class FrameGridState extends State<FrameGrid> {
               active: i == widget.activeIndex,
               selected: widget.selection.contains(f.id),
               scale: widget.scale,
-              onMenu: () => widget.onTileMenu(i),
             ),
           );
         },
@@ -378,11 +385,11 @@ class _BandPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.drawRect(rect, Paint()..color = const Color(0x334080C0));
+    canvas.drawRect(rect, Paint()..color = const Color(0x33FFC107));
     canvas.drawRect(
       rect,
       Paint()
-        ..color = kFramesAccent
+        ..color = kFramesSelect
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1,
     );

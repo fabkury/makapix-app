@@ -1,5 +1,6 @@
 // The Frames page's "More" sheet (ADR 0031): every batch operation that is not on the action
-// bar, grouped Structure · Timing · Transform · Layers, each row popping its [FramesOp]. Two
+// bar (Set duration included, since 2026-09-14), grouped Structure · Timing · Transform ·
+// Layers, each row popping its [FramesOp]. Two
 // fixed 20 px slots under Transform carry the unobtrusive notes (the undo-memory estimate, the
 // non-square rotate note) so the sheet never reflows. `dslForOp` is the pure mapping from an op
 // to the verb line, tested without widgets.
@@ -33,6 +34,11 @@ class ReverseOp extends FramesOp {
 /// Opens the "Shift by N…" dialog on the page.
 class ShiftByOp extends FramesOp {
   const ShiftByOp();
+}
+
+/// Opens the duration dialog on the page (one value or an fps preset for the whole set).
+class SetDurationOp extends FramesOp {
+  const SetDurationOp();
 }
 
 /// `permille == null` opens the free-factor dialog.
@@ -75,14 +81,15 @@ class SetLayersLockedOp extends FramesOp {
 
 /// The verb line for [op] over [indices]. Ops that need more input take it as named args: the
 /// layer name for the by-name ops, the (already clamped) delta for ShiftBy, the per-mille for
-/// Scale.
-String dslForOp(FramesOp op, List<int> indices, {String? layerName, int? delta, int? permille}) {
+/// Scale, the milliseconds for SetDuration.
+String dslForOp(FramesOp op, List<int> indices, {String? layerName, int? delta, int? permille, double? ms}) {
   final name = sanitizeLayerName(layerName ?? '');
   return switch (op) {
     RepeatAfterOp() => frameSetDsl('RepeatFramesAfter', indices),
     InsertBlankOp(:final before) => frameSetDsl('InsertBlankFrames', indices, [before ? 'before' : 'after']),
     ReverseOp() => frameSetDsl('ReverseFrames', indices),
     ShiftByOp() => frameSetDsl('ShiftFrames', indices, ['${delta ?? 0}']),
+    SetDurationOp() => frameSetDsl('SetFrameDurations', indices, [(ms ?? 100).toStringAsFixed(2)]),
     ScaleOp(permille: final p) => frameSetDsl('ScaleFrameDurations', indices, ['${permille ?? p ?? 1000}']),
     FlipOp(:final horizontal) => frameSetDsl(horizontal ? 'FlipFramesH' : 'FlipFramesV', indices),
     RotateOp(:final quarters) => frameSetDsl('RotateFrames', indices, ['$quarters']),
@@ -139,6 +146,7 @@ Future<FramesOp?> showFramesMoreSheet(
               _row(Icons.swap_horiz, 'Reverse order', n < 2 ? 'Select two or more frames' : null, n < 2 ? null : () => pick(const ReverseOp())),
               _row(Icons.moving, 'Shift by N…', null, () => pick(const ShiftByOp())),
               _section('Timing'),
+              _row(Icons.timer_outlined, 'Set duration…', 'One duration or an fps preset for every selected frame', () => pick(const SetDurationOp())),
               _chips([
                 ('× 0.5', () => pick(const ScaleOp(500))),
                 ('× 2', () => pick(const ScaleOp(2000))),

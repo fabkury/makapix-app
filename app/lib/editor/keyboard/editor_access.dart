@@ -76,7 +76,7 @@ abstract class EditorAccess {
   void save();
   void openExportMenu();
   void openFrameSheet();
-  void openFramesPage(); // ⊞ → the Frames page (ADR 0031)
+  void openFramesPage(); // the Frames page (ADR 0031): also the frame sheet's Frames… and ☰ → Frames…
   void openLayerSheet();
   void openKeyboardHelp(); // the ☰ → Keyboard cheat-sheet page
 }

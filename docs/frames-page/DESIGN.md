@@ -7,6 +7,20 @@ roll is the only way to manipulate animation frames, and it is a one-frame-at-a-
 
 ## As built (deviations from the decisions below, each asked and approved on 2026-09-10/11)
 
+- **Polish pass, 2026-09-14** (each point asked and approved): the film roll's **⊞ button is
+  gone** — it cost the strip width it could not spare; the entries are the frame sheet's new
+  top button **"Frames…"**, ☰ → Frames…, and Shift+T (the page always opens with nothing
+  selected). **A sideways slide sweeps**: the tile the finger starts on flips, and every tile
+  crossed afterwards takes that same new state (select or deselect — a paint, so sliding back
+  never flickers; row-major span, edge auto-scroll); a slide that starts up/down scrolls, the
+  horizontal-drag recognizer simply competing with the grid's vertical one in the arena.
+  **Long-press opens the tile menu** (Go to · Select to here · Frame options…) and the tile's
+  ⋮ overflow is gone; right-click still opens it on desktop. The action bar is **Delete ·
+  Duplicate · ‹ › · More** with one **"Shift"** label under the arrow pair; **Set duration…
+  moved to the More sheet's Timing section** (above the × chips). **Selection is amber**
+  (wash, 2 px border, check-circle; the mouse rubber-band too); the active-frame marker stays
+  the strip's blue, and a selected active tile keeps the blue border under the amber wash.
+
 - **Content batches are never refused on memory grounds.** The provisional policy (refuse when the
   retained payload exceeds the document headroom) was replaced by: bill every `DocStructure`
   record by the tables and tiles its before-side pins beyond the live document
@@ -115,16 +129,16 @@ gather move ("Move to…"), select-identical-frames, a persistent selection. See
 | Question | Decision |
 |---|---|
 | Tap | **Toggles selection.** The page exists for multi-select; no mode switch |
-| Long-press | **Starts a range sweep**: every tile the finger crosses joins the selection; release without moving leaves just that tile selected; edge auto-scroll while sweeping |
+| Long-press | ~~Starts a range sweep~~ **Opens the tile menu** (2026-09-14). The sweep is a **sideways slide**: the first tile flips, every tile crossed takes that state; edge auto-scroll while sweeping; an up/down slide scrolls |
 | Double-tap | **Go to**: activates the frame and pops to the editor |
-| Tile menu | A small **overflow on the tile** (touch) and **right-click** (desktop): Go to, Select to here (from the anchor), the single-frame sheet |
+| Tile menu | ~~A small overflow on the tile~~ **Long-press** (touch, 2026-09-14) and **right-click** (desktop): Go to, Select to here (from the anchor), the single-frame sheet |
 | Selection helpers | **All · None · Invert**, **Range entry** (1-based text `1-12, 20, 30-40`, normalized, rejected inline when out of range), **Every Nth** (N and an offset, within the current selection or the whole roll) |
 | Desktop | **Shift-click** range from the anchor, **Ctrl-click** toggle, **rubber-band** on empty grid space, **Ctrl+A**, **Esc** clears (pops when already empty), **Delete/Backspace** arms (ADR 0022), **← →** nudge the selection, **Ctrl+Z / Ctrl+Y** undo/redo, **Enter** = Go to when exactly one frame is selected (assumption). Only input differs from touch; the selection model is one |
 | Undo / redo inside the page | **Yes**: app-bar buttons + the keys. Selection survives by id; visible thumbnails re-validate after each undo/redo |
-| Entry points | **⊞ button at the film roll's trailing end** (next to +, both orientations) · **☰ → Frames…** · **keyboard Command** `page.frames`, proposed **Shift+T** (T opens the frame sheet; O/Shift+O and P/Shift+P set the pairing precedent). Not the frame sheet's header |
+| Entry points | ~~⊞ button at the film roll's trailing end~~ **the frame sheet's top button "Frames…"** (2026-09-14; the ⊞ cost the strip its width) · **☰ → Frames…** · **keyboard Command** `page.frames`, proposed **Shift+T** (T opens the frame sheet; O/Shift+O and P/Shift+P set the pairing precedent). Not the frame sheet's header |
 | Grid density | 3–8 columns by **pinch or a stepper**; persisted editor-wide (assumption) |
-| Tile | Thumbnail on the checker (artwork rect only, as the strip), 1-based number, duration badge, the active-frame marker in the strip's blue, a check overlay when selected |
-| Action bar | **Fixed height**, bottom; enabled only with a non-empty selection: Delete · Duplicate · Duration · ◀ ▶ · More. Never reflows the grid (the import pages' no-reflow rule) |
+| Tile | Thumbnail on the checker (artwork rect only, as the strip), 1-based number, duration badge, the active-frame marker in the strip's blue, an **amber** wash + border + check when selected (2026-09-14; blue was too close to the active marker) |
+| Action bar | **Fixed height**, bottom; enabled only with a non-empty selection: Delete · Duplicate · ~~Duration ·~~ ◀ ▶ (one "Shift" label under the pair) · More; Set duration… lives in More → Timing since 2026-09-14. Never reflows the grid (the import pages' no-reflow rule) |
 | Drafts and playback | Playback pauses on entry. Pushing the page is **not a context change** (the palette-page precedent, ADR 0011): an open Draft survives the trip and dies only when a batch verb runs, because every batch verb is a context-change verb (assumption) |
 
 ## The model
@@ -249,9 +263,11 @@ identically because every refusal is a pure function of the document.
 - **Batch rotation must be byte-identical** to `RotateFrame` on the same frame (quarter turns are
   exact permutations): the frame-scoped rotation is factored into one pure function both paths
   call, pinned by a hash test.
-- **Gestures.** Long-press means sweep, never menu, or the two fight; the tile menu lives on the
-  tile's overflow and on right-click. Sweeping past the viewport auto-scrolls; long ranges are what
-  Range entry is for.
+- **Gestures.** A sideways slide means sweep and a long-press means menu (since 2026-09-14; before,
+  long-press swept and the menu sat on a tile overflow). The slide's opening direction is the whole
+  disambiguation: sideways sweeps, up/down scrolls, because the tile's horizontal-drag recognizer
+  and the grid's vertical one settle it in the gesture arena. Sweeping past the viewport
+  auto-scrolls; long ranges are what Range entry is for.
 - **Refused batch:** nothing changed, the selection stays. **Successful Duplicate / Repeat:** the
   selection becomes the copies, found by id in the refreshed state (the copy of the member ranked
   `r` in S sits at old index `+ r + 1` for Duplicate; the block follows `max(S)` for Repeat).

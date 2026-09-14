@@ -125,8 +125,8 @@ extension _EditorTimeline on _EditorPageState {
             _act('AddFrameAt(${engine.activeFrame + 1})'); // right after the active frame, not at the end
           },
           icon: const Icon(Icons.add_box)),
-      // ⊞ — the Frames page (ADR 0031): every frame as a grid, multi-select, batch operations.
-      IconButton(iconSize: 20, tooltip: 'Frames', onPressed: _openFramesPage, icon: const Icon(Icons.grid_view)),
+      // The Frames page (ADR 0031) is reached from the frame sheet, ☰ → Frames…, and Shift+T;
+      // its former ⊞ button here was dropped 2026-09-14 to give the strip its width back.
     ];
     return Container(
       height: vertical ? null : 70 * s,

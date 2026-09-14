@@ -35,6 +35,13 @@ class FrameSelection {
   FrameSelection addAll(Iterable<int> more, {int? anchor}) =>
       FrameSelection(ids: {...ids, ...more}, anchorId: anchor ?? anchorId);
 
+  /// Difference with [gone] (a deselecting sweep); the anchor moves to [anchor] when given,
+  /// else stays even when it is among the removed — it is a position, not a member.
+  FrameSelection removeAll(Iterable<int> gone, {int? anchor}) {
+    final next = Set.of(ids)..removeAll(gone);
+    return FrameSelection(ids: next, anchorId: anchor ?? anchorId);
+  }
+
   /// Shift-click / "Select to here": add every id between the anchor and [id] in roll
   /// [order] (inclusive, either direction); the anchor stays. Without a usable anchor this is
   /// a plain [toggle].

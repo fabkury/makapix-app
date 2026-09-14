@@ -579,6 +579,13 @@ extension _EditorSheets on _EditorPageState {
             subtitle: '${ms.toStringAsFixed(1)} ms · ${(1000 / ms).toStringAsFixed(1)} fps',
           ),
           const SizedBox(height: 12),
+          // The Frames page (ADR 0031): every frame as a grid, multi-select, batch operations.
+          // The page opens with nothing selected, like the ☰ entry.
+          _sheetBtn(Icons.grid_view, 'Frames…', () {
+            Navigator.pop(ctx);
+            _openFramesPage();
+          }),
+          const SizedBox(height: 8),
           _sheetBtn(Icons.timer_outlined, 'Edit duration…', () {
             Navigator.pop(ctx);
             // [G-36] Act on the named frame; no activation, so cancelling costs nothing and the

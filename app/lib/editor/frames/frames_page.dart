@@ -5,7 +5,8 @@
 // Rules the page enforces on its side of the seam: a refused batch leaves the selection alone
 // and shows the reason; Duplicate/Repeat select the copies; content batches drop the affected
 // thumbnails; undo/redo re-validate the visible tiles by hash; the selection is discarded with
-// the page; the keyboard is handled here because the editor's dispatcher is muted under a
+// the page; a sweep paints its first tile's new state (select or deselect) onto every tile it
+// crosses; the keyboard is handled here because the editor's dispatcher is muted under a
 // pushed route.
 
 import 'dart:async';
@@ -73,6 +74,9 @@ class _FramesPageState extends State<FramesPage> {
   bool _pumpBooked = false;
 
   ({bool warn, String text})? _status;
+
+  /// What the running sweep paints: the first tile's state after its flip.
+  bool _sweepSelects = true;
 
   @override
   void initState() {
@@ -226,8 +230,7 @@ class _FramesPageState extends State<FramesPage> {
     _runBatch(frameSetDsl('DuplicateFrames', idx), _BatchKind.duplicate);
   }
 
-  Future<void> _duration() async {
-    final idx = _indices;
+  Future<void> _duration(List<int> idx) async {
     if (idx.isEmpty) return;
     final n = idx.length;
     final r = await showDurationDialog(
@@ -240,7 +243,7 @@ class _FramesPageState extends State<FramesPage> {
     final requestedUs = (r.ms * 1000).round();
     final pinned = pinnedCountForSet(idx, requestedUs);
     _runBatch(
-      frameSetDsl('SetFrameDurations', idx, [r.ms.toStringAsFixed(2)]),
+      dslForOp(const SetDurationOp(), idx, ms: r.ms),
       _BatchKind.durations,
       report: pinned > 0 ? '$pinned ${pinned == 1 ? 'frame' : 'frames'} pinned at ${_pinLabel(requestedUs)}' : null,
     );
@@ -281,6 +284,8 @@ class _FramesPageState extends State<FramesPage> {
         final k = await showShiftByDialog(context, indices: idx, frameCount: _frames.length);
         if (k == null || k == 0 || !mounted) return;
         _runBatch(dslForOp(op, idx, delta: k), _BatchKind.structural);
+      case SetDurationOp():
+        await _duration(idx);
       case ScaleOp(permille: final p):
         var permille = p;
         if (permille == null) {
@@ -452,7 +457,7 @@ class _FramesPageState extends State<FramesPage> {
   Widget _statusLine() {
     final s = _status;
     final n = _sel.length;
-    final idle = n == 0 ? 'Tap to select · hold to sweep · double-tap to go to' : '$n selected · ${formatFrameSetHuman(_indices)}';
+    final idle = n == 0 ? 'Tap or slide to select · hold for options · double-tap to go to' : '$n selected · ${formatFrameSetHuman(_indices)}';
     final text = s?.text ?? idle;
     final color = s == null ? Colors.white38 : (s.warn ? Colors.amber : Colors.white70);
     final icon = s == null ? null : (s.warn ? Icons.warning_amber_rounded : Icons.info_outline);
@@ -535,8 +540,11 @@ class _FramesPageState extends State<FramesPage> {
                 thumbFor: _thumbFor,
                 requestThumb: _requestThumb,
                 onTap: (id, {required range}) => _setSel(range ? _sel.rangeTo(id, _ids) : _sel.toggle(id)),
-                onSweepStart: (id) => _setSel(_sel.setOnly(id)),
-                onSweepAdd: (ids) => _setSel(_sel.addAll(ids)),
+                onSweepStart: (id) {
+                  _sweepSelects = !_sel.contains(id);
+                  _setSel(_sweepSelects ? _sel.addAll([id], anchor: id) : _sel.removeAll([id], anchor: id));
+                },
+                onSweepAdd: (ids) => _setSel(_sweepSelects ? _sel.addAll(ids) : _sel.removeAll(ids)),
                 onGoTo: (index) => Navigator.pop(context, index),
                 onTileMenu: _tileMenu,
                 onBand: (ids, {required additive, required done}) {
@@ -559,7 +567,6 @@ class _FramesPageState extends State<FramesPage> {
               armKey: _armKey,
               onDelete: _delete,
               onDuplicate: _duplicate,
-              onDuration: _duration,
               onNudge: _nudge,
               onMore: _more,
             ),

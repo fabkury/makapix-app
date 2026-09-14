@@ -1,6 +1,7 @@
-// The Frames page (frames/frames_page.dart) over a scripted host: selection gestures, the
-// action bar, the batch verbs it sends, refusals, the post-batch selection, the keyboard, and
-// the sheets. No engine — thumbnails are synthetic bytes.
+// The Frames page (frames/frames_page.dart) over a scripted host: selection gestures (tap,
+// sideways-slide sweep, long-press menu), the action bar, the batch verbs it sends, refusals,
+// the post-batch selection, the keyboard, and the sheets. No engine — thumbnails are synthetic
+// bytes.
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -24,6 +25,7 @@ void main() {
       expect(dslForOp(const InsertBlankOp(before: false), idx), 'InsertBlankFrames(0-2 5, after)');
       expect(dslForOp(const ReverseOp(), idx), 'ReverseFrames(0-2 5)');
       expect(dslForOp(const ShiftByOp(), idx, delta: -2), 'ShiftFrames(0-2 5, -2)');
+      expect(dslForOp(const SetDurationOp(), idx, ms: 16.6), 'SetFrameDurations(0-2 5, 16.60)');
       expect(dslForOp(const ScaleOp(500), idx), 'ScaleFrameDurations(0-2 5, 500)');
       expect(dslForOp(const ScaleOp(null), idx, permille: 1500), 'ScaleFrameDurations(0-2 5, 1500)');
       expect(dslForOp(const FlipOp(horizontal: true), idx), 'FlipFramesH(0-2 5)');
@@ -55,7 +57,7 @@ void main() {
       final activeTile = tester.widget<FrameTile>(tile(3));
       expect(activeTile.active, isTrue);
       expect(tester.widget<FrameTile>(tile(1)).active, isFalse);
-      expect(find.text('Tap to select · hold to sweep · double-tap to go to'), findsOneWidget);
+      expect(find.text('Tap or slide to select · hold for options · double-tap to go to'), findsOneWidget);
 
       await tester.tap(tile(2));
       await tester.pump();
@@ -80,12 +82,15 @@ void main() {
       expect(popped, [2]);
     });
 
-    testWidgets('long-press then drag sweeps a range', (tester) async {
+    testWidgets('a sideways slide sweeps: the first tile flips and every tile crossed takes that state', (tester) async {
       final host = FakeFramesHost(fakeFrames(8));
       await pumpFramesPage(tester, host);
+      await tester.tap(tile(5)); // already selected inside the span: painted, not flipped back
+      await tester.pump();
       final g = await tester.startGesture(tester.getCenter(tile(2)));
-      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
-      await g.moveTo(tester.getCenter(tile(7)));
+      await g.moveBy(const Offset(30, 0)); // past the touch slop, sideways: a sweep, not a scroll
+      await tester.pump();
+      await g.moveTo(tester.getCenter(tile(7))); // the next row: row-major span 2..7
       await tester.pump();
       await g.up();
       await tester.pump();
@@ -94,6 +99,31 @@ void main() {
       }
       expect(tester.widget<FrameTile>(tile(1)).selected, isFalse);
       expect(tester.widget<FrameTile>(tile(8)).selected, isFalse);
+      expect(find.text('6 selected · 2–7'), findsOneWidget);
+
+      // Starting on a selected tile paints deselection onto what the finger crosses.
+      final g2 = await tester.startGesture(tester.getCenter(tile(7)));
+      await g2.moveBy(const Offset(-30, 0));
+      await tester.pump();
+      await g2.moveTo(tester.getCenter(tile(6)));
+      await tester.pump();
+      await g2.up();
+      await tester.pump();
+      expect(tester.widget<FrameTile>(tile(6)).selected, isFalse);
+      expect(tester.widget<FrameTile>(tile(7)).selected, isFalse);
+      expect(find.text('4 selected · 2–5'), findsOneWidget);
+    });
+
+    testWidgets('an up/down slide scrolls the grid and selects nothing', (tester) async {
+      final host = FakeFramesHost(fakeFrames(40));
+      await pumpFramesPage(tester, host);
+      final g = await tester.startGesture(tester.getCenter(tile(2)));
+      await g.moveBy(const Offset(0, -80));
+      await tester.pump();
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(find.text('Tap or slide to select · hold for options · double-tap to go to'), findsOneWidget);
+      expect(tester.widget<FrameTile>(tile(2)).selected, isFalse);
     });
 
     testWidgets('Delete arms, then confirms with one RemoveFrames verb; disabled when everything is selected',
@@ -115,7 +145,7 @@ void main() {
       await tester.pump();
       expect(host.scripts, ['RemoveFrames(1-2)']);
       expect(find.text('Frames · 2'), findsOneWidget);
-      expect(find.text('Tap to select · hold to sweep · double-tap to go to'), findsOneWidget, reason: 'deleted members drop out');
+      expect(find.text('Tap or slide to select · hold for options · double-tap to go to'), findsOneWidget, reason: 'deleted members drop out');
 
       await tester.tap(tile(1));
       await tester.tap(tile(2));
@@ -185,7 +215,7 @@ void main() {
       expect(host.scripts, isEmpty, reason: 'everything selected: no room');
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await tester.pump();
-      expect(find.text('Tap to select · hold to sweep · double-tap to go to'), findsOneWidget);
+      expect(find.text('Tap or slide to select · hold for options · double-tap to go to'), findsOneWidget);
       await tester.tap(tile(2));
       await tester.pump();
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
@@ -302,13 +332,17 @@ void main() {
       expect(host.scripts, ['SetLayersVisibleNamed(0-2, 0, Shading)']);
     });
 
-    testWidgets('Duration applies to the set and reports pinned frames', (tester) async {
+    testWidgets('More → Set duration applies to the set and reports pinned frames', (tester) async {
       final host = FakeFramesHost(fakeFrames(3));
       await pumpFramesPage(tester, host);
       await tester.tap(tile(1));
       await tester.tap(tile(3));
       await tester.pump();
-      await tester.tap(find.text('Duration'));
+      expect(find.text('Duration'), findsNothing, reason: 'no bar slot since 2026-09-14');
+      expect(find.text('Shift'), findsOneWidget, reason: 'the ‹ › pair carries one label');
+      await tester.tap(find.text('More'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Set duration…'));
       await tester.pumpAndSettle();
       expect(find.text('2 frames — duration'), findsOneWidget);
       await tester.enterText(find.byType(TextField), '10');
@@ -354,12 +388,13 @@ void main() {
       expect(host.sheetsOpened, [1]);
     });
 
-    testWidgets('the tile overflow opens the menu and Go to pops', (tester) async {
+    testWidgets('a long-press opens the tile menu (no overflow button) and Go to pops', (tester) async {
       final host = FakeFramesHost(fakeFrames(3));
       final popped = await pumpFramesPage(tester, host);
-      final overflow = find.descendant(of: tile(3), matching: find.byIcon(Icons.more_vert));
-      await tester.tap(overflow);
+      expect(find.descendant(of: find.byType(FrameTile), matching: find.byIcon(Icons.more_vert)), findsNothing);
+      await tester.longPress(tile(3));
       await tester.pumpAndSettle();
+      expect(tester.widget<FrameTile>(tile(3)).selected, isFalse, reason: 'a hold never selects');
       await tester.tap(find.text('Go to frame 3'));
       await tester.pumpAndSettle();
       expect(popped, [2]);

@@ -118,7 +118,7 @@ empty the roll is refused and changes nothing.
 _Avoid_: frame range (a set may be discontiguous), selection (that word belongs to the mask)
 
 **Frames page**:
-The grid of every frame reached from the film roll's ⊞ button, ☰ → Frames…, or Shift+T: select
+The grid of every frame reached from the frame sheet's "Frames…" button, ☰ → Frames…, or Shift+T: select
 any set of frames, then delete, duplicate, repeat, insert, shift, reverse, retime, flip, rotate,
 invert, or touch a layer by name across them at once. Its selection is transient like the Move
 group — discarded when the page closes — and a double-tap on a tile goes to that frame.

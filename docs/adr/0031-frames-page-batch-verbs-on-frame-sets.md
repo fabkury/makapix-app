@@ -9,8 +9,9 @@ retained-bytes billing of `DocStructure` records (`history::frames_delta_bytes`)
 `flip_storage` / `frame_rotate_draft` / `apply_rotation_to_frame` extractions in
 `session/canvas.rs`, `render::FrameSampler` and the memoized `RgbaBuffer::content_hash`.
 Shell: `app/lib/editor/frames/` (the page, the id-keyed selection, the frame-set helpers, the
-grid geometry, the LRU), `editor_page.frames.dart` (the host and the route), the ⊞ roll button,
-☰ → Frames…, the `page.frames` Command on Shift+T, the batch verbs in the context-change and
+grid geometry, the LRU), `editor_page.frames.dart` (the host and the route), the frame sheet's
+"Frames…" button (a ⊞ roll button until the 2026-09-14 polish pass — `docs/frames-page/DESIGN.md`
+"As built"), ☰ → Frames…, the `page.frames` Command on Shift+T, the batch verbs in the context-change and
 frame-structure lists and in the replay classifier's event set.
 
 The film roll is the Editor's only frame control, and it is a one-frame-at-a-time control: tap to

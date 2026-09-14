@@ -25,6 +25,18 @@ void main() {
     expect(s.anchorId, 15);
   });
 
+  test('removeAll drops members, ignores strangers, and keeps or moves the anchor', () {
+    final s = FrameSelection(ids: {10, 11, 12}, anchorId: 10);
+    final a = s.removeAll([11, 99]);
+    expect(a.ids, {10, 12});
+    expect(a.anchorId, 10);
+    final b = s.removeAll([10], anchor: 12);
+    expect(b.ids, {11, 12});
+    expect(b.anchorId, 12);
+    final c = s.removeAll([10]);
+    expect(c.anchorId, 10, reason: 'the anchor is a position, not a member');
+  });
+
   test('rangeTo adds the span in either direction and keeps the anchor', () {
     var s = FrameSelection.empty.toggle(12);
     s = s.rangeTo(14, order);
