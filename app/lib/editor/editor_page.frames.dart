@@ -41,7 +41,12 @@ class _EditorFramesHost implements FramesHost {
   @override
   String? run(String dsl) {
     final before = _refusalSeq();
-    _s._act(dsl);
+    _s._suppressRefusalToast = true; // the page shows the reason on its own status line
+    try {
+      _s._act(dsl);
+    } finally {
+      _s._suppressRefusalToast = false;
+    }
     if (_refusalSeq() == before) return null;
     return (_s._state['last_refusal'] as String?) ?? 'The engine refused this change';
   }

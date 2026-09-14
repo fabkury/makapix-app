@@ -219,6 +219,12 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // pre-existing refusal count doesn't toast on the first refresh.
   int _memRefusalsSeen = -1;
   bool _memBannerShown = false;
+  // The generic refusal channel (`refusal_seq` / `last_refusal`, ADR 0031): any verb the engine
+  // refused with a reason — the layer cap (ADR 0032), a frame-set verb past the roll. Toasted the
+  // same way as a memory refusal (which also advances this channel, so it is not toasted twice);
+  // the Frames page narrates its own refusals on its status line and suppresses the toast.
+  int _refusalSeqSeen = -1;
+  bool _suppressRefusalToast = false;
   String _tool = 'Pencil';
   Color _primary = const Color(0xFF000000);
   // The last primary before the current one — the X Command's swap partner ("swap with

@@ -624,7 +624,7 @@ extension _EditorFileIo on _EditorPageState {
 
   // Encode the document to `format` off the UI thread behind a modal progress dialog. The dialog
   // polls the engine library's process-wide export progress (one step per frame composited + one
-  // per frame encoded — a 1,024-frame × 64-layer document can take minutes) and offers Cancel,
+  // per frame encoded — a 1,024-frame × 128-layer document can take minutes) and offers Cancel,
   // which asks the encoder to stop at the next frame boundary. Returns (bytes, canceled,
   // flattened): bytes is empty on failure or cancellation; flattened is true only for a GIF
   // whose semi-transparent pixels were thresholded to 1-bit alpha.

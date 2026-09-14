@@ -517,13 +517,22 @@ extension _EditorEngine on _EditorPageState {
         ));
       }
     }
-    if (_memRefusalsSeen >= 0 && refusals > _memRefusalsSeen) {
+    final memRefused = _memRefusalsSeen >= 0 && refusals > _memRefusalsSeen;
+    if (memRefused) {
       messenger.showSnackBar(const SnackBar(
         content: Text('Blocked: that change would push the drawing over the memory limit. '
             'Reduce frames, layers or canvas size to continue growing it.'),
       ));
     }
     _memRefusalsSeen = refusals;
+    // Every other refusal shows the engine's own reason (a memory refusal advances this channel
+    // too, and has just been narrated above).
+    final seq = (_state['refusal_seq'] as num?)?.toInt() ?? 0;
+    if (_refusalSeqSeen >= 0 && seq > _refusalSeqSeen && !memRefused && !_suppressRefusalToast) {
+      final reason = (_state['last_refusal'] as String?) ?? 'The engine refused this change';
+      messenger.showSnackBar(SnackBar(content: Text(reason)));
+    }
+    _refusalSeqSeen = seq;
   }
 
   void _refreshState() {

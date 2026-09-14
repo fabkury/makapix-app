@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 
+import 'frame_model.dart';
 import 'frame_set.dart';
 
 /// Above this retained payload, the Transform section shows the memory note (warn-only).
@@ -168,7 +169,7 @@ Future<FramesOp?> showFramesMoreSheet(
                 ('Invert', () => pick(const InvertOp())),
               ]),
               _section('Layers'),
-              _row(Icons.layers, 'Copy active layer to frames', anyTargetAtLayerCap ? 'A selected frame is at the 64-layer cap' : null,
+              _row(Icons.layers, 'Copy active layer to frames', anyTargetAtLayerCap ? 'A selected frame is at the $kMaxLayers-layer cap' : null,
                   anyTargetAtLayerCap ? null : () => pick(const CopyLayerOp())),
               _row(Icons.layers_clear, 'Remove layer named…', hasLayerNames ? null : 'No layers in the selection', hasLayerNames ? () => pick(const RemoveLayerNamedOp()) : null),
               _row(Icons.visibility, 'Show layer named…', null, hasLayerNames ? () => pick(const SetLayersVisibleOp(visible: true)) : null),

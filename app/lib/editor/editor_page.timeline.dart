@@ -469,7 +469,9 @@ extension _EditorTimeline on _EditorPageState {
     }
     _layerThumbs[key]?.img.dispose();
     _layerThumbs[key] = ThumbCache(hash, img);
-    if (_layerThumbs.length > 60) {
+    // Room for every layer of the active frame (the 128-layer cap, ADR 0032) plus a margin, so a
+    // tall strip that shows the whole stack never evicts what it is about to redraw.
+    if (_layerThumbs.length > 160) {
       final victim = _layerThumbs.keys.firstWhere((k) => k != key, orElse: () => -1);
       if (victim >= 0) _layerThumbs.remove(victim)?.img.dispose();
     }

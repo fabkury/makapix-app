@@ -5,8 +5,8 @@
 /// The engine's frame cap (`document::MAX_FRAMES`).
 const int kMaxFrames = 1024;
 
-/// The engine's per-frame layer cap (`document::MAX_LAYERS`).
-const int kMaxLayers = 64;
+/// The engine's per-frame layer cap (`document::MAX_LAYERS`; 64 until 2026-09-14, ADR 0032).
+const int kMaxLayers = 128;
 
 /// The engine's duration range in microseconds (`MIN_DURATION_US` … `MAX_DURATION_US`).
 const int kMinDurationUs = 16667;
