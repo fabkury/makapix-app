@@ -295,7 +295,7 @@ def slide_hero(orient):
     phone_crop = shot_crop("hero_senna_app", "editor_hero_app")
     wall = "".join(tile(n, {"portrait": 17.8, "square": 11.2, "landscape": 12}[orient])
                    for n in ["daydream", "mr_tritium", "seaside_city", "cozy_blizzard"])
-    tick = chips([("512&times;512", False), ("1,024 FRAMES", True), ("64 LAYERS", True),
+    tick = chips([("512&times;512", False), ("1,024 FRAMES", True), ("128 LAYERS", True),
                   ("10 BLEND MODES", False), ("TIMELAPSE EXPORT", False)])
     if orient == "landscape":
         return f"""
@@ -385,7 +385,7 @@ def slide_animation(orient):
     tl_crop = shot_crop("timeline_cozy_row", "timeline_row")
     tl = (f'<img class="pix uistrip" src="{art(f"crops/{tl_crop}.png")}">'
           '<div class="caption">THE TIMELINE, ON A PHONE</div>')
-    tick = chips([("1,024 FRAMES", True), ("64 LAYERS", True),
+    tick = chips([("1,024 FRAMES", True), ("128 LAYERS", True),
                   ("PER-FRAME TIMING", False), ("ONION SKIN", False),
                   ("LIVE LOOP PREVIEW", False)])
     body = extra + f'<div class="fan">{cards}</div>'
@@ -657,7 +657,7 @@ SLIDES = {
                "Every stroke is recorded. Scrub the replay and export a timelapse as MP4, GIF, or WebP.",
                slide_replay),
     "animation": ("MAKAPIX EDITOR",
-                  '<span class="a">1,024</span> FRAMES.<br><span class="a">64</span> LAYERS.',
+                  '<span class="a">1,024</span> FRAMES.<br><span class="a">128</span> LAYERS.',
                   "A real animation timeline: per-frame durations, frame-by-frame control, live loop preview.",
                   slide_animation),
     "paint": ("MAKAPIX EDITOR",
