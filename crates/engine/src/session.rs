@@ -1389,6 +1389,12 @@ impl Session {
         self.last_refusal = Some(what.to_string());
     }
 
+    /// The per-frame layer cap, refused (ADR 0032) instead of silently ignored, so the shell can
+    /// say why the layer did not appear. `verb` names the caller for the status line.
+    pub(crate) fn refuse_layer_cap(&mut self, verb: &str) {
+        self.refuse(&format!("{}: this frame already has {} layers", verb, crate::document::MAX_LAYERS));
+    }
+
     /// Exact budgeted-bytes census (unique tile payload + live tile tables); resets the slack
     /// accumulator. Tables are counted so a many-layer document can't sit over the wall on table
     /// memory the payload cap never saw (audit P-2/#7). The hot pixel path tracks only tile growth
@@ -3520,6 +3526,7 @@ impl Session {
 
     pub fn add_layer(&mut self) {
         if self.doc.active_frame().layers.len() >= crate::document::MAX_LAYERS {
+            self.refuse_layer_cap("AddLayer");
             return;
         }
         let name = format!("Layer {}", self.doc.active_frame().layers.len() + 1);
@@ -3537,6 +3544,7 @@ impl Session {
     pub fn add_layer_at(&mut self, at: usize) {
         let len = self.doc.active_frame().layers.len();
         if len >= crate::document::MAX_LAYERS {
+            self.refuse_layer_cap("AddLayerAt");
             return;
         }
         let name = format!("Layer {}", len + 1);
@@ -3569,9 +3577,11 @@ impl Session {
     }
 
     pub fn duplicate_layer(&mut self, i: usize) {
-        if self.doc.active_frame().layers.len() >= crate::document::MAX_LAYERS
-            || i >= self.doc.active_frame().layers.len()
-        {
+        if i >= self.doc.active_frame().layers.len() {
+            return;
+        }
+        if self.doc.active_frame().layers.len() >= crate::document::MAX_LAYERS {
+            self.refuse_layer_cap("DuplicateLayer");
             return;
         }
         let new_id = self.doc.layer_ids.alloc();

@@ -771,3 +771,33 @@ fn doc_structure_records_bill_retained_tiles() {
     }
     assert_eq!(s.doc.frames.len(), 4);
 }
+
+/// ADR 0032: the per-frame layer cap is 128, and reaching it is a refusal the shell can narrate
+/// (`refusal_seq` / `last_refusal`), not a silent no-op. The document is untouched either way.
+#[test]
+fn layer_cap_refuses_with_a_reason() {
+    use makapix_engine::document::MAX_LAYERS;
+    assert_eq!(MAX_LAYERS, 128);
+    let mut s = Session::new(8, 8);
+    while s.doc.active_frame().layers.len() < MAX_LAYERS {
+        s.add_layer();
+    }
+    let (seq, _) = s.refusal_state();
+    let hash = s.doc.content_hash();
+    let depth = s.doc.history.frame_depth(s.doc.active_frame().id);
+
+    s.add_layer();
+    assert_eq!(s.doc.active_frame().layers.len(), MAX_LAYERS);
+    assert_eq!(s.refusal_state().0, seq + 1);
+    assert!(s.refusal_state().1.unwrap().contains("128 layers"), "{:?}", s.refusal_state().1);
+
+    s.run_script("AddLayerAt(3)").unwrap();
+    assert_eq!(s.refusal_state().0, seq + 2);
+    s.run_script("DuplicateLayer(0)").unwrap();
+    assert_eq!(s.refusal_state().0, seq + 3);
+    assert!(s.refusal_state().1.unwrap().starts_with("DuplicateLayer:"));
+
+    assert_eq!(s.doc.active_frame().layers.len(), MAX_LAYERS);
+    assert_eq!(s.doc.content_hash(), hash, "a refusal changes nothing");
+    assert_eq!(s.doc.history.frame_depth(s.doc.active_frame().id), depth, "no undo record for a refused verb");
+}

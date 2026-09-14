@@ -11,7 +11,9 @@ use crate::util::{Hash, Hasher, IdGen};
 use std::sync::Arc;
 
 pub const MAX_FRAMES: usize = 1024;
-pub const MAX_LAYERS: usize = 64;
+/// Per-frame layer cap (64 until 2026-09-14 — ADR 0032). The `.mkpx` wire field is `u16`, so the
+/// raise is not a format change; older readers refuse a file over 64 as `Corrupt("layer count")`.
+pub const MAX_LAYERS: usize = 128;
 
 /// Document memory budget on **unique tile payload** (Arc-deduped materialized tiles × 4096 B) —
 /// the joint limit the per-axis frame/layer/canvas caps never provided. Sized from the memlab

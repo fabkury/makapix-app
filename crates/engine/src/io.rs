@@ -8,7 +8,7 @@ use crate::buffer::{RgbaBuffer, Tile};
 use crate::document::{AnimSettings, BlendMode, Document, Frame, Layer, LoopMode, Palette};
 use crate::geom::Size;
 use crate::selection::Mask;
-use crate::util::IdGen;
+use crate::util::{Hash, Hasher, IdGen};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -882,6 +882,22 @@ pub fn load_from_bytes_budgeted(data: &[u8], hard_budget: usize) -> Result<Docum
     }
 }
 
+/// Whether `buf`'s tile slots are exactly the layout `runs` describes over `dict` — the collision
+/// guard behind the loader's layout sharing (a 128-bit hash keys the memo; this compares pointers).
+fn ref_grid_matches(buf: &RgbaBuffer, runs: &[(u32, u32)], dict: &[Arc<Tile>]) -> bool {
+    let mut c = 0usize;
+    for &(run, idx) in runs {
+        let want = if idx == 0 { None } else { Some(Arc::as_ptr(&dict[idx as usize - 1])) };
+        for k in c..c + run as usize {
+            if buf.tile_arc(k).map(Arc::as_ptr) != want {
+                return false;
+            }
+        }
+        c += run as usize;
+    }
+    true
+}
+
 /// The production load path: identical to [`load_from_bytes_budgeted`] except the content-hash
 /// self-check is reported as a [`LoadWarning`] instead of an error — the document still loads.
 /// Everything else (CRC, truncation, structural bounds, version, budget) remains fatal, so a
@@ -962,6 +978,19 @@ pub fn load_from_bytes_tolerant_budgeted(data: &[u8], hard_budget: usize) -> Res
     if fr.varint()? as usize != frame_count {
         return Err(IoError::Corrupt("frame count mismatch"));
     }
+    // Memory budget, second half (ADR 0032): every loaded layer owns a tile-slot table, and the
+    // session bills tables alongside the payload (`Document::budgeted_bytes`), so the loader does
+    // too — a file whose payload + tables would cross the hard budget is refused before the table
+    // that crosses it is allocated. Layers whose ref-grids are byte-identical share ONE table (an
+    // `Arc` bump, exactly what `DuplicateFrame` produces in a session), so a document a session
+    // could hold always reloads, and a crafted file cannot allocate `frames × layers` tables the
+    // payload gate never saw.
+    let payload_bytes = tile_count * 4096;
+    let cells = RgbaBuffer::cells_for(storage.w as u32, storage.h as u32);
+    let table_bytes_each = RgbaBuffer::table_bytes_for(storage.w as u32, storage.h as u32);
+    let mut table_bytes = 0usize;
+    let mut layouts: HashMap<Hash, RgbaBuffer> = HashMap::new();
+    let mut runs: Vec<(u32, u32)> = Vec::new();
     let mut frames = Vec::with_capacity(frame_count);
     let mut max_frame_id = 0u32;
     let mut max_layer_id = 0u32;
@@ -982,26 +1011,47 @@ pub fn load_from_bytes_tolerant_budgeted(data: &[u8], hard_budget: usize) -> Res
             let flags = fr.u8()?;
             let opacity = fr.u8()?;
             let blend = BlendMode::from_u8(fr.u8()?); // unknown values degrade to Normal (§19)
-            let mut pixels = RgbaBuffer::from_size(storage);
-            let cells = pixels.num_tiles();
+            // Read the ref-grid first (validated, not yet materialized), keyed by its content.
+            runs.clear();
+            let mut key = Hasher::new();
             let mut filled = 0usize;
             while filled < cells {
-                let run = fr.varint()? as usize;
-                let idx = fr.varint()? as usize;
-                if run == 0 || filled + run > cells {
+                let run = fr.varint()?;
+                let idx = fr.varint()?;
+                if run == 0 || filled + run as usize > cells {
                     return Err(IoError::Corrupt("ref-grid run"));
                 }
-                if idx > dict.len() {
+                if idx as usize > dict.len() {
                     return Err(IoError::Corrupt("tile index"));
                 }
-                if idx >= 1 {
-                    let arc = &dict[idx - 1];
-                    for c in filled..filled + run {
-                        pixels.set_tile(c, Some(arc.clone()));
-                    }
-                }
-                filled += run;
+                runs.push((run, idx));
+                key.write_u32(run);
+                key.write_u32(idx);
+                filled += run as usize;
             }
+            let key = key.finish();
+            let pixels = match layouts.get(&key).filter(|b| ref_grid_matches(b, &runs, &dict)) {
+                Some(shared) => shared.clone(),
+                None => {
+                    if payload_bytes + table_bytes + table_bytes_each > hard_budget {
+                        return Err(IoError::OverBudget);
+                    }
+                    table_bytes += table_bytes_each;
+                    let mut pixels = RgbaBuffer::from_size(storage);
+                    let mut c = 0usize;
+                    for &(run, idx) in &runs {
+                        if idx >= 1 {
+                            let arc = &dict[idx as usize - 1];
+                            for k in c..c + run as usize {
+                                pixels.set_tile(k, Some(arc.clone()));
+                            }
+                        }
+                        c += run as usize;
+                    }
+                    layouts.insert(key, pixels.clone());
+                    pixels
+                }
+            };
             layers.push(Layer {
                 id: lid,
                 name,
@@ -1274,6 +1324,55 @@ mod tests {
         doc.active_frame_mut().active_layer_mut().pixels.set(40, 40, Rgba8::rgb(0, 0, 255));
         let bytes = save_to_bytes(&doc);
         assert!(matches!(load_from_bytes_budgeted(&bytes, 4096), Err(IoError::OverBudget)));
+    }
+
+    /// ADR 0032: the loader bills tile tables next to the payload, so a file whose layer tables
+    /// would cross the hard budget is refused before they are allocated.
+    #[test]
+    fn over_budget_tables_are_refused_at_load() {
+        // 64×64 canvas → 192×192 storage → 36 cells → 288 B per unique table. Twenty layers with
+        // one distinct tile each: 20 × 4096 B of payload + 20 × 288 B of tables.
+        let mut doc = Document::new(64, 64);
+        for i in 0..19u32 {
+            let l = doc.new_layer(format!("L{i}"));
+            doc.active_frame_mut().layers.push(l);
+        }
+        let table = RgbaBuffer::table_bytes_for(192, 192);
+        assert_eq!(table, 288);
+        for (i, l) in doc.active_frame_mut().layers.iter_mut().enumerate() {
+            l.pixels.set(0, 0, Rgba8::rgb(i as u8 + 1, 0, 0));
+        }
+        let bytes = save_to_bytes(&doc);
+        let payload = 20 * 4096;
+        assert!(matches!(load_from_bytes_budgeted(&bytes, payload + 19 * table), Err(IoError::OverBudget)));
+        let back = load_from_bytes_budgeted(&bytes, payload + 20 * table).unwrap();
+        assert_eq!(back.live_table_bytes(), 20 * table);
+        assert_eq!(save_to_bytes(&back), bytes);
+    }
+
+    /// ADR 0032: layers with byte-identical ref-grids share one table on load (what
+    /// `DuplicateFrame` produces in a session), so held frames cost one table, not one each.
+    #[test]
+    fn identical_layouts_share_one_table_on_load() {
+        let mut doc = Document::new(64, 64);
+        doc.active_frame_mut().active_layer_mut().pixels.set(5, 5, Rgba8::rgb(9, 9, 9));
+        for _ in 0..29 {
+            let f = doc.active_frame().clone(); // COW duplicate: same layout, same tiles
+            doc.frames.push(f);
+        }
+        let bytes = save_to_bytes(&doc);
+        let table = RgbaBuffer::table_bytes_for(192, 192);
+        // 30 layers, one distinct layout: 4096 B of payload + ONE table is all it takes.
+        let back = load_from_bytes_budgeted(&bytes, 4096 + table).unwrap();
+        assert_eq!(back.frames.len(), 30);
+        assert_eq!(back.live_table_bytes(), table, "one shared table for 30 identical layers");
+        assert!(back.frames.iter().all(|f| f.layers[0].pixels.get(5, 5) == Rgba8::rgb(9, 9, 9)));
+        assert_eq!(save_to_bytes(&back), bytes, "sharing is invisible to the writer");
+        // A write to one frame de-shares only that frame's table (COW), as in a session.
+        let mut back = back;
+        back.frames[3].layers[0].pixels.set(6, 6, Rgba8::rgb(1, 2, 3));
+        assert_eq!(back.live_table_bytes(), 2 * table);
+        assert_eq!(back.frames[2].layers[0].pixels.get(6, 6).a, 0);
     }
 
     #[test]

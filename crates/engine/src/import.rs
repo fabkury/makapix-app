@@ -250,6 +250,8 @@ impl Session {
                             crate::document::Layer::new(id, storage, format!("Import {}", i + 1));
                         layer.pixels = buf;
                         s.doc.frames[target].layers.push(layer);
+                    } else {
+                        s.refuse_layer_cap("Import");
                     }
                 } else {
                     // ensure frames exist up to `target`

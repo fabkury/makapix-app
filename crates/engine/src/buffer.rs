@@ -327,6 +327,17 @@ impl RgbaBuffer {
         self.tiles.len() * std::mem::size_of::<Option<Arc<Tile>>>()
     }
 
+    /// Tile-slot count of a `w × h` buffer, without building one (the loader sizes its budget
+    /// check before allocating a layer's table).
+    pub fn cells_for(w: u32, h: u32) -> usize {
+        (w.div_ceil(TILE) * h.div_ceil(TILE)) as usize
+    }
+
+    /// [`tile_table_bytes`](Self::tile_table_bytes) of a `w × h` buffer, without building one.
+    pub fn table_bytes_for(w: u32, h: u32) -> usize {
+        Self::cells_for(w, h) * std::mem::size_of::<Option<Arc<Tile>>>()
+    }
+
     /// Identity of the (possibly shared) tile table, for pointer-dedup in memory accounting.
     pub fn table_ptr(&self) -> *const () {
         Arc::as_ptr(&self.tiles) as *const ()

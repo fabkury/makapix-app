@@ -1,7 +1,7 @@
 //! Frame-set batch verbs (ADR 0031; `docs/frames-page/DESIGN.md`) — the engine half of the
 //! Frames page. Every verb here takes a [`FrameSet`], runs inside ONE `edit_doc` (one undo
 //! record, one journal line, one replay tick), and is all-or-nothing: a set that reaches beyond
-//! the roll, the 1024-frame cap, the 64-layer cap, or a delete that would empty the roll
+//! the roll, the 1024-frame cap, the 128-layer cap, or a delete that would empty the roll
 //! **refuses** through [`Session::refuse`] and changes nothing. Three decided exceptions clamp
 //! instead: a rigid shift clamps its delta to the room, a duration scale clamps into the
 //! 16.6–1000 ms range, and a remove-by-name that would leave a frame empty substitutes a blank
@@ -936,7 +936,7 @@ mod tests {
         s.run_script("CopyLayerToFrames(0-2)").unwrap();
         assert_eq!(undo_len(&s), n);
         assert_eq!(s.doc.frames[0].layers.len(), 2, "nothing copied anywhere");
-        assert!(s.refusal_state().1.unwrap().contains("frame 2 already has 64 layers"));
+        assert!(s.refusal_state().1.unwrap().contains("frame 2 already has 128 layers"));
     }
 
     #[test]

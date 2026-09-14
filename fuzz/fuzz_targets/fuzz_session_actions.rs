@@ -81,7 +81,7 @@ impl Tool {
 
 /// One editor action. Argument types are chosen to keep values *near* the interesting
 /// ranges: `i8` pointer coordinates straddle a 32×32 canvas (in-bounds, gutter, and
-/// out-of-bounds negatives), `u8` indices overshoot the 64-layer cap and often the
+/// out-of-bounds negatives), `u8` indices overshoot the 128-layer cap and often the
 /// frame count. The huge-coordinate class (F-6) keeps one dedicated raw variant.
 #[derive(Arbitrary, Debug)]
 enum Act {
