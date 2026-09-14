@@ -59,7 +59,7 @@ Friendly territory — structurally similar in spirit to `.mkpx` v10's typed-chu
 | Layer groups | Flattened depth-first; ancestor visibility ANDs in, ancestor opacity multiplies in (integer-exact); group names prefix into children ("Head/outline"); non-Normal group blends count as blend fallbacks. |
 | Tilemaps + tilesets | **Rasterized** to ordinary pixel layers (indices + flip bits expanded via the tileset) — visually identical; only the tile workflow is lost. |
 | Tags, slices, user data, paths, color profile | Dropped silently (metadata-only; profile ignored, everything treated as sRGB per engine doctrine). Loop mode defaults to Loop. |
-| Canvas >256×256, >64 layers, >1024 frames | **Refused** with a clear message naming the actual size/count and the cap. |
+| Canvas >512×512, >128 layers, >1024 frames (the engine caps as of ADR 0021/0032) | **Refused** with a clear message naming the actual size/count and the cap. |
 
 ## Decisions of record (grilling, 2026-08-12)
 
@@ -68,7 +68,7 @@ Friendly territory — structurally similar in spirit to `.mkpx` v10's typed-chu
 2. **Entry point:** the existing Open picker accepts `['mkpx','ase','aseprite']`. OS file
    association (Android intent-filters / iOS UTIs) deferred.
 3. **Fidelity doctrine — faithful-or-refuse for structure:** over-cap canvas/layers/frames
-   refuse outright. No downscale (destroys pixel art), no truncation ("which 64 layers?" has
+   refuse outright. No downscale (destroys pixel art), no truncation ("which 128 layers?" has
    no good answer), no overflow-merge.
 4. **Degrade-with-notice for representation:** the 8 unmapped blend modes fall back to Normal.
    Accepted wrinkle: the original mode is not stored, so a future Tier-2 engine cannot

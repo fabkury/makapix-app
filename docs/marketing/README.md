@@ -33,7 +33,7 @@ slide (primary demo, secondary proof panel, chip ticker), community art credited
    coverage lives on as a chip on the color slide; moved up to slot 2 same day)
 3. **Replay** — "Your art draws itself" (engine-rendered progress filmstrip of the
    staged lakeside scene + the real replay viewer; MP4/GIF/WebP timelapse chips)
-4. **Animation** — "1,024 frames. 64 layers." (ball fan + the timeline holding
+4. **Animation** — "1,024 frames. 128 layers." (64 until 2026-09-14, ADR 0032) (ball fan + the timeline holding
    @Badguy's 16-frame "cozy blizzard")
 5. **Paint** — AA off/on, the airbrush trio, 8-stop gradient, single-coat stroke
    (all engine renders) + the real AA-chip tool row

@@ -74,7 +74,7 @@ The Q1×Q4 interaction — "byte-deterministic single file" vs "compress only so
 TILE_SIZE = 32     TILE_AREA = 1024     TILE_BYTES = 4096
 Canvas          8..=512 per axis   (256 until 2026-09-03 — ADR 0021; see §20)
 Frames/doc      1..=1024
-Layers/frame    1..=64
+Layers/frame    1..=128            (64 until 2026-09-14 — ADR 0032; see §20)
 Frame duration  16_667..=1_000_000 µs
 Pixels          8-bit STRAIGHT (non-premultiplied) RGBA, sRGB, byte order R,G,B,A
 Integers        little-endian, fixed width, EXCEPT varint = unsigned LEB128 (canonical, minimal)
@@ -231,7 +231,7 @@ repeat frame_count:
     u32     frame_id                      (opaque, preserved across save/load)
     u32     duration_us                   (clamped 16_667..=1_000_000 on load)
     u16     active_layer                  (clamped to layer_count-1 on load)
-    u16     layer_count                   (1..=64)
+    u16     layer_count                   (1..=128)
     repeat layer_count:
         u32     layer_id                  (opaque)
         str     name
@@ -516,12 +516,14 @@ inflation.
 
 The loader returns a typed `IoError` and **never panics**:
 `BadMagic · UnsupportedVersion(u16) · Incomplete · Corrupt(&'static str) · TooLarge(&'static str) ·
-UnsupportedChunk([u8;4]) · OverBudget` (the last = a well-formed file whose unique tile payload
-exceeds the session's document memory budget — refused before any tile is materialized).
+UnsupportedChunk([u8;4]) · OverBudget` (the last = a well-formed file whose unique tile payload,
+or payload plus per-layer tile-slot tables, exceeds the session's document memory budget — the payload
+is refused before any tile is materialized, the tables before the crossing table is allocated; layers
+with byte-identical ref-grids share one table, ADR 0032).
 
 - **Bounds on every read**; any field/count reading past end ⇒ `Incomplete`.
 - **Caps on every count** (violation ⇒ `Corrupt`/`TooLarge`): canvas 8..=512; storage ≤ 1536; cells ≤
-  2304; frames 1..=1024; layers 1..=64; `palette_count ≤ 256`; `color_count ≤ 65536`; `str ≤ 4096`;
+  2304; frames 1..=1024; layers 1..=128; `palette_count ≤ 256`; `color_count ≤ 65536`; `str ≤ 4096`;
   `tile_count ≤ MAX_DICT_TILES`; `SELC` bytes ≤ `MAX_SEL_BYTES`; `uncompressed_len` ≤ a fixed inflate
   cap; varint ≤ 5 bytes/u32.
 - **Bounded allocation**: reserve `min(count, remaining_bytes / MIN_ENTRY_BYTES)` — a crafted
@@ -549,6 +551,9 @@ exceeds the session's document memory budget — refused before any tile is mate
   768 → 1536, `MAX_SEL_BYTES` 73_728 → 294_912). The wire fields were already `u16`, so a file at or
   under the old cap is byte-identical under both readers; a file over it is refused by an older reader
   as `Corrupt("canvas size out of range")` — the accepted hard cutoff.
+- The same rule applied on 2026-09-14 (ADR 0032: layers 64 → 128; `layer_count` was already `u16`; an
+  older reader refuses a file over 64 as `Corrupt("layer count")`). The reader's table billing and
+  layout sharing (§19) are memory behavior, invisible on the wire.
 
 ---
 

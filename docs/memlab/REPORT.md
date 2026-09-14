@@ -5,7 +5,7 @@ methodology and harnesses in `tools/memlab/`; raw data in `tools/memlab/results/
 
 ## Question
 
-The editor's limits are per-axis: ≤1024 frames, ≤64 layers/frame, ≤256×256 canvas (raised to 512×512
+The editor's limits are per-axis: ≤1024 frames, ≤128 layers/frame (64 until 2026-09-14 — ADR 0032), ≤256×256 canvas (raised to 512×512
 on 2026-09-03 — see "512×512" under *Practical limits lookup*; the figures below were measured at
 256 and stay valid per byte). What actually
 happens when they are pushed with content the architecture cannot mitigate — every layer of every
@@ -213,6 +213,21 @@ The budgets, not the canvas cap, are what keep the Android ~1 GiB allocator wall
 in the enforcement section changes. CPU cost is the other axis: full-layer Scale (cleanEdge) and
 Rotate measured ~83 → ~385 ms and ~26 → ~108 ms per operation on the workstation, i.e. about a
 second on a phone.
+
+**128 layers per frame (cap raised 2026-09-14, ADR 0032).** Tables are billed with the payload
+(audit P-2/#7), so the budgets hold unchanged; what moves is the table skeleton a frame costs before a
+pixel is painted:
+
+| Per frame, all layers present | 64 layers | 128 layers |
+|---|---|---|
+| Table skeleton at 256² (4,608 B/table) | 288 KiB | 576 KiB |
+| Table skeleton at 512² (18,432 B/table) | 1.13 MiB | 2.25 MiB |
+| Bare 512² frames under the 320 MiB hard budget (unique tables) | ~284 | ~142 |
+| Fully painted 512² frame (1 MiB per layer) | 64 MiB | 128 MiB |
+
+The loader now bills tables too (it refused by payload alone before, so a crafted empty-layer file could
+allocate `frames × layers` tables unseen — 1.2 GB at 1024 × 64 × 512²) and shares one table between
+layers with byte-identical ref-grids, so held frames cost one table on load as they do in a session.
 
 ## Addendum — frame-set content batches (2026-09-11, ADR 0031; device pass pending)
 

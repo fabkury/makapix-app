@@ -102,7 +102,7 @@ Workflows the page exists for:
 | Durations that clamp | **Apply and report:** the batch lands with the engine's 16.6–1000 ms clamp; a toast says "N frames pinned at 16.7 ms" (or 1000 ms). A scale still means a scale |
 | Layer identity across frames | **Match by name**, exact and case-sensitive, **topmost hit per frame**; the sheet shows the hit count ("14 of 20 selected frames have a layer named Shading") before the tap. Frames without a hit are skipped by the verb (the artist saw the count) |
 | A remove-by-name that empties a frame | **A blank layer replaces it** instead of blocking the batch: fresh id, the default new-layer name, visible, unlocked, opacity 255, Normal blend; it becomes that frame's active layer |
-| Layer cap on copy-to-frames | **A new strict verb, `CopyLayerToFrames(S)`, refuses** when any target already holds 64 layers. The shipped `DuplicateLayerToFrames` (skips such targets) keeps parsing forever and stays behind the layer sheet's "Copy to all frames" |
+| Layer cap on copy-to-frames | **A new strict verb, `CopyLayerToFrames(S)`, refuses** when any target already holds 128 layers (64 until ADR 0032). The shipped `DuplicateLayerToFrames` (skips such targets) keeps parsing forever and stays behind the layer sheet's "Copy to all frames" |
 
 ### Operations (v1)
 
@@ -176,7 +176,7 @@ ReverseFrames(S)                        |S| < 2 → no-op, no record
 SetFrameDurations(S, ms)                clamped 16.6–1000 ms
 ScaleFrameDurations(S, permille)        us' = (us·permille + 500) / 1000, clamped
 FlipFramesH(S)  FlipFramesV(S)  RotateFrames(S, quarters)  InvertFrames(S)
-CopyLayerToFrames(S)                    strict; refuse: any target at 64 layers
+CopyLayerToFrames(S)                    strict; refuse: any target at 128 layers
 RemoveLayersNamed(S, name)              topmost hit; blank-layer replacement when emptied
 SetLayersVisibleNamed(S, 0|1, name)
 SetLayersLockedNamed(S, 0|1, name)
