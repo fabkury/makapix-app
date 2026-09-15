@@ -171,8 +171,12 @@ WebP — the animation container is hand-muxed in pure Rust; no APNG encoder) ·
 Two co-equal pillars under a neutral shell. `lib/main.dart` → `lib/app.dart` (root `MaterialApp`) →
 **`lib/shell/app_shell.dart`**, which mounts **only the active pillar** (see gotchas) and switches on the
 `openEditorProvider` / `openClubProvider` signals (plus `pendingLocalLibraryProvider` /
-`activePillarProvider` in the same file family). The app opens on Club; the editor stays reachable
-without login (via Contribute). There is no persistent pillar-switching chrome.
+`activePillarProvider` / `launchPillarProvider` in the same file family). The app opens on Club — or on
+the editor when that is where the user last was within 24 h (`shell/launch_pillar.dart`, ADR 0035);
+the editor stays reachable without login (via Contribute). **Nothing on the launch path may wait on
+the network** (ADR 0035): the Club home never blocks on `/auth/me` — installs with tokens enter
+signed-in from the cached identity (`AuthState.stale` until revalidated) and the residual `loading`
+state renders `ClubResolvingPage`, not a spinner. There is no persistent pillar-switching chrome.
 
 - **Editor UI** (`app/lib/editor/`): `editor_page.dart` + its **nine** part files
   (`editor_page.{canvas,controls,engine,fileio,persistence,replay,sheets,timeline,toolgrid}.dart`) — the
