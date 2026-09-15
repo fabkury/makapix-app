@@ -125,6 +125,25 @@ group — discarded when the page closes — and a double-tap on a tile goes to 
 _Avoid_: timeline (the Animator's tracks-and-keys view, and the Replay timeline), contact sheet
 in UI copy (the grid widget's name in code)
 
+**Layer set**:
+The layers of the active frame one batch verb acts on (ADR 0033): on the wire one argument of
+`N` / `N-M` items, 0-based bottom-first like every layer verb (`MergeLayers(2-4)`); in the shell a
+set of layer ids. Same rules as a frame set — one verb, one undo step, all-or-nothing; a set past
+the stack, the layer cap, a Merge set with a gap, or a content batch over a locked member is
+refused and changes nothing. A delete that covers every layer substitutes one blank layer.
+_Avoid_: layer range (a set may be discontiguous), selection (the mask), Move group (a layer set
+may become one, through "Use as Move group")
+
+**Layers page**:
+The active frame's stack as a list, top first and numbered from the bottom, reached from the
+layer sheet's "Layers…" button, ☰ → Layers…, or Shift+Y: select any set of layers, then delete,
+duplicate, merge, shift, reverse, insert, show, hide, lock, unlock, set opacity or blend, reset,
+rename, flip, rotate, invert, clear, copy to frames, or hand the set to the Move group at once.
+Its selection is transient like the Move group — discarded when the page closes — and a
+double-tap on a row makes that layer active.
+_Avoid_: layer panel or layers panel (the film strip's layer band), stack in UI copy (the list is
+"Layers")
+
 **Playhead**:
 The frame playback is currently showing — distinct from the Active target, which is where
 Strokes land. Playback starts at the Active target and pause returns to it, so the Playhead

@@ -1,8 +1,8 @@
 # The Layers page — design
 
 **Decided 2026-09-14** in a design interview (every decision below is the user's; assumptions are
-marked). **Not yet implemented.** Doctrine: ADR 0033 (draft). Brainstorm and rationale for the
-proposal set: `BRAINSTORM.md` in this folder. Companion and model: the Frames page
+marked). **Implemented 2026-09-15** (see "As built"). Doctrine: ADR 0033. Brainstorm and rationale
+for the proposal set: `BRAINSTORM.md` in this folder. Companion and model: the Frames page
 (`docs/frames-page/DESIGN.md`, ADR 0031) — wherever a layer set behaves like a frame set, this page
 copies that decision rather than restating it.
 
@@ -10,6 +10,39 @@ Motivation: the cap is 128 layers per frame (ADR 0032) and both layer controls �
 and the layer sheet — act on one layer at a time. "Hide the twelve guide layers", "merge these
 five sketch layers", "delete every empty layer", "move the shading layers above the line art" is a
 dozen taps each, or a scroll-and-hunt through 128 rows.
+
+## As built (2026-09-15; deviations from and refinements of the decisions below)
+
+- **Merge takes one contiguous run.** The interview's answer was "contiguous runs only"; the
+  verb refuses a set with a gap rather than merging several runs at once (the ADR's reading,
+  simpler to explain and to undo). A run of one member is a no-op. The page pre-checks the gap
+  and the locked members on its status line before the verb is sent.
+- **Layer ids in `frame_detail`.** Every layer entry now carries `"id"` (additive); the page's
+  selection is keyed by it. An older engine without ids falls back to the index.
+- **Locked members grey out the Content chips** in the More sheet and the first fixed slot
+  reads "N selected layers are locked — these refuse"; the page also refuses on its status line
+  if a content op reaches it. Duplicate and Insert blank grey out at the cap with the cap note.
+- **Copy to frames…** takes a 1-based frame range with "All frames" and "Other frames" chips
+  (the Frames page's range parser); the report says how many layers went to how many frames.
+- **Use as Move group** pops with the ascending indices; the editor sends `SetActiveLayers(S)`
+  (the first member becomes active) and mirrors the group on the strip's chips. Make active pops
+  with the index. A plain close clears the Move group only when the stack's ids or the active
+  layer's id changed under the page.
+- **Row density** is one switch ("Bigger rows" / "Smaller rows", 44 vs 60 px), persisted
+  editor-wide (`editor.layersRoomyRows_v1`), not a stepper.
+- **The sweep clamps to the list's ends** (a finger past the top or bottom means "up to the
+  edge"); there is no rubber-band (rows fill the width) and no pinch (no columns).
+- **The layer sheet completes when it closes** (`_layerOptions` returns the sheet's future) so
+  the page's "Layer options…" can re-sync afterwards, as the Frames page does with the frame
+  sheet.
+- **Refusals** ride `refusal_seq` / `last_refusal`; the editor's generic refusal toast (ADR 0032)
+  is suppressed around the page's verbs, since the status line narrates them.
+- **Rename** shows a live preview ("Sketch 1, … Sketch 5") under the field; names are capped at
+  64 characters as in the single-layer dialog.
+- **Blend…** commits on pick (no live preview over the set); the picker pre-checks the current
+  mode when every member shares one.
+- **Shift+Y** is the Command `page.layers`; ☰ → Layers… and the layer sheet's top "Layers…" button
+  are the other entries.
 
 ## What it is
 
@@ -173,12 +206,12 @@ the clamped value so the journal reads plainly (assumption).
 remaining slots in their old order. The journal stores the requested delta; replay re-clamps
 identically.
 
-**Merge, precisely.** Split S into maximal runs of consecutive indices. For each run, from the
-top member down to the second-lowest: composite it onto the member below it exactly as
-`MergeDown` does (skip when hidden or opacity 0; else `color::composite(blend, src, dst,
-opacity)` per pixel over the whole storage), then drop it. Runs are processed top-down so indices
-below stay valid. The survivor is the run's lowest member; its properties are untouched. Pinned
-byte-identical to a hand sequence of `MergeDown` on a random document.
+**Merge, precisely.** S must be one run of consecutive indices (a gap refuses). From the top
+member down to the second-lowest: composite it onto the member below it exactly as `MergeDown`
+does (skip when hidden or opacity 0; else `color::composite(blend, src, dst, opacity)` per pixel
+over the whole storage), then drop it. The survivor is the run's lowest member; its properties
+are untouched. Pinned byte-identical to a hand sequence of `MergeDown`
+(`merge_layers_is_byte_identical_to_merge_down_and_moves_the_active_to_the_survivor`).
 
 **Delete-all, precisely.** When S covers every layer, the frame's stack becomes `[blank]` with a
 fresh id; `active_layer = 0`; the Move group clears. Journals replay it identically.

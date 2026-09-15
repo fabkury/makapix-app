@@ -1,10 +1,12 @@
 # The Layers page acts on layer sets of the active frame through atomic batch verbs
 
-**Draft — decided 2026-09-14 in a design interview, not yet implemented** (every choice is the
-user's; the design, its edge-case policy, and the interview's answers live in
-`docs/layers-page/DESIGN.md`; the proposal set and its rationale in
-`docs/layers-page/BRAINSTORM.md`). Accepted when implementation starts. Sibling of ADR 0031,
-whose model it copies wherever a layer set behaves like a frame set.
+**Decided 2026-09-14 in a design interview, implemented 2026-09-15** (every choice is the
+user's; the design, its edge-case policy, the interview's answers, and the as-built deviations
+live in `docs/layers-page/DESIGN.md`; the proposal set and its rationale in
+`docs/layers-page/BRAINSTORM.md`). Engine: `crates/engine/src/session/layers.rs` (`LayerSet` +
+the eighteen verbs; the index-set grammar shared with `FrameSet`), a layer `id` in
+`frame_detail`, `examples/layers.txt`. Shell: `app/lib/editor/layers/` + `editor_page.layers.dart`.
+Sibling of ADR 0031, whose model it copies wherever a layer set behaves like a frame set.
 
 **Why.** The cap is 128 layers per frame (ADR 0032) and the film strip and layer sheet act on one
 layer at a time. Bulk manipulation of a stack — hide a family, merge a run, delete every empty
@@ -30,8 +32,8 @@ generic refusal channel and changes nothing. Sixteen verbs: `RemoveLayers`, `Dup
   is one batch.
 - **Locks refuse content batches and Merge, and nothing else.** The lock guards pixels; property
   changes, reorder, duplicate and delete pass through as the single verbs already allow.
-- **Merge acts on contiguous runs only**, composited top-down into each run's bottom member by
-  the `MergeDown` rule, so the result is byte-identical to doing it by hand and blend modes never
+- **Merge acts on one contiguous run**, composited top-down into its bottom member by the
+  `MergeDown` rule, so the result is byte-identical to doing it by hand and blend modes never
   jump over an unselected layer. A gap refuses.
 - **Rename takes one name with `{n}`** (top-first rank); no other tokens in v1.
 - **Selection helpers replace by default; one "Add to selection" switch** turns them into adds.
