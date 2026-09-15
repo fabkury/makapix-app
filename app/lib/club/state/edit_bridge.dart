@@ -14,11 +14,13 @@ final openEditorProvider = StateProvider<int>((ref) => 0);
 /// listens and switches pillars on any change.
 final openClubProvider = StateProvider<int>((ref) => 0);
 
-/// A pending local-library action requested from the profile's Private tab (the "My Drawings"
-/// content surfaced on your own profile). The shell listens and switches to the editor pillar; the
-/// editor consumes it on mount (see editor_page.persistence.dart) and runs its usual open / new flow
-/// — including the keep/discard prompt for the current drawing. Rename/Delete are handled in-place
-/// in the tab and never travel through here.
+/// A pending local-library action requested from a Club surface: the profile's Private tab (the
+/// "My Drawings" content surfaced on your own profile), or the "My Drawings" button on the
+/// signed-out welcome and the resolving page (no account, or no network to prove one). The shell
+/// listens and switches to the editor pillar; the editor consumes it on mount (see
+/// editor_page.persistence.dart) and runs its usual open / new / gallery flow — including the
+/// keep/discard prompt for the current drawing. Rename/Delete are handled in-place in the tab and
+/// never travel through here.
 sealed class LocalLibraryRequest {
   const LocalLibraryRequest();
 }
@@ -32,6 +34,12 @@ class OpenLocalDrawing extends LocalLibraryRequest {
 /// Start a brand-new drawing in the editor.
 class NewLocalDrawing extends LocalLibraryRequest {
   const NewLocalDrawing();
+}
+
+/// Open the editor's own library page (the gallery) over the current drawing, so the user picks
+/// from there — the offline route to "My Drawings" when the Private tab is out of reach.
+class BrowseLocalLibrary extends LocalLibraryRequest {
+  const BrowseLocalLibrary();
 }
 
 final pendingLocalLibraryProvider = StateProvider<LocalLibraryRequest?>((ref) => null);

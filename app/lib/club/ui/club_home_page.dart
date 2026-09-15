@@ -14,6 +14,7 @@ import 'artist_dashboard_page.dart';
 import 'artwork_detail_page.dart';
 import 'auth/onboarding_wizard.dart';
 import 'club_account_page.dart';
+import 'club_resolving_page.dart';
 import 'club_welcome_page.dart';
 import 'contribute_page.dart';
 import 'moderation_hub_page.dart';
@@ -221,10 +222,13 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authControllerProvider);
-    // Match the website: signed-out users get a welcome/sign-in funnel, not the feeds.
+    // While the sign-in state resolves, a surface with the editor and the local library one tap
+    // away — never a blocking spinner. Installs with a cached identity skip this state entirely
+    // (they enter signed-in from the cache and revalidate behind the home; see AuthController).
     if (auth.status == AuthStatus.loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const ClubResolvingPage();
     }
+    // Match the website: signed-out users get a welcome/sign-in funnel, not the feeds.
     // First-run community-rules gate — covers signed-in and signed-out users
     // (ugc-safety A1). Reactive: interposes once config resolves with the
     // `moderation` key; otherwise a no-op.
@@ -235,8 +239,10 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
       return const ClubWelcomePage();
     }
     // New accounts (and any not-yet-welcomed sign-in) get the onboarding wizard
-    // before the feeds, unless they chose "Skip for now" this session.
-    if ((auth.me?.needsWelcome ?? false) && !ref.watch(welcomeDismissedProvider)) {
+    // before the feeds, unless they chose "Skip for now" this session. Not on a cached
+    // (unrevalidated) identity: the wizard's steps all need the server, so it waits for the
+    // revalidated `/auth/me` to say the flag still stands.
+    if ((auth.me?.needsWelcome ?? false) && !auth.stale && !ref.watch(welcomeDismissedProvider)) {
       return const OnboardingWizard();
     }
     // Reaching the feed view (notably right after the wizard) — re-assert the
@@ -291,17 +297,83 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
       // Swipe horizontally to move Contribute ↔ Recommended ↔ Recent ↔ Following ↔ Search; the
       // top-bar buttons jump to a page and stay in sync via onPageChanged. The Contribute and
       // Search pages have no player channel, so sending is disabled there.
-      body: SendTargetBinder(
-        target: _feed == null ? null : _channelFor(_feed!),
-        child: PageView(
-          controller: _pages,
-          onPageChanged: (i) => setState(() => _page = i),
-          children: [
-            const ContributePage(),
-            for (final kind in _feeds) _feedBody(kind),
-            SearchView(searchFocus: _searchFocus),
-          ],
+      body: Column(children: [
+        // Signed in from the cached identity and the server can't be reached: say so, and offer
+        // one retry that revalidates the sign-in and refetches the feeds together.
+        if (auth.isOfflineSignedIn) _OfflineStrip(onRetry: _retryOffline),
+        Expanded(
+          child: SendTargetBinder(
+            target: _feed == null ? null : _channelFor(_feed!),
+            child: PageView(
+              controller: _pages,
+              onPageChanged: (i) => setState(() => _page = i),
+              children: [
+                const ContributePage(),
+                for (final kind in _feeds) _feedBody(kind),
+                SearchView(searchFocus: _searchFocus),
+              ],
+            ),
+          ),
         ),
+      ]),
+    );
+  }
+
+  Future<void> _retryOffline() async {
+    // Feeds first (they refetch on rebuild), then the identity — the strip stays until the
+    // revalidation lands, so a retry that fails again reads as exactly that.
+    for (final kind in _feeds) {
+      ref.invalidate(feedProvider(kind));
+    }
+    ref.invalidate(topHashtagsProvider);
+    await ref.read(authControllerProvider.notifier).reloadMe();
+  }
+}
+
+/// The thin "showing your saved sign-in" strip under the top bar while the server is unreachable.
+class _OfflineStrip extends StatefulWidget {
+  final Future<void> Function() onRetry;
+  const _OfflineStrip({required this.onRetry});
+
+  @override
+  State<_OfflineStrip> createState() => _OfflineStripState();
+}
+
+class _OfflineStripState extends State<_OfflineStrip> {
+  bool _busy = false;
+
+  Future<void> _retry() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await widget.onRetry();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: cs.surfaceContainerHighest,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 4, 6, 4),
+        child: Row(children: [
+          Icon(Icons.cloud_off, size: 18, color: cs.onSurfaceVariant),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text("Can't reach Makapix Club. Showing your saved sign-in.",
+                style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+          ),
+          if (_busy)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 14),
+              child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+            )
+          else
+            TextButton(onPressed: _retry, child: const Text('Retry')),
+        ]),
       ),
     );
   }

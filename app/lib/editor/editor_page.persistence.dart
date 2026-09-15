@@ -102,6 +102,10 @@ extension _EditorPersistence on _EditorPageState {
             _refreshState();
             _redraw();
           }
+        case BrowseLocalLibrary():
+          // The gallery pushes over the just-restored current drawing; the store is ready here
+          // (this runs after the restore), so the "still loading" toast can't fire.
+          await _openGallery();
       }
     }
   }

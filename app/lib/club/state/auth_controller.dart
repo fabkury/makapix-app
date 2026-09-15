@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -55,8 +56,12 @@ final currentUserSubProvider =
 /// single gate for every moderation affordance. Role changes only land via a
 /// `/auth/me` refetch, so this is as live as [ClubMe] itself. The `select`
 /// keeps token refreshes and profile edits from rebuilding moderation UI.
-final isModeratorProvider = Provider<bool>(
-    (ref) => ref.watch(authControllerProvider.select((s) => s.me?.canModerate ?? false)));
+///
+/// A cached identity that the server has not yet revalidated ([AuthState.stale]) never
+/// unlocks moderation: a revoked moderator must not see the hub offline. Costs nothing —
+/// every moderation action needs the server anyway.
+final isModeratorProvider = Provider<bool>((ref) => ref.watch(
+    authControllerProvider.select((s) => !s.stale && (s.me?.canModerate ?? false))));
 
 // ---- state ----
 
@@ -71,17 +76,30 @@ class AuthState {
   /// `email_not_verified`), so the UI can offer a tailored next step.
   final String? errorCode;
 
-  const AuthState(this.status, {this.me, this.error, this.errorCode});
+  /// Signed in from the **cached** identity (the last successful `/auth/me`, persisted beside
+  /// the tokens) and not yet revalidated by the server. True from the first frame of a cold
+  /// start until `/auth/me` answers; stays true while it can't be reached — with [error] set
+  /// once an attempt has failed — so the UI can say so and offer a retry. Everything a stale
+  /// identity unlocks is safe: the server is the real gate for every action, and moderation UI
+  /// stays hidden until revalidation ([isModeratorProvider]).
+  final bool stale;
+
+  const AuthState(this.status, {this.me, this.error, this.errorCode, this.stale = false});
 
   const AuthState.loading() : this(AuthStatus.loading);
   const AuthState.signedOut() : this(AuthStatus.signedOut);
   const AuthState.signingIn() : this(AuthStatus.signingIn);
-  AuthState.signedIn(ClubMe me) : this(AuthStatus.signedIn, me: me);
+  AuthState.signedIn(ClubMe me, {bool stale = false, String? error})
+      : this(AuthStatus.signedIn, me: me, stale: stale, error: error);
   const AuthState.failure(String message, {String? code})
       : this(AuthStatus.error, error: message, errorCode: code);
 
   bool get isSignedIn => status == AuthStatus.signedIn;
   bool get isBusy => status == AuthStatus.loading || status == AuthStatus.signingIn;
+
+  /// Signed in from the cache and the last revalidation attempt failed to reach the server —
+  /// the "showing your saved sign-in" condition the home page surfaces with a retry.
+  bool get isOfflineSignedIn => isSignedIn && stale && error != null;
 
   /// True when a failure means the email is registered but unverified — the UI
   /// routes these to the verify-email screen. Tolerant of envelope differences.
@@ -155,16 +173,35 @@ class AuthController extends StateNotifier<AuthState> {
       // Zero-Tap Sign-In: no tokens may mean a clean install *or* a device migration, which
       // cannot carry the token store (its Keystore key is non-exportable). Try a silent restore
       // before routing to the welcome screen. We are still in AuthStatus.loading here, which the
-      // UI already renders as a full-screen spinner, so no new splash state is needed; the
-      // attempt is hard-bounded by RestoreCredentialService.attemptTimeout so it cannot strand
-      // the app there. Any failure falls through to exactly today's behavior.
+      // home page renders as a resolving surface with the editor and the local library reachable
+      // (never a blocking spinner); the attempt is hard-bounded by
+      // RestoreCredentialService.attemptTimeout so it cannot strand the app there. Any failure
+      // falls through to exactly today's behavior.
       final restored = await restore?.tryRestore() ?? false;
       if (!restored) {
         state = const AuthState.signedOut();
         return;
       }
+    } else {
+      // Optimistic signed-in: enter the signed-in state from the cached identity NOW, before the
+      // network. The elevator case (the phone believes it is online but nothing gets through)
+      // used to hold the whole Club behind `/auth/me` for the full connect timeout; with the
+      // cache the home paints at once and `/auth/me` revalidates behind it. A missing or corrupt
+      // cache (first launch after the update, or a tampered entry) just means today's path.
+      final me = _cachedMe();
+      if (me != null) state = AuthState.signedIn(me, stale: true);
     }
     await _loadMe();
+  }
+
+  ClubMe? _cachedMe() {
+    final json = session.cachedMeJson;
+    if (json == null) return null;
+    try {
+      return ClubMe.fromJson((jsonDecode(json) as Map).cast<String, dynamic>());
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Re-fetch `/auth/me` and flip to signed-in (or signed-out on an auth error).
@@ -174,17 +211,37 @@ class AuthController extends StateNotifier<AuthState> {
 
   Future<void> _loadMe() async {
     try {
-      final me = ClubMe.fromJson(await api.me());
+      final json = await api.me();
+      final me = ClubMe.fromJson(json);
+      // Persist the identity for the next cold start (every revalidation refreshes it, so
+      // handle/avatar/role changes reach the cache). Not awaited: a slow secure-storage write
+      // must never delay the signed-in UI.
+      unawaited(session.cacheMe(jsonEncode(json)));
       state = AuthState.signedIn(me);
     } on ClubError catch (e) {
       if (e.isAuth) {
+        // The server rejected the tokens: the cached identity goes with them (session.clear).
         await session.clear();
         state = const AuthState.signedOut();
       } else {
-        state = AuthState.failure(e.message);
+        _keepStaleOr(AuthState.failure(e.message), e.message);
       }
     } catch (_) {
-      state = const AuthState.failure('Unexpected error loading your account.');
+      const msg = 'Unexpected error loading your account.';
+      _keepStaleOr(const AuthState.failure(msg), msg);
+    }
+  }
+
+  /// A revalidation that could not reach the server keeps the optimistic signed-in state (now
+  /// flagged with the error, for the home page's offline strip); without a cached identity it
+  /// is the plain failure it always was.
+  void _keepStaleOr(AuthState failure, String message) {
+    final cur = state;
+    final me = cur.me;
+    if (cur.isSignedIn && cur.stale && me != null) {
+      state = AuthState.signedIn(me, stale: true, error: message);
+    } else {
+      state = failure;
     }
   }
 
@@ -257,7 +314,8 @@ class AuthController extends StateNotifier<AuthState> {
   void updateApprovedHashtags(List<String> tags) {
     final me = state.me;
     if (me == null) return;
-    state = AuthState.signedIn(me.copyWith(user: me.user.copyWith(approvedHashtags: tags)));
+    state = AuthState.signedIn(me.copyWith(user: me.user.copyWith(approvedHashtags: tags)),
+        stale: state.stale, error: state.error);
   }
 
   /// Dismiss an error back to the sign-in form.

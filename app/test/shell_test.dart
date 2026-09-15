@@ -38,11 +38,24 @@ class _SignedOutAuth extends AuthController {
   Future<void> init() async {/* stay signed-out; no token load */}
 }
 
-Widget _harness() {
+/// An [AuthController] stuck in `AuthStatus.loading` — the sign-in state still resolving (the
+/// elevator case: a `/auth/me` or Zero-Tap round trip that never answers).
+class _LoadingAuth extends AuthController {
+  _LoadingAuth._(ClubSession session, ClubConfig cfg)
+      : super(session: session, api: ClubApiClient(session), oauth: GithubOAuth(cfg));
+
+  factory _LoadingAuth(ClubConfig cfg) => _LoadingAuth._(ClubSession(config: cfg), cfg);
+
+  @override
+  Future<void> init() async {/* never resolves */}
+}
+
+Widget _harness({bool resolving = false}) {
   final cfg = ClubConfig.defaultConfig;
   return ProviderScope(
     overrides: [
-      authControllerProvider.overrideWith((ref) => _SignedOutAuth(cfg)),
+      authControllerProvider
+          .overrideWith((ref) => resolving ? _LoadingAuth(cfg) : _SignedOutAuth(cfg)),
       // The welcome screen's "Featured" grid watches the promoted feed — return an empty
       // page synchronously so no network is attempted.
       feedProvider(FeedKind.promoted).overrideWith(
@@ -92,4 +105,38 @@ void main() {
     await tester.pump();
     expect(_editorShowing, findsNothing, reason: 'openClubProvider returns to the Club pillar');
   });
+
+  testWidgets('while the sign-in state is still resolving, the editor is one tap away',
+      (tester) async {
+    await tester.pumpWidget(_harness(resolving: true));
+    await tester.pump();
+
+    // Not a blocking spinner: the resolving surface carries the same no-login top bar.
+    expect(find.text('Connecting to Makapix Club…'), findsOneWidget);
+    expect(_editorShowing, findsNothing);
+    await tester.tap(find.byTooltip('Contribute (open the editor)'));
+    await tester.pump();
+    expect(_editorShowing, findsOneWidget,
+        reason: 'the Makapix Editor is promised offline — nothing on the launch path may wait '
+            'on the network');
+  });
+
+  // "My Drawings" opens the editor with a browse-the-library request (consumed on the editor's
+  // mount; the stub here leaves it pending, which is what we assert). One test per surface: a
+  // second pumpWidget would reuse the shell's State (same type, same slot) and its mounted pillar.
+  Future<void> expectMyDrawingsReachesTheEditor(WidgetTester tester, {required bool resolving}) async {
+    await tester.pumpWidget(_harness(resolving: resolving));
+    await tester.pump();
+    await tester.tap(find.text('My Drawings'));
+    await tester.pump();
+    expect(_editorShowing, findsOneWidget);
+    final container = ProviderScope.containerOf(tester.element(find.byType(AppShell)));
+    expect(container.read(pendingLocalLibraryProvider), isA<BrowseLocalLibrary>());
+  }
+
+  testWidgets('"My Drawings" on the welcome page reaches the editor without signing in',
+      (tester) => expectMyDrawingsReachesTheEditor(tester, resolving: false));
+
+  testWidgets('"My Drawings" on the resolving page reaches the editor without signing in',
+      (tester) => expectMyDrawingsReachesTheEditor(tester, resolving: true));
 }

@@ -20,6 +20,7 @@ class ClubSession {
 
   AuthTokens? _tokens;
   Future<bool>? _refreshing;
+  String? _cachedMeJson;
 
   ClubSession({required this.config, SecureTokenStore? store, Dio? dio})
       : store = store ?? SecureTokenStore(),
@@ -52,9 +53,29 @@ class ClubSession {
   /// newly created account. `_grant` is the one funnel all sign-ins pass through.
   void Function()? onInteractiveSignIn;
 
-  /// Load persisted tokens into memory (call once at startup).
+  /// The raw JSON of the last successful `/auth/me`, loaded by [load] — the identity a cold
+  /// start may trust before the server has revalidated it (see `AuthController.init`). Null when
+  /// nothing was cached, or after [clear].
+  String? get cachedMeJson => _cachedMeJson;
+
+  /// Load persisted tokens (and the cached identity) into memory (call once at startup).
   Future<void> load() async {
     _tokens = await store.read();
+    // Best-effort: a missing or unreadable cache only costs the optimistic start.
+    try {
+      _cachedMeJson = _tokens == null ? null : await store.readMe();
+    } catch (_) {
+      _cachedMeJson = null;
+    }
+  }
+
+  /// Remember the latest `/auth/me` JSON for the next cold start. Best-effort: a write failure
+  /// leaves the previous cache (or none) and never surfaces.
+  Future<void> cacheMe(String json) async {
+    _cachedMeJson = json;
+    try {
+      await store.writeMe(json);
+    } catch (_) {/* best-effort */}
   }
 
   Future<AuthTokens> _grant(Map<String, dynamic> body) async {
@@ -165,6 +186,7 @@ class ClubSession {
 
   Future<void> clear() async {
     _tokens = null;
+    _cachedMeJson = null;
     await store.clear();
   }
 

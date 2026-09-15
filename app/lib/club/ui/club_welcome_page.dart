@@ -4,10 +4,10 @@ import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/post.dart';
-import '../state/edit_bridge.dart';
 import '../state/feed_providers.dart';
 import 'artwork_detail_page.dart';
 import 'club_account_page.dart';
+import 'club_resolving_page.dart' show LocalLibraryButton, NoLoginDrawActions;
 import 'widgets/feed_grid.dart';
 
 /// Shown to signed-out users (mirrors the website's `/welcome` funnel): a
@@ -27,25 +27,8 @@ class ClubWelcomePage extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: showTitle ? const Text('Makapix Club') : null,
-        actions: [
-          // The brush icon alone doesn't say that drawing needs no account, so spell it out.
-          // Caption only; the icon beside it is the button.
-          const Flexible(
-            child: Text(
-              'No login needed to draw →',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.end,
-              style: TextStyle(color: Colors.white70, fontSize: 13),
-            ),
-          ),
-          // The editor stays reachable without signing in (mirrors the design's no-login Create).
-          IconButton(
-            tooltip: 'Contribute (open the editor)',
-            icon: const Icon(Icons.brush_outlined),
-            onPressed: () => ref.read(openEditorProvider.notifier).state++,
-          ),
-        ],
+        // "No login needed to draw →" + the Contribute button (shared with the resolving page).
+        actions: const [NoLoginDrawActions()],
       ),
       body: Column(
         children: [
@@ -71,6 +54,10 @@ class ClubWelcomePage extends ConsumerWidget {
                   label: const Text('Sign in / Create account'),
                 ),
               ),
+              const SizedBox(height: 6),
+              // The local library needs no account either — the drawings a signed-in user would
+              // find on their profile's Private tab are reachable from here as well.
+              const SizedBox(width: 280, child: LocalLibraryButton()),
             ]),
           )),
           const Padding(
