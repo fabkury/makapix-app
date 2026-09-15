@@ -108,6 +108,8 @@ class FakeEditorAccess implements EditorAccess {
   @override
   void openLayerSheet() => calls.add('openLayerSheet');
   @override
+  void openLayersPage() => calls.add('openLayersPage');
+  @override
   void setSpacePan(bool held) => calls.add('setSpacePan:$held');
   @override
   void beginHoldPick() => calls.add('beginHoldPick');

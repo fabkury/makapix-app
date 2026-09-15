@@ -69,6 +69,13 @@ void main() {
     expect(a.calls, ['openFrameSheet', 'setConstrain:true', 'openFramesPage', 'setConstrain:false']);
   });
 
+  testWidgets('Y opens the layer sheet; Shift+Y opens the Layers page (ADR 0033)', (tester) async {
+    final a = await pumpKeyboard(tester);
+    await chord(tester, LogicalKeyboardKey.keyY);
+    await chord(tester, LogicalKeyboardKey.keyY, modifiers: [LogicalKeyboardKey.shiftLeft]);
+    expect(a.calls, ['openLayerSheet', 'setConstrain:true', 'openLayersPage', 'setConstrain:false']);
+  });
+
   testWidgets('undo fires only when available, but the chord is always consumed', (tester) async {
     final a = await pumpKeyboard(tester);
     await chord(tester, LogicalKeyboardKey.keyZ, modifiers: [LogicalKeyboardKey.controlLeft]);

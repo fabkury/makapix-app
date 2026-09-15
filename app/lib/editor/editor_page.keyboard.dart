@@ -152,6 +152,8 @@ class _EditorKeyboardHost implements EditorAccess {
   @override
   void openLayerSheet() => _s._layerOptions(_s._activeLayerIndex()); // pauses playback itself
   @override
+  void openLayersPage() => _s._openLayersPage(); // pauses playback itself
+  @override
   void openKeyboardHelp() => _s._openKeyboardHelp();
 
   // ---- Hold bindings (the dispatcher guarantees begin/end pairing and forced release) ----

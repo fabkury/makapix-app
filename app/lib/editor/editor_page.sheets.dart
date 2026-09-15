@@ -214,7 +214,7 @@ extension _EditorSheets on _EditorPageState {
   // stack, follows a duplicate/new layer/merge result, and the builder's clamp catches it after
   // a delete. Each rebuild re-reads the layer's state from the engine (the captured map would
   // go stale while the sheet stays open).
-  void _layerOptions(int initial) {
+  Future<void> _layerOptions(int initial) {
     if (_playing) _pause();
     int cur = initial;
     int? dragOpacity; // non-null while the opacity slider is being dragged
@@ -243,7 +243,7 @@ extension _EditorSheets on _EditorPageState {
       }
     }
 
-    showAppSheet(
+    return showAppSheet(
       context: context,
       showDragHandle: true,
       backgroundColor: const Color(0xFF1A1C1F),
@@ -306,6 +306,13 @@ extension _EditorSheets on _EditorPageState {
             },
           ),
           const SizedBox(height: 10),
+          // The Layers page (ADR 0033): the whole stack as a list, multi-select, batch
+          // operations. Opens with nothing selected, like the ☰ entry.
+          _sheetBtn(Icons.view_list, 'Layers…', () {
+            Navigator.pop(ctx);
+            _openLayersPage();
+          }),
+          const SizedBox(height: 8),
           Wrap(spacing: 8, runSpacing: 4, children: [
             _stateChip(
               icon: visible ? Icons.visibility : Icons.visibility_off,

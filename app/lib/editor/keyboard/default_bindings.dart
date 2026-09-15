@@ -86,6 +86,7 @@ BindingTable defaultBindings() {
     'sheet.timeline': [c(LogicalKeyboardKey.keyT)],
     'page.frames': [s(LogicalKeyboardKey.keyT)], // pairs with T like O/Shift+O and P/Shift+P (ADR 0031)
     'sheet.layers': [c(LogicalKeyboardKey.keyY)],
+    'page.layers': [s(LogicalKeyboardKey.keyY)], // pairs with Y like T/Shift+T (ADR 0033)
     'help.keyboard': [s(LogicalKeyboardKey.slash)], // "?" (Shift+/ folds onto slash)
   };
 }

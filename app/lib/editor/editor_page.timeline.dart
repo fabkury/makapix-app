@@ -237,6 +237,7 @@ extension _EditorTimeline on _EditorPageState {
         if (Platform.isAndroid || Platform.isIOS) _menuRow('shareTo', Icons.share, 'Share…'),
         _menuRow('watchReplay', Icons.replay, 'Watch replay'),
         _menuRow('frames', Icons.grid_view, 'Frames…'),
+        _menuRow('layers', Icons.view_list, 'Layers…'),
         const PopupMenuDivider(),
         _menuRow('file', Icons.folder_outlined, 'File', submenu: true),
         _menuRow('share', Icons.import_export, 'Import & export', submenu: true),
@@ -266,6 +267,9 @@ extension _EditorTimeline on _EditorPageState {
         break;
       case 'frames':
         _openFramesPage();
+        break;
+      case 'layers':
+        _openLayersPage();
         break;
       case 'file':
         _fileMenu();

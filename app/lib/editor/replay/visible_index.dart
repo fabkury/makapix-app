@@ -110,6 +110,12 @@ const Set<String> _kAlwaysEvent = {
   'ReverseFrames', 'SetFrameDurations', 'ScaleFrameDurations', 'FlipFramesH', 'FlipFramesV',
   'RotateFrames', 'InvertFrames', 'CopyLayerToFrames', 'RemoveLayersNamed',
   'SetLayersVisibleNamed', 'SetLayersLockedNamed',
+  // Layer-set batch verbs (ADR 0033): one beat each, the property verbs included — a batch is
+  // a deliberate act on the stack (unlike the single SetLayerOpacity/Visible/Locked/Blend).
+  'RemoveLayers', 'DuplicateLayers', 'MergeLayers', 'ShiftLayers', 'ReverseLayers',
+  'InsertBlankLayers', 'SetLayersVisible', 'SetLayersLocked', 'SetLayersOpacity', 'SetLayersBlend',
+  'ResetLayers', 'RenameLayers', 'FlipLayersH', 'FlipLayersV', 'RotateLayers', 'InvertLayers',
+  'ClearLayers', 'CopyLayersToFrames',
 };
 
 /// Verbs that stamp one step of a gesture at the cursor — stream ticks. The precision pen's

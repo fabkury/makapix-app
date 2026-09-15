@@ -26,6 +26,7 @@ extension _EditorEngine on _EditorPageState {
       final patRecents = prefs.getStringList(_kPatternRecentsPref);
       final patColors = prefs.getStringList(_kPatternColorsPref);
       final framesColumns = prefs.getInt(_kFramesColumnsPref);
+      final layersRoomy = prefs.getBool(_kLayersRoomyRowsPref);
       final all = tools.map((t) => t.dsl).toList();
       List<String>? reconciled;
       if (saved != null) {
@@ -39,6 +40,7 @@ extension _EditorEngine on _EditorPageState {
         setState(() {
           if (reconciled != null) _toolOrder = reconciled;
           if (framesColumns != null) _framesColumns = framesColumns.clamp(kFramesMinColumns, kFramesMaxColumns);
+          if (layersRoomy != null) _layersRoomyRows = layersRoomy;
           _threeRowPref = threeRow;
           // validate against the catalog — a stale/removed dsl in old prefs falls back to the default
           if (pinned3 != null && tools.any((t) => t.dsl == pinned3)) _pinnedThirdTool = pinned3;
@@ -706,9 +708,28 @@ extension _EditorEngine on _EditorPageState {
     return false;
   }
 
-  /// The sixteen frame-set batch verbs (ADR 0031). Every one is a context change: a batch may
-  /// remove, reorder, or rewrite the frame a Draft was made on, so the Draft dies first.
+  /// The sixteen frame-set batch verbs (ADR 0031) and the eighteen layer-set batch verbs
+  /// (ADR 0033). Every one is a context change: a batch may remove, reorder, or rewrite the
+  /// frame or layer a Draft was made on, so the Draft dies first.
   static const Set<String> _kBatchVerbs = {
+    'RemoveLayers',
+    'DuplicateLayers',
+    'MergeLayers',
+    'ShiftLayers',
+    'ReverseLayers',
+    'InsertBlankLayers',
+    'SetLayersVisible',
+    'SetLayersLocked',
+    'SetLayersOpacity',
+    'SetLayersBlend',
+    'ResetLayers',
+    'RenameLayers',
+    'FlipLayersH',
+    'FlipLayersV',
+    'RotateLayers',
+    'InvertLayers',
+    'ClearLayers',
+    'CopyLayersToFrames',
     'RemoveFrames',
     'DuplicateFrames',
     'RepeatFramesAfter',

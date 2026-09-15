@@ -36,6 +36,9 @@ import 'frames/frame_grid_geometry.dart';
 import 'frames/frame_model.dart';
 import 'frames/frames_host.dart';
 import 'frames/frames_page.dart';
+import 'layers/layer_model.dart';
+import 'layers/layers_host.dart';
+import 'layers/layers_page.dart';
 import 'gallery/gallery_page.dart';
 import 'levels_math.dart';
 import 'open_file.dart';
@@ -89,6 +92,7 @@ part 'editor_page.persistence.dart';
 part 'editor_page.replay.dart';
 part 'editor_page.keyboard.dart';
 part 'editor_page.frames.dart';
+part 'editor_page.layers.dart';
 
 const double _kMinZoom = 0.25, _kMaxZoom = 32.0;
 // One mouse-wheel notch zooms by this factor. The notch delta is what the Windows embedder
@@ -100,6 +104,7 @@ const _prefs3RowKey = 'toolbar_3row_v1'; // ☰ → View → 3-row toolbar (row-
 const _prefsPinnedThirdKey = 'toolbar_pinned3_v1'; // 3-row mode: which tool is pinned in the 3rd slot (long-press to change)
 const _prefsHiddenKey = 'tool_hidden_v1'; // ☰ → View → Show/hide tools: dsl names hidden from the row-3 grid (ADR 0018)
 const _kFramesColumnsPref = 'editor.framesColumns_v1'; // the Frames page's grid density (ADR 0031), editor-wide
+const _kLayersRoomyRowsPref = 'editor.layersRoomyRows_v1'; // the Layers page's row density (ADR 0033), editor-wide
 const _kCurrentDrawing = 'editor.currentDrawingId'; // last-open library drawing (silent restore)
 const _kShareFormatPref = 'editor.shareFormat_v1'; // last-used Share format for animations (GIF/WebP)
 const _kExportStillFormatPref = 'editor.exportStillFormat_v1'; // last-used frame/layer export format (PNG/WebP)
@@ -554,6 +559,8 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // The Frames page's column count (ADR 0031): 3–8, chosen by pinch or the page's menu, persisted
   // editor-wide (_kFramesColumnsPref).
   int _framesColumns = kFramesDefaultColumns;
+  // The Layers page's row density (ADR 0033): bigger rows on demand, persisted editor-wide.
+  bool _layersRoomyRows = false;
   String? _dragTool; // tool dsl being long-press-dragged in row-3 (null = not dragging)
   int? _dropIndex; // live insertion index among the non-dragged tools (for drag preview)
   // film-roll frame thumbnails (cached, invalidated by per-frame content hash)

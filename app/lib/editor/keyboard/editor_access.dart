@@ -78,5 +78,6 @@ abstract class EditorAccess {
   void openFrameSheet();
   void openFramesPage(); // the Frames page (ADR 0031): also the frame sheet's Frames… and ☰ → Frames…
   void openLayerSheet();
+  void openLayersPage(); // the Layers page (ADR 0033): also the layer sheet's Layers… and ☰ → Layers…
   void openKeyboardHelp(); // the ☰ → Keyboard cheat-sheet page
 }
