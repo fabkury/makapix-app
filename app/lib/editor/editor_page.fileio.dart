@@ -205,25 +205,43 @@ extension _EditorFileIo on _EditorPageState {
     bool scaleUp = false; // small sources
     bool asLayer = true;
     Rect? cropRect; // in source pixels; set together with mode == 2, never orphaned
+    // An oversize crop region keeps its size (1:1, the overhang parked off-canvas — ADR 0034,
+    // the default) or is downscaled to the canvas; chosen in the crop editor, always 1:1 at the
+    // start of every import (user decision 2026-09-15: never remembered).
+    bool cropNative = true;
     // Full-screen crop editor. Uses the OUTER _importImage `context` (not the dialog builder's
     // `ctx`): the route stacks above the still-open import dialog and returns to it on pop, so
-    // `setS` runs normally. Cancelling keeps the previous mode (and any earlier crop).
+    // `setS` runs normally. Cancelling keeps the previous mode (and any earlier crop); editing
+    // an existing crop reopens the page on it, with its 1:1 / fit choice.
     Future<void> pickCrop(StateSetter setS) async {
-      final r = await Navigator.of(context).push<Rect>(MaterialPageRoute(
-        builder: (_) => CropPage(preview: preview, srcW: srcW, srcH: srcH, canvasW: engine.width, canvasH: engine.height),
+      final r = await Navigator.of(context).push<CropChoice>(MaterialPageRoute(
+        builder: (_) => CropPage(
+          preview: preview,
+          srcW: srcW,
+          srcH: srcH,
+          canvasW: engine.width,
+          canvasH: engine.height,
+          gutterW: gutterW,
+          gutterH: gutterH,
+          initialRect: mode == 2 ? cropRect : null,
+          initialNative: cropNative,
+        ),
       ));
       if (r != null) {
         setS(() {
           mode = 2;
-          cropRect = r;
+          cropRect = r.rect;
+          cropNative = r.native;
         });
       }
     }
     // The engine arguments for the current choices, the on-canvas size they produce, and whether
     // the Place step (ADR 0019) has anything to place — only when the result leaves canvas
-    // uncovered in some dimension. The dialog's primary button reads Next in that case.
+    // uncovered in some dimension. The dialog's primary button reads Next in that case. A crop
+    // travels with the Native mode code when it keeps its size (the engine then skips the
+    // downscale), else with the Crop code — `mode` itself stays the chooser's selection.
     ({int mode, Rect? crop}) currentArgs() => sizeClass == ImportSizeClass.large
-        ? (mode: mode, crop: cropRect)
+        ? (mode: mode == 2 && cropRect != null && cropNative ? kImportModeNative : mode, crop: cropRect)
         : smallSourceImportArgs(scaleUp: scaleUp, srcW: srcW, srcH: srcH);
     ({int w, int h}) currentPlaced() {
       final a = currentArgs();
@@ -272,11 +290,18 @@ extension _EditorFileIo on _EditorPageState {
               if (mode == 2 && cropRect != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.crop, size: 16),
-                    label: Text('Crop: ${cropRect!.width.toInt()}×${cropRect!.height.toInt()} — edit…'),
-                    onPressed: () => pickCrop(setS),
-                  ),
+                  child: Builder(builder: (_) {
+                    final cw = cropRect!.width.toInt(), ch = cropRect!.height.toInt();
+                    final placed = currentPlaced();
+                    // Downscaled: say what lands; 1:1: say so (an oversize 1:1 region parks its
+                    // overhang, which the Place page then shows).
+                    final how = placed.w < cw || placed.h < ch ? '→ ${placed.w}×${placed.h}' : '1:1';
+                    return OutlinedButton.icon(
+                      icon: const Icon(Icons.crop, size: 16),
+                      label: Text('Crop: $cw×$ch $how — edit…'),
+                      onPressed: () => pickCrop(setS),
+                    );
+                  }),
                 ),
             ] else ...[
               Text(
@@ -824,7 +849,7 @@ extension _EditorFileIo on _EditorPageState {
     );
     unawaited(preview.load());
     try {
-      final r = await Navigator.of(context).push<Rect>(MaterialPageRoute(
+      final r = await Navigator.of(context).push<CropChoice>(MaterialPageRoute(
         builder: (_) => CropPage(
           mode: CropPageMode.canvas,
           preview: preview,
@@ -839,7 +864,8 @@ extension _EditorFileIo on _EditorPageState {
         ),
       ));
       if (r == null || !mounted) return;
-      _act('CropCanvas(${r.left.round()}, ${r.top.round()}, ${r.width.round()}, ${r.height.round()})');
+      final c = r.rect;
+      _act('CropCanvas(${c.left.round()}, ${c.top.round()}, ${c.width.round()}, ${c.height.round()})');
     } finally {
       preview.dispose();
     }

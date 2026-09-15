@@ -1,8 +1,8 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:makapix_club/editor/dialogs/crop_dialog.dart';
 import 'package:makapix_club/editor/dialogs/raster_preview.dart';
@@ -317,6 +317,142 @@ void main() {
       expect(g.aspectLocked, isFalse);
       expect((g.w, g.h), (16, 16));
     });
+  });
+
+  group('nudge + the 1:1 / fit choice (2026-09-15, ADR 0034)', () {
+    test('nudge shifts the rect by whole px and clamps at the source edges', () {
+      final g = CropGeometry(srcW: 100, srcH: 50, canvasW: 32, canvasH: 32);
+      final (x0, y0) = (g.x, g.y);
+      g.nudge(1, 0);
+      expect((g.x, g.y), (x0 + 1, y0));
+      g.nudge(0, -1);
+      expect((g.x, g.y), (x0 + 1, y0 - 1));
+      g.nudge(-1000, 1000);
+      expect((g.x, g.y), (0, 50 - g.h), reason: 'clamped, never past the source');
+      g.nudge(10, 0);
+      expect(g.x, 10);
+    });
+    test('exceedsCanvas and resultDims(native)', () {
+      final g = CropGeometry(srcW: 300, srcH: 300, canvasW: 64, canvasH: 64);
+      expect(g.exceedsCanvas, isFalse, reason: 'the default rect is canvas-sized');
+      g.setSize(128, 40);
+      expect(g.exceedsCanvas, isTrue);
+      expect(g.resultDims(), (64, 20), reason: 'fit: downscaled');
+      expect(g.resultDims(native: true), (128, 40), reason: '1:1: its own size');
+      g.setSize(20, 20);
+      expect(g.exceedsCanvas, isFalse);
+      expect(g.resultDims(native: true), (20, 20));
+      expect(g.resultDims(), (20, 20));
+    });
+    test('keyboard arrows nudge 1 px, 10 with Shift; repeats count; other keys and key-ups are ignored', () {
+      final moves = <(int, int)>[];
+      void nudge(int dx, int dy) => moves.add((dx, dy));
+      KeyEvent down(LogicalKeyboardKey k) =>
+          KeyDownEvent(physicalKey: PhysicalKeyboardKey.arrowLeft, logicalKey: k, timeStamp: Duration.zero);
+      expect(nudgeKeyHandler(down(LogicalKeyboardKey.arrowLeft), nudge), KeyEventResult.handled);
+      expect(nudgeKeyHandler(down(LogicalKeyboardKey.arrowRight), nudge, shift: true), KeyEventResult.handled);
+      expect(nudgeKeyHandler(down(LogicalKeyboardKey.arrowUp), nudge), KeyEventResult.handled);
+      expect(nudgeKeyHandler(down(LogicalKeyboardKey.arrowDown), nudge), KeyEventResult.handled);
+      expect(
+          nudgeKeyHandler(
+              const KeyRepeatEvent(
+                  physicalKey: PhysicalKeyboardKey.arrowDown,
+                  logicalKey: LogicalKeyboardKey.arrowDown,
+                  timeStamp: Duration.zero),
+              nudge),
+          KeyEventResult.handled);
+      expect(nudgeKeyHandler(down(LogicalKeyboardKey.escape), nudge), KeyEventResult.ignored);
+      expect(
+          nudgeKeyHandler(
+              const KeyUpEvent(
+                  physicalKey: PhysicalKeyboardKey.arrowLeft,
+                  logicalKey: LogicalKeyboardKey.arrowLeft,
+                  timeStamp: Duration.zero),
+              nudge),
+          KeyEventResult.ignored);
+      expect(moves, [(-1, 0), (10, 0), (0, -1), (0, 1), (0, 1)]);
+    });
+  });
+
+  testWidgets('CropPage import mode: nudge arrows + keys, the 1:1 / Fit choice, the returned CropChoice',
+      (tester) async {
+    await tester.runAsync(() async {
+      final preview = CanvasPreview(
+        srcW: 300,
+        srcH: 200,
+        totalFrames: 1,
+        durationsUs: const [100000],
+        composite: (f) => _solidImage(300, 200),
+      );
+      CropChoice? result;
+      // Route and dialog transitions by explicit pumps: pumpAndSettle would wait out the loading
+      // spinner (an endless animation) and the dialog's cursor blink.
+      Future<void> settle() async {
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+      }
+
+      await tester.pumpWidget(MaterialApp(
+        home: Builder(
+          builder: (ctx) => TextButton(
+            onPressed: () async => result = await Navigator.of(ctx).push<CropChoice>(MaterialPageRoute(
+              builder: (_) => CropPage(
+                  preview: preview, srcW: 300, srcH: 200, canvasW: 64, canvasH: 64, gutterW: 64, gutterH: 64),
+            )),
+            child: const Text('open'),
+          ),
+        ),
+      ));
+      await tester.tap(find.text('open'));
+      await settle();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      await tester.pump();
+      expect(preview.loaded, isTrue);
+      // Default: a canvas-sized rect centered on the source, x = (300 - 64) / 2 = 118.
+      expect(find.text('X 118'), findsOneWidget);
+      expect(find.text('On canvas: 64 × 64 px (placed 1:1)'), findsOneWidget);
+      // A tap on an arrow nudges one px; a keyboard arrow does the same (the page autofocuses).
+      await tester.tap(find.byTooltip('Right 1 px (hold to repeat)'));
+      await tester.pump();
+      expect(find.text('X 119'), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.pump();
+      expect(find.text('X 118'), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      expect(find.text('Y 69'), findsOneWidget);
+      // Oversize (W anchored at X, so X first): 1:1 is the default and says the overhang is kept.
+      Future<void> setChip(String chip, String value) async {
+        await tester.tap(find.text(chip));
+        await settle();
+        await tester.enterText(find.byType(TextField), value);
+        await tester.tap(find.text('Set'));
+        await settle();
+      }
+
+      await setChip('X 118', '0');
+      await setChip('W 64', '150');
+      expect(find.text('W 150'), findsOneWidget);
+      expect(find.text('Placed 1:1: 150 × 64 px; the part beyond the 64×64 canvas is kept off-canvas'), findsOneWidget);
+      // Fit to canvas: the crop editor's old downscale, the engine's fitNoUpscale(150, 64, 64, 64).
+      await tester.tap(find.text('Fit to canvas'));
+      await tester.pump();
+      expect(find.text('On canvas: 64 × 27 px (downscaled to fit 64×64)'), findsOneWidget);
+      // Back to 1:1, wider than the whole storage area (64 + 2 × 64 = 192): the far part is lost.
+      await tester.tap(find.text('1:1'));
+      await tester.pump();
+      await setChip('W 150', '250');
+      expect(find.textContaining('larger than the off-canvas area'), findsOneWidget);
+      await tester.tap(find.text('Use crop'));
+      await settle();
+      expect(result, isNotNull);
+      expect(result!.native, isTrue);
+      expect(result!.rect, const Rect.fromLTWH(0, 69, 250, 64));
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      await tester.pump();
+      preview.dispose();
+    });
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('CropPage in canvas mode: composited preview, disabled OK on the whole canvas, Trim', (tester) async {

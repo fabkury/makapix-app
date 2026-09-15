@@ -24,13 +24,16 @@ import 'dart:ui' as ui;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 
-import 'crop_dialog.dart' show CropView, ViewZoomControls, fitNoUpscale, kImportModeNative, viewGestureHint;
+import 'crop_dialog.dart'
+    show CropView, NudgeArrows, ViewZoomControls, fitNoUpscale, kImportModeNative, nudgeKeyHandler, viewGestureHint;
 import 'raster_preview.dart';
 
 /// The on-canvas size (canvas pixels) an import will have, mirroring the engine's placement math
 /// in `frame_to_storage`: an explicit crop region is placed 1:1 and downscaled (integer
-/// cross-multiply) only when larger than the canvas; Stretch fills the canvas; Fit scales by the
+/// cross-multiply) only when larger than the canvas — and not even then under the Native mode
+/// code (ADR 0034: the region keeps its size); Stretch fills the canvas; Fit scales by the
 /// binding axis (the engine's f32 `round`, mirrored in double — the result feeds the preview only,
 /// the engine computes its own size at import time); Native (1:1, ADR 0030) is the source's own size.
 ({int w, int h}) importPlacedSize({
@@ -42,7 +45,9 @@ import 'raster_preview.dart';
   Rect? crop,
 }) {
   if (crop != null) {
-    final (w, h) = fitNoUpscale(math.max(1, crop.width.round()), math.max(1, crop.height.round()), canvasW, canvasH);
+    final (rw, rh) = (math.max(1, crop.width.round()), math.max(1, crop.height.round()));
+    if (mode == kImportModeNative) return (w: rw, h: rh);
+    final (w, h) = fitNoUpscale(rw, rh, canvasW, canvasH);
     return (w: w, h: h);
   }
   switch (mode) {
@@ -187,6 +192,7 @@ class _PlacePageState extends State<PlacePage> with SingleTickerProviderStateMix
   late final PlaceGeometry _geo;
   late final CropView _view;
   late final Ticker _ticker;
+  final FocusNode _focus = FocusNode(debugLabel: 'PlacePage');
   int _current = 0;
   bool _playing = false;
   Duration _last = Duration.zero;
@@ -225,6 +231,7 @@ class _PlacePageState extends State<PlacePage> with SingleTickerProviderStateMix
   void dispose() {
     widget.preview.removeListener(_onPreview);
     _ticker.dispose();
+    _focus.dispose();
     super.dispose();
   }
 
@@ -357,12 +364,17 @@ class _PlacePageState extends State<PlacePage> with SingleTickerProviderStateMix
     if (v != null && mounted) setState(() => set(v));
   }
 
-  Widget _nudge(IconData icon, int dx, int dy, String tip) => IconButton(
-        tooltip: tip,
-        visualDensity: VisualDensity.compact,
-        icon: Icon(icon, size: 20),
-        onPressed: () => setState(() => _geo.nudge(dx, dy)),
-      );
+  /// The nudge arrows and the keyboard arrows (shared with the crop editor): one canvas px,
+  /// ending any live drag so a held finger does not keep writing the pre-nudge position.
+  void _nudge(int dx, int dy) => setState(() {
+        _dragging = false;
+        _geo.nudge(dx, dy);
+      });
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (!(ModalRoute.of(context)?.isCurrent ?? true)) return KeyEventResult.ignored;
+    return nudgeKeyHandler(event, _nudge, shift: HardwareKeyboard.instance.isShiftPressed);
+  }
 
   // ---- the fixed-height status block ----
 
@@ -417,130 +429,132 @@ class _PlacePageState extends State<PlacePage> with SingleTickerProviderStateMix
   @override
   Widget build(BuildContext context) {
     final p = widget.preview;
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Place'),
-        actions: [
-          IconButton(
-            tooltip: 'Fit to screen',
-            icon: const Icon(Icons.fit_screen),
-            onPressed: _view.isHome ? null : () => setState(_view.fit),
-          ),
-          IconButton(
-            tooltip: 'Center the import',
-            icon: const Icon(Icons.center_focus_strong),
-            onPressed: () => setState(() {
-              _dragging = false;
-              _geo.center();
-            }),
-          ),
-        ],
-      ),
-      body: Column(children: [
-        Expanded(
-          child: p.loadError
-              ? const Center(child: Text('Could not decode this image.'))
-              : !p.loaded
-                  ? const Center(child: CircularProgressIndicator())
-                  : LayoutBuilder(builder: (ctx, cons) {
-                      _view.setView(Size(cons.maxWidth, cons.maxHeight));
-                      return Listener(
-                        onPointerDown: _onPointerDown,
-                        onPointerMove: _onPointerMove,
-                        onPointerUp: _onPointerUp,
-                        onPointerCancel: _onPointerUp,
-                        onPointerSignal: _onPointerSignal,
-                        child: RawGestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          gestures: <Type, GestureRecognizerFactory>{
-                            ScaleGestureRecognizer: GestureRecognizerFactoryWithHandlers<ScaleGestureRecognizer>(
-                              () => ScaleGestureRecognizer(
-                                  debugOwner: this, allowedButtonsFilter: (b) => b == kPrimaryButton),
-                              (r) => r
-                                ..onStart = _onScaleStart
-                                ..onUpdate = _onScaleUpdate
-                                ..onEnd = _onScaleEnd,
-                            ),
-                            DoubleTapGestureRecognizer: GestureRecognizerFactoryWithHandlers<DoubleTapGestureRecognizer>(
-                              () => DoubleTapGestureRecognizer(debugOwner: this),
-                              (r) => r..onDoubleTapDown = _onDoubleTapDown,
-                            ),
-                          },
-                          child: ClipRect(
-                            child: CustomPaint(
-                              size: Size(cons.maxWidth, cons.maxHeight),
-                              painter: _PlacePainter(
-                                frame: p.frames[_current],
-                                srcRect: widget.srcRect,
-                                backdrop: widget.backdrop,
-                                geo: _geo,
-                                scale: _view.scale,
-                                origin: _view.origin,
+    return Focus(
+      focusNode: _focus,
+      autofocus: true,
+      onKeyEvent: _onKey,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Place'),
+          actions: [
+            IconButton(
+              tooltip: 'Fit to screen',
+              icon: const Icon(Icons.fit_screen),
+              onPressed: _view.isHome ? null : () => setState(_view.fit),
+            ),
+            IconButton(
+              tooltip: 'Center the import',
+              icon: const Icon(Icons.center_focus_strong),
+              onPressed: () => setState(() {
+                _dragging = false;
+                _geo.center();
+              }),
+            ),
+          ],
+        ),
+        body: Column(children: [
+          Expanded(
+            child: p.loadError
+                ? const Center(child: Text('Could not decode this image.'))
+                : !p.loaded
+                    ? const Center(child: CircularProgressIndicator())
+                    : LayoutBuilder(builder: (ctx, cons) {
+                        _view.setView(Size(cons.maxWidth, cons.maxHeight));
+                        return Listener(
+                          onPointerDown: _onPointerDown,
+                          onPointerMove: _onPointerMove,
+                          onPointerUp: _onPointerUp,
+                          onPointerCancel: _onPointerUp,
+                          onPointerSignal: _onPointerSignal,
+                          child: RawGestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            gestures: <Type, GestureRecognizerFactory>{
+                              ScaleGestureRecognizer: GestureRecognizerFactoryWithHandlers<ScaleGestureRecognizer>(
+                                () => ScaleGestureRecognizer(
+                                    debugOwner: this, allowedButtonsFilter: (b) => b == kPrimaryButton),
+                                (r) => r
+                                  ..onStart = _onScaleStart
+                                  ..onUpdate = _onScaleUpdate
+                                  ..onEnd = _onScaleEnd,
+                              ),
+                              DoubleTapGestureRecognizer: GestureRecognizerFactoryWithHandlers<DoubleTapGestureRecognizer>(
+                                () => DoubleTapGestureRecognizer(debugOwner: this),
+                                (r) => r..onDoubleTapDown = _onDoubleTapDown,
+                              ),
+                            },
+                            child: ClipRect(
+                              child: CustomPaint(
+                                size: Size(cons.maxWidth, cons.maxHeight),
+                                painter: _PlacePainter(
+                                  frame: p.frames[_current],
+                                  srcRect: widget.srcRect,
+                                  backdrop: widget.backdrop,
+                                  geo: _geo,
+                                  scale: _view.scale,
+                                  origin: _view.origin,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      );
-                    }),
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              IconButton(
-                icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
-                onPressed: p.animated ? _togglePlay : null,
-              ),
-              Text(p.animated ? 'Frame ${_current + 1} / ${p.frames.length}' : 'Static',
-                  style: const TextStyle(fontSize: 13)),
-              if (p.truncated)
-                const Padding(
-                  padding: EdgeInsets.only(left: 8),
-                  child: Text('(preview truncated — full animation still imports)',
-                      style: TextStyle(fontSize: 11, color: Colors.white54)),
+                        );
+                      }),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                IconButton(
+                  icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
+                  onPressed: p.animated ? _togglePlay : null,
                 ),
-              const Spacer(),
-              ViewZoomControls(view: _view, onChanged: () => setState(() {})),
-            ]),
-            viewGestureHint('moves the import'),
-            const SizedBox(height: 4),
-            Row(children: [
-              ActionChip(label: Text('X ${_geo.x}'), onPressed: () => _editField('X', _geo.x, (v) => _geo.x = v)),
-              const SizedBox(width: 6),
-              ActionChip(label: Text('Y ${_geo.y}'), onPressed: () => _editField('Y', _geo.y, (v) => _geo.y = v)),
-              const Spacer(),
-              _nudge(Icons.keyboard_arrow_left, -1, 0, 'Left 1 px'),
-              _nudge(Icons.keyboard_arrow_up, 0, -1, 'Up 1 px'),
-              _nudge(Icons.keyboard_arrow_down, 0, 1, 'Down 1 px'),
-              _nudge(Icons.keyboard_arrow_right, 1, 0, 'Right 1 px'),
-            ]),
-            const SizedBox(height: 6),
-            SizedBox(
-              height: 18,
-              child: Text(
-                'Import ${_geo.w} × ${_geo.h} px at (${_geo.x}, ${_geo.y}) on the ${widget.canvasW}×${widget.canvasH} canvas. '
-                'Backdrop: frame ${widget.startFrame + 1}.',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12, color: Colors.white60),
+                Text(p.animated ? 'Frame ${_current + 1} / ${p.frames.length}' : 'Static',
+                    style: const TextStyle(fontSize: 13)),
+                if (p.truncated)
+                  const Padding(
+                    padding: EdgeInsets.only(left: 8),
+                    child: Text('(preview truncated — full animation still imports)',
+                        style: TextStyle(fontSize: 11, color: Colors.white54)),
+                  ),
+                const Spacer(),
+                ViewZoomControls(view: _view, onChanged: () => setState(() {})),
+              ]),
+              viewGestureHint('moves the import'),
+              const SizedBox(height: 4),
+              Row(children: [
+                ActionChip(label: Text('X ${_geo.x}'), onPressed: () => _editField('X', _geo.x, (v) => _geo.x = v)),
+                const SizedBox(width: 6),
+                ActionChip(label: Text('Y ${_geo.y}'), onPressed: () => _editField('Y', _geo.y, (v) => _geo.y = v)),
+                const Spacer(),
+                NudgeArrows(onNudge: _nudge),
+              ]),
+              const SizedBox(height: 6),
+              SizedBox(
+                height: 18,
+                child: Text(
+                  'Import ${_geo.w} × ${_geo.h} px at (${_geo.x}, ${_geo.y}) on the ${widget.canvasW}×${widget.canvasH} canvas. '
+                  'Backdrop: frame ${widget.startFrame + 1}.',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12, color: Colors.white60),
+                ),
               ),
-            ),
-            _placementSlot(),
-            _memorySlot(),
-          ]),
-        ),
-      ]),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Back')),
-            const SizedBox(width: 8),
-            FilledButton(
-              onPressed: p.loaded && !_geo.nothingKept ? () => Navigator.pop(context, (_geo.x, _geo.y)) : null,
-              child: const Text('Import'),
-            ),
-          ]),
+              _placementSlot(),
+              _memorySlot(),
+            ]),
+          ),
+        ]),
+        bottomNavigationBar: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Back')),
+              const SizedBox(width: 8),
+              FilledButton(
+                onPressed: p.loaded && !_geo.nothingKept ? () => Navigator.pop(context, (_geo.x, _geo.y)) : null,
+                child: const Text('Import'),
+              ),
+            ]),
+          ),
         ),
       ),
     );

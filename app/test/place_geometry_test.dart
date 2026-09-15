@@ -36,6 +36,16 @@ void main() {
     });
   });
 
+  group('importPlacedSize with a crop under the Native code (ADR 0034)', () {
+    test('the region keeps its size; the Crop code still downscales it', () {
+      const crop = Rect.fromLTWH(0, 0, 128, 64);
+      expect(importPlacedSize(srcW: 300, srcH: 300, canvasW: 64, canvasH: 64, mode: kImportModeNative, crop: crop),
+          (w: 128, h: 64));
+      expect(importPlacedSize(srcW: 300, srcH: 300, canvasW: 64, canvasH: 64, mode: 2, crop: crop), (w: 64, h: 32));
+      expect(placementApplies((w: 128, h: 64), 64, 64), isTrue, reason: 'an oversize 1:1 crop goes through Place');
+    });
+  });
+
   group('placementApplies', () {
     test('whenever the result is not exactly the canvas', () {
       expect(placementApplies((w: 64, h: 64), 64, 64), isFalse, reason: 'exact / Stretch');
