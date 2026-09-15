@@ -378,15 +378,19 @@ class _PlacePageState extends State<PlacePage> with SingleTickerProviderStateMix
 
   // ---- the fixed-height status block ----
 
-  /// One status slot: a fixed 20 px row with an icon and a single ellipsized line, so the block
+  /// One status slot: a fixed-height row (20 px, or 34 px for two lines) with an icon and an
+  /// ellipsized text, so the block
   /// never changes height (see the file header).
-  static Widget _slot(IconData icon, String text, Color color) => SizedBox(
-        height: 20,
-        child: Row(children: [
-          Icon(icon, color: color, size: 16),
+  /// [lines] = 2 reserves a second line (the placement slot, 2026-09-15: its parked/dropped
+  /// sentence was cut off on a phone) — still a fixed height whatever the text.
+  static Widget _slot(IconData icon, String text, Color color, {int lines = 1}) => SizedBox(
+        height: lines == 1 ? 20 : 34,
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(padding: const EdgeInsets.only(top: 1), child: Icon(icon, color: color, size: 16)),
           const SizedBox(width: 6),
           Expanded(
-            child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: color)),
+            child: Text(text,
+                maxLines: lines, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, height: 1.3, color: color)),
           ),
         ]),
       );
@@ -396,17 +400,19 @@ class _PlacePageState extends State<PlacePage> with SingleTickerProviderStateMix
   /// Where the pixels go: on the canvas, parked off-canvas, or dropped beyond storage.
   Widget _placementSlot() {
     if (_geo.nothingKept) {
-      return _slot(Icons.block, 'Entirely beyond the storage area — nothing would land.', Colors.amber);
+      return _slot(Icons.block, 'Entirely beyond the storage area. Nothing would land.', Colors.amber, lines: 2);
     }
     if (!_geo.fullyKept) {
       return _slot(Icons.warning_amber_rounded,
-          '${_geo.droppedPixels} px beyond the storage area are dropped; ${_geo.parkedPixels} px are parked off-canvas.', Colors.amber);
+          '${_geo.droppedPixels} px beyond the storage area are dropped; ${_geo.parkedPixels} px are parked off-canvas.',
+          Colors.amber,
+          lines: 2);
     }
     if (_geo.parkedPixels > 0) {
       return _slot(Icons.open_in_full, '${_geo.parkedPixels} px are parked off-canvas (Move tool / Overscan view reach them).',
-          Colors.white60);
+          Colors.white60, lines: 2);
     }
-    return _slot(Icons.check_circle_outline, 'Fits on the canvas.', Colors.white60);
+    return _slot(Icons.check_circle_outline, 'Fits on the canvas.', Colors.white60, lines: 2);
   }
 
   /// The memory note (user decision 2026-09-09: a warning only — the engine's budget gate stays
