@@ -10,6 +10,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:makapix_club/club/api/club_api_client.dart';
 import 'package:makapix_club/club/auth/club_session.dart';
@@ -50,10 +51,11 @@ class _LoadingAuth extends AuthController {
   Future<void> init() async {/* never resolves */}
 }
 
-Widget _harness({bool resolving = false}) {
+Widget _harness({bool resolving = false, AppPillar launch = AppPillar.club}) {
   final cfg = ClubConfig.defaultConfig;
   return ProviderScope(
     overrides: [
+      launchPillarProvider.overrideWithValue(launch),
       authControllerProvider
           .overrideWith((ref) => resolving ? _LoadingAuth(cfg) : _SignedOutAuth(cfg)),
       // The welcome screen's "Featured" grid watches the promoted feed — return an empty
@@ -79,6 +81,10 @@ Widget _harness({bool resolving = false}) {
 final _editorShowing = find.text('editor-stub');
 
 void main() {
+  // The shell stamps the launch pillar into shared preferences on mount (launch_pillar.dart);
+  // give it an in-memory store so no platform channel is touched.
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
   testWidgets('opens on the Club pillar with the signed-out welcome funnel', (tester) async {
     await tester.pumpWidget(_harness());
     await tester.pump();
@@ -133,6 +139,21 @@ void main() {
     final container = ProviderScope.containerOf(tester.element(find.byType(AppShell)));
     expect(container.read(pendingLocalLibraryProvider), isA<BrowseLocalLibrary>());
   }
+
+  testWidgets('launches straight into the editor when the launch pillar says so (ADR 0035)',
+      (tester) async {
+    await tester.pumpWidget(_harness(launch: AppPillar.editor));
+    await tester.pump();
+    expect(_editorShowing, findsOneWidget, reason: 'a recent editor session lands in the editor');
+    final container = ProviderScope.containerOf(tester.element(find.byType(AppShell)));
+    expect(container.read(activePillarProvider), AppPillar.editor,
+        reason: 'pillar-gated providers see the editor as mounted from the first frame');
+    // The editor's ☰ → Club still returns to the hub.
+    container.read(openClubProvider.notifier).state++;
+    await tester.pump();
+    expect(_editorShowing, findsNothing);
+    expect(container.read(activePillarProvider), AppPillar.club);
+  });
 
   testWidgets('"My Drawings" on the welcome page reaches the editor without signing in',
       (tester) => expectMyDrawingsReachesTheEditor(tester, resolving: false));

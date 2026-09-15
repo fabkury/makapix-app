@@ -3,7 +3,9 @@
 // editor). Neither pillar is "the app" — this shell hosts both as peers.
 //
 // The app opens on the Club pillar (signed-out users land on Club's own welcome /
-// sign-in funnel). There is no persistent pillar-switching chrome (no bottom bar / rail):
+// sign-in funnel) — unless the user last left in the editor within the past 24 h, in which
+// case it opens there (ADR 0035; the rule lives in launch_pillar.dart, the decision in
+// `main()`). There is no persistent pillar-switching chrome (no bottom bar / rail):
 // navigation is in-content — the Club's top-bar "Contribute" button opens the editor (also
 // available, without signing in, on the welcome page), and the editor's ☰ menu → "Club"
 // returns to the hub.
@@ -21,6 +23,7 @@ import '../club/edit/club_edit_request.dart';
 import '../club/state/edit_bridge.dart';
 import '../club/ui/club_pillar.dart';
 import '../editor/editor_page.dart';
+import 'launch_pillar.dart';
 
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({
@@ -40,17 +43,45 @@ class AppShell extends ConsumerStatefulWidget {
   ConsumerState<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends ConsumerState<AppShell> {
+class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver {
   static const int _club = 0, _editor = 1;
 
-  int _index = _club; // launch on the social pillar
+  late int _index; // the launch pillar: Club, or the editor when last used recently
+
+  AppPillar get _pillar => _index == _editor ? AppPillar.editor : AppPillar.club;
+
+  @override
+  void initState() {
+    super.initState();
+    _index = ref.read(launchPillarProvider) == AppPillar.editor ? _editor : _club;
+    // (activePillarProvider already starts from launchPillarProvider — no write needed here.)
+    WidgetsBinding.instance.addObserver(this);
+    // Keep the memory's clock rolling from launch, so a session that never switches pillars
+    // still counts as "used the editor today".
+    LaunchPillarMemory.stamp(_pillar);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Going to the background is the last reliable moment before a possible OS kill: stamp the
+    // pillar then, so "last used" reflects when the user actually left, not when they switched.
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      LaunchPillarMemory.stamp(_pillar);
+    }
+  }
 
   void _select(int i) {
     if (_index != i) {
       setState(() => _index = i);
       // Mirror the mounted pillar for pillar-gated providers (player poll etc.). [battery F8]
-      ref.read(activePillarProvider.notifier).state =
-          i == _editor ? AppPillar.editor : AppPillar.club;
+      ref.read(activePillarProvider.notifier).state = _pillar;
+      LaunchPillarMemory.stamp(_pillar);
     }
   }
 

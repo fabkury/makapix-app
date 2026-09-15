@@ -50,4 +50,10 @@ final pendingLocalLibraryProvider = StateProvider<LocalLibraryRequest?>((ref) =>
 /// [openClubProvider] instead.
 enum AppPillar { club, editor }
 
-final activePillarProvider = StateProvider<AppPillar>((ref) => AppPillar.club);
+/// The pillar a cold start mounts first. Club by default; `main()` overrides it with the
+/// remembered last pillar when that was the editor within the decay window (ADR 0035, see
+/// `shell/launch_pillar.dart`). Read once by AppShell on mount — never changes mid-run.
+final launchPillarProvider = Provider<AppPillar>((_) => AppPillar.club);
+
+final activePillarProvider =
+    StateProvider<AppPillar>((ref) => ref.watch(launchPillarProvider));
