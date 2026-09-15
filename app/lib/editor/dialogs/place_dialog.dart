@@ -132,14 +132,36 @@ class PlaceGeometry {
   /// Nothing lands anywhere: the import lies entirely beyond storage — it cannot be committed.
   bool get nothingKept => keptRect == Rect.zero;
 
-  static int _area(Rect r) => r.width.round() * r.height.round();
+  /// Columns (left/right) and rows (top/bottom) of the image beyond each edge of [outer], each
+  /// capped at the image's own size.
+  Overhang _beyond(Rect outer) => (
+        left: (outer.left.round() - x).clamp(0, w),
+        top: (outer.top.round() - y).clamp(0, h),
+        right: (x + w - outer.right.round()).clamp(0, w),
+        bottom: (y + h - outer.bottom.round()).clamp(0, h),
+      );
 
-  /// Pixels that will be parked off-canvas (kept, but not on the canvas).
-  int get parkedPixels => _area(keptRect) - _area(visibleRect);
+  /// Per edge, how far the image hangs off the canvas into the gutter — the parked part
+  /// (2026-09-15: the pixel counts shown before were areas of an L-shape and read as noise).
+  Overhang get parkedEdges {
+    final c = _beyond(canvasRect), s = _beyond(storageRect);
+    return (left: c.left - s.left, top: c.top - s.top, right: c.right - s.right, bottom: c.bottom - s.bottom);
+  }
 
-  /// Pixels beyond the storage boundary, dropped at import.
-  int get droppedPixels => _area(placedRect) - _area(keptRect);
+  /// Per edge, how far the image reaches beyond the storage boundary — the dropped part.
+  Overhang get droppedEdges => _beyond(storageRect);
 }
+
+/// How far an image hangs past each edge of a rectangle, in whole canvas px.
+typedef Overhang = ({int left, int top, int right, int bottom});
+
+/// "32 px left, 8 px top": the non-zero edges of an [Overhang] in reading order; empty when none.
+String overhangText(Overhang e) => [
+      if (e.left > 0) '${e.left} px left',
+      if (e.top > 0) '${e.top} px top',
+      if (e.right > 0) '${e.right} px right',
+      if (e.bottom > 0) '${e.bottom} px bottom',
+    ].join(', ');
 
 class PlacePage extends StatefulWidget {
   const PlacePage({
@@ -402,14 +424,16 @@ class _PlacePageState extends State<PlacePage> with SingleTickerProviderStateMix
     if (_geo.nothingKept) {
       return _slot(Icons.block, 'Entirely beyond the storage area. Nothing would land.', Colors.amber, lines: 2);
     }
-    if (!_geo.fullyKept) {
-      return _slot(Icons.warning_amber_rounded,
-          '${_geo.droppedPixels} px beyond the storage area are dropped; ${_geo.parkedPixels} px are parked off-canvas.',
-          Colors.amber,
-          lines: 2);
+    // Per-edge overhangs (user decision 2026-09-15), one line each in the two-line slot.
+    final parked = overhangText(_geo.parkedEdges);
+    final dropped = overhangText(_geo.droppedEdges);
+    if (dropped.isNotEmpty) {
+      final beyond = widget.gutterW > 0 || widget.gutterH > 0 ? 'storage' : 'the canvas';
+      final lines = [if (parked.isNotEmpty) 'Parked off-canvas: $parked.', 'Dropped beyond $beyond: $dropped.'];
+      return _slot(Icons.warning_amber_rounded, lines.join('\n'), Colors.amber, lines: 2);
     }
-    if (_geo.parkedPixels > 0) {
-      return _slot(Icons.open_in_full, '${_geo.parkedPixels} px are parked off-canvas (Move tool / Overscan view reach them).',
+    if (parked.isNotEmpty) {
+      return _slot(Icons.open_in_full, 'Parked off-canvas: $parked (the Move tool and the Overscan view reach it).',
           Colors.white60, lines: 2);
     }
     return _slot(Icons.check_circle_outline, 'Fits on the canvas.', Colors.white60, lines: 2);

@@ -67,6 +67,8 @@ void main() {
       expect(plain.storageRect, plain.canvasRect);
       plain.x = 5;
       expect(plain.nothingKept, isTrue, reason: 'without a gutter, off-canvas is beyond storage');
+      expect(plain.parkedEdges, (left: 0, top: 0, right: 0, bottom: 0));
+      expect(plain.droppedEdges, (left: 0, top: 0, right: 2, bottom: 0), reason: 'capped at the image width');
     });
 
     test('an oversize 1:1 import centers by truncating division and parks its overhang', () {
@@ -76,8 +78,10 @@ void main() {
       expect(geo.fullyKept, isTrue);
       expect(geo.visibleRect, const Rect.fromLTWH(0, 1, 4, 2));
       expect(geo.keptRect, geo.placedRect);
-      expect(geo.parkedPixels, 4);
-      expect(geo.droppedPixels, 0);
+      expect(geo.parkedEdges, (left: 1, top: 0, right: 1, bottom: 0));
+      expect(geo.droppedEdges, (left: 0, top: 0, right: 0, bottom: 0));
+      expect(overhangText(geo.parkedEdges), '1 px left, 1 px right');
+      expect(overhangText(geo.droppedEdges), '');
     });
 
     test('entirely off the canvas but inside storage is kept; beyond storage is dropped', () {
@@ -86,12 +90,14 @@ void main() {
       geo.y = -4;
       expect(geo.fullyOutside, isTrue);
       expect(geo.nothingKept, isFalse);
-      expect(geo.parkedPixels, 4);
+      expect(geo.parkedEdges, (left: 0, top: 2, right: 2, bottom: 0), reason: 'whole image past two edges');
+      expect(geo.droppedEdges, (left: 0, top: 0, right: 0, bottom: 0));
       geo.x = 7;
       geo.y = 7;
       expect(geo.keptRect, const Rect.fromLTWH(7, 7, 1, 1));
-      expect(geo.droppedPixels, 3);
-      expect(geo.parkedPixels, 1);
+      expect(geo.parkedEdges, (left: 0, top: 0, right: 1, bottom: 1));
+      expect(geo.droppedEdges, (left: 0, top: 0, right: 1, bottom: 1));
+      expect(overhangText(geo.droppedEdges), '1 px right, 1 px bottom');
       geo.x = -9;
       geo.y = 0;
       expect(geo.nothingKept, isTrue);
