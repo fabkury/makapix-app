@@ -411,6 +411,15 @@ void main() {
       // Default: a canvas-sized rect centered on the source, x = (300 - 64) / 2 = 118.
       expect(find.text('X 118'), findsOneWidget);
       expect(find.text('On canvas: 64 × 64 px (placed 1:1)'), findsOneWidget);
+      // A one-finger drag anywhere outside the rect moves it too (2026-09-15); Reset restores.
+      final area = tester.getRect(find.byWidgetPredicate(
+          (w) => w is CustomPaint && w.painter.runtimeType.toString() == '_CropPreviewPainter'));
+      await tester.dragFrom(area.topLeft + const Offset(12, 12), const Offset(60, 0));
+      await tester.pump();
+      expect(find.text('X 118'), findsNothing);
+      await tester.tap(find.byTooltip('Reset crop'));
+      await tester.pump();
+      expect(find.text('X 118'), findsOneWidget);
       // A tap on an arrow nudges one px; a keyboard arrow does the same (the page autofocuses).
       await tester.tap(find.byTooltip('Right 1 px (hold to repeat)'));
       await tester.pump();
@@ -433,7 +442,7 @@ void main() {
       await setChip('X 118', '0');
       await setChip('W 64', '150');
       expect(find.text('W 150'), findsOneWidget);
-      expect(find.text('Placed 1:1: 150 × 64 px; the part beyond the 64×64 canvas is kept off-canvas'), findsOneWidget);
+      expect(find.text('Placed 1:1: 150 × 64 px. The part beyond the 64×64 canvas is kept off-canvas.'), findsOneWidget);
       // Fit to canvas: the crop editor's old downscale, the engine's fitNoUpscale(150, 64, 64, 64).
       await tester.tap(find.text('Fit to canvas'));
       await tester.pump();

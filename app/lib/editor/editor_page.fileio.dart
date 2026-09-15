@@ -298,7 +298,7 @@ extension _EditorFileIo on _EditorPageState {
                     final how = placed.w < cw || placed.h < ch ? '→ ${placed.w}×${placed.h}' : '1:1';
                     return OutlinedButton.icon(
                       icon: const Icon(Icons.crop, size: 16),
-                      label: Text('Crop: $cw×$ch $how — edit…'),
+                      label: Text('Crop: $cw×$ch ($how). Edit…'),
                       onPressed: () => pickCrop(setS),
                     );
                   }),

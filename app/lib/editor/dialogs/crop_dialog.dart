@@ -439,7 +439,8 @@ class CropChoice {
 /// on the canvas — downscaling a larger region only when the choice says so.
 ///
 /// View gestures (user decisions 2026-09-01): one finger always edits the crop (a corner reticle
-/// or the rect body); two fingers pan and pinch-zoom about the pinch point; a trackpad pan/pinch
+/// resizes; a drag anywhere else moves the rect — since 2026-09-15 also from outside it, where a
+/// drag used to do nothing); two fingers pan and pinch-zoom about the pinch point; a trackpad pan/pinch
 /// does the same; the mouse wheel zooms about the cursor (the editor canvas's step); a right- or
 /// middle-button drag pans; double-tap toggles fit ↔ 4× at the tapped point; the status row's
 /// zoom buttons step 1.5× and the app bar's "Fit to screen" resets. Zoom runs from fit to 32
@@ -493,6 +494,8 @@ class CropPage extends StatefulWidget {
 class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin {
   static const double _reticleRadius = 11; // drawn radius
   static const double _reticleHit = 28; // touch radius
+  // Import mode's result line: two lines of 12 px × 1.3, reserved whatever the text.
+  static const double _resultSlotHeight = 32;
   // One wheel notch zooms by this factor (the editor canvas's constants: 60 logical px per notch).
   static const double _kWheelZoomStep = 1.2, _kWheelNotchDelta = 60.0;
 
@@ -615,7 +618,9 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
       _lastPointerCount = d.pointerCount;
       return;
     }
-    // One finger: corner reticles first (generous radius), then inside-rect move.
+    // One finger: corner reticles first (generous radius); anywhere else moves the rect by the
+    // drag delta — inside it or not (2026-09-15: a drag outside used to do nothing, and on a
+    // large source the rect is small and under the finger).
     final p = d.localFocalPoint;
     for (final c in CropCorner.values) {
       if ((p - _cornerScreen(c)).distance <= _reticleHit) {
@@ -624,21 +629,11 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
         return;
       }
     }
-    final rectScreen = Rect.fromLTWH(
-      _view.origin.dx + _geo.x * _view.scale,
-      _view.origin.dy + _geo.y * _view.scale,
-      _geo.w * _view.scale,
-      _geo.h * _view.scale,
-    );
-    if (rectScreen.contains(p)) {
-      _dragMove = true;
-      _dragCorner = null;
-      _startLocal = p;
-      _startX = _geo.x;
-      _startY = _geo.y;
-    } else {
-      _endCropDrag();
-    }
+    _dragMove = true;
+    _dragCorner = null;
+    _startLocal = p;
+    _startX = _geo.x;
+    _startY = _geo.y;
   }
 
   void _onScaleUpdate(ScaleUpdateDetails d) {
@@ -911,8 +906,12 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
                 if (p.truncated)
                   const Padding(
                     padding: EdgeInsets.only(left: 8),
-                    child: Text('(preview truncated — full animation still imports)',
-                        style: TextStyle(fontSize: 11, color: Colors.white54)),
+                    // Short (2026-09-15: the long sentence was cut off next to the zoom cluster
+                    // on a phone); the tooltip carries the sentence.
+                    child: Tooltip(
+                      message: 'Preview truncated: the full animation still imports.',
+                      child: Text('(preview cut)', style: TextStyle(fontSize: 11, color: Colors.white54)),
+                    ),
                   ),
                 const Spacer(),
                 ViewZoomControls(view: _view, onChanged: () => setState(() {})),
@@ -986,19 +985,25 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
                   ]),
                 ),
               const SizedBox(height: 6),
-              Text(
-                canvasMode
-                    ? 'New canvas: ${_geo.w} × ${_geo.h} px'
-                    : downscaled
-                        ? 'On canvas: $rw × $rh px (downscaled to fit ${widget.canvasW}×${widget.canvasH})'
-                        : beyondStorage
-                            ? 'Placed 1:1: $rw × $rh px, larger than the off-canvas area — the far part is dropped at import'
-                            : oversize
-                                ? 'Placed 1:1: $rw × $rh px; the part beyond the ${widget.canvasW}×${widget.canvasH} canvas is kept off-canvas'
-                                : 'On canvas: $rw × $rh px (placed 1:1)',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12, color: beyondStorage ? Colors.amber : Colors.white60),
+              // Import mode: a fixed two-line slot (user decision 2026-09-15) so the 1:1 sentences
+              // fit on a phone without the panel's height ever depending on the text; canvas
+              // mode's short line keeps one.
+              SizedBox(
+                height: canvasMode ? null : _resultSlotHeight,
+                child: Text(
+                  canvasMode
+                      ? 'New canvas: ${_geo.w} × ${_geo.h} px'
+                      : downscaled
+                          ? 'On canvas: $rw × $rh px (downscaled to fit ${widget.canvasW}×${widget.canvasH})'
+                          : beyondStorage
+                              ? 'Placed 1:1: $rw × $rh px, larger than the off-canvas area. The far part is dropped at import.'
+                              : oversize
+                                  ? 'Placed 1:1: $rw × $rh px. The part beyond the ${widget.canvasW}×${widget.canvasH} canvas is kept off-canvas.'
+                                  : 'On canvas: $rw × $rh px (placed 1:1)',
+                  maxLines: canvasMode ? 1 : 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, height: 1.3, color: beyondStorage ? Colors.amber : Colors.white60),
+                ),
               ),
               if (sizeNote != null) Padding(padding: const EdgeInsets.only(top: 8), child: sizeNote),
             ]),

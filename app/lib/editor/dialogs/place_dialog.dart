@@ -512,8 +512,12 @@ class _PlacePageState extends State<PlacePage> with SingleTickerProviderStateMix
                 if (p.truncated)
                   const Padding(
                     padding: EdgeInsets.only(left: 8),
-                    child: Text('(preview truncated — full animation still imports)',
-                        style: TextStyle(fontSize: 11, color: Colors.white54)),
+                    // Short (2026-09-15: the long sentence was cut off next to the zoom cluster
+                    // on a phone); the tooltip carries the sentence.
+                    child: Tooltip(
+                      message: 'Preview truncated: the full animation still imports.',
+                      child: Text('(preview cut)', style: TextStyle(fontSize: 11, color: Colors.white54)),
+                    ),
                   ),
                 const Spacer(),
                 ViewZoomControls(view: _view, onChanged: () => setState(() {})),
