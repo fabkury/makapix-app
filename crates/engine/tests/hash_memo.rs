@@ -42,7 +42,7 @@ fn random_line(rng: &mut Lcg) -> String {
         _ => format!("1-{} {}", n + 1, n + 3),
     };
     let flag = rng.below(2);
-    match rng.below(34) {
+    match rng.below(46) {
         0..=2 => format!(
             "SelectTool(Pencil)\nSetBrushSize({})\nSetPrimaryColor(#{:06X}FF)\nStroke([({},{}),({},{})])",
             1 + rng.below(5),
@@ -87,7 +87,20 @@ fn random_line(rng: &mut Lcg) -> String {
         30 => format!("CopyLayerToFrames({})", set),
         31 => format!("RemoveLayersNamed({}, Layer 1)", set),
         32 => format!("SetLayersVisibleNamed({}, {}, Layer 1)", set, flag),
-        _ => format!("SetLayersLockedNamed({}, {}, Layer 1)", set, flag),
+        33 => format!("SetLayersLockedNamed({}, {}, Layer 1)", set, flag),
+        // ADR 0033 layer-set batch verbs over the active frame's stack (the same small sets).
+        34 => format!("RemoveLayers({})", set),
+        35 => format!("DuplicateLayers({})", set),
+        36 => format!("MergeLayers({})", set),
+        37 => format!("ShiftLayers({}, {})", set, rng.below(5) as i64 - 2),
+        38 => format!("ReverseLayers({})", set),
+        39 => format!("InsertBlankLayers({}, {})", set, if flag == 0 { "below" } else { "above" }),
+        40 => format!("SetLayersVisible({}, {})", set, flag),
+        41 => format!("SetLayersOpacity({}, {})", set, rng.below(256)),
+        42 => format!("FlipLayersH({})", set),
+        43 => format!("RotateLayers({}, {})", set, 1 + rng.below(3)),
+        44 => format!("InvertLayers({})", set),
+        _ => format!("ClearLayers({})", set),
     }
 }
 

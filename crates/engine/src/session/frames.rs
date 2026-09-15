@@ -33,33 +33,63 @@ use crate::tool;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FrameSet(Vec<usize>);
 
+/// The index-set grammar shared by [`FrameSet`] and the layer set (ADR 0033): whitespace-separated
+/// `N` / `N-M` items, any order and overlap, canonicalized (sorted, deduplicated). Errors: a bad
+/// integer, a reversed range, an index at or beyond `cap` (which also bounds the expansion, so
+/// `0-4294967295` can never allocate), and an empty set. `noun` names the axis in messages.
+pub(super) fn parse_index_set(s: &str, cap: usize, noun: &str) -> Result<Vec<usize>, String> {
+    let mut v: Vec<usize> = Vec::new();
+    for tok in s.split_whitespace() {
+        let (lo, hi) = match tok.split_once('-') {
+            Some((a, b)) => (a, b),
+            None => (tok, tok),
+        };
+        let lo: usize = lo.trim().parse().map_err(|_| format!("bad {} index '{}'", noun, tok))?;
+        let hi: usize = hi.trim().parse().map_err(|_| format!("bad {} index '{}'", noun, tok))?;
+        if lo > hi {
+            return Err(format!("reversed {} range '{}'", noun, tok));
+        }
+        if hi >= cap {
+            return Err(format!("{} index {} beyond the {}-{} cap", noun, hi, cap, noun));
+        }
+        v.extend(lo..=hi);
+    }
+    if v.is_empty() {
+        return Err(format!("empty {} set", noun));
+    }
+    v.sort_unstable();
+    v.dedup();
+    Ok(v)
+}
+
+/// The canonical wire form of a sorted index list: maximal inclusive ranges, space-separated
+/// (`12-32 40`).
+pub(super) fn ranges_to_dsl(v: &[usize]) -> String {
+    let mut out = String::new();
+    let mut i = 0;
+    while i < v.len() {
+        let lo = v[i];
+        let mut j = i;
+        while j + 1 < v.len() && v[j + 1] == v[j] + 1 {
+            j += 1;
+        }
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        if j == i {
+            out.push_str(&lo.to_string());
+        } else {
+            out.push_str(&format!("{}-{}", lo, v[j]));
+        }
+        i = j + 1;
+    }
+    out
+}
+
 impl FrameSet {
-    /// Parse the wire form. Any order and overlap is accepted and canonicalized; errors: a bad
-    /// integer, a reversed range, an index at or beyond the frame cap (which also bounds the
-    /// expansion, so `0-4294967295` can never allocate), and an empty set.
+    /// Parse the wire form (see [`parse_index_set`]; the cap is `MAX_FRAMES`).
     pub fn parse(s: &str) -> Result<FrameSet, String> {
-        let mut v: Vec<usize> = Vec::new();
-        for tok in s.split_whitespace() {
-            let (lo, hi) = match tok.split_once('-') {
-                Some((a, b)) => (a, b),
-                None => (tok, tok),
-            };
-            let lo: usize = lo.trim().parse().map_err(|_| format!("bad frame index '{}'", tok))?;
-            let hi: usize = hi.trim().parse().map_err(|_| format!("bad frame index '{}'", tok))?;
-            if lo > hi {
-                return Err(format!("reversed frame range '{}'", tok));
-            }
-            if hi >= MAX_FRAMES {
-                return Err(format!("frame index {} beyond the {}-frame cap", hi, MAX_FRAMES));
-            }
-            v.extend(lo..=hi);
-        }
-        if v.is_empty() {
-            return Err("empty frame set".into());
-        }
-        v.sort_unstable();
-        v.dedup();
-        Ok(FrameSet(v))
+        parse_index_set(s, MAX_FRAMES, "frame").map(FrameSet)
     }
 
     /// The member indices, ascending.
@@ -86,25 +116,7 @@ impl FrameSet {
 
     /// The canonical wire form: maximal inclusive ranges, space-separated (`12-32 40`).
     pub fn to_dsl(&self) -> String {
-        let mut out = String::new();
-        let mut i = 0;
-        while i < self.0.len() {
-            let lo = self.0[i];
-            let mut j = i;
-            while j + 1 < self.0.len() && self.0[j + 1] == self.0[j] + 1 {
-                j += 1;
-            }
-            if !out.is_empty() {
-                out.push(' ');
-            }
-            if j == i {
-                out.push_str(&lo.to_string());
-            } else {
-                out.push_str(&format!("{}-{}", lo, self.0[j]));
-            }
-            i = j + 1;
-        }
-        out
+        ranges_to_dsl(&self.0)
     }
 }
 
@@ -131,8 +143,9 @@ fn topmost_layer_named(f: &Frame, name: &str) -> Option<usize> {
 }
 
 impl Session {
-    /// Refuse when the set reaches beyond the roll. The first check of every batch verb.
-    fn frame_set_ok(&mut self, verb: &str, set: &FrameSet) -> bool {
+    /// Refuse when the set reaches beyond the roll. The first check of every batch verb (and of
+    /// the layer set's cross-frame copy, ADR 0033).
+    pub(super) fn frame_set_ok(&mut self, verb: &str, set: &FrameSet) -> bool {
         let n = self.doc.frames.len();
         if set.last() >= n {
             self.refuse(&format!(

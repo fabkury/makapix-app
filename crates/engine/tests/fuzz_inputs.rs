@@ -81,6 +81,12 @@ fn known_adversarial_scripts_never_panic() {
         "RemoveLayersNamed(0, Layer 1)\nRemoveLayersNamed(0, Layer 1)\nSetLayersVisibleNamed(0,1,)\nSetLayersLockedNamed(0,0,)",
         "InsertBlankFrames(0, sideways)\nInsertBlankFrames(0)\nInsertBlankFrames(0, BEFORE)\nCopyLayerToFrames(0)",
         "RemoveFrames()\nRemoveFrames(1-0)\nRemoveFrames(0-99999999999999999999)\nRemoveFrames(0,1)\nSetFrameDurations(0)",
+        // ADR 0033 layer-set batch verbs: the same hostility over the active frame's stack.
+        "RemoveLayers(0)\nRemoveLayers(0-127)\nDuplicateLayers(0-127)\nMergeLayers(0-127)\nMergeLayers(0 5)",
+        "ShiftLayers(0,-2147483648)\nShiftLayers(0,2147483647)\nReverseLayers(0)\nInsertBlankLayers(0, sideways)\nInsertBlankLayers(0)",
+        "RotateLayers(0,255)\nFlipLayersH(0)\nFlipLayersV(0)\nInvertLayers(0)\nClearLayers(0)\nResetLayers(0)",
+        "SetLayersVisible(0,)\nSetLayersLocked(0,1)\nSetLayersOpacity(0,999)\nSetLayersBlend(0,Plaid)\nRenameLayers(0)\nRenameLayers(0,)",
+        "CopyLayersToFrames(0)\nCopyLayersToFrames(0,0-1023)\nCopyLayersToFrames(0-127,0)\nRemoveLayers(128)\nRemoveLayers(0-128)",
     ];
     for s in scripts {
         let mut sess = Session::new(64, 64);
@@ -102,6 +108,11 @@ fn random_dsl_never_panics() {
         "ReverseFrames", "SetFrameDurations", "ScaleFrameDurations", "FlipFramesH", "FlipFramesV",
         "RotateFrames", "InvertFrames", "CopyLayerToFrames", "RemoveLayersNamed",
         "SetLayersVisibleNamed", "SetLayersLockedNamed",
+        // ADR 0033 layer-set batch verbs.
+        "RemoveLayers", "DuplicateLayers", "MergeLayers", "ShiftLayers", "ReverseLayers",
+        "InsertBlankLayers", "SetLayersVisible", "SetLayersLocked", "SetLayersOpacity", "SetLayersBlend",
+        "ResetLayers", "RenameLayers", "FlipLayersH", "FlipLayersV", "RotateLayers", "InvertLayers",
+        "ClearLayers", "CopyLayersToFrames",
     ];
     for _ in 0..6000 {
         let name = names[(rng.next() as usize) % names.len()];

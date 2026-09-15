@@ -1,0 +1,46 @@
+# Layer-set batch verbs (ADR 0033): the Layers page's engine half, driven headlessly.
+# Run:  cargo run -p makapix-cli -- run examples/layers.txt state assert.undo assert.roundtrip.bytes
+# Sets are one whitespace-separated argument of `N` / `N-M` items, 0-based bottom-first (the UI
+# counts the bottom layer as 1).
+NewDocument(16, 16)
+
+# --- three painted layers ---
+SelectTool(Pencil); SetPrimaryColor(#FF4040FF); SetBrushSize(1)
+RenameLayer(0, Line art)
+Tap(2,2); Tap(3,3)
+AddLayer(); RenameLayer(1, Shading); SetPrimaryColor(#4040FFFF); Tap(12,12)
+AddLayer(); RenameLayer(2, Sketch); SetPrimaryColor(#40FF40FF); Tap(7,7)
+
+# --- structural batches: duplicate two, shift the copies up, reverse, insert blanks ---
+DuplicateLayers(0 2)
+ShiftLayers(1 4, 1)
+ReverseLayers(0-2)
+InsertBlankLayers(4, below)
+
+# --- state batches, a family rename, and a reset ---
+SetLayersVisible(0-1, 0)
+SetLayersLocked(2, 1)
+SetLayersOpacity(3-5, 128)
+SetLayersBlend(3-5, Multiply)
+RenameLayers(3-5, Cel {n})
+ResetLayers(0-5)
+
+# --- content batches on the members only, then a merge of one run ---
+FlipLayersH(0 2)
+RotateLayers(1-2, 1)
+InvertLayers(4)
+ClearLayers(5)
+MergeLayers(2-4)
+
+# --- across frames, strict ---
+AddFrame(); AddFrame(); SetActiveFrame(0)
+CopyLayersToFrames(0-1, 1-2)
+
+# --- refusals change nothing (a gap, a lock, a set past the stack) ---
+MergeLayers(0 2)
+SetLayersLocked(0, 1)
+FlipLayersV(0)
+RemoveLayers(0-99)
+
+# --- and a delete of every layer leaves one blank ---
+RemoveLayers(0-3)

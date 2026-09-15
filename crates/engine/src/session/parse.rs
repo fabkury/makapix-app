@@ -1,7 +1,7 @@
 //! Action-script DSL: parsing (`name(args)` lines) and execution against a `Session`
 //! (SPEC §9). The same DSL drives the CLI harness, unit tests, and recorded sessions.
 
-use super::{FrameSet, ReplaceScope, Session};
+use super::{FrameSet, LayerSet, ReplaceScope, Session};
 use crate::color::Rgba8;
 use crate::document::{BlendMode, LoopMode};
 use crate::geom::{MAX_DIM, MIN_DIM};
@@ -58,6 +58,27 @@ pub enum Action {
     RemoveLayersNamed(FrameSet, String),
     SetLayersVisibleNamed(FrameSet, bool, String),
     SetLayersLockedNamed(FrameSet, bool, String),
+    /// Layer-set batch verbs (ADR 0033): one `LayerSet` over the active frame's stack (`0-3 7`,
+    /// 0-based bottom-first), one undo record each, all-or-nothing (`session/layers.rs`).
+    RemoveLayers(LayerSet),
+    DuplicateLayers(LayerSet),
+    MergeLayers(LayerSet),
+    ShiftLayers(LayerSet, i32),
+    ReverseLayers(LayerSet),
+    /// `true` = a blank above each member, `false` = below.
+    InsertBlankLayers(LayerSet, bool),
+    SetLayersVisible(LayerSet, bool),
+    SetLayersLocked(LayerSet, bool),
+    SetLayersOpacity(LayerSet, u8),
+    SetLayersBlend(LayerSet, BlendMode),
+    ResetLayers(LayerSet),
+    RenameLayers(LayerSet, String),
+    FlipLayersH(LayerSet),
+    FlipLayersV(LayerSet),
+    RotateLayers(LayerSet, u8),
+    InvertLayers(LayerSet),
+    ClearLayers(LayerSet),
+    CopyLayersToFrames(LayerSet, FrameSet),
     SelectTool(ToolKind),
     SetPrimaryColor(Rgba8),
     SetSecondaryColor(Rgba8),
@@ -296,6 +317,24 @@ impl Session {
             InvertFrames(s) => self.map_frames(&s, crate::color::invert),
             CopyLayerToFrames(s) => self.copy_layer_to_frames(&s),
             RemoveLayersNamed(s, name) => self.remove_layers_named(&s, &name),
+            RemoveLayers(s) => self.remove_layers(&s),
+            DuplicateLayers(s) => self.duplicate_layers(&s),
+            MergeLayers(s) => self.merge_layers(&s),
+            ShiftLayers(s, d) => self.shift_layers(&s, d),
+            ReverseLayers(s) => self.reverse_layers(&s),
+            InsertBlankLayers(s, above) => self.insert_blank_layers(&s, above),
+            SetLayersVisible(s, v) => self.set_layers_visible(&s, v),
+            SetLayersLocked(s, v) => self.set_layers_locked(&s, v),
+            SetLayersOpacity(s, o) => self.set_layers_opacity(&s, o),
+            SetLayersBlend(s, b) => self.set_layers_blend(&s, b),
+            ResetLayers(s) => self.reset_layers(&s),
+            RenameLayers(s, name) => self.rename_layers(&s, &name),
+            FlipLayersH(s) => self.flip_layers(&s, true),
+            FlipLayersV(s) => self.flip_layers(&s, false),
+            RotateLayers(s, q) => self.rotate_layers(&s, q),
+            InvertLayers(s) => self.map_layers(&s, crate::color::invert),
+            ClearLayers(s) => self.clear_layers(&s),
+            CopyLayersToFrames(s, f) => self.copy_layers_to_frames(&s, &f),
             SetLayersVisibleNamed(s, v, name) => self.set_layers_visible_named(&s, v, &name),
             SetLayersLockedNamed(s, v, name) => self.set_layers_locked_named(&s, v, &name),
             SelectTool(t) => self.tool = t,
@@ -602,6 +641,8 @@ fn parse_line(line: &str) -> Result<Action, String> {
     };
     // A frame set is one whitespace-separated argument (ADR 0031); an empty one is an error.
     let seta = |k: usize| -> Result<FrameSet, String> { FrameSet::parse(args.get(k).copied().unwrap_or("")) };
+    // A layer set (ADR 0033): the same grammar over the active frame's stack, capped at 128.
+    let setl = |k: usize| -> Result<LayerSet, String> { LayerSet::parse(args.get(k).copied().unwrap_or("")) };
     let f32a = |k: usize| -> Result<f32, String> {
         let v: f32 = args.get(k).ok_or(format!("missing arg {}", k))?.parse().map_err(|_| format!("bad f32 {}", k))?;
         if !v.is_finite() {
@@ -713,6 +754,35 @@ fn parse_line(line: &str) -> Result<Action, String> {
                 SetLayersLockedNamed(set, v, layer_name)
             }
         }
+        "RemoveLayers" => RemoveLayers(setl(0)?),
+        "DuplicateLayers" => DuplicateLayers(setl(0)?),
+        "MergeLayers" => MergeLayers(setl(0)?),
+        "ShiftLayers" => ShiftLayers(setl(0)?, i32a(1)?),
+        "ReverseLayers" => ReverseLayers(setl(0)?),
+        "InsertBlankLayers" => InsertBlankLayers(
+            setl(0)?,
+            match args.get(1).map(|s| s.to_ascii_lowercase()).as_deref() {
+                None | Some("above") => true,
+                Some("below") => false,
+                Some(o) => return Err(format!("bad side '{}' (above, below)", o)),
+            },
+        ),
+        "SetLayersVisible" => SetLayersVisible(setl(0)?, boola(1)?),
+        "SetLayersLocked" => SetLayersLocked(setl(0)?, boola(1)?),
+        "SetLayersOpacity" => SetLayersOpacity(setl(0)?, u8a(1)?),
+        "SetLayersBlend" => SetLayersBlend(setl(0)?, blend(1)?),
+        "ResetLayers" => ResetLayers(setl(0)?),
+        "RenameLayers" => {
+            // set, then the rest is the (free-text) name — the RenameLayer rule, commas allowed.
+            let (set, rest) = inner.split_once(',').ok_or("RenameLayers needs set, name")?;
+            RenameLayers(LayerSet::parse(set)?, rest.trim().to_string())
+        }
+        "FlipLayersH" => FlipLayersH(setl(0)?),
+        "FlipLayersV" => FlipLayersV(setl(0)?),
+        "RotateLayers" => RotateLayers(setl(0)?, u8a(1)?),
+        "InvertLayers" => InvertLayers(setl(0)?),
+        "ClearLayers" => ClearLayers(setl(0)?),
+        "CopyLayersToFrames" => CopyLayersToFrames(setl(0)?, seta(1)?),
         "SelectTool" => SelectTool(parse_tool(args.first().copied().unwrap_or(""))?),
         "SetPrimaryColor" => SetPrimaryColor(color(0)?),
         "SetSecondaryColor" => SetSecondaryColor(color(0)?),

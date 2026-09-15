@@ -135,7 +135,8 @@ pub fn state_json(doc: &Document) -> String {
                 String::new()
             };
             s.push_str(&format!(
-                "{{\"name\":\"{}\",\"visible\":{},\"locked\":{},\"opacity\":{}{},\"present_tiles\":{}}}",
+                "{{\"id\":{},\"name\":\"{}\",\"visible\":{},\"locked\":{},\"opacity\":{}{},\"present_tiles\":{}}}",
+                l.id,
                 l.name.replace('"', "'"),
                 l.visible,
                 l.locked,

@@ -20,9 +20,11 @@ use std::sync::Arc;
 mod canvas; // flip/rotate/resize/crop — extracted impl Session block [audit F-17]
 mod checkpoint; // replay checkpoints (Journal scrubbing) — same private-state seam as canvas
 mod frames; // frame-set batch verbs (ADR 0031) — same seam
+mod layers; // layer-set batch verbs (ADR 0033) — same seam
 mod parse;
 pub use checkpoint::{CHECKPOINT_BYTE_BUDGET, MAX_CHECKPOINTS};
 pub use frames::FrameSet;
+pub use layers::LayerSet;
 pub use parse::Action;
 
 /// A captured pre-edit pixel snapshot of one layer's tiles.
