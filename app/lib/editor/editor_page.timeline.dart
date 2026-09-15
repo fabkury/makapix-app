@@ -184,11 +184,11 @@ extension _EditorTimeline on _EditorPageState {
   }
 
   // The editor's ☰ menu (left of the film-strip): everything that used to be in the top bar except
-  // the Undo/Redo/Play/Onion actions (which are now row-3 tools). The top level holds the two Club
-  // actions (Go to Club / Post to Club) + four grouped submenus (File / Import & export / Canvas /
-  // View) that open as bottom sheets — matching the frame/layer/palette menus — so the list stays
-  // short. The header is the document at a glance: artwork name (tap to rename) + canvas size +
-  // frame count.
+  // the Undo/Redo/Play/Onion actions (which are now row-3 tools). The top block is the document at a
+  // glance and its own pages: artwork name (tap to rename) + canvas size + frame count, then
+  // Frames… / Layers… / Watch replay. Below the divider, five grouped submenus (Social / File /
+  // Import & export / Canvas / View) open as bottom sheets — matching the frame/layer/palette menus —
+  // so the list stays short; the Club actions (Go to Club / Post to Club / Share…) live in Social.
   PopupMenuItem<String> _menuRow(String value, IconData icon, String label, {bool submenu = false}) =>
       PopupMenuItem<String>(
         value: value,
@@ -230,15 +230,11 @@ extension _EditorTimeline on _EditorPageState {
               '${engine.width} × ${engine.height} px, ${engine.frameCount} ${engine.frameCount == 1 ? 'frame' : 'frames'}',
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
         ),
-        const PopupMenuDivider(),
-        _menuRow('club', Icons.public, 'Go to Club'),
-        _menuRow('post', Icons.cloud_upload_outlined, 'Post to Club'),
-        // The system share sheet is a mobile concept; desktop users export to a file instead.
-        if (Platform.isAndroid || Platform.isIOS) _menuRow('shareTo', Icons.share, 'Share…'),
-        _menuRow('watchReplay', Icons.replay, 'Watch replay'),
         _menuRow('frames', Icons.grid_view, 'Frames…'),
         _menuRow('layers', Icons.view_list, 'Layers…'),
+        _menuRow('watchReplay', Icons.replay, 'Watch replay'),
         const PopupMenuDivider(),
+        _menuRow('social', Icons.groups_outlined, 'Social', submenu: true),
         _menuRow('file', Icons.folder_outlined, 'File', submenu: true),
         _menuRow('share', Icons.import_export, 'Import & export', submenu: true),
         _menuRow('canvas', Icons.crop_rotate, 'Canvas', submenu: true),
@@ -253,14 +249,8 @@ extension _EditorTimeline on _EditorPageState {
       case 'rename':
         _renameCurrentDrawing();
         break;
-      case 'club':
-        ref.read(openClubProvider.notifier).state++;
-        break;
-      case 'post':
-        _postToClub();
-        break;
-      case 'shareTo':
-        _share();
+      case 'social':
+        _socialMenu();
         break;
       case 'watchReplay':
         _watchReplay();
@@ -314,6 +304,14 @@ extension _EditorTimeline on _EditorPageState {
         },
       );
 
+  // The Club-facing actions: leave for the Club pillar, publish this drawing, or hand it to another
+  // app. The system share sheet is a mobile concept; desktop users export to a file instead.
+  void _socialMenu() => _editorSubMenu('Social', (ctx) => [
+        _sheetItem(ctx, Icons.public, 'Go to Club', () => ref.read(openClubProvider.notifier).state++),
+        _sheetItem(ctx, Icons.cloud_upload_outlined, 'Post to Club', _postToClub),
+        if (Platform.isAndroid || Platform.isIOS) _sheetItem(ctx, Icons.share, 'Share…', _share),
+      ]);
+
   void _fileMenu() => _editorSubMenu('File', (ctx) => [
         _sheetItem(ctx, Icons.insert_drive_file_outlined, 'New', _newDialog),
         _sheetItem(ctx, Icons.collections_bookmark_outlined, 'My Drawings', _openGallery),
@@ -328,7 +326,7 @@ extension _EditorTimeline on _EditorPageState {
         _sheetItem(ctx, Icons.layers_outlined, 'Export layer…', _exportLayer),
         _sheetItem(ctx, Icons.gif_box_outlined, 'Export animation as GIF…', _exportGif),
         _sheetItem(ctx, Icons.animation, 'Export animation as WebP…', _exportWebp),
-        // Post to Club lives at the menu's top level, beside Go to Club.
+        // Post to Club lives in the Social submenu, beside Go to Club.
       ]);
 
   // Whole-canvas operations (all frames + layers). The Rotate/Flip *tools* act on the active layer
