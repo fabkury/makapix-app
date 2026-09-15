@@ -29,10 +29,11 @@ is the document's own storage and an import is a paste from a file.
 (`≤ 3× per side`) gets **Fit / Stretch / Crop / 1:1**, and 1:1 is preselected: a whole source at
 its own size, centered by the same truncating division as every other placement, its overhang
 symmetric in the gutter. Fit is one tap away and unchanged. A source larger than storage keeps
-the three modes (the CLI still accepts `native` for it; the storage boundary clips). The
+the three modes (the CLI still accepts `native` for it; the storage boundary clips). ~~The
 interactive Crop path is deliberately unchanged: a crop region larger than the canvas is still
 downscaled to the canvas. It is the one path that cannot land 1:1 into the gutter, and widening it
-was declined to keep "Crop places the region on the canvas" readable.
+was declined to keep "Crop places the region on the canvas" readable.~~ *Superseded by ADR 0034
+(2026-09-15): an oversize crop region lands 1:1 by default, the downscale is the other choice.*
 
 **Place anywhere in storage.** The Place page shows the dimmed gutter around the canvas — with the
 start frame's existing parked pixels, through a storage-sized composite — and the import may go
