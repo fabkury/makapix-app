@@ -652,7 +652,8 @@ fn import_frames_into(
 /// Import an image file (GIF/PNG/APNG/JPEG/BMP/WebP) into the document.
 /// `mode`: 0=Fit, 1=Stretch, 2=Crop, 3=Native (the whole source 1:1, ADR 0030). `as_layer`: 0/1.
 /// A non-empty crop rect (`crop_w>0 && crop_h>0`, source pixels) places that region 1:1 centered
-/// on the canvas (downscaled to fit only when larger, never upscaled), overriding `mode`.
+/// on the canvas (downscaled to fit only when larger, never upscaled), overriding `mode` — except
+/// that `mode` 3 keeps an oversize region 1:1 with the overhang parked off-canvas (ADR 0034).
 /// `place != 0` places the image's top-left at canvas pixel (`place_x`, `place_y`) instead of
 /// centering it (crop-rect, Fit and Native paths) — ADR 0019. The part of a placement outside the
 /// canvas is parked in the off-canvas gutter; only the part beyond the storage area is dropped

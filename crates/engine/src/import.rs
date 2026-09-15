@@ -7,7 +7,9 @@
 //! buffer: whatever part of the placed image hangs off the canvas is parked in the off-canvas
 //! gutter (recoverable with the Move tool, like a moved or pasted pixel) instead of being
 //! dropped. Only the storage boundary clips. `Stretch` and the anchored `Crop` still fill exactly
-//! the canvas; `Native` places the whole source 1:1.
+//! the canvas; `Native` places the whole source 1:1 — and, combined with an explicit `crop_rect`
+//! (ADR 0034, 2026-09-15), places the cropped region 1:1 where the plain crop path would have
+//! downscaled it to the canvas.
 
 use crate::buffer::RgbaBuffer;
 use crate::color::Rgba8;
@@ -34,7 +36,8 @@ pub enum ScaleMode {
     Crop,
     /// Place the whole source **1:1** (ADR 0030): centered on the canvas by default, or at
     /// `placement`; a source larger than the canvas overhangs into the gutter, clipped only at the
-    /// storage boundary. The shell offers it for sources that fit within the storage area.
+    /// storage boundary. The shell offers it for sources that fit within the storage area. With a
+    /// `crop_rect` (ADR 0034) the region itself is placed 1:1 instead of downscaled to the canvas.
     Native,
 }
 
@@ -52,7 +55,10 @@ pub struct ImportConfig {
     pub as_layer: bool,
     /// Explicit source crop region (in source pixels) from the interactive crop widget. When set,
     /// that region is placed **1:1, centered** on the canvas — downscaled (aspect-preserved) only
-    /// when larger than the canvas, never upscaled — overriding `mode`.
+    /// when larger than the canvas, never upscaled — overriding `mode`, with one exception: under
+    /// `ScaleMode::Native` (ADR 0034) an oversize region is **not** downscaled; it lands 1:1 with
+    /// the overhang parked in the gutter and clipped at the storage boundary, like a `Native`
+    /// whole-source import.
     pub crop_rect: Option<IRect>,
     /// Explicit placement (ADR 0019): the top-left of the placed image in canvas pixels, replacing
     /// the centered anchor of the crop-rect, `Fit` and `Native` paths. May be negative or run past
@@ -135,11 +141,12 @@ pub fn frame_to_storage(df: &DecodedFrame, cw: u32, ch: u32, gutter: (u32, u32),
     let mut out = RgbaBuffer::new(cw + 2 * gw, ch + 2 * gh);
     let org = (gw as i32, gh as i32);
     // Explicit interactive crop: place the chosen source region **1:1** — downscaling
-    // (aspect-preserved, nearest-neighbor) only when the region is larger than the canvas. Never
-    // upscaled; a smaller region lands centered unless `placement` says where.
+    // (aspect-preserved, nearest-neighbor) only when the region is larger than the canvas, and
+    // not even then under `Native` (ADR 0034: the region keeps its size, the overhang is parked).
+    // Never upscaled; a smaller region lands centered unless `placement` says where.
     if let Some(cr) = cfg.crop_rect {
         let (rw, rh) = (cr.w.max(1), cr.h.max(1));
-        let (dw, dh) = fit_no_upscale(rw, rh, cw, ch);
+        let (dw, dh) = if cfg.mode == ScaleMode::Native { (rw, rh) } else { fit_no_upscale(rw, rh, cw, ch) };
         let (ox, oy) = place_origin(cfg, cw, ch, dw, dh);
         for y in 0..dh as i32 {
             for x in 0..dw as i32 {
@@ -509,6 +516,36 @@ mod tests {
         assert_eq!(buf.get(0, 4), Rgba8::new(0, 0, 255, 255));
         assert_eq!(buf.get(15, 11), Rgba8::new(0, 0, 255, 255));
         assert_eq!(buf.get(0, 12), Rgba8::TRANSPARENT);
+    }
+
+    // ADR 0034: the same oversize crop under `Native` is NOT downscaled — it lands 1:1 with the
+    // overhang parked in the gutter, and the storage boundary is the only clip.
+    #[test]
+    fn crop_rect_under_native_places_the_region_1_to_1_into_the_gutter() {
+        let df = solid(20, 8);
+        let g = (4, 4); // 4×4 canvas, 12×12 storage
+        // Crop the middle 10×2 band: wider than the canvas (4) but within storage (12).
+        let cfg = ImportConfig {
+            mode: ScaleMode::Native,
+            crop_rect: Some(IRect::new(5, 3, 10, 2)),
+            ..Default::default()
+        };
+        let px = set_pixels_canvas(&frame_to_storage(&df, 4, 4, g, &cfg), g);
+        assert_eq!(px.len(), 20, "every cropped pixel lands, none downscaled away");
+        assert_eq!(px.iter().map(|p| p.0).min(), Some(-3), "(4-10)/2 = -3: three columns parked left");
+        assert_eq!(px.iter().map(|p| p.0).max(), Some(6), "three columns parked right");
+        assert_eq!(px.iter().map(|p| p.1).min(), Some(1), "(4-2)/2 = 1");
+        // The plain crop path downscales the same region to the canvas width.
+        let fit = ImportConfig { mode: ScaleMode::Crop, ..cfg };
+        let px = set_pixels_canvas(&frame_to_storage(&df, 4, 4, g, &fit), g);
+        assert_eq!(px.iter().map(|p| p.0).min(), Some(0));
+        assert_eq!(px.iter().map(|p| p.0).max(), Some(3));
+        // Wider than storage: placement decides which part survives; the rest is dropped.
+        let wide = ImportConfig { crop_rect: Some(IRect::new(0, 0, 20, 8)), placement: Some((-2, -2)), ..cfg };
+        let px = set_pixels_canvas(&frame_to_storage(&df, 4, 4, g, &wide), g);
+        assert_eq!(px.iter().map(|p| p.0).min(), Some(-2));
+        assert_eq!(px.iter().map(|p| p.0).max(), Some(7), "columns past the storage edge are gone");
+        assert_eq!(px.len(), 10 * 8, "10 of 20 columns survive; all 8 rows (-2..6) fit in storage");
     }
 
     #[test]
