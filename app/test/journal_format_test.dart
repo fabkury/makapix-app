@@ -102,6 +102,7 @@ void main() {
       expect(journalEpochOf(kJournalVersionHeader), kJournalEpoch);
       expect(journalEpochOf('#mkpxj 1'), 1, reason: 'the pre-policy epoch');
       expect(journalEpochOf('#mkpxj 2'), 2, reason: 'the pre-Bucket-Repeat epoch (ADR 0024)');
+      expect(journalEpochOf('#mkpxj 3'), 3, reason: 'the odd-only brush footprint epoch (ADR 0036)');
       expect(journalEpochOf('not a header'), isNull);
       expect(journalEpochOf('#mkpxj 0'), isNull);
     });

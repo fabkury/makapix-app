@@ -278,7 +278,12 @@ extension _EditorEngine on _EditorPageState {
   // The exact set of canvas pixels a stamp/spray at (ex,ey) would cover with the current Size and
   // Shape, clipped to the canvas — mirrors the engine so an outline of these pixels is faithful.
   // `airbrush` uses the spray disc (radius == size, an approximation of the random dab); otherwise
-  // it's the brush/eraser stamp footprint (radius == (size-1)/2, Round disc or Square).
+  // it's the brush/eraser stamp footprint (ADR 0036, `raster::stamp_disc` / `stamp_square`):
+  // exactly `size` wide over the window lo = -(size-1)/2 ..= hi = size/2 (even sizes lean +x/+y);
+  // Round keeps pixels within r = (size-1)/2 of the anchor for odd sizes and, for even sizes,
+  // within N/2 - 1/4 of the window's center (a pixel corner) — in doubled units u = 2dx - (lo+hi),
+  // u² + v² <= N² - N. The mirrored ghosts reflect these cells, which is exactly the engine's
+  // flipped footprint.
   Set<int> _footprintCells(int ex, int ey, {required bool airbrush}) {
     final w = engine.width, h = engine.height;
     final size = _brushSize < 1 ? 1 : _brushSize;
@@ -298,22 +303,24 @@ extension _EditorEngine on _EditorPageState {
           if (dx * dx + dy * dy <= r * r) add(ex + dx, ey + dy);
         }
       }
-    } else if (_round) {
-      if (size <= 1) {
-        add(ex, ey);
-      } else {
-        final r = ((size - 1) ~/ 2).clamp(1, size);
-        for (var dy = -r; dy <= r; dy++) {
-          for (var dx = -r; dx <= r; dx++) {
-            if (dx * dx + dy * dy <= r * r) add(ex + dx, ey + dy);
+    } else {
+      final lo = -((size - 1) ~/ 2), hi = size ~/ 2, o = lo + hi;
+      if (!_round) {
+        for (var dy = lo; dy <= hi; dy++) {
+          for (var dx = lo; dx <= hi; dx++) {
+            add(ex + dx, ey + dy);
           }
         }
-      }
-    } else {
-      final r = (size - 1) ~/ 2;
-      for (var dy = -r; dy <= r; dy++) {
-        for (var dx = -r; dx <= r; dx++) {
-          add(ex + dx, ey + dy);
+      } else if (size <= 1) {
+        add(ex, ey);
+      } else {
+        final limit = size.isOdd ? (size - 1) * (size - 1) : size * size - size;
+        for (var dy = lo; dy <= hi; dy++) {
+          final v = 2 * dy - o;
+          for (var dx = lo; dx <= hi; dx++) {
+            final u = 2 * dx - o;
+            if (u * u + v * v <= limit) add(ex + dx, ey + dy);
+          }
         }
       }
     }

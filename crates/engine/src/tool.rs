@@ -8,7 +8,7 @@ pub mod dither_tables;
 use crate::buffer::RgbaBuffer;
 use crate::color::{self, Rgba8};
 use crate::geom::{IRect, Point};
-use crate::raster;
+use crate::raster::{self, Span};
 use crate::selection::Mask;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -447,6 +447,72 @@ impl Iterator for Images {
     }
 }
 
+/// The pixel window of a brush stamp around its anchor (ADR 0036): one [`Span`] per axis, both
+/// `size` wide. Odd sizes are centered; even sizes lean +x/+y, and `reflected` leans a copy the
+/// other way along each flipped axis so mirrored stamps are true reflections (ADR 0026).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Footprint {
+    pub x: Span,
+    pub y: Span,
+}
+
+impl Footprint {
+    pub fn of(size: u16) -> Footprint {
+        let s = Span::of(size.max(1) as i32);
+        Footprint { x: s, y: s }
+    }
+    pub fn reflected(self, r: Reflection) -> Footprint {
+        Footprint { x: self.x.flip_if(r.fx), y: self.y.flip_if(r.fy) }
+    }
+    /// The stamp width.
+    pub fn size(self) -> i32 {
+        self.x.len()
+    }
+}
+
+impl Mirror {
+    /// The distinct stamps of a `size`-wide dab anchored at `p`: each image of `p` paired with
+    /// the footprint reflected the same way, deduplicated by the pixel window they cover (so a
+    /// stamp is written once, never twice). Odd sizes reduce to [`Mirror::images`]; an even
+    /// stamp on an axis through a pixel column yields two leaning stamps whose union is the
+    /// symmetric result, while one on an axis between two columns yields a single stamp (its
+    /// reflection covers the same pixels).
+    pub fn stamps(&self, p: Point, size: u16) -> Stamps {
+        let fp = Footprint::of(size);
+        let mut out = Stamps { items: [(p, fp); 4], n: 0, i: 0 };
+        let window = |(q, f): (Point, Footprint)| (q.x + f.x.lo, q.y + f.y.lo);
+        for r in self.reflections() {
+            let item = (self.apply(r, p), fp.reflected(r));
+            if !out.items[..out.n].iter().any(|&it| window(it) == window(item)) {
+                out.items[out.n] = item;
+                out.n += 1;
+            }
+        }
+        out
+    }
+}
+
+/// The distinct (anchor, footprint) stamps of one dab under a [`Mirror`] (at most four).
+#[derive(Clone, Copy, Debug)]
+pub struct Stamps {
+    items: [(Point, Footprint); 4],
+    n: usize,
+    i: usize,
+}
+
+impl Iterator for Stamps {
+    type Item = (Point, Footprint);
+    fn next(&mut self) -> Option<(Point, Footprint)> {
+        if self.i < self.n {
+            let it = self.items[self.i];
+            self.i += 1;
+            Some(it)
+        } else {
+            None
+        }
+    }
+}
+
 /// The canonical Bayer matrices (ordered-dither thresholds `0..n²`), used by the Gradient's
 /// dither (ADR 0025). `BAYER4` and `BAYER8` are the recursive expansions of `BAYER2`
 /// (`M(2n) = [[4M, 4M+2], [4M+3, 4M+1]]`) — a unit test pins that.
@@ -844,7 +910,8 @@ pub fn plot(
     }
 }
 
-/// A single brush stamp of the configured size/shape.
+/// A single brush stamp of the configured shape over `fp` (its size and lean, ADR 0036),
+/// anchored at `center`.
 #[allow(clippy::too_many_arguments)]
 pub fn stamp(
     buf: &mut RgbaBuffer,
@@ -852,22 +919,15 @@ pub fn stamp(
     gate: Option<PatternGate>,
     clip: IRect,
     center: Point,
-    size: u16,
+    fp: Footprint,
     shape: BrushShape,
     color: Rgba8,
     mode: PaintMode,
 ) {
-    let radius = (size.max(1) as i32 - 1) / 2;
     let mut f = |x: i32, y: i32| plot(buf, sel, gate, clip, x, y, color, mode);
     match shape {
-        BrushShape::Round => {
-            if size <= 1 {
-                f(center.x, center.y);
-            } else {
-                raster::disc(center, radius.max(1), &mut f);
-            }
-        }
-        BrushShape::Square => raster::square(center, radius, &mut f),
+        BrushShape::Round => raster::stamp_disc(center, fp.x, fp.y, &mut f),
+        BrushShape::Square => raster::stamp_square(center, fp.x, fp.y, &mut f),
     }
 }
 
@@ -880,7 +940,7 @@ pub fn stroke_segment(
     clip: IRect,
     a: Point,
     b: Point,
-    size: u16,
+    fp: Footprint,
     shape: BrushShape,
     color: Rgba8,
     mode: PaintMode,
@@ -888,7 +948,7 @@ pub fn stroke_segment(
     let mut centers = Vec::new();
     raster::line(a, b, |x, y| centers.push(Point::new(x, y)));
     for c in centers {
-        stamp(buf, sel, gate, clip, c, size, shape, color, mode);
+        stamp(buf, sel, gate, clip, c, fp, shape, color, mode);
     }
 }
 
@@ -1518,8 +1578,61 @@ mod tests {
     #[test]
     fn pencil_stamp_sets_pixel() {
         let mut b = RgbaBuffer::new(16, 16);
-        stamp(&mut b, None, None, IRect::new(0, 0, 16, 16), Point::new(5, 5), 1, BrushShape::Square, Rgba8::WHITE, PaintMode::Replace);
+        stamp(&mut b, None, None, IRect::new(0, 0, 16, 16), Point::new(5, 5), Footprint::of(1), BrushShape::Square, Rgba8::WHITE, PaintMode::Replace);
         assert_eq!(b.get(5, 5), Rgba8::WHITE);
+    }
+
+    /// ADR 0036: every size is a distinct footprint, exactly `size` wide; even sizes lean +x/+y.
+    #[test]
+    fn stamp_widths_grow_by_one_per_size() {
+        for shape in [BrushShape::Round, BrushShape::Square] {
+            for size in 1..=32u16 {
+                let mut b = RgbaBuffer::new(64, 64);
+                stamp(&mut b, None, None, IRect::new(0, 0, 64, 64), Point::new(31, 31), Footprint::of(size), shape, Rgba8::WHITE, PaintMode::Replace);
+                let xs: Vec<i32> = (0..64).filter(|&x| b.get(x, 31) != Rgba8::TRANSPARENT).collect();
+                let ys: Vec<i32> = (0..64).filter(|&y| b.get(31, y) != Rgba8::TRANSPARENT).collect();
+                let n = size as i32;
+                let (lo, hi) = (31 - (n - 1) / 2, 31 + n / 2);
+                assert_eq!(xs, (lo..=hi).collect::<Vec<_>>(), "{shape:?} size {size} row");
+                assert_eq!(ys, (lo..=hi).collect::<Vec<_>>(), "{shape:?} size {size} column");
+            }
+        }
+    }
+
+    /// The even-size round stamps are the documented pixel discs; areas grow monotonically.
+    #[test]
+    fn round_stamp_areas_are_monotonic() {
+        let area = |size: i32| {
+            let mut n = 0;
+            raster::stamp_disc(Point::new(0, 0), Span::of(size), Span::of(size), |_, _| n += 1);
+            n
+        };
+        let mut prev = 0;
+        for size in 1..=32 {
+            let n = area(size);
+            assert!(n > prev, "size {size}: {n} px after {prev}");
+            prev = n;
+        }
+        assert_eq!([area(2), area(4), area(6), area(8)], [4, 12, 24, 44]);
+        assert_eq!([area(3), area(5), area(7), area(9)], [5, 13, 29, 49]);
+    }
+
+    /// An even stamp mirrored across an axis through a pixel column leans the other way, so the
+    /// union is symmetric; across an axis between two columns the reflection is the same stamp.
+    #[test]
+    fn mirrored_even_stamps_are_true_reflections() {
+        let m = Mirror { h: Some(10), v: None }; // x' = 10 - x: through column 5
+        let stamps: Vec<_> = m.stamps(Point::new(5, 3), 2).collect();
+        assert_eq!(stamps.len(), 2);
+        assert_eq!(stamps[0].1.x, Span { lo: 0, hi: 1 });
+        assert_eq!(stamps[1].1.x, Span { lo: -1, hi: 0 });
+        assert_eq!(stamps[1].0, Point::new(5, 3));
+        let m = Mirror { h: Some(11), v: None }; // between columns 5 and 6
+        let stamps: Vec<_> = m.stamps(Point::new(5, 3), 2).collect();
+        assert_eq!(stamps.len(), 1, "the reflection covers the same pixels: written once");
+        // Odd sizes are unchanged: plain images.
+        let m = Mirror { h: Some(10), v: Some(6) };
+        assert_eq!(m.stamps(Point::new(2, 1), 3).map(|(q, _)| q).collect::<Vec<_>>(), m.images(Point::new(2, 1)).collect::<Vec<_>>());
     }
 
     #[test]

@@ -41,8 +41,7 @@ pub fn thick_line(a: Point, b: Point, thickness: i32, mut plot: impl FnMut(i32, 
         line(a, b, plot);
         return;
     }
-    let lo = -(t - 1) / 2;
-    let hi = t / 2;
+    let Span { lo, hi } = Span::of(t);
     let mut pts = Vec::new();
     line(a, b, |x, y| pts.push(Point::new(x, y)));
     for p in pts {
@@ -173,26 +172,82 @@ fn stroke_thin_loop(samples: &[Point], mut plot: impl FnMut(i32, i32)) {
     }
 }
 
-/// A filled disc of `radius` (in pixels) centered at `c` — the round brush/eraser stamp.
-pub fn disc(c: Point, radius: i32, mut plot: impl FnMut(i32, i32)) {
-    if radius <= 0 {
+/// The pixel window of an `N`-wide stamp along one axis, relative to the anchor pixel (ADR
+/// 0036): `lo = -(N-1)/2 ..= hi = N/2`, so every unit of `N` adds exactly one pixel. Odd `N` is
+/// the centered window `-r ..= r`; even `N` has no center pixel and keeps the anchor as the
+/// top-left of the central 2×2 (the extra column/row lands toward +x/+y — `thick_line`'s
+/// convention). `flipped` is the window's mirror image, for a stamp landing under a reflection
+/// (a mirrored even stamp leans the other way, so the images are true reflections).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Span {
+    pub lo: i32,
+    pub hi: i32,
+}
+
+impl Span {
+    pub fn of(size: i32) -> Span {
+        let t = size.max(1);
+        Span { lo: -(t - 1) / 2, hi: t / 2 }
+    }
+    pub fn flipped(self) -> Span {
+        Span { lo: -self.hi, hi: -self.lo }
+    }
+    pub fn flip_if(self, f: bool) -> Span {
+        if f {
+            self.flipped()
+        } else {
+            self
+        }
+    }
+    /// The stamp width this window spans.
+    pub fn len(self) -> i32 {
+        self.hi - self.lo + 1
+    }
+}
+
+/// A filled disc of `radius` (in pixels) centered at `c` — the odd-width round stamp
+/// (`stamp_disc` over the centered `2·radius + 1` window).
+pub fn disc(c: Point, radius: i32, plot: impl FnMut(i32, i32)) {
+    let s = Span::of(2 * radius.max(0) + 1);
+    stamp_disc(c, s, s, plot);
+}
+
+/// A filled square of half-extent `radius` centered at `c` — the odd-width square stamp.
+pub fn square(c: Point, radius: i32, plot: impl FnMut(i32, i32)) {
+    let s = Span::of(2 * radius.max(0) + 1);
+    stamp_square(c, s, s, plot);
+}
+
+/// The round brush/eraser stamp over the windows `sx × sy` (both `N` wide) anchored at `c`
+/// (ADR 0036). Odd `N` is the classic pixel disc: centers within `r = (N-1)/2` of the anchor
+/// (`dx² + dy² ≤ r²`) — byte-identical to every pre-ADR stamp. Even `N` measures from the
+/// window's center, which sits on a pixel corner, in doubled units (`u = 2dx − (lo+hi)`, odd):
+/// `u² + v² ≤ N² − N`, i.e. within `N/2 − 1/4` of the corner — the same "pointy" tightness as
+/// the odd rule, so areas grow monotonically with `N` (1, 4, 5, 12, 13, 24, 29, 44, 49, …).
+/// `N ≤ 1` plots the anchor alone.
+pub fn stamp_disc(c: Point, sx: Span, sy: Span, mut plot: impl FnMut(i32, i32)) {
+    let n = sx.len();
+    if n <= 1 {
         plot(c.x, c.y);
         return;
     }
-    let r2 = radius * radius;
-    for dy in -radius..=radius {
-        for dx in -radius..=radius {
-            if dx * dx + dy * dy <= r2 {
+    let limit = if n % 2 == 1 { (n - 1) * (n - 1) } else { n * n - n };
+    let (ox, oy) = (sx.lo + sx.hi, sy.lo + sy.hi);
+    for dy in sy.lo..=sy.hi {
+        let v = 2 * dy - oy;
+        for dx in sx.lo..=sx.hi {
+            let u = 2 * dx - ox;
+            if u * u + v * v <= limit {
                 plot(c.x + dx, c.y + dy);
             }
         }
     }
 }
 
-/// A filled square of half-extent `radius` centered at `c` — the square brush/eraser stamp.
-pub fn square(c: Point, radius: i32, mut plot: impl FnMut(i32, i32)) {
-    for dy in -radius..=radius {
-        for dx in -radius..=radius {
+/// The square brush/eraser stamp: the full `sx × sy` window anchored at `c` (ADR 0036).
+pub fn stamp_square(c: Point, sx: Span, sy: Span, mut plot: impl FnMut(i32, i32)) {
+    for dy in sy.lo..=sy.hi {
+        for dx in sx.lo..=sx.hi {
             plot(c.x + dx, c.y + dy);
         }
     }
@@ -488,9 +543,18 @@ fn plot_aa(
 
 /// AA disc: the coverage twin of [`disc`] — continuous radius `radius + 0.5` around the pixel
 /// center of `c`, so its axial full-coverage extent matches the binary disc.
-pub fn disc_aa(c: Point, radius: i32, mut plot: impl FnMut(i32, i32, u8)) {
-    let r = radius.max(1) as f64 + 0.5;
-    let (cx, cy) = (c.x as f64 + 0.5, c.y as f64 + 0.5);
+pub fn disc_aa(c: Point, radius: i32, plot: impl FnMut(i32, i32, u8)) {
+    let s = Span::of(2 * radius.max(1) + 1);
+    stamp_disc_aa(c, s, s, plot);
+}
+
+/// AA round stamp over the windows `sx × sy` (ADR 0036): the coverage twin of [`stamp_disc`] —
+/// a continuous disc of diameter `N` (radius `N/2`) around the window's center (a pixel center
+/// for odd `N`, a pixel corner for even), so its silhouette is exactly `N` wide. Odd `N` is the
+/// pre-ADR `disc_aa`, byte for byte.
+pub fn stamp_disc_aa(c: Point, sx: Span, sy: Span, mut plot: impl FnMut(i32, i32, u8)) {
+    let r = sx.len().max(2) as f64 / 2.0;
+    let (cx, cy) = (c.x as f64 + 0.5 + (sx.lo + sx.hi) as f64 / 2.0, c.y as f64 + 0.5 + (sy.lo + sy.hi) as f64 / 2.0);
     let r2 = r * r;
     let inside = move |sx: f64, sy: f64| {
         let (dx, dy) = (sx - cx, sy - cy);

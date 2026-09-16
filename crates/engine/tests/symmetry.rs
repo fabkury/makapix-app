@@ -116,6 +116,45 @@ fn aa_brush_mirror_keeps_the_rim_exact_and_symmetric() {
 }
 
 #[test]
+/// ADR 0036: an even-size stamp has no center pixel and leans +x/+y; its mirrored images lean
+/// the other way, so the result is still pixel-exact under every axis kind — one through a
+/// pixel column (odd canvas), one between two columns (even canvas) — for the Pencil, the hard
+/// Brush, and the AA Brush alike.
+#[test]
+fn even_stamps_are_mirror_exact() {
+    let odd = run("NewDocument(9,8)
+SelectTool(Pencil); SetPrimaryColor(#FF0000FF); SetBrushSize(2); SetSymmetry(h,c,c)
+Tap(2,3)");
+    assert_eq!(painted(&odd, 9, 8), vec![(2, 3), (3, 3), (5, 3), (6, 3), (2, 4), (3, 4), (5, 4), (6, 4)]);
+    let on_axis = run("NewDocument(9,8)
+SelectTool(Pencil); SetPrimaryColor(#FF0000FF); SetBrushSize(2); SetSymmetry(h,c,c)
+Tap(4,3)");
+    assert_eq!(painted(&on_axis, 9, 8), vec![(3, 3), (4, 3), (5, 3), (3, 4), (4, 4), (5, 4)], "the two leaning stamps union into a symmetric 3×2");
+    let even = run("NewDocument(8,8)
+SelectTool(Pencil); SetPrimaryColor(#FF0000FF); SetBrushSize(2); SetSymmetry(h,c,c)
+Tap(3,3)");
+    assert_eq!(painted(&even, 8, 8), vec![(3, 3), (4, 3), (3, 4), (4, 4)], "an axis between the two columns: the reflection is the same stamp, written once");
+    for (w, script) in [
+        (16, "NewDocument(16,16)
+SelectTool(Brush); SetPrimaryColor(#0000FFFF); SetBrushShape(Round); SetBrushSize(6); SetSymmetry(both,c,c)
+Stroke([(3,3),(6,5)])"),
+        (16, "NewDocument(16,16)
+SelectTool(Brush); SetPrimaryColor(#0000FF80); SetBrushShape(Round); SetBrushSize(4); SetAA(true); SetSymmetry(both,c,c)
+Stroke([(3,3),(6,5),(4,8)])"),
+        (15, "NewDocument(15,15)
+SelectTool(Brush); SetPrimaryColor(#0000FF80); SetBrushShape(Square); SetBrushSize(2); SetAA(true); SetSymmetry(both,c,c)
+Stroke([(3,3),(7,5),(4,8)])"),
+    ] {
+        let s = run(script);
+        for y in 0..w {
+            for x in 0..w {
+                assert_eq!(s.pixel(0, 0, x, y), s.pixel(0, 0, w - 1 - x, y), "({x},{y}) vs its H image");
+                assert_eq!(s.pixel(0, 0, x, y), s.pixel(0, 0, x, w - 1 - y), "({x},{y}) vs its V image");
+            }
+        }
+    }
+}
+
 fn eraser_mirrors_too() {
     let s = run(
         "NewDocument(8,8)\nSelectTool(Pencil); SetPrimaryColor(#000000FF)\nStroke([(0,4),(7,4)])\nSelectTool(Eraser); SetBrushSize(1); SetSymmetry(h,c,c)\nTap(1,4)",
@@ -283,7 +322,7 @@ const PINS: &[(&str, &str, &str)] = &[
     (
         "brush_aa_both",
         "NewDocument(24,24)\nSelectTool(Brush); SetPrimaryColor(#0000FF80); SetBrushShape(Round); SetBrushSize(6); SetAA(true); SetSymmetry(both,c,c)\nStroke([(4,4),(12,7),(11,12)])",
-        "73e24e222f539535868545958a92735d",
+        "7a254ad283fdab85775354264dee9c0d",
     ),
     (
         "line_aa_v_explicit_axis",

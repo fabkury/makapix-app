@@ -12,7 +12,7 @@ use crate::color::{self, Rgba8};
 use crate::geom::{IRect, Point};
 use crate::raster;
 use crate::selection::Mask;
-use crate::tool::{BrushShape, Mirror, PatternGate, ToolKind};
+use crate::tool::{BrushShape, Footprint, Mirror, PatternGate, ToolKind};
 use crate::util::hash_xy;
 
 /// Mist speck alpha band (pre-color-alpha). Each pixel draws its own depth from the hash: alpha
@@ -143,19 +143,19 @@ impl StrokeCoat {
     /// One dab of the frozen tool at `p` (storage coordinates) — and at every image of `p`
     /// under the frozen mirror (ADR 0026).
     pub fn dab(&mut self, sel: Option<&Mask>, p: Point) {
-        for q in self.ctx.mirror.images(p) {
-            self.dab_one(sel, q);
+        for (q, fp) in self.ctx.mirror.stamps(p, self.ctx.size) {
+            self.dab_one(sel, q, fp);
         }
     }
 
-    /// One dab of the frozen tool at exactly `p` (storage coordinates).
-    fn dab_one(&mut self, sel: Option<&Mask>, p: Point) {
+    /// One dab of the frozen tool at exactly `p` (storage coordinates), over the footprint `fp`
+    /// (the stamp families; the airbrush family ignores it — its footprint is radius = size).
+    fn dab_one(&mut self, sel: Option<&Mask>, p: Point, fp: Footprint) {
         let size = self.ctx.size.max(1);
         match self.ctx.tool {
-            // Brush, Eraser, and Dodge/Burn share the stamp footprint convention (radius
-            // (size−1)/2, shape honored); their coverage is binary — the swept union.
+            // Brush, Eraser, and Dodge/Burn share the stamp footprint convention (exactly `size`
+            // wide, ADR 0036; shape honored); their coverage is binary — the swept union.
             ToolKind::Brush | ToolKind::Eraser | ToolKind::Dodge | ToolKind::Burn => {
-                let radius = (size as i32 - 1) / 2;
                 match self.ctx.shape {
                     BrushShape::Round => {
                         if size <= 1 {
@@ -166,21 +166,21 @@ impl StrokeCoat {
                             // AA dab: fractional rim coverage; max-combine along the path makes
                             // the stroke edge independent of drag speed.
                             let mut pts = Vec::new();
-                            raster::disc_aa(p, radius.max(1), |x, y, c| pts.push((x, y, c)));
+                            raster::stamp_disc_aa(p, fp.x, fp.y, |x, y, c| pts.push((x, y, c)));
                             for (x, y, c) in pts {
                                 self.raise(sel, x, y, c);
                             }
                         } else {
                             let mut pts = Vec::new();
-                            raster::disc(p, radius.max(1), &mut |x, y| pts.push((x, y)));
+                            raster::stamp_disc(p, fp.x, fp.y, &mut |x, y| pts.push((x, y)));
                             for (x, y) in pts {
                                 self.raise(sel, x, y, 255);
                             }
                         }
                     }
                     BrushShape::Square => {
-                        for dy in -radius..=radius {
-                            for dx in -radius..=radius {
+                        for dy in fp.y.lo..=fp.y.hi {
+                            for dx in fp.x.lo..=fp.x.hi {
                                 self.raise(sel, p.x + dx, p.y + dy, 255);
                             }
                         }

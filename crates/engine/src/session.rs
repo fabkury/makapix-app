@@ -2237,10 +2237,10 @@ impl Session {
         let clip = self.paint_clip();
         let sel = self.selection_arc(); // Arc bump, not a 72 KiB deep copy — per stamp [C-2]
         let gate = self.pattern_gate(self.tool);
-        let mirror = self.mirror(); // one stamp per image (ADR 0026); the footprint is symmetric
+        let mirror = self.mirror(); // one stamp per image (ADR 0026), each leaning with its reflection (ADR 0036)
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-        for q in mirror.images(p) {
-            tool::stamp(buf, sel.as_deref(), gate, clip, q, size, shape, color, mode);
+        for (q, fp) in mirror.stamps(p, size) {
+            tool::stamp(buf, sel.as_deref(), gate, clip, q, fp, shape, color, mode);
         }
     }
     fn stroke_active(&mut self, a: Point, b: Point, mode: PaintMode, color: Rgba8) {
@@ -2250,9 +2250,10 @@ impl Session {
         let gate = self.pattern_gate(self.tool);
         let mirror = self.mirror(); // one segment per reflection, endpoints paired (ADR 0026)
         let Some(buf) = self.paint_buf_mut() else { return }; // frozen target [fuzz FZ-1]
+        let fp = tool::Footprint::of(size);
         for r in mirror.reflections() {
             let (qa, qb) = (mirror.apply(r, a), mirror.apply(r, b));
-            tool::stroke_segment(buf, sel.as_deref(), gate, clip, qa, qb, size, shape, color, mode);
+            tool::stroke_segment(buf, sel.as_deref(), gate, clip, qa, qb, fp.reflected(r), shape, color, mode);
         }
     }
 

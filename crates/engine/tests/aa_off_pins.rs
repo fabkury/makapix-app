@@ -35,7 +35,7 @@ const PINS: &[(&str, &str, &str)] = &[
     (
         "brush_square4",
         "NewDocument(24,24)\nSelectTool(Brush); SetPrimaryColor(#FF0000FF); SetBrushShape(Square); SetBrushSize(4)\nStroke([(4,4),(16,10)])",
-        "43723539bc9f233fdec5cebfe1fe209f",
+        "60eb992b6449592db85eec71d0e2d74d",
     ),
     (
         "brush_semi_alpha_self_cross",

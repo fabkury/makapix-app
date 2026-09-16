@@ -28,10 +28,12 @@ import 'dart:typed_data';
 /// semantics of ADRs 0010-0014: structural verbs preserve the active target by identity, so a
 /// journal recorded under epoch 1 can replay to a different result than the session that produced
 /// it. Epoch 3 (ADR 0024): a Bucket tap arms the Repeat record, so a `Repeat()` that follows a
-/// fill re-fills rather than re-running the earlier adjustment or transform. Nothing branches on
-/// the epoch — it exists so the artifact says which semantics made it, and so the next fork has a
-/// boundary to point at.
-const int kJournalEpoch = 3;
+/// fill re-fills rather than re-running the earlier adjustment or transform. Epoch 4 (ADR 0036):
+/// brush stamps are exactly `size` wide — even sizes used to collapse onto the odd size below, so
+/// a pre-fix journal's even-size Pencil/Brush/Eraser/Dodge/Burn strokes replay one pixel
+/// narrower than they were recorded. Nothing branches on the epoch — it exists so the artifact
+/// says which semantics made it, and so the next fork has a boundary to point at.
+const int kJournalEpoch = 4;
 
 /// The version header — always the Journal's first line. This is what new Journals are WRITTEN
 /// with; [journalEpochOf] decides what is READ, and it accepts every past epoch.
