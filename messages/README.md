@@ -20,4 +20,5 @@ messages/
 - For shared matters (API contract, protocol, metrics semantics) the server
   team has the final say; each team decides its own non-shared matters.
 
-Older threads (before 2026-09-09) were delivered as `docs/club-server-cr-*.md`.
+Older threads (before 2026-09-09) were delivered as `docs/club-server-cr-*.md`; those files were
+retired to git history on 2026-09-16 once their threads had closed.

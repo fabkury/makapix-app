@@ -1,7 +1,7 @@
 # Keyboard Commands route through the shell control layer, with ids as a persistent contract
 
 **Decided 2026-08-16 during the keyboard-shortcuts grilling; not yet implemented** (design:
-`docs/keyboard-shortcuts/DESIGN.md`; survey: `docs/keyboard-shortcuts/ANALYSIS.md`; vocabulary —
+`docs/keyboard-shortcuts/DESIGN.md`; survey: `docs/keyboard-shortcuts/ANALYSIS.md`, retired to git history 2026-09-16; vocabulary —
 Command, Chord, Binding, Hold binding — in `CONTEXT.md`).
 
 Physical-keyboard support enters the Editor as a **command registry in the Flutter shell**: a

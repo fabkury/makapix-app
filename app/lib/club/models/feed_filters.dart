@@ -1,5 +1,6 @@
-/// Feed filter/sort state — the website FilterButton's model (docs/club-gap
-/// A4). Applies to the Recent feed, hashtag feeds, and profile galleries; all
+/// Feed filter/sort state — the website FilterButton's model (docs/club-gap A4;
+/// inventory retired to git history 2026-09-16). Applies to the Recent feed,
+/// hashtag feeds, and profile galleries; all
 /// of it maps onto `GET /post` query parameters. Session-only by design (the
 /// website keeps it in the URL).
 library;

@@ -1,6 +1,6 @@
 # Editor semantics fixes fork pre-existing Replays; the Journal marks the epoch but nothing branches on it
 
-**Decided 2026-08-25 during the UI specification-gap grilling** (survey: `docs/ui-gaps/REPORT.md`;
+**Decided 2026-08-25 during the UI specification-gap grilling** (survey: `docs/ui-gaps/REPORT.md`, retired to git history 2026-09-16;
 Replay design: ADR 0003, ADR 0004; format: `app/lib/editor/replay/journal_format.dart`).
 
 A Journal records DSL verbatim and a Replay re-executes it through *today's* engine. So changing

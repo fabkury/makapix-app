@@ -3,7 +3,7 @@
 **Decided 2026-09-14 in a design interview, implemented 2026-09-15** (every choice is the
 user's; the design, its edge-case policy, the interview's answers, and the as-built deviations
 live in `docs/layers-page/DESIGN.md`; the proposal set and its rationale in
-`docs/layers-page/BRAINSTORM.md`). Engine: `crates/engine/src/session/layers.rs` (`LayerSet` +
+`docs/layers-page/BRAINSTORM.md`, retired to git history 2026-09-16). Engine: `crates/engine/src/session/layers.rs` (`LayerSet` +
 the eighteen verbs; the index-set grammar shared with `FrameSet`), a layer `id` in
 `frame_detail`, `examples/layers.txt`. Shell: `app/lib/editor/layers/` + `editor_page.layers.dart`.
 Sibling of ADR 0031, whose model it copies wherever a layer set behaves like a frame set.

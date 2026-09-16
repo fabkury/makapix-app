@@ -31,7 +31,7 @@ Counter-line detail (per 5 s window):
 ## Reading
 
 - An **idle selection makes the editor burn 2.3× the power** of the identical idle editor
-  without one (+1.18 W). This is ASSESSMENT.md §4.1 confirmed on hardware, at the 120 Hz
+  without one (+1.18 W). This is ASSESSMENT.md §4.1 (doc retired to git history 2026-09-16) confirmed on hardware, at the 120 Hz
   worst case; F1+F2's target is to bring scenario B within ~10 % of A.
 - **2 fps playback costs ~0.94 W** for content changing twice a second — §4.2 confirmed;
   the cost is frame production + per-vsync FFI, not decode (which is already gated).

@@ -45,7 +45,7 @@
              PowerVR-GPU MediaTek devices): Impeller's Vulkan backend aborts/SIGSEGVs the raster
              thread when the driver's compression pool exhausts during normal art browsing
              (VK_ERROR_COMPRESSION_EXHAUSTED_EXT -> failed pass texture -> any saveLayer dies;
-             confirmed live 2026-07-23, see docs/reacted-tab-investigation/REPORT.md and upstream
+             confirmed live 2026-07-23, see docs/reacted-tab-investigation/REPORT.md (retired to git history 2026-09-16) and upstream
              flutter/flutter#187564). Disabling Impeller falls back to Skia/GLES, which has no
              fixed-rate compression, so the whole family is unreachable. (The finer-grained
              ImpellerBackend=opengles knob is compiled out of release engines — flutter_main.cc

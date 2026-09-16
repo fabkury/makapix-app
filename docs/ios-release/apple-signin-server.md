@@ -1,10 +1,10 @@
 # Sign in with Apple — server contract (for the makapix.club server repo)
 
-**Status:** app-side implemented + gated off (2026-07-08) · server leg **not yet built**
+**Status:** **live end-to-end since 2026-07-09** (server leg built; app flag `kAppleSignInEnabled = true`, commit `42753c89`). Kept as the wire-contract record; status line refreshed 2026-09-16.
 **Owner:** app = Fabrício + Claude · server = server repo
 **Why:** Apple App Store guideline **4.8** requires any app offering a third-party/social login
-(our **GitHub OAuth**) to *also* offer **Sign in with Apple**. The app already ships the full
-client side; it stays dormant behind `ClubConfig.kAppleSignInEnabled` until this endpoint is live.
+(our **GitHub OAuth**) to *also* offer **Sign in with Apple**. The app ships the full client
+side behind `ClubConfig.kAppleSignInEnabled`, enabled since 2026-07-09.
 
 This document is the single source of truth for what the app sends and what it expects back. It
 deliberately mirrors the existing OAuth-style `/auth/token` grant model so nothing new is invented

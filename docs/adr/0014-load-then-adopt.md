@@ -1,6 +1,6 @@
 # A drawing's identity is adopted only after its load succeeds, and one writer owns a drawing folder
 
-**Decided 2026-08-25 during the UI specification-gap grilling** (survey: `docs/ui-gaps/REPORT.md`,
+**Decided 2026-08-25 during the UI specification-gap grilling** (survey: `docs/ui-gaps/REPORT.md`, retired to git history 2026-09-16,
 root cause 5, gaps G-37…G-42).
 
 Identity was adopted *before* the incoming load was known to have succeeded, and teardown was never

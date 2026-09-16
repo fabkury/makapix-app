@@ -1,6 +1,6 @@
 # A gesture is atomic: competing input ends it before it applies
 
-**Decided 2026-08-25 during the UI specification-gap grilling** (survey: `docs/ui-gaps/REPORT.md`,
+**Decided 2026-08-25 during the UI specification-gap grilling** (survey: `docs/ui-gaps/REPORT.md`, retired to git history 2026-09-16,
 root cause 1, gaps G-01…G-12; vocabulary — Gesture — in `CONTEXT.md`). Closes the worst findings
 in the sweep, including the one where half a Pencil stroke becomes permanently un-undoable.
 

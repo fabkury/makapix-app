@@ -12,8 +12,9 @@ import 'shell/app_shell.dart';
 /// thread once the driver's fixed-rate-compression pool is exhausted by normal
 /// art browsing (VK_ERROR_COMPRESSION_EXHAUSTED_EXT → FML_CHECK(back_texture)).
 /// Upstream fix: flutter/flutter#187586, not yet in a stable release. Full
-/// investigation: docs/reacted-tab-investigation/REPORT.md. Revisit once the
-/// pinned Flutter carries the fix — until then, don't reintroduce stretch and
+/// investigation: docs/reacted-tab-investigation/REPORT.md (retired to git
+/// history 2026-09-16). Revisit once the pinned Flutter carries the fix —
+/// until then, don't reintroduce stretch and
 /// don't add other backdrop consumers (BackdropFilter, advanced blend modes).
 class GlowOverscrollBehavior extends MaterialScrollBehavior {
   const GlowOverscrollBehavior();

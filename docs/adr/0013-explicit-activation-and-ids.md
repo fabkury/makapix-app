@@ -1,6 +1,6 @@
 # The active target moves only by explicit activation, and the shell addresses frames and layers by id
 
-**Decided 2026-08-25 during the UI specification-gap grilling** (survey: `docs/ui-gaps/REPORT.md`,
+**Decided 2026-08-25 during the UI specification-gap grilling** (survey: `docs/ui-gaps/REPORT.md`, retired to git history 2026-09-16,
 root cause 4, gaps G-30…G-36; vocabulary — Active target, Move group — in `CONTEXT.md`).
 
 Two shipped features pulled in opposite directions. The stay-open sheets and the layer sheet's live

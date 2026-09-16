@@ -2,7 +2,7 @@
 
 **Decided 2026-08-15 during the non-accumulating-strokes grilling; implemented the same day**
 (engine `crate::coat` + compositor + both stroke paths + Spacing removal; the on-device Dots/Mist
-feel pass gates the release). The full survey is `docs/nonaccumulating-strokes/ANALYSIS.md`.
+feel pass gates the release). The full survey was `docs/nonaccumulating-strokes/ANALYSIS.md` (retired to git history 2026-09-16).
 
 The stamp-accumulative stroke engine (each stamp composites `Over` on top of earlier stamps in
 the same stroke, metered by the Spacing setting) is replaced by **single-coat strokes**: per

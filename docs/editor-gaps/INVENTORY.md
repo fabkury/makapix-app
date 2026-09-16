@@ -288,7 +288,7 @@ The notes below are the original brainstorm.
 - **Shell only.** Two-finger *tap* (down/up within ~200 ms, < 8 px travel, no pinch delta) = Undo;
   three-finger tap = Redo; hold = repeat at ~6/s after 400 ms. Must respect ADR 0010 gesture
   atomicity: a two-finger tap arriving *during* a one-finger stroke either cancels the stroke or is
-  ignored — never splits it (see `docs/ui-gaps/REPORT.md` G-01..G-12). Today a second finger begins a
+  ignored — never splits it (see `docs/ui-gaps/REPORT.md` G-01..G-12, retired to git history 2026-09-16; decisions in ADR 0010). Today a second finger begins a
   pinch immediately; the fix is a short pinch-arm delay that distinguishes tap from pinch.
 - Long-press eyedropper: one-finger press without movement for ~500 ms enters a transient pick
   (journaled as the same `SelectTool` round-trip the desktop right-click uses), with an adjustable
@@ -487,9 +487,9 @@ needs a settings home.
 | Item | Decision | Where |
 |---|---|---|
 | Aseprite `.aseprite` layered import | Designed 2026-08-12, not implemented, do not start unprompted | `docs/aseprite-import/DESIGN.md`, ADR 0005 |
-| HDR | Analyzed, not implemented, do not start unprompted | `docs/hdr/ANALYSIS.md` |
+| HDR | Analyzed 2026-08-10, not implemented, do not start unprompted | `docs/hdr/ANALYSIS.md` (retired to git history 2026-09-16) |
 | Localization | Deferred by decision | `docs/i18n/DESIGN.md` |
-| Eraser "keep RGB" + un-erase | Analyzed, not committed | `docs/eraser-unerase/` |
+| Eraser "keep RGB" + un-erase | Analyzed 2026-07-28, not committed | `docs/eraser-unerase/` (retired to git history 2026-09-16) |
 | Keyboard rebinding UI (6.B) | Open, do not implement unprompted | `docs/keyboard-shortcuts/DESIGN.md` |
 | Browser / WebAssembly build | Analyzed only | `docs/web-build/ANALYSIS.md` |
 | Battery phases 3–4 + Gate B | Parked | `docs/battery/RECOMMENDATIONS.md` |

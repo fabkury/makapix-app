@@ -1,4 +1,4 @@
-// Website-parity batch (docs/club-gap/INVENTORY.md A1/A2/A3): pure logic for
+// Website-parity batch (docs/club-gap/INVENTORY.md A1/A2/A3, retired to git history 2026-09-16): pure logic for
 // single-post management, per-post stats, and the follow lists.
 import 'package:flutter/material.dart' show Color;
 import 'package:flutter_test/flutter_test.dart';

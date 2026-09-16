@@ -1,6 +1,6 @@
 # Every uncommitted Draft dies at any context change — silently and irrecoverably
 
-**Decided 2026-08-25 during the UI specification-gap grilling** (survey: `docs/ui-gaps/REPORT.md`,
+**Decided 2026-08-25 during the UI specification-gap grilling** (survey: `docs/ui-gaps/REPORT.md`, retired to git history 2026-09-16,
 root cause 2, gaps G-13…G-19; vocabulary — Draft — in `CONTEXT.md`).
 
 Before this decision Drafts cancelled on tool switch **only**. Frame switches, layer switches and

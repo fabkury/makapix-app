@@ -1,6 +1,6 @@
 # Playback is a mode; the Playhead is a pure preview that leaves the editing position alone
 
-**Decided 2026-08-25 during the UI specification-gap grilling** (survey: `docs/ui-gaps/REPORT.md`,
+**Decided 2026-08-25 during the UI specification-gap grilling** (survey: `docs/ui-gaps/REPORT.md`, retired to git history 2026-09-16,
 root cause 3, gaps G-20…G-29; vocabulary — Playhead — in `CONTEXT.md`).
 
 The engine has always separated the two: `Session::current_play_frame()` advances with the clock

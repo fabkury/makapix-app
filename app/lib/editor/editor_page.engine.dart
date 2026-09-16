@@ -397,7 +397,7 @@ extension _EditorEngine on _EditorPageState {
     final err = engine.run(dsl);
     if (err != null) debugPrint('DSL error: $err  <- $dsl');
     // Playback verbs pass activity:false — AdvanceClock at vsync rate must not re-arm the
-    // autosave 60-120×/s (docs/memory-audit/REPORT.md hotspot). Every document mutation
+    // autosave 60-120×/s (docs/memory-audit/REPORT.md hotspot; doc retired to git history 2026-09-16). Every document mutation
     // still funnels through here with the default (gates the autosave).
     if (activity) _autosave?.markActivity();
   }

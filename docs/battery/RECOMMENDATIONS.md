@@ -56,7 +56,7 @@ re-runs).
 
 **Date:** 2026-08-12 · **Status of the text below:** the plan as originally approved,
 kept verbatim — the ledger above records what actually happened.
-**Companion:** `ASSESSMENT.md` (same folder) holds all evidence, file:line references, and
+**Companion:** `ASSESSMENT.md` (retired to git history 2026-09-16) held all evidence, file:line references, and
 magnitude reasoning. This document is only the decisions: what to do, what not to do, and in
 what order. Item numbers (F1-F20, R1-R6, §4.x) refer to the assessment.
 

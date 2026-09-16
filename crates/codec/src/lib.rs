@@ -50,7 +50,7 @@ const MAX_DECODE_FRAMES: usize = makapix_engine::document::MAX_FRAMES;
 /// and the frame-count cap are independent, so their product is unbounded: a compositing decoder
 /// (GIF/APNG both composite each sub-frame onto the full logical screen) turns a few-KB file of N
 /// tiny sub-frames on a huge canvas into N × w × h × 4 bytes of accumulation. A 24 KB GIF measured
-/// 1.7→6.5 GB in 7 s on-device before this cap (see `docs/memory-audit/REPORT.md` addendum, P-3).
+/// 1.7→6.5 GB in 7 s on-device before this cap (see `docs/memory-audit/REPORT.md` addendum, P-3; doc retired to git history 2026-09-16).
 /// 384 MiB clears the largest legitimate import (1024 × 256² = 256 MiB) with headroom while killing
 /// a bomb within a handful of frames.
 const MAX_DECODE_TOTAL_BYTES: usize = 384 * 1024 * 1024;

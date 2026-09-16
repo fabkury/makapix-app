@@ -2,7 +2,7 @@
 
 **Decided 2026-09-14** in a design interview (every decision below is the user's; assumptions are
 marked). **Implemented 2026-09-15** (see "As built"). Doctrine: ADR 0033. Brainstorm and rationale
-for the proposal set: `BRAINSTORM.md` in this folder. Companion and model: the Frames page
+for the proposal set: `BRAINSTORM.md` (retired to git history 2026-09-16). Companion and model: the Frames page
 (`docs/frames-page/DESIGN.md`, ADR 0031) — wherever a layer set behaves like a frame set, this page
 copies that decision rather than restating it.
 
@@ -289,7 +289,7 @@ window of one layer, no composite) and the per-layer pixel hash is memoized sinc
   **per-set trim / palettize / outline**, **merge preview**, **badge fast-taps**, an **"also on
   all frames" switch**, a **layer × frame matrix**, **groups / linked layers / alpha lock /
   clipping / solo**, a **persistent selection**, a **resizable in-editor panel** — deferred, as
-  listed in `BRAINSTORM.md`.
+  listed in `BRAINSTORM.md` (git history).
 
 ## Effort (rough)
 

@@ -53,7 +53,7 @@ class Comment {
   final bool deleted;
 
   /// Moderator take-down (`deleted_by_mod`, live on prod since 2026-07-13,
-  /// server PR #234 — docs/ugc-safety msg 0008). Mod-deleted tombstones no
+  /// server PR #234 — server repo docs/ugc-safety msg 0008). Mod-deleted tombstones no
   /// longer set `deleted_by_owner`, so [deleted] must OR both flags.
   final bool deletedByMod;
 

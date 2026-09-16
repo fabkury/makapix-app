@@ -8,7 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/feed_filters.dart';
 import '../../state/feed_providers.dart';
 
-/// Overlays a filterable feed with the filter/sort button (docs/club-gap A4 —
+/// Overlays a filterable feed with the filter/sort button (club-gap inventory A4, now in git history —
 /// the website FilterButton's equivalent). [filterKey] is the feed identity
 /// used by [feedFiltersProvider] (`'recent'` · `'tag:<tag>'` ·
 /// `'owner:<user_key>'`). A badge dot marks non-default filters.

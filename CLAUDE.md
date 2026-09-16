@@ -26,7 +26,7 @@ describe the system as built) · `docs/adr/` (the ADR series — 0007 single-coa
 define *current* engine behavior) · `docs/memlab/REPORT.md` (measured memory limits — the numbers to design
 against) · `docs/play-release.md` + `docs/ios-release/PLAN.md` (store pipelines) · `messages/` (server ↔ app
 correspondence, one sub-folder per thread, numbered replies — convention in `messages/README.md`; threads
-before 2026-09-09 are `docs/club-server-cr-*.md`). (The original
+before 2026-09-09 were `docs/club-server-cr-*.md`, retired to git history 2026-09-16). (The original
 2026-06 build plan, `PLAN.md`, was retired 2026-08-16 — git history holds it; its toolchain-setup
 content lives on in `docs/BUILDING.md`.)
 

@@ -13,7 +13,7 @@ import '../state/post_providers.dart';
 /// Owner-only metadata editor for an existing post (`PATCH /post/{id}`):
 /// title, description, and the artist-controlled hashtags. Moderator-owned
 /// tags are shown read-only and never submitted — the server re-merges them
-/// regardless of what the artist sends (docs/mod-hashtags D10).
+/// regardless of what the artist sends (server repo docs/mod-hashtags D10).
 class EditPostDetailsPage extends ConsumerStatefulWidget {
   final Post post;
   const EditPostDetailsPage({super.key, required this.post});

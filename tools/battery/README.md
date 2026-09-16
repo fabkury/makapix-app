@@ -1,6 +1,6 @@
 # Battery measurement harness (Phase 0)
 
-Companion to `docs/battery/` (ASSESSMENT.md + RECOMMENDATIONS.md). One session = one
+Companion to `docs/battery/` (RECOMMENDATIONS.md + BASELINE.md; ASSESSMENT.md retired to git history 2026-09-16). One session = one
 scenario, ~10 minutes, on the Pixel, **unplugged**, over Wi-Fi adb. The session script
 snapshots the ODPM power rails (per-rail energy: CPU, GPU, display, modem) and the app's
 `[battery]` debug counter lines.
