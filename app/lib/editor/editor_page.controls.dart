@@ -648,9 +648,16 @@ extension _EditorControls on _EditorPageState {
       }
     }
     if (_tool == 'CopyPaste') {
+      // Copy source: Layer = the active layer's raw stored pixels (default); Frame = the
+      // composited frame, what the canvas shows. Cut is a layer edit, so it is hidden in Frame
+      // mode rather than pretending to cut a composite. Session-only, like the Eyedropper's.
+      children.add(_toggle(const ['Layer', 'Frame'], _copyLayer ? 0 : 1, (i) {
+        setState(() => _copyLayer = i == 0);
+        _send('SetCopySource(${_copyLayer ? 'Layer' : 'Frame'})');
+      }));
       children.add(_clipboardSwatch());
       children.add(_miniBtn('Copy', () => _act('Copy()')));
-      children.add(_miniBtn('Cut', () => _act('Cut()')));
+      if (_copyLayer) children.add(_miniBtn('Cut', () => _act('Cut()')));
       children.add(_miniBtn('Paste', () => _act('PasteDraft()')));
       children.add(_miniBtn('Clear', () => _act('ClearSelection()')));
       children.add(_slowChip()); // gears the paste-draft drag too (ADR 0020)

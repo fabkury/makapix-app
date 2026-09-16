@@ -146,7 +146,7 @@ const toolTips = <String, String>{
   'Burn': 'Drag to darken pixels. Set intensity.',
   'Eyedropper': 'Tap a pixel to pick its color as primary. Drag to keep picking as you move.',
   'Move': 'Drag to move the selected pixels, or the whole layer if nothing is selected. Slow gears the drag for exact placement.',
-  'CopyPaste': 'Clipboard for the selection: Copy, Cut, Paste, Clear. Paste drops a movable draft you position.',
+  'CopyPaste': 'Clipboard for the selection: Copy, Cut, Paste, Clear. Copy from the layer or the composited frame. Paste drops a movable draft you position.',
   'SelectShape': 'Rect / Oval: drag to draft a selection and adjust the reticles. Lasso: draw freely around pixels.',
   'SelectCircle': 'Drag from the center to select a circle.',
   'SelectPoly': 'Trace an outline to select an area.',

@@ -132,6 +132,7 @@ pub enum Action {
     SetScaleCleanEdgeWidth(i32), // thousandths, 0..=2000
     SetEyedropSource(bool), // true = Layer (active layer's raw pixel), false = Frame (composited)
     SetSelectColorSource(bool), // true = Layer (active layer's raw pixels), false = Frame (composited)
+    SetCopySource(bool), // true = Layer (active layer's raw pixels, the default), false = Frame (composited)
     PointerDown(i32, i32),
     PointerMove(i32, i32),
     PointerUp,
@@ -377,6 +378,7 @@ impl Session {
             SetOverscanView(b) => self.settings.overscan_view = b,
             SetEyedropSource(b) => self.settings.eyedrop_layer = b,
             SetSelectColorSource(b) => self.settings.select_color_layer = b,
+            SetCopySource(b) => self.settings.copy_layer = b,
             SetCleanEdge(b) => self.set_clean_edge(b),
             SetCleanEdgeWidth(w) => self.set_clean_edge_width(w),
             SetScaleCleanEdge(b) => self.set_scale_clean_edge(b),
@@ -900,6 +902,11 @@ fn parse_line(line: &str) -> Result<Action, String> {
             "Frame" => false,
             "Layer" => true,
             o => return Err(format!("bad select color source '{}'", o)),
+        }),
+        "SetCopySource" => SetCopySource(match args.first().copied().unwrap_or("") {
+            "Frame" => false,
+            "Layer" => true,
+            o => return Err(format!("bad copy source '{}'", o)),
         }),
         "PointerDown" => PointerDown(i32a(0)?, i32a(1)?),
         "PointerMove" => PointerMove(i32a(0)?, i32a(1)?),

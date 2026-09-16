@@ -765,6 +765,11 @@ pub struct ToolSettings {
     /// pixels (layer opacity/visibility ignored) instead of the composited frame (the default).
     /// Independent from `eyedrop_layer`.
     pub select_color_layer: bool,
+    /// Copy source: when true (the default), `Copy`/`Cut` capture the active layer's raw stored
+    /// pixels; when false, they capture the composited frame — the visible layers flattened with
+    /// their opacity and blend modes, what the canvas shows — so a paste stamps the artwork as
+    /// seen, not one layer of it. The Cut erase always touches only the active layer.
+    pub copy_layer: bool,
 }
 impl Default for ToolSettings {
     fn default() -> Self {
@@ -800,6 +805,7 @@ impl Default for ToolSettings {
             scale_clean_edge_width: 1.0,
             eyedrop_layer: false,
             select_color_layer: false,
+            copy_layer: true,
         }
     }
 }

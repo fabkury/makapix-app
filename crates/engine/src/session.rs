@@ -2731,10 +2731,22 @@ impl Session {
         }
     }
 
+    /// Copy the selection to the clipboard from the source the `copy_layer` setting names: the
+    /// active layer's raw stored pixels (Layer, the default) or the composited frame (Frame — the
+    /// visible layers flattened over the whole storage area, so overscan-parked pixels copy like
+    /// on-canvas ones and coordinates line up with the mask; the Bucket "All layers" / Select-by-
+    /// color reference pattern). No-op without a selection.
     pub fn copy(&mut self) {
         if let Some(sel) = &self.doc.selection {
             if let Some(bb) = sel.bounds() {
-                let buf = &self.doc.active_frame().active_layer().pixels;
+                let frame = self.doc.active_frame();
+                let composite;
+                let buf = if self.settings.copy_layer {
+                    &frame.active_layer().pixels
+                } else {
+                    composite = render::composite_frame(frame, self.doc.storage_rect());
+                    &composite
+                };
                 let mut clip = RgbaBuffer::new(bb.w, bb.h);
                 for j in 0..bb.h as i32 {
                     for i in 0..bb.w as i32 {
@@ -5070,6 +5082,48 @@ mod tests {
         s.run_script("SetSelectColorSource(Frame)").unwrap();
         s.tap(2, 2);
         assert!(SelCanvas(&s).get(2, 2) && !SelCanvas(&s).get(3, 3));
+    }
+
+    #[test]
+    fn copy_source_frame_vs_layer() {
+        let mut s = Session::new(8, 8);
+        s.settings.primary = Rgba8::rgb(200, 0, 0); // bottom layer: red at (2,2)
+        s.tap(2, 2);
+        s.run_script("AddLayer()").unwrap(); // top layer becomes active
+        s.settings.primary = Rgba8::rgb(0, 200, 0); // top layer: green at (4,4)
+        s.tap(4, 4);
+        // A layer pixel in canvas coordinates (the buffers are storage-indexed).
+        let layer_px = |s: &Session, li: usize, x: i32, y: i32| {
+            let o = s.doc.origin();
+            s.doc.active_frame().layers[li].pixels.get(x + o.x, y + o.y)
+        };
+        s.run_script("SelectAll()").unwrap();
+        // Layer (the default): only the active top layer's pixels reach the clipboard.
+        s.run_script("Copy()").unwrap();
+        let (clip, _) = s.clipboard.clone().unwrap();
+        assert_eq!(clip.get(4, 4), Rgba8::rgb(0, 200, 0));
+        assert_eq!(clip.get(2, 2), Rgba8::TRANSPARENT, "layer source: the bottom layer is not copied");
+        // Frame (via the DSL to cover the parse path): the composite carries both layers.
+        s.run_script("SetCopySource(Frame); Copy()").unwrap();
+        let (clip, _) = s.clipboard.clone().unwrap();
+        assert_eq!(clip.get(4, 4), Rgba8::rgb(0, 200, 0));
+        assert_eq!(clip.get(2, 2), Rgba8::rgb(200, 0, 0), "frame source: the composite is copied");
+        // A hidden layer is not part of the composite; the mask still clips the copy.
+        s.run_script("SetLayerVisible(0, false); SelectNone(); SelectTool(SelectRect); Stroke([(0,0),(2,2)]); Copy()")
+            .unwrap();
+        let (clip, _) = s.clipboard.clone().unwrap();
+        assert_eq!(clip.get(2, 2), Rgba8::TRANSPARENT, "hidden layer: not in the composite");
+        assert_eq!(clip.width(), 3);
+        // Cut in Frame mode: the clipboard is the composite, the erase touches only the active layer.
+        s.run_script("SetLayerVisible(0, true); SelectAll(); Cut()").unwrap();
+        let (clip, _) = s.clipboard.clone().unwrap();
+        assert_eq!(clip.get(2, 2), Rgba8::rgb(200, 0, 0));
+        assert_eq!(layer_px(&s, 1, 4, 4), Rgba8::TRANSPARENT, "active layer erased");
+        assert_eq!(layer_px(&s, 0, 2, 2), Rgba8::rgb(200, 0, 0), "bottom layer untouched");
+        // and back to Layer: the (now empty) active layer copies transparent.
+        s.run_script("SetCopySource(Layer); Copy()").unwrap();
+        let (clip, _) = s.clipboard.clone().unwrap();
+        assert_eq!(clip.get(2, 2), Rgba8::TRANSPARENT);
     }
 
     #[test]

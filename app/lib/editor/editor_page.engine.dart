@@ -1019,6 +1019,7 @@ extension _EditorEngine on _EditorPageState {
     _send(_symDsl);
     _send('SetEyedropSource(${_eyedropLayer ? 'Layer' : 'Frame'})');
     _send('SetSelectColorSource(${_selColorLayer ? 'Layer' : 'Frame'})');
+    _send('SetCopySource(${_copyLayer ? 'Layer' : 'Frame'})');
     _send('SetCleanEdge($_cleanEdge); SetCleanEdgeWidth(${(_cleanEdgeWidth * 1000).round()})');
     _send('SetScaleCleanEdge($_resizeCleanEdge); SetScaleCleanEdgeWidth(${(_resizeCleanEdgeWidth * 1000).round()})');
   }
