@@ -139,6 +139,8 @@ const _precisionTools = {'Pencil', 'Brush', 'Airbrush', 'Eraser', 'Bucket', 'Dod
 // Tools whose mark is a stamp/spray of `brush_size` — the row-1 Size slider's audience and the
 // [ / ] keyboard Commands' enablement (the figure tools use line_width + fill instead).
 const _kBrushSizeTools = {'Pencil', 'Brush', 'Airbrush', 'Eraser', 'Dodge', 'Burn'};
+// Per-tool starting sizes where 1px is the wrong default; every other size tool starts at 1.
+const _kDefaultBrushSize = {'Airbrush': 8, 'Eraser': 6};
 // The tools a pattern gates (ADR 0025). The Gradient has its own Bayer dither instead and never
 // reads the pattern; every other tool paints ungated.
 const _kPatternTools = {'Pencil', 'Brush', 'Eraser', 'Bucket'};
@@ -245,8 +247,8 @@ class _EditorPageState extends ConsumerState<EditorPage>
   final Map<String, int> _sizeByTool = {};
   final Map<String, int> _intensityByTool = {};
   // Default size when the user hasn't chosen one: 8px for the Airbrush (a 1px airbrush is useless),
-  // 1px for everything else.
-  int get _brushSize => _sizeByTool[_tool] ?? (_tool == 'Airbrush' ? 8 : 1);
+  // 6px for the Eraser (2026-09-16: a 1px eraser is a slow way to clear anything), 1px otherwise.
+  int get _brushSize => _sizeByTool[_tool] ?? _kDefaultBrushSize[_tool] ?? 1;
   set _brushSize(int v) => _sizeByTool[_tool] = v;
   bool _round = true;
   // The shared AA (anti-alias) flag (ADR 0008): one engine setting for round Brush, the shapes
