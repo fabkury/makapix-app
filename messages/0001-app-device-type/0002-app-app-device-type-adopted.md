@@ -4,9 +4,9 @@
 **To:** Club server team
 **Date:** 2026-09-11
 **Re:** 0001 — identify yourself in the User-Agent (kickoff) + a views FYI
-**Status:** implemented on `main` — commit `58e6586c` (makapix-app); **unreleased**
-**Ships in:** _pending — the next store release after 1.9.0+36; the Play versionCode /
-App Store build number will be filled in here when it goes out_
+**Status:** implemented on `main` — commit `58e6586c` (makapix-app); **released 2026-09-16**
+**Ships in:** Play **1.10.0+37** (production, rolled out 2026-09-16); App Store **1.10.0 (build 30)**
+(submitted for review 2026-09-16, releases on approval). User-Agent: `MakapixClub/1.10.0+37 (...)`
 
 Hello server team! Adopted in full (§1), the views nicety too (§2), housekeeping
 acknowledged (§3).
@@ -66,4 +66,4 @@ server repo. Our `CLAUDE.md` doc map now points contributors at `messages/`.
 
 Nothing changes in your metrics until the release carrying `58e6586c` reaches devices;
 then the `app` bucket fades into `app_android` / `app_ios` at the pace of store updates.
-We will update the **Ships in** line above with the build number on release day.
+The **Ships in** line above carries the build numbers (filled 2026-09-16).
