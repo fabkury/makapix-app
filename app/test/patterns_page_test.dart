@@ -183,20 +183,25 @@ void main() {
     expect(find.text('Bayer 2×2'), findsOneWidget);
     expect(find.text('Bayer 4×4'), findsOneWidget);
     expect(find.text('Bayer 8×8'), findsOneWidget);
-    expect(t.widget<ListTile>(find.widgetWithText(ListTile, 'Bayer 4×4')).selected, isTrue);
-    expect(t.widget<ListTile>(find.widgetWithText(ListTile, 'Bayer 2×2')).selected, isFalse);
+    expect(t.widget<DitherStripTile>(find.widgetWithText(DitherStripTile, 'Bayer 4×4')).selected, isTrue);
+    expect(t.widget<DitherStripTile>(find.widgetWithText(DitherStripTile, 'Bayer 2×2')).selected, isFalse);
     expect(find.byType(PatternTileBox), findsNothing, reason: 'the mask catalog is not offered');
     expect(find.text('Horizontal · 2 px'), findsNothing);
-    final box = t.widget<DitherTileBox>(find.byType(DitherTileBox).first);
-    expect(box.onColor, Colors.red);
-    expect(box.offColor, Colors.blue);
-    expect(box.kind, DitherKind.bayer2, reason: 'page order = DitherKind.all');
+    final strips = t.widgetList<DitherStripTile>(find.byType(DitherStripTile)).toList();
+    expect(strips.first.kind, DitherKind.off, reason: 'Off leads, as a strip too');
+    expect(strips[1].kind, DitherKind.bayer2, reason: 'page order = DitherKind.all');
+    expect(strips[1].onColor, Colors.red);
+    expect(strips[1].offColor, Colors.blue);
+    // Each strip is a full-width ramp through the ramp painter, with the hint under it.
+    final paint = t.widget<CustomPaint>(find.descendant(of: find.byType(DitherStripTile).first, matching: find.byType(CustomPaint)));
+    expect(paint.painter, isA<DitherRampPainter>());
+    expect(find.text('· ${DitherKind.bayer2.hint}'), findsOneWidget, reason: 'the hint sits under the strip');
     // Every family has a section, in order, with every one of its kinds (the list is lazy: scroll).
     for (final family in DitherKind.families) {
       var first = true;
       for (final k in DitherKind.inFamily(family)) {
-        await t.dragUntilVisible(find.widgetWithText(ListTile, k.name), find.byType(ListView), const Offset(0, -120));
-        expect(find.widgetWithText(ListTile, k.name), findsOneWidget);
+        await t.dragUntilVisible(find.widgetWithText(DitherStripTile, k.name), find.byType(ListView), const Offset(0, -120));
+        expect(find.widgetWithText(DitherStripTile, k.name), findsOneWidget);
         // The section header sits right above the family's first kind — built, possibly just
         // scrolled out of view.
         if (first) expect(find.text(family, skipOffstage: false), findsOneWidget, reason: family);
@@ -206,13 +211,13 @@ void main() {
     // Back to the top (the lazy list has dropped the early rows), then pick Blue noise.
     await t.drag(find.byType(ListView), const Offset(0, 4000));
     await t.pumpAndSettle();
-    await t.dragUntilVisible(find.widgetWithText(ListTile, 'Blue noise'), find.byType(ListView), const Offset(0, -120));
+    await t.dragUntilVisible(find.widgetWithText(DitherStripTile, 'Blue noise'), find.byType(ListView), const Offset(0, -120));
     expect(find.text('Noise', skipOffstage: false), findsOneWidget, reason: 'blue noise lists under Noise');
     // dragUntilVisible stops once the row is BUILT (it may still hang below the 600 px test
     // viewport, near the end of the list): bring it fully in before tapping.
-    await t.ensureVisible(find.widgetWithText(ListTile, 'Blue noise'));
+    await t.ensureVisible(find.widgetWithText(DitherStripTile, 'Blue noise'));
     await t.pumpAndSettle();
-    await t.tap(find.widgetWithText(ListTile, 'Blue noise'));
+    await t.tap(find.widgetWithText(DitherStripTile, 'Blue noise'));
     await t.pumpAndSettle();
     expect(await result(), DitherKind.blueNoise);
   });

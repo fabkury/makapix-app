@@ -2,7 +2,8 @@
 // of the engine's `DitherKind`. Each kind carries its DSL token (what `SetGradientDither(...)`
 // puts on the wire and what the preference stores), a display name, the family that groups it on
 // the Dither page, its number of density steps, and a threshold function used ONLY for previews:
-// the row-1 swatch and the page render each family at its 50 % density. The engine evaluates
+// the row-1 swatch renders the family at its 50 % density, the page as a full OFF→ON ramp
+// (every density step, left to right — [DitherRampPainter], 2026-09-16). The engine evaluates
 // its own copy of the same tables and formulas when it fills — `dither_tables.g.dart` and
 // `crates/engine/src/tool/dither_tables.g.rs` come from one generator run
 // (`tools/dither/gen_tables.py`), and the formula kinds are pinned to the same values in both
@@ -17,7 +18,7 @@ enum _Family { off, bayer, blue, halftone, hlines, vlines, diag, noise, ign }
 /// One dither family/size the Gradient can use. Compare by identity or `==` (value semantics
 /// over the DSL token).
 class DitherKind {
-  const DitherKind._(this._fam, this.n, this.dsl, this.name, this.family, this.levels, this.hint, this.previewScale);
+  const DitherKind._(this._fam, this.n, this.dsl, this.name, this.family, this.levels, this.hint);
 
   final _Family _fam;
 
@@ -38,9 +39,6 @@ class DitherKind {
   /// The page's one-line subtitle.
   final String hint;
 
-  /// Logical px per cell for the page's 44 px preview box (coarser matrices get bigger cells).
-  final double previewScale;
-
   bool get isOff => _fam == _Family.off;
 
   static const String familyBayer = 'Bayer ordered dither';
@@ -52,27 +50,27 @@ class DitherKind {
   /// page order differs from [all] there.
   static const List<String> families = [familyBayer, familyHalftone, familyLines, familyNoise];
 
-  static const off = DitherKind._(_Family.off, 0, '0', 'Off', '', 1, 'A smooth ramp between the colors', 4);
-  static const bayer2 = DitherKind._(_Family.bayer, 2, '2', 'Bayer 2×2', familyBayer, 4, '4 density steps', 4);
-  static const bayer4 = DitherKind._(_Family.bayer, 4, '4', 'Bayer 4×4', familyBayer, 16, '16 density steps', 4);
-  static const bayer8 = DitherKind._(_Family.bayer, 8, '8', 'Bayer 8×8', familyBayer, 64, '64 density steps', 3);
+  static const off = DitherKind._(_Family.off, 0, '0', 'Off', '', 1, 'A smooth ramp between the colors');
+  static const bayer2 = DitherKind._(_Family.bayer, 2, '2', 'Bayer 2×2', familyBayer, 4, '4 density steps');
+  static const bayer4 = DitherKind._(_Family.bayer, 4, '4', 'Bayer 4×4', familyBayer, 16, '16 density steps');
+  static const bayer8 = DitherKind._(_Family.bayer, 8, '8', 'Bayer 8×8', familyBayer, 64, '64 density steps');
   static const blueNoise =
-      DitherKind._(_Family.blue, 64, 'blue', 'Blue noise', familyNoise, 4096, '4096 steps, no visible pattern', 2);
+      DitherKind._(_Family.blue, 64, 'blue', 'Blue noise', familyNoise, 4096, '4096 steps, no visible pattern');
   static const halftone4 =
-      DitherKind._(_Family.halftone, 4, 'halftone4', 'Halftone 4×4', familyHalftone, 16, 'Dots growing from the cell center', 4);
+      DitherKind._(_Family.halftone, 4, 'halftone4', 'Halftone 4×4', familyHalftone, 16, 'Dots growing from the cell center');
   static const halftone8 =
-      DitherKind._(_Family.halftone, 8, 'halftone8', 'Halftone 8×8', familyHalftone, 64, 'Bigger dots, 64 steps', 3);
-  static const hlines2 = DitherKind._(_Family.hlines, 2, 'hlines2', 'Horizontal 2 px', familyLines, 4, 'Every other row at 50 %', 4);
-  static const hlines4 = DitherKind._(_Family.hlines, 4, 'hlines4', 'Horizontal 4 px', familyLines, 16, 'Rows fill in, 16 steps', 4);
-  static const hlines8 = DitherKind._(_Family.hlines, 8, 'hlines8', 'Horizontal 8 px', familyLines, 64, 'Rows fill in, 64 steps', 3);
-  static const vlines2 = DitherKind._(_Family.vlines, 2, 'vlines2', 'Vertical 2 px', familyLines, 4, 'Every other column at 50 %', 4);
-  static const vlines4 = DitherKind._(_Family.vlines, 4, 'vlines4', 'Vertical 4 px', familyLines, 16, 'Columns fill in, 16 steps', 4);
-  static const vlines8 = DitherKind._(_Family.vlines, 8, 'vlines8', 'Vertical 8 px', familyLines, 64, 'Columns fill in, 64 steps', 3);
-  static const diag4 = DitherKind._(_Family.diag, 4, 'diag4', 'Diagonal 4 px', familyLines, 16, 'Hatching, 16 steps', 3);
-  static const diag8 = DitherKind._(_Family.diag, 8, 'diag8', 'Diagonal 8 px', familyLines, 64, 'Hatching, 64 steps', 3);
-  static const whiteNoise = DitherKind._(_Family.noise, 0, 'noise', 'White noise', familyNoise, 256, 'Random grain, 256 steps', 2);
+      DitherKind._(_Family.halftone, 8, 'halftone8', 'Halftone 8×8', familyHalftone, 64, 'Bigger dots, 64 steps');
+  static const hlines2 = DitherKind._(_Family.hlines, 2, 'hlines2', 'Horizontal 2 px', familyLines, 4, 'Every other row at 50 %');
+  static const hlines4 = DitherKind._(_Family.hlines, 4, 'hlines4', 'Horizontal 4 px', familyLines, 16, 'Rows fill in, 16 steps');
+  static const hlines8 = DitherKind._(_Family.hlines, 8, 'hlines8', 'Horizontal 8 px', familyLines, 64, 'Rows fill in, 64 steps');
+  static const vlines2 = DitherKind._(_Family.vlines, 2, 'vlines2', 'Vertical 2 px', familyLines, 4, 'Every other column at 50 %');
+  static const vlines4 = DitherKind._(_Family.vlines, 4, 'vlines4', 'Vertical 4 px', familyLines, 16, 'Columns fill in, 16 steps');
+  static const vlines8 = DitherKind._(_Family.vlines, 8, 'vlines8', 'Vertical 8 px', familyLines, 64, 'Columns fill in, 64 steps');
+  static const diag4 = DitherKind._(_Family.diag, 4, 'diag4', 'Diagonal 4 px', familyLines, 16, 'Hatching, 16 steps');
+  static const diag8 = DitherKind._(_Family.diag, 8, 'diag8', 'Diagonal 8 px', familyLines, 64, 'Hatching, 64 steps');
+  static const whiteNoise = DitherKind._(_Family.noise, 0, 'noise', 'White noise', familyNoise, 256, 'Random grain, 256 steps');
   static const ign =
-      DitherKind._(_Family.ign, 0, 'ign', 'Gradient noise', familyNoise, 256, 'Interleaved gradient noise, 256 steps', 2);
+      DitherKind._(_Family.ign, 0, 'ign', 'Gradient noise', familyNoise, 256, 'Interleaved gradient noise, 256 steps');
 
   /// Every kind, Off first, in the page's order (the engine's `DitherKind::ALL`).
   static const List<DitherKind> all = [
@@ -179,7 +177,8 @@ class DitherKind {
   String toString() => 'DitherKind($dsl)';
 }
 
-/// Paints [kind] at its 50 % density over the whole box at [scale] logical px per cell, anchored
+/// Paints [kind] at its 50 % density over the whole box at [scale] logical px per cell (the row-1
+/// swatch), anchored
 /// at the box's top-left (canvas coordinate (0, 0)): OFF cells in [offColor] (the whole box
 /// first), the cells the fill flips first in [onColor] over it.
 class DitherTilePainter extends CustomPainter {
@@ -210,35 +209,54 @@ class DitherTilePainter extends CustomPainter {
       old.kind != kind || old.onColor != onColor || old.offColor != offColor || old.scale != scale;
 }
 
-/// A square preview of [kind] with the Patterns page's tile chrome (border, selection accent).
-class DitherTileBox extends StatelessWidget {
-  const DitherTileBox({
-    super.key,
-    required this.kind,
-    required this.onColor,
-    required this.offColor,
-    this.size = 48,
-    this.scale = 4,
-    this.selected = false,
-  });
+/// Paints a two-color gradient ramp through [kind] over the whole box (the Dither page's wide
+/// previews, 2026-09-16): [offColor] at the left edge to [onColor] at the right, one canvas cell
+/// per [scale] logical px, anchored at canvas (0, 0). Each cell is exactly one of the two colors,
+/// picked by the engine's rule (`gradient_sample_sorted`): ON when `floor(t · levels) >
+/// threshold(x, y)`, with `t` the cell's column fraction — so the strip walks every density step
+/// the fill can produce, in order. Off paints the smooth ramp the undithered fill makes.
+class DitherRampPainter extends CustomPainter {
+  const DitherRampPainter({required this.kind, required this.onColor, required this.offColor, required this.scale});
   final DitherKind kind;
   final Color onColor, offColor;
-  final double size, scale;
-  final bool selected;
+  final double scale;
 
-  static const accent = Color(0xFF4080C0);
+  /// The ramp fraction of column [x] in a strip [cols] cells wide: 0 at the left edge, 1 at the
+  /// right (a one-column strip is all ON).
+  static double fractionAt(int x, int cols) => cols <= 1 ? 1 : x / (cols - 1);
+
+  /// Whether the cell at ([x], [y]) of a [cols]-wide ramp through [kind] takes the ON color —
+  /// the engine's pick for a pixel whose local fraction is [fractionAt]. Always false for Off.
+  static bool cellOn(DitherKind kind, int x, int y, int cols) {
+    if (kind.isOff) return false;
+    final q = (fractionAt(x, cols) * kind.levels).floor();
+    return q > kind.threshold(x, y);
+  }
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        border: Border.all(color: selected ? accent : Colors.white24, width: selected ? 2 : 1),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: CustomPaint(painter: DitherTilePainter(kind: kind, onColor: onColor, offColor: offColor, scale: scale)),
-    );
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = offColor);
+    final cols = (size.width / scale).ceil();
+    final rows = (size.height / scale).ceil();
+    if (kind.isOff) {
+      // The smooth ramp, one lerped column per cell.
+      for (var x = 0; x < cols; x++) {
+        final c = Color.lerp(offColor, onColor, fractionAt(x, cols))!;
+        canvas.drawRect(Rect.fromLTWH(x * scale, 0, scale, size.height), Paint()..color = c);
+      }
+      return;
+    }
+    // One path for every ON cell: a single fill instead of thousands of draw calls.
+    final path = Path();
+    for (var x = 0; x < cols; x++) {
+      for (var y = 0; y < rows; y++) {
+        if (cellOn(kind, x, y, cols)) path.addRect(Rect.fromLTWH(x * scale, y * scale, scale, scale));
+      }
+    }
+    canvas.drawPath(path, Paint()..color = onColor);
   }
+
+  @override
+  bool shouldRepaint(DitherRampPainter old) =>
+      old.kind != kind || old.onColor != onColor || old.offColor != offColor || old.scale != scale;
 }

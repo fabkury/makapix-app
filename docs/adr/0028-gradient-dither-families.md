@@ -5,8 +5,9 @@
 WhiteNoise · Ign`), the verb `SetGradientDither(token)` accepts the new families as words while the
 Bayer sizes stay the bare numbers they have carried since ADR 0025, and the `assert.gradient`
 oracle now compares the canvas rect only (it used to fail on every document's overscan gutter).
-Shell: the Dither page lists the families by section, each previewed at its 50 % density, and the
-row-1 swatch previews the family in force. Generated threshold tables (`tools/dither/gen_tables.py`)
+Shell: the Dither page lists the families by section, each previewed as a full-width OFF→ON ramp
+strip that walks every density step (since 2026-09-16; 50 % squares before), and the row-1 swatch
+previews the family in force at 50 %. Generated threshold tables (`tools/dither/gen_tables.py`)
 ship in both the engine and the shell from one run. No `.mkpx`, FFI, or Club change.
 
 ADR 0025 gave the Gradient an ordered dither and deliberately "only the three Bayer families". Bayer
@@ -48,9 +49,11 @@ not a second fill model.
   preference moved from a Bayer size (v1, int) to the token (v2, string), reading v1 for migration.
 - **The shell previews with its own copy of the same math.** `gradient_dither.dart` mirrors
   `DitherKind`; `dither_tables.g.dart` is the generator's second output; the formula kinds are pinned
-  to the same literal thresholds in both test suites. Previews render at 50 % density, which for
-  every family is the density where its structure is most legible (solid alternate lines, half
-  dots, the checker for Bayer).
+  to the same literal thresholds in both test suites. The row-1 swatch renders at 50 % density,
+  which for every family is the density where its structure is most legible (solid alternate
+  lines, half dots, the checker for Bayer); the page's strips (2026-09-16) ramp OFF→ON across
+  their width through the engine's own pick rule (`floor(t · levels) > threshold`), so the user
+  sees every density step the fill can produce, not one — the goal of the change.
 
 Alternatives rejected:
 

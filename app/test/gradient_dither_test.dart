@@ -140,14 +140,60 @@ void main() {
     expect(a.shouldRepaint(const DitherTilePainter(kind: DitherKind.bayer4, onColor: Colors.black, offColor: Colors.white, scale: 2)), isTrue);
   });
 
-  testWidgets('DitherTileBox paints a 50 % preview in the two colors', (t) async {
+  test('DitherRampPainter.cellOn is the engine\'s pick: floor(t · levels) > threshold', () {
+    const cols = 128, rows = 16;
+    for (final k in DitherKind.all) {
+      for (var y = 0; y < rows; y++) {
+        expect(DitherRampPainter.cellOn(k, 0, y, cols), isFalse, reason: '$k: the left edge is all OFF');
+        expect(DitherRampPainter.cellOn(k, cols - 1, y, cols), !k.isOff, reason: '$k: the right edge is all ON');
+      }
+      if (k.isOff) continue;
+      var on = 0;
+      for (var x = 0; x < cols; x++) {
+        for (var y = 0; y < rows; y++) {
+          final t = x / (cols - 1);
+          final expected = (t * k.levels).floor() > k.threshold(x, y);
+          expect(DitherRampPainter.cellOn(k, x, y, cols), expected, reason: '$k at ($x,$y)');
+          if (expected) on++;
+        }
+      }
+      // A linear ramp through evenly spread thresholds averages 1/2 − 1/(2·levels) ON: the
+      // engine's floor truncation of t·levels (the fill has the same bias, so the strip must too).
+      expect(on / (cols * rows), closeTo(0.5 - 0.5 / k.levels, 0.06), reason: '$k: the ramp average');
+    }
+    expect(DitherRampPainter.fractionAt(0, 1), 1, reason: 'a one-column strip is all ON');
+  });
+
+  test('DitherRampPainter repaints only when the kind, a color, or the scale changes', () {
+    const a = DitherRampPainter(kind: DitherKind.bayer4, onColor: Colors.black, offColor: Colors.white, scale: 3);
+    expect(a.shouldRepaint(const DitherRampPainter(kind: DitherKind.bayer4, onColor: Colors.black, offColor: Colors.white, scale: 3)), isFalse);
+    expect(a.shouldRepaint(const DitherRampPainter(kind: DitherKind.off, onColor: Colors.black, offColor: Colors.white, scale: 3)), isTrue);
+    expect(a.shouldRepaint(const DitherRampPainter(kind: DitherKind.bayer4, onColor: Colors.blue, offColor: Colors.white, scale: 3)), isTrue);
+    expect(a.shouldRepaint(const DitherRampPainter(kind: DitherKind.bayer4, onColor: Colors.black, offColor: Colors.grey, scale: 3)), isTrue);
+    expect(a.shouldRepaint(const DitherRampPainter(kind: DitherKind.bayer4, onColor: Colors.black, offColor: Colors.white, scale: 2)), isTrue);
+  });
+
+  testWidgets('ramp strips paint through the ramp painter in the two colors, Off included', (t) async {
     await t.pumpWidget(const MaterialApp(
-      home: Center(child: DitherTileBox(kind: DitherKind.hlines2, onColor: Colors.red, offColor: Colors.blue, size: 32, scale: 4)),
+      home: Scaffold(
+        body: Column(children: [
+          SizedBox(
+            width: 300,
+            height: 48,
+            child: CustomPaint(
+                painter: DitherRampPainter(kind: DitherKind.hlines2, onColor: Colors.red, offColor: Colors.blue, scale: 3)),
+          ),
+          SizedBox(
+            width: 300,
+            height: 48,
+            child: CustomPaint(painter: DitherRampPainter(kind: DitherKind.off, onColor: Colors.red, offColor: Colors.blue, scale: 3)),
+          ),
+        ]),
+      ),
     ));
-    expect(find.byType(CustomPaint), findsWidgets);
-    final painter = t.widget<CustomPaint>(find.descendant(of: find.byType(DitherTileBox), matching: find.byType(CustomPaint))).painter
-        as DitherTilePainter;
-    expect(painter.kind, DitherKind.hlines2);
-    expect(painter.onColor, Colors.red);
+    expect(t.takeException(), isNull);
+    final painters = t.widgetList<CustomPaint>(find.byType(CustomPaint)).map((w) => w.painter).whereType<DitherRampPainter>();
+    expect(painters.map((p) => p.kind), [DitherKind.hlines2, DitherKind.off]);
+    expect(painters.first.onColor, Colors.red);
   });
 }

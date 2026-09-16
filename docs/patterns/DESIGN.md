@@ -190,8 +190,9 @@ host interface so widget tests run without the engine:
 5. Tapping a tile: sets `_pattern`, sets `_patternOn[tool] = true`, pushes it to the front of the
    recents, sends the verb, pops the page. Tapping Off: `_patternOn[tool] = false`, sends
    `SetPattern(off)`, pops.
-6. Gradient variant: the same page with three family entries (Bayer 2×2 / 4×4 / 8×8, previewed as
-   the 50 % level) plus Off; picking sends `SetGradientDither(n)`.
+6. Gradient variant: the same page with the dither families of ADR 0028 plus Off, each a full-width
+   OFF→ON ramp strip (every density step left to right, 3 px cells, name · hint under it —
+   `DitherStripTile`, 2026-09-16; 50 % squares before); picking sends `SetGradientDither(token)`.
 
 **Catalog (`app/lib/editor/patterns/patterns_catalog.dart`).** Pure Dart, generated at first use
 from small generator functions, each entry `(id, family, name, tile)`. ids are UI-only (recents and

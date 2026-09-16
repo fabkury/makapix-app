@@ -4,8 +4,9 @@
 // editor), never in the primary color: a primary close to the page background would make the
 // tiles unreadable, and the preview is about the tile's shape, not the paint. The tool itself
 // still paints ON cells in the primary color. The Gradient's variant ("Dither") offers the dither
-// families of ADR 0028 (Bayer, blue noise, halftone, lines, noise) plus Off, each previewed at its
-// 50 % density. The page owns no editor state beyond the two preview colors it edits: it takes
+// families of ADR 0028 (Bayer, blue noise, halftone, lines, noise) plus Off, each as a full-width
+// OFF→ON ramp strip that walks every density step (2026-09-16; [DitherStripTile]) with the name
+// and hint under it. The page owns no editor state beyond the two preview colors it edits: it takes
 // plain values and pops a [PatternPick] (or a [DitherKind] for the Gradient), so widget tests
 // drive it without the engine.
 import 'package:flutter/material.dart';
@@ -235,23 +236,23 @@ class _PatternsPageState extends State<PatternsPage> {
       children: [
         _hint('Tap a dither to use it on the gradient. Each pixel takes one of the two nearest gradient colors, '
             'never a blended shade; the pattern decides which pixels flip first as the ramp advances. '
-            'Previews show each pattern at half density.'),
+            'Each preview ramps from the OFF color to the ON color, every density step left to right.'),
         _colorsRow(),
-        _offTile(context,
+        DitherStripTile(
+            kind: DitherKind.off,
+            onColor: _on,
+            offColor: _off,
             selected: widget.dither.isOff,
-            subtitle: DitherKind.off.hint,
             onTap: () => Navigator.pop(context, DitherKind.off)),
         for (final family in DitherKind.families) ...[
           _header(family),
           for (final k in DitherKind.inFamily(family))
-            ListTile(
-              leading: DitherTileBox(kind: k, onColor: _on, offColor: _off, size: 44, scale: k.previewScale),
-              title: Text(k.name),
-              subtitle: Text(k.hint),
-              selected: widget.dither == k,
-              selectedTileColor: Colors.white10,
-              onTap: () => Navigator.pop(context, k),
-            ),
+            DitherStripTile(
+                kind: k,
+                onColor: _on,
+                offColor: _off,
+                selected: widget.dither == k,
+                onTap: () => Navigator.pop(context, k)),
         ],
       ],
     );
@@ -300,6 +301,7 @@ class _PatternsPageState extends State<PatternsPage> {
       );
 
   Widget _offTile(BuildContext context, {required bool selected, required String subtitle, required VoidCallback onTap}) {
+    // The mask variant's Off card; the Gradient variant's Off is a [DitherStripTile].
     return Card(
       color: selected ? const Color(0xFF2A4A6A) : null,
       child: ListTile(
@@ -316,4 +318,66 @@ class _PatternsPageState extends State<PatternsPage> {
         padding: const EdgeInsets.only(top: 16, bottom: 8),
         child: Text(s, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white70)),
       );
+}
+
+/// One Dither page row (2026-09-16): a full-width ramp strip through [kind] — OFF color to ON
+/// color, every density step left to right, [scale] logical px per cell, [height] tall — with
+/// "name · hint" under it. The strip carries the selection accent; a check marks the row.
+class DitherStripTile extends StatelessWidget {
+  const DitherStripTile({
+    super.key,
+    required this.kind,
+    required this.onColor,
+    required this.offColor,
+    required this.selected,
+    required this.onTap,
+    this.scale = 3,
+    this.height = 48,
+  });
+  final DitherKind kind;
+  final Color onColor, offColor;
+  final bool selected;
+  final VoidCallback onTap;
+  final double scale, height;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(6),
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: selected ? Colors.white10 : null,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        padding: const EdgeInsets.fromLTRB(4, 6, 4, 6),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            height: height,
+            decoration: BoxDecoration(
+              border: Border.all(color: selected ? PatternTileBox.accent : Colors.white24, width: selected ? 2 : 1),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: RepaintBoundary(
+              child: CustomPaint(
+                painter: DitherRampPainter(kind: kind, onColor: onColor, offColor: offColor, scale: scale),
+                size: Size.infinite,
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Row(children: [
+            Text(kind.name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text('· ${kind.hint}',
+                  style: const TextStyle(fontSize: 12, color: Colors.white70), overflow: TextOverflow.ellipsis),
+            ),
+            if (selected) const Icon(Icons.check, size: 18, color: PatternTileBox.accent),
+          ]),
+        ]),
+      ),
+    );
+  }
 }
