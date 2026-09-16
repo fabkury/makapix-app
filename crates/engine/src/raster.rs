@@ -200,7 +200,7 @@ impl Span {
         }
     }
     /// The stamp width this window spans.
-    pub fn len(self) -> i32 {
+    pub fn width(self) -> i32 {
         self.hi - self.lo + 1
     }
 }
@@ -226,7 +226,7 @@ pub fn square(c: Point, radius: i32, plot: impl FnMut(i32, i32)) {
 /// the odd rule, so areas grow monotonically with `N` (1, 4, 5, 12, 13, 24, 29, 44, 49, …).
 /// `N ≤ 1` plots the anchor alone.
 pub fn stamp_disc(c: Point, sx: Span, sy: Span, mut plot: impl FnMut(i32, i32)) {
-    let n = sx.len();
+    let n = sx.width();
     if n <= 1 {
         plot(c.x, c.y);
         return;
@@ -553,7 +553,7 @@ pub fn disc_aa(c: Point, radius: i32, plot: impl FnMut(i32, i32, u8)) {
 /// for odd `N`, a pixel corner for even), so its silhouette is exactly `N` wide. Odd `N` is the
 /// pre-ADR `disc_aa`, byte for byte.
 pub fn stamp_disc_aa(c: Point, sx: Span, sy: Span, mut plot: impl FnMut(i32, i32, u8)) {
-    let r = sx.len().max(2) as f64 / 2.0;
+    let r = sx.width().max(2) as f64 / 2.0;
     let (cx, cy) = (c.x as f64 + 0.5 + (sx.lo + sx.hi) as f64 / 2.0, c.y as f64 + 0.5 + (sy.lo + sy.hi) as f64 / 2.0);
     let r2 = r * r;
     let inside = move |sx: f64, sy: f64| {

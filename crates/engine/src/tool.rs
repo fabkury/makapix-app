@@ -466,7 +466,7 @@ impl Footprint {
     }
     /// The stamp width.
     pub fn size(self) -> i32 {
-        self.x.len()
+        self.x.width()
     }
 }
 
