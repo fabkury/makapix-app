@@ -127,8 +127,12 @@ void main() {
   group('reconcileHiddenTools / canHideAnotherTool', () {
     final catalog = ['A', 'B', 'C', 'D'];
 
-    test('null (never saved) → nothing hidden', () {
-      expect(reconcileHiddenTools(null, catalog), isEmpty);
+    test('null (never saved) → the shipped default, catalog-filtered; a saved empty set wins', () {
+      expect(reconcileHiddenTools(null, catalog), isEmpty, reason: 'no default tool in this catalog');
+      final full = tools.map((t) => t.dsl).toList();
+      expect(reconcileHiddenTools(null, full), kDefaultHiddenTools);
+      expect(kDefaultHiddenTools.every(full.contains), isTrue, reason: 'the default names real tools');
+      expect(reconcileHiddenTools(const <String>[], full), isEmpty, reason: '"Show all" persists as []');
     });
 
     test('unknown dsl names are dropped, duplicates collapse, order is irrelevant', () {

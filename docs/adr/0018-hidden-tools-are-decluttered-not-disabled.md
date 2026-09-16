@@ -45,6 +45,13 @@ or a damaged preference) is discarded on load. A "Show all" row restores every t
 untouched. Tools added to the catalog in a later version are visible by construction (the set
 stores hidden names, never visible ones); names removed from the catalog are dropped on load.
 
+**Shipped default (amended 2026-09-16).** Outline and Select Layer are hidden until the user says
+otherwise (`kDefaultHiddenTools`, `app/lib/editor/tools.dart`). The preference stores hidden
+names, so the default applies exactly when no set was ever saved — a fresh install, or an install
+that never opened the sheet, which therefore loses the two tiles on upgrade; any saved set, even
+the empty one "Show all" writes, wins over it. No "Reset to default" row: the default is a
+starting point, and Show all shows everything.
+
 **Entry point.** ☰ → View → "Show/hide tools…" only, with the hidden count appended while
 anything is hidden ("… (3 hidden)"). No extra row-3 tile: the feature exists to remove tiles.
 Undo/Redo are the fixed slots and cannot be hidden.

@@ -556,7 +556,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // hidden tools keep their slot in _toolOrder (unhide restores it), stay fully reachable through
   // the keyboard / hold-pick / paste / pinned slot, and the active tool may be hidden (it stays
   // active). Persisted editor-wide (_prefsHiddenKey); see _visibleOrder / _setToolHidden.
-  Set<String> _hiddenTools = {};
+  Set<String> _hiddenTools = {...kDefaultHiddenTools}; // the async prefs read replaces it
   // The Frames page's column count (ADR 0031): 3–8, chosen by pinch or the page's menu, persisted
   // editor-wide (_kFramesColumnsPref).
   int _framesColumns = kFramesDefaultColumns;

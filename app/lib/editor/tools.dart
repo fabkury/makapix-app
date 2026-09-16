@@ -108,13 +108,19 @@ List<String> restoreHiddenTools(List<String> visible, List<String> previousFull,
 List<String> restoreHiddenTool(List<String> visible, List<String> previousFull, String hidden) =>
     restoreHiddenTools(visible, previousFull, {hidden});
 
-/// Reconcile a persisted hidden-tool set against the [catalog] (ADR 0018): unknown dsl names
-/// (a tool removed from the catalog) are dropped, tools new to the catalog are visible by
-/// construction, and a set that would leave nothing visible is discarded outright — the UI floor
-/// is one visible tool, and only catalog drift or a damaged preference can breach it.
+/// The tools hidden from the row-3 grid until the user says otherwise (2026-09-16): the ones a
+/// new user is least likely to want in the grid. An install with no saved hidden set — fresh or
+/// never having opened Show/hide tools — gets exactly this set; any saved set (even an empty
+/// one from "Show all") wins over it. Stored as hidden names, so the default only ever removes.
+const Set<String> kDefaultHiddenTools = {'Outline', 'SelectLayer'};
+
+/// Reconcile a persisted hidden-tool set against the [catalog] (ADR 0018): a never-saved set
+/// (`null`) is the [kDefaultHiddenTools] default, unknown dsl names (a tool removed from the
+/// catalog) are dropped, tools new to the catalog are visible by construction, and a set that
+/// would leave nothing visible is discarded outright — the UI floor is one visible tool, and
+/// only catalog drift or a damaged preference can breach it.
 Set<String> reconcileHiddenTools(Iterable<String>? saved, List<String> catalog) {
-  if (saved == null) return {};
-  final out = {for (final d in saved) if (catalog.contains(d)) d};
+  final out = {for (final d in saved ?? kDefaultHiddenTools) if (catalog.contains(d)) d};
   return out.length >= catalog.length ? <String>{} : out;
 }
 
