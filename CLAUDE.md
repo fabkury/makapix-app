@@ -22,8 +22,8 @@ version: *Makapix Club* = the product (website **and** this app); *Makapix Edito
 terminology) · `docs/BUILDING.md` (build-from-source + developer doc map) · `STATUS.md` (feature
 coverage; with the git log, the live frontier) · `SPEC.md` / `SPEC-CLUB.md` (internal current-state
 references for the two pillars — git-ignored, absent from public checkouts; rewritten 2026-08-16 to
-describe the system as built) · `docs/adr/` (the ADR series — 0007 single-coat strokes and 0008 AA define
-*current* engine behavior) · `docs/memlab/REPORT.md` (measured memory limits — the numbers to design
+describe the system as built) · `docs/adr/` (the ADR series — 0007 single-coat strokes, 0008 AA, and 0036 stamp footprints
+define *current* engine behavior) · `docs/memlab/REPORT.md` (measured memory limits — the numbers to design
 against) · `docs/play-release.md` + `docs/ios-release/PLAN.md` (store pipelines) · `messages/` (server ↔ app
 correspondence, one sub-folder per thread, numbered replies — convention in `messages/README.md`; threads
 before 2026-09-09 are `docs/club-server-cr-*.md`). (The original
