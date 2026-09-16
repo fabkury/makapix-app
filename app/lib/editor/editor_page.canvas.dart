@@ -283,8 +283,9 @@ extension _EditorCanvas on _EditorPageState {
                 ),
               ),
             // The symmetry axis (ADR 0026): dashed magenta line(s), above the grid and the onion
-            // skin, below the cursor and handles; hidden during playback (user decision).
-            if (_symOn && !_playing)
+            // skin, below the cursor and handles; hidden during playback and whenever the active
+            // tool does not mirror (user decisions) — the setting stays on, only the lines go.
+            if (_symOn && !_playing && _kMirrorTools.contains(_tool))
               RepaintBoundary(
                 child: CustomPaint(
                   painter: SymmetryAxisPainter(engine.width, engine.height, _symHAxis, _symVAxis, vScale, vOff,

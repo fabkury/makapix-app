@@ -4,7 +4,10 @@
 `Symmetry { mode, ax, ay }` in `Settings`, one additive verb `SetSymmetry(mode, ax, ay)`, a fan-out
 over the images of every write in the stroke coat, the Pencil path, the figure rasterizers, and the
 flood fill. Shell: a row-1 "Mirror" chip, a dashed axis overlay, a transient Move-axis mode, a
-mirrored ghost cursor, and the J key. No `.mkpx`, FFI, or journal-format change.
+mirrored ghost cursor, and the J key. No `.mkpx`, FFI, or journal-format change. (Amended
+2026-09-16: the axis overlay is drawn only while the active tool is one that mirrors — switching
+to Select, Move, Copy, etc. hides the lines without touching the setting; the ghost cursor already
+followed the same rule.)
 
 Mirror drawing is in every surveyed pixel-art editor and in none of this engine. Sprites are
 bilaterally symmetric far more often than not, and drawing one half is half the work. The question
