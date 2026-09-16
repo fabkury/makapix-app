@@ -90,6 +90,7 @@ pub enum Action {
     SetAlphaCutoff(u8),
     SelectByAlpha(CombineMode),
     SetContiguous(bool),
+    SetDiagonal(bool), // 8-connected contiguous regions (Bucket + Select by color), 2026-09-16
     SetFillAllLayers(bool),
     SetGradientType(GradientKind),
     SetGradientStops(Vec<Stop>),
@@ -352,6 +353,7 @@ impl Session {
             SetAlphaCutoff(t) => self.settings.alpha_cutoff = t,
             SelectByAlpha(m) => self.select_by_alpha(m),
             SetContiguous(b) => self.settings.contiguous = b,
+            SetDiagonal(b) => self.settings.diagonal = b,
             SetFillAllLayers(b) => self.settings.fill_all_layers = b,
             SetGradientType(k) => self.settings.gradient.kind = k,
             SetGradientStops(s) => self.settings.gradient.stops = s,
@@ -806,6 +808,7 @@ fn parse_line(line: &str) -> Result<Action, String> {
             o => return Err(format!("bad selection mode '{}'", o)),
         }),
         "SetContiguous" => SetContiguous(boola(0)?),
+        "SetDiagonal" => SetDiagonal(boola(0)?),
         "SetFillAllLayers" => SetFillAllLayers(boola(0)?),
         "SetGradientType" => SetGradientType(match args.first().copied().unwrap_or("") {
             "Linear" => GradientKind::Linear,

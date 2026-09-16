@@ -246,14 +246,22 @@ impl Mask {
         m
     }
 
-    /// Color-threshold selection: contiguous (4-connected flood) or global.
+    /// Color-threshold selection: contiguous (a 4-connected flood, or 8-connected when
+    /// `diagonal`) or global. The flood may neither start nor spread outside `clip` (the
+    /// selectable window — the canvas, or the whole storage under the overscan view): before
+    /// 2026-09-16 it ran over the whole storage and was clipped afterwards, so a contiguous
+    /// selection of a closed shape's background walked around the shape through the invisible
+    /// transparent gutter and selected its inside too.
+    #[allow(clippy::too_many_arguments)]
     pub fn from_color(
         w: u32,
         h: u32,
         buf: &RgbaBuffer,
+        clip: IRect,
         seed: Point,
         threshold: u8,
         contiguous: bool,
+        diagonal: bool,
     ) -> Mask {
         let mut m = Mask::new(w, h);
         let target = buf.get(seed.x, seed.y);
@@ -261,7 +269,7 @@ impl Mask {
         if contiguous {
             let mut stack = vec![seed];
             while let Some(p) = stack.pop() {
-                if p.x < 0 || p.y < 0 || p.x as u32 >= w || p.y as u32 >= h {
+                if p.x < 0 || p.y < 0 || p.x as u32 >= w || p.y as u32 >= h || !clip.contains(p) {
                     continue;
                 }
                 if m.get(p.x, p.y) || !matches(p.x, p.y) {
@@ -272,6 +280,12 @@ impl Mask {
                 stack.push(Point::new(p.x - 1, p.y));
                 stack.push(Point::new(p.x, p.y + 1));
                 stack.push(Point::new(p.x, p.y - 1));
+                if diagonal {
+                    stack.push(Point::new(p.x + 1, p.y + 1));
+                    stack.push(Point::new(p.x - 1, p.y + 1));
+                    stack.push(Point::new(p.x + 1, p.y - 1));
+                    stack.push(Point::new(p.x - 1, p.y - 1));
+                }
             }
         } else {
             for y in 0..h as i32 {
@@ -340,9 +354,9 @@ mod tests {
         let mut buf = RgbaBuffer::new(8, 8);
         buf.fill_rect(IRect::new(0, 0, 3, 3), crate::color::Rgba8::WHITE);
         buf.fill_rect(IRect::new(5, 5, 2, 2), crate::color::Rgba8::WHITE);
-        let cont = Mask::from_color(8, 8, &buf, Point::new(0, 0), 0, true);
+        let cont = Mask::from_color(8, 8, &buf, IRect::new(0, 0, 8, 8), Point::new(0, 0), 0, true, false);
         assert_eq!(cont.count(), 9);
-        let glob = Mask::from_color(8, 8, &buf, Point::new(0, 0), 0, false);
+        let glob = Mask::from_color(8, 8, &buf, IRect::new(0, 0, 8, 8), Point::new(0, 0), 0, false, false);
         assert_eq!(glob.count(), 13);
     }
 }

@@ -154,6 +154,7 @@ enum Act {
     SetPatternOff,
     SetGradientDither(u8),
     SetContiguous(bool),
+    SetDiagonal(bool),
     SetPixelPerfect(bool),
     SetWrap(bool),
     AddPaletteColor(u32),
@@ -242,6 +243,7 @@ fn render(act: &Act, out: &mut String) {
             ["0", "2", "4", "8", "3", "blue", "halftone4", "halftone8", "hlines2", "hlines4", "hlines8", "vlines2", "vlines4", "vlines8", "diag4", "diag8", "noise", "ign", "junk"][(*n % 19) as usize]
         ),
         Act::SetContiguous(b) => writeln!(out, "SetContiguous({})", b),
+        Act::SetDiagonal(b) => writeln!(out, "SetDiagonal({})", b),
         Act::SetPixelPerfect(b) => writeln!(out, "SetPixelPerfect({})", b),
         Act::SetWrap(b) => writeln!(out, "SetWrap({})", b),
         Act::AddPaletteColor(c) => writeln!(out, "AddPaletteColor(#{:08X})", c),

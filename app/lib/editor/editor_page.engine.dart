@@ -1008,6 +1008,7 @@ extension _EditorEngine on _EditorPageState {
   void _pushToolSettings() {
     _send('SetBrushSize($_brushSize); SetBrushShape(${_round ? 'Round' : 'Square'})');
     _send('SetThreshold($_threshold); SetContiguous($_contiguous); SetAlphaCutoff($_alphaCutoff)');
+    _send('SetDiagonal($_diagonal)'); // own line: an old app's replay drops only this verb
     _send('SetIntensity($_intensity); SetShapeFill($_shapeFill); SetLineWidth($_lineWidth)');
     _send('SetFillAllLayers($_fillAllLayers)');
     // SetProtectPixels is no longer emitted (ADR 0023): the engine default is off and nothing in the

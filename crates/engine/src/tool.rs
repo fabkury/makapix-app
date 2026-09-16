@@ -761,6 +761,11 @@ pub struct ToolSettings {
     /// "selected". Default 0 (all non-transparent pixels).
     pub alpha_cutoff: u8,
     pub contiguous: bool,
+    /// Bucket / Select-by-color "Diagonal neighbors" (2026-09-16): when true a contiguous region
+    /// is 8-connected — a pixel joins through its four diagonal neighbors too, so a fill or a
+    /// color selection crosses a one-pixel diagonal gap it used to stop at. Default false
+    /// (4-connected, the pixel-art norm). Inert in Global (non-contiguous) mode.
+    pub diagonal: bool,
     /// Bucket "All layers": decide the fill region from the composited image (all visible layers),
     /// while still writing the fill into the active layer only.
     pub fill_all_layers: bool,
@@ -848,6 +853,7 @@ impl Default for ToolSettings {
             threshold: 0,
             alpha_cutoff: 0,
             contiguous: true,
+            diagonal: false,
             fill_all_layers: false,
             gradient: GradientSpec::default(),
             hsv: (0.0, 0.0, 0.0),
@@ -961,7 +967,9 @@ pub fn stroke_segment(
 /// half-dithered region and behave erratically. The pattern `gate` (ADR 0025) never shapes the
 /// region — threshold, contiguity, and the reference decide it exactly as without one, and a
 /// gated-off pixel still propagates the flood — it only decides which pixels inside the region
-/// get written. Seeds outside `clip` (the gutter) are ignored.
+/// get written. Seeds outside `clip` (the gutter) are ignored. A contiguous flood is
+/// 4-connected, or 8-connected when `diagonal` (the region also spreads through diagonal
+/// neighbors).
 #[allow(clippy::too_many_arguments)]
 pub fn flood_fill(
     buf: &mut RgbaBuffer,
@@ -973,6 +981,7 @@ pub fn flood_fill(
     color: Rgba8,
     threshold: u8,
     contiguous: bool,
+    diagonal: bool,
     mode: PaintMode,
 ) {
     let w = buf.width() as i32;
@@ -1012,6 +1021,12 @@ pub fn flood_fill(
                 stack.push(Point::new(p.x - 1, p.y));
                 stack.push(Point::new(p.x, p.y + 1));
                 stack.push(Point::new(p.x, p.y - 1));
+                if diagonal {
+                    stack.push(Point::new(p.x + 1, p.y + 1));
+                    stack.push(Point::new(p.x - 1, p.y + 1));
+                    stack.push(Point::new(p.x + 1, p.y - 1));
+                    stack.push(Point::new(p.x - 1, p.y - 1));
+                }
             }
         } else {
             for y in clip.y..clip.bottom() {
@@ -1638,7 +1653,7 @@ mod tests {
     #[test]
     fn flood_fill_fills_region() {
         let mut b = RgbaBuffer::new(8, 8);
-        flood_fill(&mut b, None, None, None, IRect::new(0, 0, 8, 8), &[Point::new(0, 0)], Rgba8::WHITE, 0, true, PaintMode::Replace);
+        flood_fill(&mut b, None, None, None, IRect::new(0, 0, 8, 8), &[Point::new(0, 0)], Rgba8::WHITE, 0, true, false, PaintMode::Replace);
         // all-transparent target → fills entire canvas
         for y in 0..8 {
             for x in 0..8 {
@@ -1654,11 +1669,39 @@ mod tests {
         for y in 0..8 {
             b.set(4, y, Rgba8::BLACK);
         }
-        flood_fill(&mut b, None, None, None, IRect::new(0, 0, 8, 8), &[Point::new(0, 0)], Rgba8::WHITE, 0, true, PaintMode::Replace);
+        flood_fill(&mut b, None, None, None, IRect::new(0, 0, 8, 8), &[Point::new(0, 0)], Rgba8::WHITE, 0, true, false, PaintMode::Replace);
         assert_eq!(b.get(0, 0), Rgba8::WHITE);
         assert_eq!(b.get(3, 3), Rgba8::WHITE);
         assert_eq!(b.get(5, 3), Rgba8::TRANSPARENT); // other side untouched
         assert_eq!(b.get(4, 3), Rgba8::BLACK); // wall intact
+    }
+
+    /// A one-pixel diagonal wall stops a 4-connected flood and lets an 8-connected one through
+    /// (the wall itself is never written).
+    #[test]
+    fn flood_fill_diagonal_crosses_a_diagonal_wall() {
+        let wall = |b: &mut RgbaBuffer| {
+            for i in 0..8 {
+                b.set(i, 7 - i, Rgba8::BLACK);
+            }
+        };
+        let clip = IRect::new(0, 0, 8, 8);
+        let mut b = RgbaBuffer::new(8, 8);
+        wall(&mut b);
+        flood_fill(&mut b, None, None, None, clip, &[Point::new(0, 0)], Rgba8::WHITE, 0, true, false, PaintMode::Replace);
+        assert_eq!(b.get(0, 0), Rgba8::WHITE);
+        assert_eq!(b.get(7, 7), Rgba8::TRANSPARENT, "4-connected: the far side is sealed off");
+        let mut b = RgbaBuffer::new(8, 8);
+        wall(&mut b);
+        flood_fill(&mut b, None, None, None, clip, &[Point::new(0, 0)], Rgba8::WHITE, 0, true, true, PaintMode::Replace);
+        assert_eq!(b.get(7, 7), Rgba8::WHITE, "8-connected: the flood slips through the corners");
+        assert_eq!(b.get(3, 4), Rgba8::BLACK, "the wall is not part of the region");
+        // Global mode ignores adjacency, so the flag changes nothing there.
+        let mut b = RgbaBuffer::new(8, 8);
+        wall(&mut b);
+        flood_fill(&mut b, None, None, None, clip, &[Point::new(0, 0)], Rgba8::WHITE, 0, false, true, PaintMode::Replace);
+        assert_eq!(b.get(7, 7), Rgba8::WHITE);
+        assert_eq!(b.get(3, 4), Rgba8::BLACK);
     }
 
     #[test]

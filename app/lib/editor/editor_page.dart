@@ -268,6 +268,10 @@ class _EditorPageState extends ConsumerState<EditorPage>
   bool _perfect = false; // Pencil pixel-perfect: drop L-corner doubles on a 1px stroke
   int _threshold = 0; // Bucket / Select-by-Color color tolerance: exact-match by default
   bool _contiguous = true;
+  // Bucket / Select Color "Diagonal" (2026-09-16): 8-connected regions — a flood or color
+  // selection also joins through diagonal neighbors. Shared by both tools like Contiguous,
+  // shown only under Contiguous (inert in Global), session-only (resets to off).
+  bool _diagonal = false;
   bool _fillAllLayers = false; // Bucket: decide the fill region from the composited image
   bool _shapeFill = false; // shapes default to Outline (the engine is told on tool select)
   int _lineWidth = 1; // stroke thickness for Line and outline Rectangle/Ellipse (engine line_width)

@@ -199,7 +199,8 @@ enum RepeatOp {
     /// settings frozen at the tap — the live Threshold/Contiguous/All-layers chips and primary
     /// color never change what Repeat fills. The region is decided live, like every target.
     /// `pattern` is the gate in force at the tap (ADR 0025): "same region, same dither".
-    Bucket { seed: Point, color: Rgba8, threshold: u8, contiguous: bool, all_layers: bool, pattern: Option<Pattern> },
+    /// `diagonal` (2026-09-16) is frozen like `contiguous`: the connectivity of the tap.
+    Bucket { seed: Point, color: Rgba8, threshold: u8, contiguous: bool, diagonal: bool, all_layers: bool, pattern: Option<Pattern> },
     /// A Replace color (2026-09-04 rider of ADR 0026): from, to, scope, and tolerance frozen; the
     /// target (layer/frame/frames, the selection) is live like every Repeat.
     ReplaceColor { from: Rgba8, to: Rgba8, scope: ReplaceScope, tolerance: u8 },
@@ -2028,7 +2029,16 @@ impl Session {
             }
             ToolKind::SelectByColor => {
                 let buf = self.select_color_buffer();
-                let shape = Mask::from_color(sw, sh, &buf, start, self.settings.threshold, self.settings.contiguous);
+                let shape = Mask::from_color(
+                    sw,
+                    sh,
+                    &buf,
+                    self.selection_clip(),
+                    start,
+                    self.settings.threshold,
+                    self.settings.contiguous,
+                    self.settings.diagonal,
+                );
                 self.combine_selection(&shape, self.selection_mode);
             }
             _ => {}
@@ -2576,7 +2586,16 @@ impl Session {
         let (sw, sh) = (s.w as u32, s.h as u32);
         let buf = self.select_color_buffer();
         let p = self.cursor_storage();
-        let shape = Mask::from_color(sw, sh, &buf, p, self.settings.threshold, self.settings.contiguous);
+        let shape = Mask::from_color(
+            sw,
+            sh,
+            &buf,
+            self.selection_clip(),
+            p,
+            self.settings.threshold,
+            self.settings.contiguous,
+            self.settings.diagonal,
+        );
         self.combine_selection(&shape, self.selection_mode);
     }
 
@@ -2584,20 +2603,31 @@ impl Session {
     /// contiguous and "All layers" settings plus the selection. Shared by the Bucket pointer tap
     /// and `fill_cursor`; the caller owns the undo edit.
     fn flood_fill_at(&mut self, p: Point) {
-        let (color, th, cont, all, pattern) = (
+        let (color, th, cont, diagonal, all, pattern) = (
             self.settings.primary,
             self.settings.threshold,
             self.settings.contiguous,
+            self.settings.diagonal,
             self.settings.fill_all_layers,
             self.settings.pattern,
         );
-        self.flood_fill_with(p, color, th, cont, all, pattern);
+        self.flood_fill_with(p, color, th, cont, diagonal, all, pattern);
     }
 
     /// The parameterized fill behind `flood_fill_at` and `Repeat` (ADR 0024): the given color and
     /// fill settings, the LIVE selection and (for `all_layers`) the live composite of the active
     /// frame — the target is always live, only the parameters are the caller's.
-    fn flood_fill_with(&mut self, p: Point, color: Rgba8, th: u8, cont: bool, all_layers: bool, pattern: Option<Pattern>) {
+    #[allow(clippy::too_many_arguments)]
+    fn flood_fill_with(
+        &mut self,
+        p: Point,
+        color: Rgba8,
+        th: u8,
+        cont: bool,
+        diagonal: bool,
+        all_layers: bool,
+        pattern: Option<Pattern>,
+    ) {
         let sel = self.selection_clone();
         let gate = pattern.map(|pattern| PatternGate { pattern, origin: self.doc.origin() });
         // "All layers": decide the region from the composited frame (computed before the
@@ -2612,7 +2642,19 @@ impl Session {
         // fills under the symmetry in force at Repeat time (user decision, unlike the pattern).
         let seeds: Vec<Point> = self.mirror().images(p).collect();
         let buf = &mut self.doc.active_frame_mut().active_layer_mut().pixels;
-        tool::flood_fill(buf, reference.as_ref(), sel.as_ref(), gate, clip, &seeds, color, th, cont, PaintMode::Replace);
+        tool::flood_fill(
+            buf,
+            reference.as_ref(),
+            sel.as_ref(),
+            gate,
+            clip,
+            &seeds,
+            color,
+            th,
+            cont,
+            diagonal,
+            PaintMode::Replace,
+        );
     }
 
     /// The Repeat record of a fill seeded at `p` (storage coords) under the live settings (ADR
@@ -2625,6 +2667,7 @@ impl Session {
             color: self.settings.primary,
             threshold: self.settings.threshold,
             contiguous: self.settings.contiguous,
+            diagonal: self.settings.diagonal,
             all_layers: self.settings.fill_all_layers,
             pattern: self.settings.pattern,
         }
@@ -2943,7 +2986,7 @@ impl Session {
                 self.doc.active_frame_mut().active_layer_mut().pixels.blit_over(&pixels, pos);
                 self.commit_edit(before);
             }
-            RepeatOp::Bucket { seed, color, threshold, contiguous, all_layers, pattern } => {
+            RepeatOp::Bucket { seed, color, threshold, contiguous, diagonal, all_layers, pattern } => {
                 if !self.active_editable() {
                     return;
                 }
@@ -2952,7 +2995,7 @@ impl Session {
                 let o = self.doc.origin();
                 let p = Point::new(seed.x + o.x, seed.y + o.y);
                 let before = self.begin_edit();
-                self.flood_fill_with(p, color, threshold, contiguous, all_layers, pattern);
+                self.flood_fill_with(p, color, threshold, contiguous, diagonal, all_layers, pattern);
                 self.commit_edit(before);
             }
             RepeatOp::ReplaceColor { from, to, scope, tolerance } => self.replace_color(from, to, scope, tolerance),
@@ -5125,6 +5168,59 @@ mod tests {
         s.run_script("SetCopySource(Layer); Copy()").unwrap();
         let (clip, _) = s.clipboard.clone().unwrap();
         assert_eq!(clip.get(2, 2), Rgba8::TRANSPARENT);
+    }
+
+    /// Diagonal neighbors (2026-09-16): a one-pixel diagonal wall seals a 4-connected fill /
+    /// color selection and lets the 8-connected one through; Repeat re-fills with the
+    /// connectivity frozen at the tap, not the live chip.
+    #[test]
+    fn diagonal_neighbors_fill_select_and_repeat() {
+        let wall = |s: &mut Session| {
+            s.settings.primary = Rgba8::BLACK;
+            s.tool = ToolKind::Pencil;
+            for i in 0..8 {
+                s.tap(i, 7 - i);
+            }
+        };
+        // Bucket, via the DSL to cover the parse path.
+        let mut s = Session::new(8, 8);
+        wall(&mut s);
+        s.settings.primary = Rgba8::rgb(255, 0, 0);
+        s.tool = ToolKind::Bucket;
+        s.tap(0, 0);
+        assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::rgb(255, 0, 0));
+        assert_eq!(s.pixel(0, 0, 7, 7), Rgba8::TRANSPARENT, "default: 4-connected, sealed");
+        assert!(s.doc.undo());
+        s.run_script("SetDiagonal(true)").unwrap();
+        s.tap(0, 0);
+        assert_eq!(s.pixel(0, 0, 7, 7), Rgba8::rgb(255, 0, 0), "diagonal: the fill crosses the wall's corners");
+        assert_eq!(s.pixel(0, 0, 3, 4), Rgba8::BLACK, "the wall is untouched");
+        // Repeat freezes the connectivity of the tap: a 4-connected fill repeated under a live
+        // Diagonal chip stays 4-connected.
+        let mut s = Session::new(8, 8);
+        wall(&mut s);
+        s.settings.primary = Rgba8::rgb(255, 0, 0);
+        s.tool = ToolKind::Bucket;
+        s.tap(0, 0); // 4-connected, arms Repeat
+        assert!(s.doc.undo());
+        s.run_script("SetDiagonal(true); Repeat()").unwrap();
+        assert_eq!(s.pixel(0, 0, 0, 0), Rgba8::rgb(255, 0, 0), "Repeat re-filled");
+        assert_eq!(s.pixel(0, 0, 7, 7), Rgba8::TRANSPARENT, "Repeat kept the tap's 4-connectivity");
+        // Select by color.
+        let mut s = Session::new(8, 8);
+        wall(&mut s);
+        s.tool = ToolKind::SelectByColor;
+        s.tap(0, 0);
+        // (Also the gutter-leak regression: the flood used to walk around the wall through the
+        // transparent gutter and select the far side.)
+        assert!(SelCanvas(&s).get(0, 0) && !SelCanvas(&s).get(7, 7), "default: sealed");
+        s.run_script("SetDiagonal(true)").unwrap();
+        s.tap(0, 0);
+        assert!(SelCanvas(&s).get(7, 7), "diagonal: the selection crosses the corners");
+        assert!(!SelCanvas(&s).get(3, 4), "the wall is not selected");
+        s.run_script("SetDiagonal(false)").unwrap();
+        s.tap(0, 0);
+        assert!(!SelCanvas(&s).get(7, 7), "and back");
     }
 
     #[test]

@@ -412,6 +412,24 @@ extension _EditorControls on _EditorPageState {
         setState(() => _contiguous = i == 0);
         _send('SetContiguous($_contiguous)');
       }));
+      if (_contiguous) {
+        // Diagonal neighbors: the region also spreads corner to corner (8-connected), so a fill
+        // or a color selection crosses a one-pixel diagonal line. Meaningless under Global, so
+        // the chip hides there; the setting is remembered.
+        children.add(Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          child: FilterChip(
+            selected: _diagonal,
+            label: Text(_diagonal ? 'Diagonal ✔' : 'Diagonal'),
+            selectedColor: const Color(0xFF30A050),
+            tooltip: 'Diagonal neighbors: let the region cross corners (8-connected)',
+            onSelected: (v) {
+              setState(() => _diagonal = v);
+              _send('SetDiagonal($_diagonal)');
+            },
+          ),
+        ));
+      }
       if (_tool == 'SelectByColor') {
         // Source: Frame = the composited frame (default, "what you see is what you select");
         // Layer = the active layer's raw stored pixels (its opacity/visibility ignored).
