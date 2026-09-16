@@ -286,15 +286,31 @@ class _PalettePageState extends State<PalettePage> {
     _mutate('DuplicatePalette($i)');
   }
 
+  // Mirrors the editor's _saveExport: the bytes go to the picker because on Android/iOS the
+  // picker writes the file itself (and returns a content URI that File() can't write to) —
+  // calling saveFile WITHOUT bytes throws on Android before any UI shows, which is why this
+  // button silently did nothing on the phone (bug fixed 2026-09-16). Desktop only returns a
+  // path, so the write happens here. A failure is reported, never swallowed.
   Future<void> _exportPalette(int i) async {
     final p = _palettes[i];
     final safe = p.name.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
-    final path =
-        await FilePicker.saveFile(fileName: '$safe.gpl', type: FileType.custom, allowedExtensions: ['gpl']);
-    if (path == null || !mounted) return;
-    await File(path).writeAsString(encodeGpl(p.name, p.colors));
-    if (!mounted) return;
-    _toast('Saved palette (${p.colors.length} colors)');
+    final bytes = utf8.encode(encodeGpl(p.name, p.colors));
+    try {
+      final path = await FilePicker.saveFile(
+        dialogTitle: 'Export .gpl',
+        fileName: '$safe.gpl',
+        type: FileType.custom,
+        allowedExtensions: ['gpl'],
+        bytes: bytes,
+      );
+      if (path == null || !mounted) return; // the user canceled
+      if (!Platform.isAndroid && !Platform.isIOS) {
+        await File(path).writeAsBytes(bytes);
+      }
+      if (mounted) _toast('Saved palette (${p.colors.length} colors)');
+    } catch (e) {
+      if (mounted) _toast('Could not save: $e');
+    }
   }
 
   Future<void> _sortPalette(int i) async {
