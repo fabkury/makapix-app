@@ -826,7 +826,12 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
 
   // ---- moderator post actions (the website's `p/{sqid}` moderator block) ----
 
-  /// Display names for `promoted_category` (server notification copy).
+  /// Display names for `promoted_category` (server notification copy) —
+  /// **read-only**: the app promotes to `frontpage` only (2026-09-17). The
+  /// server still accepts the other three slugs, but nothing server-side reads
+  /// them (the promoted feed filters on the `promoted` boolean alone; category
+  /// follows never shipped), so the app stopped offering them. The map stays
+  /// so posts promoted elsewhere into a legacy category still render by name.
   static const Map<String, String> kPromoteCategories = {
     'frontpage': 'Recommended',
     'editor-pick': "Editor's Pick",
@@ -906,44 +911,24 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
 
   Future<void> _modPromote(BuildContext context, Post post) async {
     final messenger = ScaffoldMessenger.of(context);
-    // Category radio dialog, doubling as the confirmation (the artist is notified).
-    var category = 'frontpage';
+    // Plain confirmation (the artist is notified). Recommended is the only
+    // promotion the app offers — see the note on [kPromoteCategories].
     final yes = await showDialog<bool>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) => AlertDialog(
-          title: const Text('Promote this post?'),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            RadioGroup<String>(
-              groupValue: category,
-              onChanged: (v) => setState(() => category = v ?? category),
-              child: Column(children: [
-                for (final e in kPromoteCategories.entries)
-                  RadioListTile<String>(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(e.value),
-                    value: e.key,
-                  ),
-              ]),
-            ),
-            const SizedBox(height: 4),
-            const Text('The artist is notified of the promotion.',
-                style: TextStyle(fontSize: 12, color: Colors.white54)),
-          ]),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Promote')),
-          ],
-        ),
+      builder: (ctx) => AlertDialog(
+        title: const Text('Promote this post?'),
+        content: const Text('It joins the Recommended feed. The artist is notified.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Promote')),
+        ],
       ),
     );
     if (yes != true) return;
     try {
-      await ref.read(moderationApiProvider).promotePost(post.id, category: category);
+      await ref.read(moderationApiProvider).promotePost(post.id);
       _refreshAfterModAction();
-      messenger.showSnackBar(
-          SnackBar(content: Text('Promoted to ${kPromoteCategories[category]}.')));
+      messenger.showSnackBar(const SnackBar(content: Text('Promoted to Recommended.')));
     } on ClubError catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     } catch (_) {

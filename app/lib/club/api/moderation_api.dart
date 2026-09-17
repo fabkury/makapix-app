@@ -38,11 +38,14 @@ class ModerationApi {
       ? client.dio.post('/post/$postId/hide', data: {'by': 'mod'})
       : client.dio.delete('/post/$postId/hide'));
 
-  /// `POST /post/{id}/promote` — feature the post in [category]
-  /// (`frontpage` | `editor-pick` | `weekly-pack` | `daily's-best`).
-  /// The server notifies the artist.
-  Future<void> promotePost(int postId, {String category = 'frontpage'}) =>
-      client.guard(() => client.dio.post('/post/$postId/promote', data: {'category': category}));
+  /// `POST /post/{id}/promote` — feature the post in the Recommended feed
+  /// (`category: "frontpage"`). The server also accepts `editor-pick`,
+  /// `weekly-pack`, and `daily's-best`, but no server-side surface reads the
+  /// category (the promoted feed filters on the `promoted` boolean alone), so
+  /// the app sends `frontpage` only — same as the website. The server notifies
+  /// the artist.
+  Future<void> promotePost(int postId) =>
+      client.guard(() => client.dio.post('/post/$postId/promote', data: {'category': 'frontpage'}));
 
   /// `DELETE /post/{id}/promote` — remove the post from its promoted category.
   Future<void> demotePost(int postId) =>
