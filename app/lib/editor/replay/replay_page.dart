@@ -34,8 +34,9 @@ class ReplayPage extends StatefulWidget {
   final ReplayHost host;
   final String title;
 
-  /// "Share timelapse" (the export flow) — a labeled AppBar button (the label is the tap
-  /// target: an icon alone hid the export from lay users, 2026-09-18); hidden when null.
+  /// "Share timelapse" (the export flow) — a labeled button at the very bottom of the page,
+  /// under the slider (the label is the tap target: an icon alone in the AppBar hid the
+  /// export from lay users, 2026-09-18); hidden when null.
   final VoidCallback? onShareTimelapse;
 
   /// The share button's label. Mobile hands the Timelapse to the OS share sheet ("Share");
@@ -216,8 +217,14 @@ class _ReplayPageState extends State<ReplayPage> with WidgetsBindingObserver {
     return Scaffold(
       backgroundColor: const Color(0xFF141518),
       appBar: AppBar(
+        // Two lines before the ellipsis: the title is the artist's words, and the bar has the
+        // room now that the share action lives in the footer (2026-09-18). 64 dp fits two
+        // titleLarge lines (2 × 28) with a little air.
+        toolbarHeight: 64,
         title: Row(children: [
-          Flexible(child: Text('Replay — ${widget.title}', overflow: TextOverflow.ellipsis)),
+          Flexible(
+            child: Text('Replay — ${widget.title}', maxLines: 2, overflow: TextOverflow.ellipsis),
+          ),
           // Pre-epoch journals replay under today's engine semantics, which may differ from the
           // session that recorded them (ADR 0015). Quiet chip, tap for the why.
           if (host.journalEpoch < kJournalEpoch) ...[
@@ -237,20 +244,6 @@ class _ReplayPageState extends State<ReplayPage> with WidgetsBindingObserver {
             ),
           ],
         ]),
-        actions: [
-          // Labeled, not icon-only: the export has to read as an action at a glance — a
-          // film-clapper glyph with a long-press tooltip did not (2026-09-18). The platform
-          // share icon says "this leaves the app"; the label names what leaves.
-          if (widget.onShareTimelapse != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: FilledButton.tonalIcon(
-                icon: Icon(Icons.adaptive.share, size: 18),
-                label: Text(ReplayPage.shareLabel(defaultTargetPlatform)),
-                onPressed: host.ready ? widget.onShareTimelapse : null,
-              ),
-            ),
-        ],
       ),
       body: host.initError != null
           ? Center(
@@ -303,7 +296,8 @@ class _ReplayPageState extends State<ReplayPage> with WidgetsBindingObserver {
                   ),
                   SafeArea(
                     top: false,
-                    child: Row(children: [
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Row(children: [
                       const SizedBox(width: 4),
                       IconButton(
                         tooltip: _playing ? 'Pause' : 'Play',
@@ -333,6 +327,30 @@ class _ReplayPageState extends State<ReplayPage> with WidgetsBindingObserver {
                         ),
                       ),
                       const SizedBox(width: 12),
+                      ]),
+                      // The share action, at the very bottom under the slider: labeled, not
+                      // icon-only — the export has to read as an action at a glance, and a
+                      // film-clapper glyph with a long-press tooltip in the AppBar did not
+                      // (2026-09-18). The platform share icon says "this leaves the app"; the
+                      // label names what leaves. Width-capped so desktop windows don't
+                      // stretch it edge to edge.
+                      if (widget.onShareTimelapse != null)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                          child: Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 420),
+                              child: SizedBox(
+                                width: double.infinity,
+                                child: FilledButton.tonalIcon(
+                                  icon: Icon(Icons.adaptive.share, size: 18),
+                                  label: Text(ReplayPage.shareLabel(defaultTargetPlatform)),
+                                  onPressed: widget.onShareTimelapse,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
                     ]),
                   ),
                 ]),
