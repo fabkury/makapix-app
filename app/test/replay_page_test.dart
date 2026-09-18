@@ -138,20 +138,54 @@ void main() {
     await tester.tap(find.byIcon(Icons.pause));
     await tester.pump();
   });
-  testWidgets('share action invokes the handler', (tester) async {
+  // The share action is a LABELED button with the platform share icon (2026-09-18): an
+  // icon-only film clapper with a long-press tooltip hid the export from lay users.
+  testWidgets('share action is a labeled button and invokes the handler', (tester) async {
     var shared = 0;
     final host = FakeReplayHost(actions: 100);
     await pumpReplay(tester, host, onShare: () => shared++);
-    await tester.tap(find.byIcon(Icons.movie_outlined));
+    expect(find.byIcon(Icons.adaptive.share), findsOneWidget);
+    expect(find.byIcon(Icons.movie_outlined), findsNothing);
+    await tester.tap(find.text('Share timelapse')); // flutter_test's platform is android
     expect(shared, 1);
     await tester.tap(find.byIcon(Icons.pause));
     await tester.pump();
   });
 
+  testWidgets('share label: Share on mobile (share sheet), Export on desktop (a file)',
+      (tester) async {
+    expect(ReplayPage.shareLabel(TargetPlatform.android), 'Share timelapse');
+    expect(ReplayPage.shareLabel(TargetPlatform.iOS), 'Share timelapse');
+    expect(ReplayPage.shareLabel(TargetPlatform.windows), 'Export timelapse');
+    expect(ReplayPage.shareLabel(TargetPlatform.macOS), 'Export timelapse');
+    expect(ReplayPage.shareLabel(TargetPlatform.linux), 'Export timelapse');
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    try {
+      await pumpReplay(tester, FakeReplayHost(actions: 100), onShare: () {});
+      expect(find.text('Export timelapse'), findsOneWidget);
+      expect(find.text('Share timelapse'), findsNothing);
+      await tester.tap(find.byIcon(Icons.pause));
+      await tester.pump();
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('share action is shown but disabled while the host is not ready', (tester) async {
+    var shared = 0;
+    final host = FakeReplayHost(failWith: 'Part of this replay is missing.');
+    await pumpReplay(tester, host, onShare: () => shared++);
+    final button = tester.widget<FilledButton>(find.bySubtype<FilledButton>());
+    expect(button.onPressed, isNull);
+    await tester.tap(find.text('Share timelapse'));
+    expect(shared, 0);
+  });
+
   testWidgets('share action hidden without a handler', (tester) async {
     final host = FakeReplayHost(actions: 100);
     await pumpReplay(tester, host);
-    expect(find.byIcon(Icons.movie_outlined), findsNothing);
+    expect(find.byIcon(Icons.adaptive.share), findsNothing);
+    expect(find.textContaining('timelapse'), findsNothing);
     await tester.tap(find.byIcon(Icons.pause));
     await tester.pump();
   });

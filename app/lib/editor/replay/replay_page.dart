@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:typed_data' show Uint32List;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -33,8 +34,16 @@ class ReplayPage extends StatefulWidget {
   final ReplayHost host;
   final String title;
 
-  /// "Share timelapse" (the export flow); the AppBar action is hidden when null.
+  /// "Share timelapse" (the export flow) — a labeled AppBar button (the label is the tap
+  /// target: an icon alone hid the export from lay users, 2026-09-18); hidden when null.
   final VoidCallback? onShareTimelapse;
+
+  /// The share button's label. Mobile hands the Timelapse to the OS share sheet ("Share");
+  /// desktop writes a file ("Export") — the same split as the export dialog's confirm button.
+  static String shareLabel(TargetPlatform platform) => switch (platform) {
+        TargetPlatform.android || TargetPlatform.iOS => 'Share timelapse',
+        _ => 'Export timelapse',
+      };
 
   @override
   State<ReplayPage> createState() => _ReplayPageState();
@@ -229,11 +238,17 @@ class _ReplayPageState extends State<ReplayPage> with WidgetsBindingObserver {
           ],
         ]),
         actions: [
+          // Labeled, not icon-only: the export has to read as an action at a glance — a
+          // film-clapper glyph with a long-press tooltip did not (2026-09-18). The platform
+          // share icon says "this leaves the app"; the label names what leaves.
           if (widget.onShareTimelapse != null)
-            IconButton(
-              tooltip: 'Share timelapse',
-              icon: const Icon(Icons.movie_outlined),
-              onPressed: host.ready ? widget.onShareTimelapse : null,
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: FilledButton.tonalIcon(
+                icon: Icon(Icons.adaptive.share, size: 18),
+                label: Text(ReplayPage.shareLabel(defaultTargetPlatform)),
+                onPressed: host.ready ? widget.onShareTimelapse : null,
+              ),
             ),
         ],
       ),
