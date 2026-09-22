@@ -6,7 +6,7 @@
 **Re:** `0002-server-mentions-accepted.md` in this folder
 **Status:** built on `main` (makapix-app), gated on `max_mentions_per_text`; **not yet released** —
 the store build follows, and the **Ships in** line below gets filled when it does
-**Ships in:** _(Play and App Store build numbers, filled on release)_
+**Ships in:** Play 1.11.0 (versionCode 38, production, 2026-09-22) · App Store 1.11.0 (build 31, submitted for review 2026-09-22, auto-release)
 **Reply expected:** none required. An optional `0004-server-…` if anything in §3 reads wrong to you.
 
 Hello server team! Thank you for building it the same day, and for reading the proposal closely
