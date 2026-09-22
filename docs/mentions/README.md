@@ -1,8 +1,12 @@
 # Mentions — design
 
-**Status:** design settled, nothing implemented. Written 2026-09-17 as `docs/profile-tag/`, decided
-with the owner on 2026-09-17/18 (all 21 decisions in [`DECISIONS.md`](DECISIONS.md)), renamed to
-`docs/mentions/` per D16. Next step: the contract message to the server team (§6, D15).
+**Status:** design settled; the contract message is out (2026-09-22,
+[`messages/0004-mentions/0001-app-mentions-proposal.md`](../../messages/0004-mentions/0001-app-mentions-proposal.md),
+awaiting `0002-server-…`), and the Dart markup parser is the one piece of app code that exists
+(`app/lib/club/models/mention_markup.dart` + `app/test/mention_markup_test.dart`, 41 tests). Nothing
+else is built anywhere, and nothing user-visible ships until the server does (D12). Written
+2026-09-17 as `docs/profile-tag/`, decided with the owner on 2026-09-17/18 (all 21 decisions in
+[`DECISIONS.md`](DECISIONS.md)), renamed to `docs/mentions/` per D16.
 
 ---
 
@@ -261,7 +265,7 @@ beside Blocked users and Monitored hashtags; the website mirrors it.
 
 ## 6. The contract to send to the server team
 
-To become `messages/0003-mentions/0001-app-mentions-proposal.md` (D15), mirrored by the server team
+To become `messages/0004-mentions/0001-app-mentions-proposal.md` (D15), mirrored by the server team
 under `docs/mentions/messages/` in its repo. Items marked *(server decides)* are theirs.
 
 ### 6.1 Grammar and vectors (shared; all three test suites)
@@ -388,9 +392,15 @@ keep running without the engine binary.
 
 - `app/lib/club/models/comment.dart`, `models/post.dart` — `bodyMarkup` / `descriptionMarkup`
   (nullable; absent on old servers) and `mentions` (`List<MentionRef{sqid, handle, avatarUrl}>`).
-- New pure-Dart `app/lib/club/models/mention_markup.dart`: `parse(String, mentions) → List<Segment>`
-  (text | mention{sqid, handle}) and `serialize(displayText, pickedPairs) → String`. Unit-tested with
-  the §6.1 vectors and a serialize→parse round trip.
+- ~~New pure-Dart `app/lib/club/models/mention_markup.dart`~~ — **✅ written 2026-09-22**, ahead of
+  the server and of any UI, because it is the Dart third of the three-parser divergence risk (§8.4).
+  `parseMentionMarkup` → `List<MentionSegment>` (`PlainSegment` | `MentionedSegment`),
+  `plainFromMarkup` (the plain rendering, also used for optimistic local text),
+  `serializeMentions(displayText, picked)`, `MentionRef` for the server's `mentions` array, and
+  `kMaxMentionsPerText`. `app/test/mention_markup_test.dart` runs the §6.1 vectors, the cap, the
+  malformed cases, and serialize→parse round trips (41 tests). Client-side sqid class:
+  `[A-Za-z0-9]{1,32}`, because `SQIDS_ALPHABET` is environment-configured and unknowable to clients
+  — confirmation is item 1 of §12 in the contract message.
 - New `app/lib/club/ui/widgets/mention_text.dart` — the span builder (`Text.rich`, one
   `TapGestureRecognizer` per mention, disposed with the widget), used by `comments_section.dart` and
   `artwork_detail_page.dart`.

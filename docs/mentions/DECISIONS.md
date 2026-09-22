@@ -68,9 +68,9 @@ in D21 and §6.2.
 **D14 — Grammar and test vectors frozen in the contract** (§6.1) and present in all three test
 suites (Dart, TypeScript, Python).
 
-**D15 — The app team opens the contract thread.** `messages/0003-mentions/0001-app-mentions-
-proposal.md` in this repo, carrying §6; the server team mirrors it under `docs/mentions/messages/` in
-its repo. The server team has the final say on shared matters (`messages/README.md`).
+**D15 — The app team opens the contract thread.** `messages/0004-mentions/0001-app-mentions-
+proposal.md` in this repo (thread 0003 is `promote-categories`), carrying §6; the server team mirrors
+it under `docs/mentions/messages/` in its repo. The server team has the final say on shared matters (`messages/README.md`).
 
 **D16 — Folder renamed** from `docs/profile-tag/` to `docs/mentions/` (this commit).
 

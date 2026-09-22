@@ -219,6 +219,15 @@ through C3 plus most of C4. Verified against the code 2026-07-26:
     email reveal, Moderation hub + pending-approval queue); still website-only: reports queue,
     violations/badges panels, cross-user bulk PMD, recent-posts feed, pulse, audit log, metrics (see
     `SPEC-CLUB.md` §28).
+12. **Mentions (`@handle` in comments and post descriptions)** — **designed; waiting on the server**
+    (`docs/mentions/`, 21 decisions in `DECISIONS.md`, settled 2026-09-18). Needs server + website +
+    app. The contract proposal went out 2026-09-22
+    (`messages/0004-mentions/0001-app-mentions-proposal.md`, D15) and awaits a `0002-server-…` reply.
+    One piece of app code exists: the pure-Dart markup parser/serializer
+    (`app/lib/club/models/mention_markup.dart`, 41 tests), written early because three
+    implementations of one grammar is the feature's main risk. Everything user-visible — the span
+    builder, the `@` composer, the notification tile, the Mentions setting — waits for the server's
+    `*_markup` fields and `max_mentions_per_text` on `/config` (D12).
 
 **Deferred by decision, not omission:**
 - **Localization** (post-v1 per §28.5; strings are currently hardcoded; design ready in
