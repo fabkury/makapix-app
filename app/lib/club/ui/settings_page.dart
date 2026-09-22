@@ -4,11 +4,13 @@ import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../config/monitored_hashtags.dart';
+import '../models/club_user.dart';
 import '../state/animation_settings.dart';
 import '../state/publish_providers.dart';
 import '../state/auth_controller.dart';
 import 'auth/account_management_page.dart';
 import 'blocked_users_page.dart';
+import 'mentions_settings_page.dart';
 import 'monitored_hashtags_page.dart';
 import 'widgets/common.dart';
 import 'widgets/external_links.dart';
@@ -30,6 +32,11 @@ class SettingsPage extends ConsumerWidget {
     final approved =
         ref.watch(authControllerProvider).me?.user.approvedHashtags ?? const [];
     final shownCount = approved.where(kMonitoredHashtagTags.contains).length;
+    // The Mentions row rides the same launch signal as the composers.
+    final mentionsEnabled =
+        ref.watch(serverConfigProvider).valueOrNull?.mentionsEnabled ?? false;
+    final mentionPolicy = ref.watch(authControllerProvider).me?.user.mentionPolicy ??
+        MentionPolicy.everyone;
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: CenteredContent(
@@ -55,6 +62,19 @@ class SettingsPage extends ConsumerWidget {
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => Navigator.push(context,
                         MaterialPageRoute(builder: (_) => const BlockedUsersPage())),
+                  ),
+                if (mentionsEnabled)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.alternate_email),
+                    title: const Text('Mentions'),
+                    subtitle: Text(
+                      'Who can mention you: ${mentionPolicy.label.toLowerCase()}',
+                      style: const TextStyle(color: Colors.white54),
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.push(context,
+                        MaterialPageRoute(builder: (_) => const MentionsSettingsPage())),
                   ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,

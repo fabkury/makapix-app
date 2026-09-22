@@ -22,6 +22,7 @@ import '../state/pmd_providers.dart';
 import '../state/post_providers.dart';
 import '../state/publish_providers.dart';
 import 'edit_post_details_page.dart';
+import 'widgets/mention_text.dart';
 import 'lineage_page.dart';
 import 'hashtag_feed_page.dart';
 import 'post_stats_page.dart';
@@ -238,7 +239,12 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
             ReactionsBar(postId: post.id),
             if (post.description != null && post.description!.isNotEmpty) ...[
               const SizedBox(height: 16),
-              Text(post.description!, style: const TextStyle(color: Colors.white70)),
+              MentionText(
+                markup: post.descriptionMarkup,
+                plain: post.description!,
+                mentions: post.mentions,
+                style: const TextStyle(color: Colors.white70),
+              ),
             ],
             if (post.hashtags.isNotEmpty) ...[
               const SizedBox(height: 12),

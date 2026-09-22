@@ -318,6 +318,15 @@ class AuthController extends StateNotifier<AuthState> {
         stale: state.stale, error: state.error);
   }
 
+  /// Mirror a saved `mention_policy` into the cached identity, so Settings
+  /// reflects it without a round trip to `/auth/me`.
+  void updateMentionPolicy(MentionPolicy policy) {
+    final me = state.me;
+    if (me == null) return;
+    state = AuthState.signedIn(me.copyWith(user: me.user.copyWith(mentionPolicy: policy)),
+        stale: state.stale, error: state.error);
+  }
+
   /// Dismiss an error back to the sign-in form.
   void reset() => state = const AuthState.signedOut();
 }

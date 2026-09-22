@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../models/license_option.dart';
+import '../models/mention_markup.dart';
 import '../models/post.dart';
 import '../models/server_config.dart';
 import '../publish/conformance.dart';
@@ -20,6 +21,7 @@ import 'artwork_detail_page.dart';
 import 'club_account_page.dart';
 import 'rules_gate_page.dart';
 import 'widgets/common.dart';
+import 'widgets/mention_field.dart';
 
 /// "Post to Club": conformance gate → metadata/license/visibility → upload.
 class PublishPage extends ConsumerStatefulWidget {
@@ -30,8 +32,14 @@ class PublishPage extends ConsumerStatefulWidget {
 }
 
 class _PublishPageState extends ConsumerState<PublishPage> {
+  int get _maxMentions =>
+      ref.read(serverConfigProvider).valueOrNull?.maxMentionsPerText ??
+      kMaxMentionsPerText;
+
   final _title = TextEditingController();
   final _desc = TextEditingController();
+  late final MentionComposer _mentions = MentionComposer(controller: _desc);
+  final _descFocus = FocusNode();
   final _tags = TextEditingController();
   int? _licenseId;
   bool _hidden = false;
@@ -70,6 +78,8 @@ class _PublishPageState extends ConsumerState<PublishPage> {
   @override
   void dispose() {
     _title.dispose();
+    _mentions.dispose();
+    _descFocus.dispose();
     _desc.dispose();
     _tags.dispose();
     super.dispose();
@@ -167,13 +177,22 @@ class _PublishPageState extends ConsumerState<PublishPage> {
           decoration: const InputDecoration(labelText: 'Title', border: OutlineInputBorder()),
         ),
         const SizedBox(height: 8),
-        TextField(
-          controller: _desc,
-          maxLength: 5000,
-          minLines: 2,
-          maxLines: 5,
-          decoration: const InputDecoration(
-              labelText: 'Description (optional)', border: OutlineInputBorder(), counterText: ''),
+        MentionField(
+          composer: _mentions,
+          focusNode: _descFocus,
+          // No post exists yet, so only the graph and search tiers apply.
+          postId: null,
+          enabled: ref.watch(serverConfigProvider).valueOrNull?.mentionsEnabled ?? false,
+          maxMentions: _maxMentions,
+          child: TextField(
+            controller: _desc,
+            focusNode: _descFocus,
+            maxLength: 5000,
+            minLines: 2,
+            maxLines: 5,
+            decoration: const InputDecoration(
+                labelText: 'Description (optional)', border: OutlineInputBorder(), counterText: ''),
+          ),
         ),
         const SizedBox(height: 8),
         TextField(
@@ -481,7 +500,7 @@ class _PublishPageState extends ConsumerState<PublishPage> {
           bytes: d.bytes,
           filename: d.filename,
           title: _title.text.trim().isEmpty ? 'Untitled' : _title.text.trim(),
-          description: _desc.text.trim(),
+          description: _mentions.serialized(maxMentions: _maxMentions).trim(),
           hashtags: _tags.text.trim(),
           hidden: _hidden,
           licenseId: _licenseId,

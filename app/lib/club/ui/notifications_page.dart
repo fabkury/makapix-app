@@ -159,6 +159,17 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
         return '$who replied: ${x.commentPreview ?? ''}';
       case 'comment_like':
         return '$who liked your comment';
+      case 'mention':
+        // `comment_id` null means the mention was in the post's description
+        // (server message 0004/0002 §4). Both variants deep-link to the post.
+        final where = x.contentTitle != null ? ' on "${x.contentTitle}"' : '';
+        if (x.commentId == null || x.commentId!.isEmpty) {
+          return '$who mentioned you in the description'
+              '${x.contentTitle != null ? ' of "${x.contentTitle}"' : ''}';
+        }
+        final preview = x.commentPreview;
+        return '$who mentioned you in a comment$where'
+            '${preview != null && preview.isNotEmpty ? ': $preview' : ''}';
       case 'follow':
         return '$who started following you';
       case 'remix':

@@ -1,3 +1,5 @@
+import 'mention_markup.dart';
+
 /// Author of a comment (null for anonymous comments, which the server attributes
 /// to an IP rather than a user).
 class CommentAuthor {
@@ -45,7 +47,19 @@ class Comment {
   final String id;
   final String? parentId;
   final int depth;
+
+  /// The **plain** rendering: every `<@sqid>` already replaced by `@handle` by
+  /// the server. Safe to print anywhere; carries no markup.
   final String body;
+
+  /// The source with `<@sqid>` markup, for the span builder. The server always
+  /// sends it (equal to [body] when there are no mentions); it is null only on
+  /// a server that predates mentions, or on an optimistic local comment.
+  final String? bodyMarkup;
+
+  /// The sqids [bodyMarkup] contains, resolved to current handles at read time.
+  final List<MentionRef> mentions;
+
   final DateTime? createdAt;
   final CommentAuthor? author;
   final int likeCount;
@@ -68,6 +82,8 @@ class Comment {
     required this.depth,
     required this.body,
     required this.createdAt,
+    this.bodyMarkup,
+    this.mentions = const [],
     required this.author,
     required this.likeCount,
     required this.likedByMe,
@@ -84,6 +100,8 @@ class Comment {
         parentId: j['parent_id']?.toString(),
         depth: (j['depth'] as num?)?.toInt() ?? 0,
         body: (j['body'] ?? '').toString(),
+        bodyMarkup: j['body_markup'] as String?,
+        mentions: MentionRef.listFromJson(j['mentions']),
         createdAt: DateTime.tryParse((j['created_at'] ?? '').toString()),
         author: CommentAuthor.fromCommentJson(j),
         likeCount: (j['like_count'] as num?)?.toInt() ?? 0,
@@ -101,6 +119,8 @@ class Comment {
         parentId: parentId,
         depth: depth,
         body: body,
+        bodyMarkup: bodyMarkup,
+        mentions: mentions,
         createdAt: createdAt,
         author: author,
         likeCount: likeCount,
@@ -116,6 +136,8 @@ class Comment {
         parentId: parentId,
         depth: depth,
         body: body,
+        bodyMarkup: bodyMarkup,
+        mentions: mentions,
         createdAt: createdAt,
         author: author,
         likeCount: likeCount,

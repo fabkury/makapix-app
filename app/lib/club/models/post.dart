@@ -1,3 +1,5 @@
+import 'mention_markup.dart';
+
 /// An artwork (or playlist) post. Mirrors `GET /p/{sqid}` / feed items.
 class Post {
   final int id;
@@ -5,7 +7,19 @@ class Post {
   final String storageKey;
   final String kind; // "artwork" | "playlist"
   final String title;
+
+  /// The **plain** rendering: every `<@sqid>` already replaced by `@handle` by
+  /// the server. Safe to print anywhere; carries no markup.
   final String? description;
+
+  /// The source with `<@sqid>` markup, for the span builder. Null when the post
+  /// has no description, and on a server that predates mentions.
+  final String? descriptionMarkup;
+
+  /// The sqids [descriptionMarkup] contains, resolved to current handles at
+  /// read time.
+  final List<MentionRef> mentions;
+
   final List<String> hashtags;
   final List<String> modHashtags; // moderator-owned subset of [hashtags] (server invariant)
   final String artUrl; // full display URL (animated webp/gif render directly)
@@ -51,6 +65,8 @@ class Post {
     required this.kind,
     required this.title,
     required this.description,
+    this.descriptionMarkup,
+    this.mentions = const [],
     required this.hashtags,
     this.modHashtags = const [],
     required this.artUrl,
@@ -100,6 +116,8 @@ class Post {
         kind: (j['kind'] ?? 'artwork').toString(),
         title: (j['title'] ?? '').toString(),
         description: j['description'] as String?,
+        descriptionMarkup: j['description_markup'] as String?,
+        mentions: MentionRef.listFromJson(j['mentions']),
         hashtags: (j['hashtags'] as List?)?.map((e) => e.toString()).toList() ?? const [],
         modHashtags:
             (j['mod_hashtags'] as List?)?.map((e) => e.toString()).toList() ?? const [],

@@ -1,3 +1,45 @@
+/// Who may mention this user (`users.mention_policy`, server message 0004/0002
+/// §4). Served on the full user object only — never on a public profile.
+enum MentionPolicy {
+  /// Anyone who can see me. The server default.
+  everyone,
+
+  /// Only members **I follow** may mention me. Users read this backwards, so
+  /// the setting copy has to spell the direction out.
+  following,
+
+  /// Nobody may mention me.
+  nobody;
+
+  String get wire => name;
+
+  /// Unknown or absent values read as [everyone] — the server's default, and
+  /// the safe reading when talking to a server that predates the setting.
+  static MentionPolicy fromWire(Object? raw) => switch (raw?.toString()) {
+        'following' => MentionPolicy.following,
+        'nobody' => MentionPolicy.nobody,
+        _ => MentionPolicy.everyone,
+      };
+
+  String get label => switch (this) {
+        MentionPolicy.everyone => 'Everyone',
+        MentionPolicy.following => 'People I follow',
+        MentionPolicy.nobody => 'No one',
+      };
+
+  String get description => switch (this) {
+        MentionPolicy.everyone =>
+          'Any member who can see your artwork can mention you.',
+        MentionPolicy.following =>
+          'Only members you follow can mention you. Members you do not follow '
+              'can still write your handle, but it will be plain text and you '
+              'will not be notified.',
+        MentionPolicy.nobody =>
+          'No one can mention you. Your handle stays plain text everywhere and '
+              'you are never notified about it.',
+      };
+}
+
 /// The signed-in user as returned by `GET /api/v1/auth/me` (the `user` block).
 class ClubUser {
   final String sub; // public_sqid (JWT `sub`)
@@ -10,6 +52,10 @@ class ClubUser {
   /// a subset of `politics/nsfw/explicit/13plus/violence`. Empty = all hidden.
   final List<String> approvedHashtags;
 
+  /// Who may mention this user (`mention_policy`). Absent on servers that
+  /// predate mentions, which reads as [MentionPolicy.everyone].
+  final MentionPolicy mentionPolicy;
+
   ClubUser({
     required this.sub,
     required this.userKey,
@@ -17,6 +63,7 @@ class ClubUser {
     this.avatarUrl,
     this.email,
     this.approvedHashtags = const [],
+    this.mentionPolicy = MentionPolicy.everyone,
   });
 
   factory ClubUser.fromJson(Map<String, dynamic> j) => ClubUser(
@@ -27,15 +74,21 @@ class ClubUser {
         email: j['email'] as String?,
         approvedHashtags:
             (j['approved_hashtags'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+        mentionPolicy: MentionPolicy.fromWire(j['mention_policy']),
       );
 
-  ClubUser copyWith({List<String>? approvedHashtags}) => ClubUser(
+  ClubUser copyWith({
+    List<String>? approvedHashtags,
+    MentionPolicy? mentionPolicy,
+  }) =>
+      ClubUser(
         sub: sub,
         userKey: userKey,
         handle: handle,
         avatarUrl: avatarUrl,
         email: email,
         approvedHashtags: approvedHashtags ?? this.approvedHashtags,
+        mentionPolicy: mentionPolicy ?? this.mentionPolicy,
       );
 }
 

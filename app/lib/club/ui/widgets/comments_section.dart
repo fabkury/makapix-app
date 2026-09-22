@@ -4,6 +4,7 @@ import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/comment.dart';
+import '../../models/mention_markup.dart';
 import '../../models/report.dart';
 import '../../state/auth_controller.dart';
 import '../../state/post_providers.dart';
@@ -12,6 +13,8 @@ import '../club_account_page.dart';
 import '../profile_page.dart';
 import '../report_page.dart';
 import 'common.dart';
+import 'mention_field.dart';
+import 'mention_text.dart';
 
 /// Threaded comments (depth ≤2) with a composer, likes, reply, and delete-own.
 class CommentsSection extends ConsumerStatefulWidget {
@@ -23,26 +26,40 @@ class CommentsSection extends ConsumerStatefulWidget {
 
 class _CommentsSectionState extends ConsumerState<CommentsSection> {
   final _field = TextEditingController();
+  late final MentionComposer _mentions = MentionComposer(controller: _field);
+  final _fieldFocus = FocusNode();
   String? _replyTo;
   String? _replyToHandle;
   bool _sending = false;
 
   @override
   void dispose() {
+    _mentions.dispose();
+    _fieldFocus.dispose();
     _field.dispose();
     super.dispose();
   }
 
   Future<void> _send() async {
-    final body = _field.text.trim();
+    // What the user sees is plain `@handle`; the wire carries `<@sqid>` for the
+    // handles they actually picked from the candidates list.
+    final maxMentions = ref.read(serverConfigProvider).valueOrNull?.maxMentionsPerText ??
+        kMaxMentionsPerText;
+    final body = _mentions.serialized(maxMentions: maxMentions).trim();
     if (body.isEmpty) return;
     setState(() => _sending = true);
-    final err = await ref.read(commentsProvider(widget.postId).notifier).add(body, parentId: _replyTo);
+    final picked = [
+      for (final p in _mentions.picked) MentionRef(sqid: p.sqid, handle: p.handle),
+    ];
+    final err = await ref
+        .read(commentsProvider(widget.postId).notifier)
+        .add(body, parentId: _replyTo, mentions: picked);
     if (!mounted) return;
     setState(() {
       _sending = false;
       if (err == null) {
         _field.clear();
+        _mentions.seedFromMarkup(null, const []); // drop the picks with the text
         _replyTo = null;
         _replyToHandle = null;
       }
@@ -111,13 +128,22 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
           ),
         Row(children: [
           Expanded(
-            child: TextField(
-              controller: _field,
-              minLines: 1,
-              maxLines: 4,
-              maxLength: 2000,
-              decoration: const InputDecoration(
-                  hintText: 'Add a comment…', border: OutlineInputBorder(), counterText: ''),
+            child: MentionField(
+              composer: _mentions,
+              focusNode: _fieldFocus,
+              postId: widget.postId,
+              enabled: ref.watch(serverConfigProvider).valueOrNull?.mentionsEnabled ?? false,
+              maxMentions: ref.watch(serverConfigProvider).valueOrNull?.maxMentionsPerText ??
+                  kMaxMentionsPerText,
+              child: TextField(
+                controller: _field,
+                focusNode: _fieldFocus,
+                minLines: 1,
+                maxLines: 4,
+                maxLength: 2000,
+                decoration: const InputDecoration(
+                    hintText: 'Add a comment…', border: OutlineInputBorder(), counterText: ''),
+              ),
             ),
           ),
           const SizedBox(width: 8),
@@ -175,11 +201,15 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
                   ),
                 ],
               ]),
-              dimIfHidden(Text(
-                  c.deleted
-                      ? (c.deletedByMod ? '[deleted by moderator]' : '[deleted]')
-                      : c.body,
-                  style: TextStyle(fontSize: 13, color: c.deleted ? Colors.white38 : Colors.white))),
+              dimIfHidden(c.deleted
+                  ? Text(c.deletedByMod ? '[deleted by moderator]' : '[deleted]',
+                      style: const TextStyle(fontSize: 13, color: Colors.white38))
+                  : MentionText(
+                      markup: c.bodyMarkup,
+                      plain: c.body,
+                      mentions: c.mentions,
+                      style: const TextStyle(fontSize: 13, color: Colors.white),
+                    )),
               Row(children: [
                 // Tap toggles the like; long-press (with a count) shows who liked.
                 _miniBtn(c.likedByMe ? Icons.favorite : Icons.favorite_border,

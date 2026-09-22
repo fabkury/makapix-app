@@ -4,6 +4,7 @@ import '../api/auth_api.dart';
 import '../api/edit_api.dart';
 import '../api/feed_api.dart';
 import '../api/lineage_api.dart';
+import '../api/mentions_api.dart';
 import '../api/mkpx_api.dart';
 import '../api/moderation_api.dart';
 import '../api/notifications_api.dart';
@@ -33,6 +34,8 @@ final lineageApiProvider =
     Provider<LineageApi>((ref) => LineageApi(ref.watch(clubApiClientProvider)));
 final settingsApiProvider =
     Provider<SettingsApi>((ref) => SettingsApi(ref.watch(clubApiClientProvider)));
+final mentionsApiProvider =
+    Provider<MentionsApi>((ref) => MentionsApi(ref.watch(clubApiClientProvider)));
 final statsApiProvider =
     Provider<StatsApi>((ref) => StatsApi(ref.watch(clubApiClientProvider)));
 final pmdApiProvider = Provider<PmdApi>((ref) => PmdApi(ref.watch(clubApiClientProvider)));

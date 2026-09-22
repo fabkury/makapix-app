@@ -1,12 +1,15 @@
 # Mentions — design
 
-**Status:** design settled; the contract message is out (2026-09-22,
-[`messages/0004-mentions/0001-app-mentions-proposal.md`](../../messages/0004-mentions/0001-app-mentions-proposal.md),
-awaiting `0002-server-…`), and the Dart markup parser is the one piece of app code that exists
-(`app/lib/club/models/mention_markup.dart` + `app/test/mention_markup_test.dart`, 41 tests). Nothing
-else is built anywhere, and nothing user-visible ships until the server does (D12). Written
-2026-09-17 as `docs/profile-tag/`, decided with the owner on 2026-09-17/18 (all 21 decisions in
-[`DECISIONS.md`](DECISIONS.md)), renamed to `docs/mentions/` per D16.
+**Status:** **live on the server and the website since 2026-09-22** (server PR #275); the **app side is
+built** and ships in the next store release. The thread:
+[`0001`](../../messages/0004-mentions/0001-app-mentions-proposal.md) (our proposal) →
+[`0002`](../../messages/0004-mentions/0002-server-mentions-accepted.md) (accepted, with five answers
+and three amendments) → [`0003`](../../messages/0004-mentions/0003-app-mentions-adopted.md) (what we
+built). Designed 2026-09-17/18 as `docs/profile-tag/`, all 21 decisions in
+[`DECISIONS.md`](DECISIONS.md), renamed per D16.
+
+**This document describes the system as built.** Where the server's amendments (0002 §2) changed what
+we had proposed, the text below is the amended rule and says so; the proposal as written is in `0001`.
 
 ---
 
@@ -120,12 +123,19 @@ great palette <@t5>, see <@Qx>'s remix
 - **The sqid is the only content.** There is no handle text to keep in sync or to spoof; the handle
   is resolved from the sqid on every read (§4.3). A body that mentions someone reads correctly
   after they rename, forever.
-- Grammar: `"<@" sqid ">"`, `sqid` = one or more characters from the configured Sqids alphabet; no
-  whitespace inside; no nesting. Anything else that starts with `<@` is plain text.
+- Grammar: `"<@" sqid ">"`, `sqid` = 1–32 characters of the Sqids alphabet; no whitespace inside; no
+  nesting. Anything else that starts with `<@` is plain text.
+- **Clients match `[A-Za-z0-9]{1,32}`** (0002 §1.1). `SQIDS_ALPHABET` is environment-configured on the
+  server and is in no repo, so no client can match the real alphabet; both environments' alphabets are
+  subsets of base62, and a user sqid is at most 7 characters. The server is the only party that decides
+  whether a matching sqid resolves.
 - A `<@SQID>` whose sqid does not resolve to a **mentionable** user for the writer (§5.2) is
-  **flattened** on write to plain `@handle` text (or dropped to `@user` if the sqid resolves to no
-  account). It never links and never notifies, and no error is returned, so the markup can never be
-  used to probe who blocked whom or who opted out.
+  **flattened** on write to plain `@handle` text (or to `@user` if the sqid resolves to no account —
+  the placeholder confirmed in 0002 §1.2). It never links and never notifies, and no error is returned,
+  so the markup can never be used to probe who blocked whom or who opted out.
+- **Resolution is generous by design** (0002 §3): any account that still exists resolves, including one
+  hidden or banned *after* the mention was written — its profile page applies its own rules. Only a
+  deleted account renders `@user`.
 - Length limits (2000 for comments, 5000 for descriptions) apply to the stored markup form; a
   mention costs `len(sqid) + 3` characters.
 
@@ -149,8 +159,9 @@ server-side re-merge; edits are rare and the website adopts the composer in the 
 
 ### 4.3 Read-time resolution
 
-Rendering `body` and `body_markup` needs each distinct sqid on the page resolved to a user (one
-`IN (...)` query per comment page, one per post). This is also where the mentionability of the
+The server stores the **markup only** and resolves the plain rendering on every read (0002 §3) — there
+is no stored plain copy, so a rename always shows the current handle. Rendering needs each distinct
+sqid on the page resolved to a user (one `IN (...)` query per comment page, one per post). This is also where the mentionability of the
 *reader* does not matter: a mention links for everyone who can see the text; only the *writer's*
 relationship to the target decided whether it was stored as a mention at all.
 
@@ -219,11 +230,25 @@ beside Blocked users and Monitored hashtags; the website mirrors it.
   `comment` (post owner) or `comment_reply` (parent author) for the same comment, the `mention` row
   is skipped. Precedence: `comment_reply` > `comment` > `mention`. (Descriptions have no
   competing type.)
-- **N3 (D7).** **Visibility guard.** No notification when the recipient cannot access the post
-  (`can_access_post`: hidden, pending approval, soft-deleted) or when the post carries a monitored
-  hashtag the recipient has not opted into (`approved_hashtags`). For descriptions this means a
-  **pending** upload notifies nobody at upload time; the server should evaluate description mentions
-  again when the post becomes visible (approval), a detail for the server team to place.
+- **N3 (D7, amended by 0002 §2 A1).** **Visibility guard — and a hold until approval.** No notification
+  when the recipient cannot access the post or when the post carries a monitored hashtag the recipient
+  has not opted into (`approved_hashtags`).
+
+  The proposal assumed `can_access_post` hides a pending post. **It does not** — since the server's
+  August new-post UX, a pending post is reachable by anyone with its link and is listed on the author's
+  profile. The visibility guard alone would therefore have let an unmoderated upload push itself into
+  up to 16 inboxes. The rule as built: **no `mention` notification goes out while the post's
+  `public_visibility` is false**, for description mentions *and* comment mentions. On approval the
+  server notifies the still-eligible recipients of the description and of every live comment, each at
+  most once, so a revoke → re-approve sends nothing twice. Uploads by users with auto-approval notify
+  at once. The links themselves work throughout.
+
+- **N3b (0002 §2 A3).** **Hidden or deleted posts notify nobody**, moderators included. Unhiding does
+  not replay mentions, same as every other notification type.
+
+- **N3c (0002 §2 A2).** **A description's writer is always the post owner**, including when a moderator
+  edits the description: mentionability is checked against the owner and the notification's actor is
+  the owner. (The app has no moderator description editor, so this is a website and server rule.)
 - **N4.** Blocks and policy: §5.2 means no row is ever written; the existing D10 list filter and SSE
   gate remain as a second line.
 - **N5 (D5).** Rate: **256 notified mentions per writer per hour**, on top of the existing 720/hour
@@ -263,10 +288,12 @@ beside Blocked users and Monitored hashtags; the website mirrors it.
 
 ---
 
-## 6. The contract to send to the server team
+## 6. The contract
 
-To become `messages/0004-mentions/0001-app-mentions-proposal.md` (D15), mirrored by the server team
-under `docs/mentions/messages/` in its repo. Items marked *(server decides)* are theirs.
+Sent as [`messages/0004-mentions/0001-app-mentions-proposal.md`](../../messages/0004-mentions/0001-app-mentions-proposal.md)
+(D15) and accepted in [`0002`](../../messages/0004-mentions/0002-server-mentions-accepted.md), which
+answered the five open items and amended three rules. What follows is the contract **as built**; the
+five answers are folded into the text below rather than left as questions.
 
 ### 6.1 Grammar and vectors (shared; all three test suites)
 
@@ -278,7 +305,7 @@ mention := "<@" sqid ">"      sqid := 1+ characters of the Sqids alphabet
 |---|---|---|---|
 | `hi <@t5>!` | `hi @fab!` | hi **@fab**! | link → `/u/t5` |
 | `<@t5>, <@Qx>.` | `@fab, @mika.` | **@fab**, **@mika**. | two mentions |
-| `<@ZZZZ>` (no such account) | `@user` | @user | flattened on write *(server decides the placeholder)* |
+| `<@ZZZZ>` (no such account) | `@user` | @user | flattened on write; `@user` confirmed in 0002 §1.2 |
 | `<@t5>` written by someone t5 blocked, or whose policy excludes the writer | `@fab` | @fab | flattened on write; no notification; no error |
 | `<@t5` · `<@>` · `<@ t5>` · `< @t5>` | as written | as written | malformed → plain text |
 | `@fab` | `@fab` | @fab | never picked (W1): plain text |
@@ -289,12 +316,16 @@ mention := "<@" sqid ">"      sqid := 1+ characters of the Sqids alphabet
 ### 6.2 New endpoint: `GET /user/mention-candidates` (the ask; D21 accepted as sketched)
 
 - Auth required. Query: `q` (optional prefix on the handle skeleton, so casing and confusables behave
-  like uniqueness), `post_id` (optional; enables the contextual tiers), `limit` (default 8, max 20).
+  like uniqueness), `post_id` (optional; the **integer** post id, not the sqid — silently ignored when
+  the caller cannot access that post), `limit` (default 8, 1–20). An empty `q` returns **only** the
+  contextual tiers; `search` rows appear only with a non-empty `q` (0002 §1.5).
 - Response: `{"items": [{"handle", "public_sqid", "avatar_url", "reason"}]}`, `reason` one of
   `owner` · `thread` · `following` · `follower` · `search`, ranked in that order, then alphabetical.
 - Applies exactly the mentionability function of §5.2 (browse visibility + site owner + two-way
   block + mention policy); excludes the caller.
-- Rate limit ~120 requests/minute per user *(server decides)*. No caching (per caller, per post).
+- Rate limit **120 requests / 60 s per user**, 429 past it (0002 §1.4). No caching (per caller, per
+  post). The app debounces 250 ms and cancels the previous request, so a fast typist costs about one
+  request per word.
 
 ### 6.3 Wire changes (all additive)
 
@@ -304,71 +335,85 @@ mention := "<@" sqid ">"      sqid := 1+ characters of the Sqids alphabet
 - `POST /post/{id}/comments`, `PATCH /post/comments/{id}`, `POST /post/upload`, `PATCH /post/{id}`:
   the existing text field accepts markup. No new request fields.
 - `GET /config`: `max_mentions_per_text` (integer; the launch signal).
-- `NotificationType.MENTION = "mention"` with the `comment_reply` field shape (§5.3 N1).
+- `NotificationType.MENTION = "mention"` with the `comment_reply` field shape (§5.3 N1). **One
+  correction to our "no new fields" claim** (0002 §4): `comment_id` was not on the notification wire
+  before, only on the server's internal create schema. It is now served on every notification, REST and
+  SSE alike; `club_notification.dart` already read it, so it simply started arriving.
 - `users.mention_policy` on `UserUpdate` / `UserPublic`-for-self / `/auth/me`:
   `everyone` | `following` | `nobody`.
 
-### 6.4 Server-side storage *(server decides)*
+### 6.4 Server-side storage (as built)
 
-No new table for mentions: `comments.body` and `posts.description` store the markup; the plain
-rendering is derived at read (or kept in a `*_plain` column synced on write, invisible to clients).
-One new column: `users.mention_policy` (varchar, default `everyone`) plus an Alembic migration.
-Edit diffs parse old and new text.
+No new table: `comments.body` and `posts.description` store the markup and the plain rendering is
+resolved on every read — no `*_plain` column. One new column, `users.mention_policy` (varchar, default
+`everyone`), plus its migration. Edit diffs parse old and new text.
 
----
-
-## 7. Costs
-
-Three teams, each independently releasable, under the decisions taken.
-
-| Where | Work | Estimate |
-|---|---|---|
-| **Server** | markup parser + mentionability function + flattening · dual fields + read-time resolution on comments **and posts** · `mention` type + precedence + visibility guard + approval-time re-evaluation for descriptions + budgets · `/user/mention-candidates` with four contextual tiers · `mention_policy` column + migration + `UserUpdate`/`/auth/me` · `max_mentions_per_text` on `/config` · edit diffs on both paths · tests (mirroring `test_comment_author_sqid.py` / `test_blocks.py`) · `docs/http-api/` updates | 4–5 days |
-| **Website** | markup renderer on three comment surfaces + post overlays · `mention` copy on the notifications page · composer with candidates on comments **and** the new-post / edit-post description fields (must write markup, or its edits strip mentions) · Mentions setting on the settings page | 2.5–3 days |
-| **App** | `bodyMarkup`/`descriptionMarkup` + `mentions` on the models · markup parser + shared span builder (`comments_section.dart`, `artwork_detail_page.dart`) · notification tile copy (two variants) · **shared composer widget**: `@` detection, candidates overlay, display-text ↔ picked-pairs model, serialization on send, cap hint; wired into the comment composer, `publish_page.dart`, `edit_post_details_page.dart` · Settings → Mentions row + `PATCH` · `/config` gate · unit tests (grammar vectors, model parsing, serializer round-trip, tile text) | 4–5 days |
-| **Coordination** | contract thread, dev-server verification, STATUS/CLAUDE doc updates, store release cadence (Play same day; App Store review 1–3 days) | 0.5–1 day |
-
-Total: about **11–14 developer-days** across the three codebases, plus release latency. Compared with
-the first estimate (5–7 days for plain-text, comments-only, no setting), the difference is the
-candidates endpoint (D13), the composer having to hide markup (D2), descriptions (D10), and the
-opt-out setting (D11). Runtime cost stays negligible: one `IN` lookup per page of comments or per
-post, at most 16 notification rows per text, one debounced candidates query per keystroke.
-
-The largest single item is the shared composer widget: an overlay anchored to the caret inside a
-`SingleChildScrollView` above the keyboard, and keeping the picked-pairs model consistent through
-edits, cursor moves, and paste, in three host fields. Everything else has a precedent in the repo
-(`markdown_bio.dart` for spans, the Search page for candidate lists, the notification tiles for the
-copy, the Monitored hashtags page for a `PATCH /user` setting).
+Also decided server-side (0002 §3): moderators get no looser rules as writers; the length limits
+(2000 / 5000) apply to the submitted text, and flattening may make the stored text slightly longer
+without it ever being truncated or refused; the profanity filter runs on the text with the markup
+removed; and **every other reader gets the plain rendering** — all notification previews, the player
+RPC, search, moderator tools, exports. Nothing outside a `*_markup` field ever shows `<@…>`.
 
 ---
 
-## 8. Risks
+## 7. What it took
 
-Ordered by how much they would hurt.
+| Where | Outcome |
+|---|---|
+| **Server + website** | Built and released together, 2026-09-22, server PR #275. Server record: `docs/mentions/README.md` in that repo (decisions S1–S12). |
+| **App** | Built 2026-09-22 against the live server: models, the markup parser, the span builder, the shared `@` composer in three fields, the notification tile, Settings → Mentions, the `/config` gate. 77 tests across `mention_markup_test.dart` and `mentions_test.dart`. Ships in the next store release. |
 
-1. **Unsolicited-ping channel (abuse).** Mentions are the first way to put a notification in
-   someone's inbox without them having posted, commented, or followed. Mitigations in v1: the
-   per-text cap (W3), the per-writer budget (N5), block symmetry and the **mention policy** (§5.2),
-   no anonymous pings (W4), the existing report flow.
-2. **Leaking filtered or invisible content into an inbox.** Closed by N3, including the pending-
-   approval case for descriptions.
-3. **Legacy edits strip mentions.** Accepted (D18). Bounded by how quickly the website adopts the
-   composer; the app's own old builds edit descriptions and comments too, so the app should ship the
-   composer in the same release as the renderer.
-4. **Parser divergence between Dart, TypeScript, and Python.** Three implementations of one
-   grammar. `<@SQID>` is about as simple as a grammar gets, and the §6.1 vectors go into all three test
-   suites, but a divergence would be a quiet bug (a link on one client, text on another).
-5. **Description mentions and approval timing.** If the server notifies at upload time, pending posts
-   notify nobody (N3) and never will; if it re-evaluates on approval, that is a second call site. The
-   contract must name which.
+The original estimate was 11–14 developer-days across the three codebases. The parts that carried the
+most weight were the ones predicted: the shared composer widget (an overlay anchored to a field that
+sits above the keyboard, plus keeping the picked pairs consistent through edits and paste) and the
+server's contextual candidates endpoint.
+
+Two things the estimate missed, both cheap once seen:
+
+- **The optimistic comment.** The comment provider echoes what it sent, which is now markup, so the
+  new tile would have flashed `<@t5>` until the reload landed. It now takes the picked pairs and
+  renders the plain text with live links immediately (`post_providers.dart`).
+- **Seeding an edit.** Populating the edit-description field from the server's `mentions` array means
+  an app edit that leaves the handles alone **preserves** them, rather than stripping them as D18
+  allows. The strip now only happens if the user edits the handle text itself.
+
+Runtime cost is as predicted: one `IN` lookup per page of comments or per post, at most 16 notification
+rows per text, one debounced candidates query per word typed.
+
+## 8. Risks, and where each one landed
+
+Ordered by how much they would have hurt.
+
+1. **Unsolicited-ping channel (abuse).** Mentions are the first way to put a notification in someone's
+   inbox without them having posted, commented, or followed. **Closed as designed:** per-text cap (W3),
+   per-writer budget (N5), block symmetry and the mention policy (§5.2), no anonymous pings (W4), the
+   existing report flow.
+2. **Leaking filtered or invisible content into an inbox.** **Closed, and it was worse than we thought**
+   — see N3. Our guard rested on pending posts being inaccessible, which they are not; the server
+   replaced it with a hold on `public_visibility`, covering comment mentions too, which our proposal
+   did not.
+3. **Legacy edits strip mentions.** **Reduced on our side.** The app seeds its edit fields from the
+   server's `mentions` array, so an app edit that leaves the handles alone preserves them. The strip
+   remains only for a user who edits the handle text itself, and for clients that do not do the seeding.
+4. **Parser divergence between Dart, TypeScript, and Python.** **Contained:** the §6.1 table is in all
+   three suites — `api/tests/test_mentions.py`, `web/e2e/mention-markup.spec.ts` (a port of our Dart
+   implementation), and our `mention_markup_test.dart`. A row that changes moves all three files.
+5. **Description mentions and approval timing.** **Answered:** the server re-evaluates at approval, for
+   descriptions and comments alike (N3).
 6. **Double notification.** Closed by D6 for comments; descriptions have no competing type.
 7. **Expectation mismatch: no OS push.** A mentioned user is only told when they next open the app or
-   site. True of every type today; one line in the release notes.
-8. **Candidates endpoint as a directory.** An empty `q` with a `post_id` lists what the caller can
-   already see on the post and their own profile; a prefix query is `/user/browse` with better
-   ranking. No new exposure as long as it applies the §5.2 function exactly.
-9. **Mention policy semantics.** `following` means "only people I follow may mention me"; this
-   must be stated in the setting's copy or users will read it backwards.
+   the site. True of every type today; one line in the release notes.
+8. **Candidates endpoint as a directory.** No new exposure: it applies the §5.2 function exactly, so an
+   empty `q` lists what the caller can already see and a prefix query is `/user/browse` better ranked.
+9. **Mention policy semantics.** `following` means "only people I follow may mention me". The app's
+   setting states the direction twice, in the option label ("People I follow") and its description.
+
+Still open, both for the device pass rather than the design:
+
+- **The composer overlay on a real keyboard.** It picks above or below the field from the space left
+  under the viewport inset. Tested in widget tests, not yet on the Pixel or an iPhone.
+- **Candidate latency on a slow connection.** The list stays empty and silent on error rather than
+  toasting mid-typing; whether that reads as broken is a judgment call best made on a device.
 
 No memory, battery, engine, or FFI impact: this is pure Club (`app/lib/club/`), and Club unit tests
 keep running without the engine binary.
@@ -386,46 +431,64 @@ keep running without the engine binary.
 
 ---
 
-## 10. Code touch-points (for the implementer, both repos)
+## 10. The code, as built
 
-**App (`makapix-app`):**
+Everything below is on `main` as of 2026-09-22 and ships in the next store release. Nothing here
+touches the engine, the FFI seam, memory budgets, or the launch path — it is all `app/lib/club/`, and
+the Club unit tests still run without the engine binary.
 
-- `app/lib/club/models/comment.dart`, `models/post.dart` — `bodyMarkup` / `descriptionMarkup`
-  (nullable; absent on old servers) and `mentions` (`List<MentionRef{sqid, handle, avatarUrl}>`).
-- ~~New pure-Dart `app/lib/club/models/mention_markup.dart`~~ — **✅ written 2026-09-22**, ahead of
-  the server and of any UI, because it is the Dart third of the three-parser divergence risk (§8.4).
-  `parseMentionMarkup` → `List<MentionSegment>` (`PlainSegment` | `MentionedSegment`),
-  `plainFromMarkup` (the plain rendering, also used for optimistic local text),
-  `serializeMentions(displayText, picked)`, `MentionRef` for the server's `mentions` array, and
-  `kMaxMentionsPerText`. `app/test/mention_markup_test.dart` runs the §6.1 vectors, the cap, the
-  malformed cases, and serialize→parse round trips (41 tests). Client-side sqid class:
-  `[A-Za-z0-9]{1,32}`, because `SQIDS_ALPHABET` is environment-configured and unknowable to clients
-  — confirmation is item 1 of §12 in the contract message.
-- New `app/lib/club/ui/widgets/mention_text.dart` — the span builder (`Text.rich`, one
-  `TapGestureRecognizer` per mention, disposed with the widget), used by `comments_section.dart` and
-  `artwork_detail_page.dart`.
-- New `app/lib/club/ui/widgets/mention_field.dart` — the shared composer: wraps a `TextField`; listens
-  to its controller; when the caret sits inside an `@`-led token, queries candidates and shows an
-  overlay (`CompositedTransformFollower` anchored to the field); on pick, replaces the token with
-  `@handle ` and records `(handle, sqid)`; exposes `serialized` for the send path (only pairs whose
-  `@handle` token still appears intact become `<@sqid>`); shows the cap hint. The field itself shows
-  plain text throughout, so no custom controller is needed. Hosts: `comments_section.dart`,
-  `publish_page.dart`, `edit_post_details_page.dart`.
-- `app/lib/club/api/` — `mentionCandidates(q, postId)` (new `mentions_api.dart`); `PostApi.update`
-  and the upload path pass the serialized description unchanged.
-- `app/lib/club/ui/notifications_page.dart` — the `mention` case in `_text` (comment vs description
-  by `commentId`).
-- `app/lib/club/ui/settings_page.dart` — Mentions row → a small page with the three-way policy,
-  `PATCH /user/{key}` like Monitored hashtags; `models/club_user.dart` gains `mentionPolicy`.
-- `app/lib/club/models/server_config.dart` — `maxMentionsPerText`.
-- `STATUS.md` C1/C4 rows and `CLAUDE.md`'s C6 line when it ships.
+**Parsing and models**
 
-**Server (`makapix`), for the contract thread:** `api/app/routers/comments.py` (create/update),
-`api/app/routers/posts.py` (upload, PATCH, approval), `api/app/routers/users.py` (candidates
-endpoint, `mention_policy` on PATCH), `api/app/services/social_notifications.py`,
-`api/app/constants.py` (`NotificationType`), `api/app/schemas.py` (`Comment`, `Post`, `UserUpdate`,
-config), `api/app/models.py` + one Alembic migration (`users.mention_policy`), a new
-`api/app/utils/mentions.py` (parser, mentionability, flattening, plain rendering),
-`web/src/components/CommentsAndReactions.tsx` + `SPOCommentsOverlay.tsx` + `umd/RecentCommentsPanel.tsx`
-+ the post overlays, `web/src/pages/notifications.tsx`, the settings page, `docs/http-api/notifications.md`,
-`docs/http-api/posts.md`, `docs/http-api/users.md`.
+- `models/mention_markup.dart` — the grammar, written 2026-09-22 ahead of the server and of any UI,
+  because it is the Dart third of the three-parser divergence risk (§8.4). `parseMentionMarkup` →
+  `List<MentionSegment>` (`PlainSegment` | `MentionedSegment`), `plainFromMarkup`,
+  `serializeMentions(displayText, picked)`, `hasMentionMarkup`, `MentionRef`, `kMaxMentionsPerText`.
+  Client-side sqid class `[A-Za-z0-9]{1,32}` (§4.1).
+- `models/mention_candidate.dart` — `MentionCandidate` and `MentionReason` (`owner` · `thread` ·
+  `following` · `follower` · `search`, plus `unknown`, so a tier added later renders instead of
+  crashing).
+- `models/comment.dart`, `models/post.dart` — `bodyMarkup` / `descriptionMarkup` and `mentions`, both
+  tolerant of a server that does not send them. `markDeleted` and `withReplies` carry them through.
+- `models/club_user.dart` — `MentionPolicy` (`everyone` · `following` · `nobody`, unknown reads as
+  `everyone`) with the label and description strings, and `ClubUser.mentionPolicy` + `copyWith`.
+- `models/server_config.dart` — `maxMentionsPerText` (nullable) and `mentionsEnabled`, the launch gate.
+
+**Rendering**
+
+- `ui/widgets/mention_text.dart` — the span builder. `Text.rich` with one `TapGestureRecognizer` per
+  mention, rebuilt per build and disposed with the widget. Link style `colorScheme.primary` weight 600,
+  following `markdown_bio.dart`. Falls back to one ordinary `Text` when there is no markup, so the old
+  path is untouched. No `semanticsLabel` on the span: it would replace the handle in `toPlainText()`,
+  which copy and text extraction rely on.
+- Hosts: `ui/widgets/comments_section.dart` (comment bodies) and `ui/artwork_detail_page.dart`
+  (the description block).
+
+**Composing**
+
+- `ui/widgets/mention_field.dart` — `findMentionToken` (the `@`-led token under the caret; an `@` must
+  open a token, so an email address never triggers it), `MentionComposer` (owns the text controller and
+  the picked pairs, exposes `serialized`, `liveCount`, and `seedFromMarkup` for edits), and
+  `MentionField` (wraps the host's own `TextField`, shows the candidates overlay above or below
+  depending on room under the keyboard, debounces 250 ms, orphans a late response by sequence number,
+  and says why when the cap is reached).
+- `api/mentions_api.dart` + `mentionsApiProvider` — `GET /user/mention-candidates`.
+- Three hosts: the comment composer, `ui/publish_page.dart` (no `post_id` yet, so graph and search
+  tiers only), and `ui/edit_post_details_page.dart` (seeded from the post's `mentions`, so an edit that
+  leaves the handles alone preserves them).
+- `state/post_providers.dart` — `add()` takes the picked pairs so the optimistic comment renders the
+  plain text with live links instead of flashing raw markup.
+
+**Around the edges**
+
+- `ui/notifications_page.dart` — the `mention` case, comment vs description by `commentId`.
+- `ui/mentions_settings_page.dart` + the Settings row — the three-way policy through
+  `SettingsApi.setMentionPolicy`, mirrored into the cached identity by
+  `AuthController.updateMentionPolicy`, the row gated on `mentionsEnabled`.
+
+**Tests** — `test/mention_markup_test.dart` (41: the §6.1 vectors, the cap, malformed input,
+serialize→parse round trips) and `test/mentions_test.dart` (36: token detection, composer bookkeeping
+and edit seeding, the span builder including tap and recognizer disposal, model parsing, the config
+gate). Full suite 1054 pass, `flutter analyze --fatal-infos` clean.
+
+**Server and website (`makapix`)** — released 2026-09-22 in PR #275. Its own record is
+`docs/mentions/README.md` in that repo, decisions S1–S12.

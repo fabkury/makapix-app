@@ -4,11 +4,14 @@ import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/club_error.dart';
+import '../models/mention_markup.dart';
 import '../models/post.dart';
 import '../state/api_providers.dart';
 import '../state/feed_providers.dart';
 import '../state/pmd_providers.dart';
 import '../state/post_providers.dart';
+import '../state/publish_providers.dart';
+import 'widgets/mention_field.dart';
 
 /// Owner-only metadata editor for an existing post (`PATCH /post/{id}`):
 /// title, description, and the artist-controlled hashtags. Moderator-owned
@@ -42,6 +45,12 @@ class _EditPostDetailsPageState extends ConsumerState<EditPostDetailsPage> {
   late final TextEditingController _description;
   late final TextEditingController _hashtags;
 
+  /// Holds the mentions already in the description, so saving without touching
+  /// the handles keeps them. Without the seeding this edit would write back the
+  /// plain text and silently strip every mention (D18).
+  late final MentionComposer _mentions;
+  final FocusNode _descriptionFocus = FocusNode();
+
   // Dirty baseline (the artist-controlled tag list, normalized).
   late final String _baseTitle;
   late final String _baseDescription;
@@ -50,6 +59,10 @@ class _EditPostDetailsPageState extends ConsumerState<EditPostDetailsPage> {
 
   late bool _remixable;
   bool _saving = false;
+
+  int get _maxMentions =>
+      ref.read(serverConfigProvider).valueOrNull?.maxMentionsPerText ??
+      kMaxMentionsPerText;
 
   /// ND licenses can't be Remixable (server rule L5) — the toggle locks off.
   bool get _ndLicense =>
@@ -68,10 +81,16 @@ class _EditPostDetailsPageState extends ConsumerState<EditPostDetailsPage> {
     _title = TextEditingController(text: _baseTitle);
     _description = TextEditingController(text: _baseDescription);
     _hashtags = TextEditingController(text: _baseTags.join(', '));
+    _mentions = MentionComposer(controller: _description);
+    // Seeds the picks from what the server sent; also rewrites the field to the
+    // plain rendering, which for a description equals what was already there.
+    _mentions.seedFromMarkup(p.descriptionMarkup, p.mentions);
   }
 
   @override
   void dispose() {
+    _mentions.dispose();
+    _descriptionFocus.dispose();
     _title.dispose();
     _description.dispose();
     _hashtags.dispose();
@@ -101,7 +120,7 @@ class _EditPostDetailsPageState extends ConsumerState<EditPostDetailsPage> {
       await ref.read(postApiProvider).update(
             widget.post.id,
             title: title,
-            description: _description.text,
+            description: _mentions.serialized(maxMentions: _maxMentions),
             hashtags: EditPostDetailsPage.parseHashtags(_hashtags.text),
             remixable: _remixable == _baseRemixable ? null : _remixable,
           );
@@ -163,15 +182,23 @@ class _EditPostDetailsPageState extends ConsumerState<EditPostDetailsPage> {
               ),
             ),
             const SizedBox(height: 12),
-            TextField(
-              controller: _description,
-              maxLines: 6,
-              maxLength: 5000,
-              onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(
-                labelText: 'Description',
-                border: OutlineInputBorder(),
-                alignLabelWithHint: true,
+            MentionField(
+              composer: _mentions,
+              focusNode: _descriptionFocus,
+              postId: widget.post.id,
+              enabled: ref.watch(serverConfigProvider).valueOrNull?.mentionsEnabled ?? false,
+              maxMentions: _maxMentions,
+              child: TextField(
+                controller: _description,
+                focusNode: _descriptionFocus,
+                maxLines: 6,
+                maxLength: 5000,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(
+                  labelText: 'Description',
+                  border: OutlineInputBorder(),
+                  alignLabelWithHint: true,
+                ),
               ),
             ),
             const SizedBox(height: 12),

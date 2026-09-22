@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/club_error.dart';
 import '../models/comment.dart';
+import '../models/mention_markup.dart';
 import '../models/post.dart';
 import '../models/reactions.dart';
 import 'api_providers.dart';
@@ -180,7 +181,12 @@ class CommentsController extends StateNotifier<AsyncValue<List<Comment>>> {
     }
   }
 
-  Future<String?> add(String body, {String? parentId}) async {
+  /// Posts a comment. [body] is the wire text, which may carry `<@sqid>` mention
+  /// markup; [mentions] are the pairs the composer picked, used only to render
+  /// the optimistic copy correctly — without them the tile would flash raw
+  /// markup until the reload lands.
+  Future<String?> add(String body,
+      {String? parentId, List<MentionRef> mentions = const []}) async {
     // Optimistically show the new comment (and bump the count) before the round-trip; `load()`
     // reconciles with the server copy afterwards.
     final cur = state.value;
@@ -190,7 +196,11 @@ class CommentsController extends StateNotifier<AsyncValue<List<Comment>>> {
         id: 'pending-${DateTime.now().microsecondsSinceEpoch}',
         parentId: parentId,
         depth: parentId == null ? 0 : 1,
-        body: body,
+        // The plain rendering is what every other reader gets; the markup rides
+        // alongside so the optimistic tile links exactly like the reloaded one.
+        body: plainFromMarkup(body, handles: MentionRef.handlesOf(mentions)),
+        bodyMarkup: body,
+        mentions: mentions,
         createdAt: DateTime.now(),
         author: me == null ? null : CommentAuthor(handle: me.handle, sqid: me.sub, avatarUrl: me.avatarUrl),
         likeCount: 0,

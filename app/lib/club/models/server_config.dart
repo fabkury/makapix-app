@@ -120,6 +120,12 @@ class ClubServerConfig {
   /// (ugc-safety §1 / A5). Presence of the `moderation` block is the gate.
   final ModerationRules? moderation;
 
+  /// Mentions cap — nullable **on purpose**, the same launch-signal mechanism as
+  /// [maxModHashtagsPerPost]: `null` means the server predates mentions, so the
+  /// `@` composers stay off (server message 0004/0002 §4). Rendering does not
+  /// consult this — a `*_markup` field is rendered whenever one arrives.
+  final int? maxMentionsPerText;
+
   const ClubServerConfig({
     required this.upload,
     this.maxCommentDepth = 2,
@@ -128,10 +134,15 @@ class ClubServerConfig {
     this.maxHashtagsPerPost = 64,
     this.maxModHashtagsPerPost,
     this.moderation,
+    this.maxMentionsPerText,
   });
 
   bool get modHashtagsEnabled => maxModHashtagsPerPost != null;
   bool get moderationEnabled => moderation != null;
+
+  /// Whether the `@` composer may be offered. Rendering is never gated on this.
+  bool get mentionsEnabled =>
+      maxMentionsPerText != null && maxMentionsPerText! > 0;
 
   factory ClubServerConfig.fromJson(Map<String, dynamic> j) => ClubServerConfig(
         upload: UploadRules.fromJson((j['upload'] as Map?)?.cast<String, dynamic>() ?? const {}),
@@ -142,6 +153,8 @@ class ClubServerConfig {
         // No default: absent key must stay null (feature-off), per contract §2.
         maxModHashtagsPerPost: (j['max_mod_hashtags_per_post'] as num?)?.toInt(),
         moderation: ModerationRules.fromJson((j['moderation'] as Map?)?.cast<String, dynamic>()),
+        // No default: absent key must stay null (composer off).
+        maxMentionsPerText: (j['max_mentions_per_text'] as num?)?.toInt(),
       );
 
   /// Baked-in fallback (mirrors vault.py) for offline / fetch failure.
