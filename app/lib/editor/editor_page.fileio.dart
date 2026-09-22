@@ -148,7 +148,7 @@ extension _EditorFileIo on _EditorPageState {
     // load; only adopt a new drawing if the load succeeds, so a corrupt file leaves the current
     // drawing intact.
     if (!await _releaseOutgoingDrawingInteractive('"$name"')) return;
-    final status = engine.load(bytes);
+    final status = _loadIntoEngine(bytes);
     if (status.loaded) {
       if (status == LoadStatus.okWithWarnings) {
         debugPrint('open: "$name" loaded with a content-hash warning');
@@ -163,8 +163,7 @@ extension _EditorFileIo on _EditorPageState {
       // flushNow wrote a fresh marker, and the discard branch deleted the folder, in which
       // case attachResume re-anchors on the engine's untouched document. [replay]
       final id = _drawingId;
-      if (id != null) _journalAttaching = _attachJournal(id, _JournalMode.resume);
-      _startAutosave();
+      if (id != null) _resumeTracking(id);
       if (mounted) _toast(_loadFailureMessage(status));
     }
     if (mounted) {
@@ -546,7 +545,7 @@ extension _EditorFileIo on _EditorPageState {
     if (req.isMkpx) {
       // A layers (.mkpx) file: load as a full document — layers, frames,
       // palettes intact. The engine auto-detects plain vs compact profile.
-      mkpxStatus = engine.load(req.bytes);
+      mkpxStatus = _loadIntoEngine(req.bytes);
       if (mkpxStatus == LoadStatus.okWithWarnings) {
         debugPrint('club edit: "${req.sourceTitle}" loaded with a content-hash warning');
       }

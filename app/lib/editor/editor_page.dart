@@ -163,6 +163,11 @@ class _EditorPageState extends ConsumerState<EditorPage>
   SharedPreferences? _prefs;
   AutosaveController? _autosave;
   String? _drawingId;
+
+  /// Bumped whenever the engine stops holding the tracked drawing's document (a release, or any
+  /// `engine.load`). Each autosave captures it at start and refuses to write once it moves, so one
+  /// drawing's content can never be saved into another's folder (ADR 0014, amended 2026-09-22).
+  int _docGen = 0;
   String _drawingTitle = 'Untitled';
   DateTime _drawingCreatedAt = DateTime.now();
   DateTime? _lastAutosaveWarn; // throttles the "couldn't autosave" toast

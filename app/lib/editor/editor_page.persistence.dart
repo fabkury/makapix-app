@@ -115,6 +115,7 @@ extension _EditorPersistence on _EditorPageState {
   void _startAutosave() {
     final id = _drawingId, store = _store;
     if (id == null || store == null) return;
+    final gen = _docGen;
     _autosave = AutosaveController(
       id: id,
       store: store,
@@ -123,6 +124,13 @@ extension _EditorPersistence on _EditorPageState {
       serialize: () => _engineReady ? engine.saveWithMeta(_provenance.toMeta()) : Uint8List(0),
       buildMeta: _buildMeta,
       onError: _onAutosaveError,
+      // Bound to the document generation it started under: a write after a release or a load
+      // would put another drawing's content in this folder. A refusal is a sequencing bug.
+      isCurrent: () => _docGen == gen,
+      onStale: () {
+        debugPrint('autosave refused a stale write for drawing $id');
+        assert(false, 'autosave for $id outlived its document (release before engine.load)');
+      },
       // Journal write-ahead: flush the recorder and append a marker for the exact bytes
       // about to be written, awaiting a still-in-flight attach first so the first marker
       // can never race it. [replay]
@@ -203,6 +211,13 @@ extension _EditorPersistence on _EditorPageState {
     await _autosave?.flushNow();
   }
 
+  // Every editor `engine.load` goes through here: replacing the engine's document ends the
+  // current autosave's claim on it (see `_docGen`).
+  LoadStatus _loadIntoEngine(Uint8List bytes) {
+    _docGen++;
+    return engine.load(bytes);
+  }
+
   // Load a drawing's bytes into the engine, falling back to its `.bak` on a corrupt primary. Uses
   // `engine.load` as the validator so the right file is both chosen and loaded in one pass. A
   // content-hash warning is NOT corruption (the primary still loads — a hash-rule difference must
@@ -211,7 +226,7 @@ extension _EditorPersistence on _EditorPageState {
     final store = _store;
     if (store == null || !_engineReady) return false;
     final bytes = await store.readDoc(id, validate: (b) {
-      final s = engine.load(b);
+      final s = _loadIntoEngine(b);
       if (s == LoadStatus.okWithWarnings) {
         debugPrint('drawing $id loaded with a content-hash warning');
       }
@@ -236,22 +251,38 @@ extension _EditorPersistence on _EditorPageState {
   // Stop tracking the outgoing drawing before a switch: either flush-and-keep it in the library,
   // or delete it (the caller decided — blank auto-discard or the user's explicit choice).
   Future<void> _releaseOutgoing({required bool discard}) async {
-    if (!discard) await _autosave?.flushNow();
-    await _autosave?.stop(); // waits for any in-flight write before a delete pulls the folder
-    _autosave = null;
-    // Detach the Journal before any delete pulls the folder (Windows file locks); the
-    // keep-branch flushNow above already routed the final marker through preWrite. [replay]
-    final j = _journal;
-    _journal = null;
-    _journalWriter = null; // a real release DOES clear the writer handle [G-42]
-    _journalAttaching = null;
-    if (j != null) await j.detach();
+    await _quiesceOutgoing(flush: !discard);
     final id = _drawingId;
     if (discard && id != null) {
       try {
         await _store?.delete(id);
       } catch (_) {/* best-effort: an orphaned folder is harmless */}
     }
+  }
+
+  // Stop everything that writes the outgoing drawing's folder — autosave and Journal — while the
+  // engine still holds its document. Must run BEFORE the engine's content changes: the autosave
+  // serializes whatever the engine holds, under the outgoing drawing's id (ADR 0014, amended
+  // 2026-09-22).
+  Future<void> _quiesceOutgoing({required bool flush}) async {
+    if (flush) await _autosave?.flushNow();
+    await _autosave?.stop(); // waits for any in-flight write before a delete pulls the folder
+    _autosave = null;
+    // Detach the Journal before any delete pulls the folder (Windows file locks); the
+    // flushNow above already routed the final marker through preWrite. [replay]
+    final j = _journal;
+    _journal = null;
+    _journalWriter = null; // a real release DOES clear the writer handle [G-42]
+    _journalAttaching = null;
+    if (j != null) await j.detach();
+    _docGen++; // whatever the engine holds next is no longer this drawing's document
+  }
+
+  // Resume tracking [id] (Journal + autosave) after a switch was abandoned with its document back
+  // in the engine.
+  void _resumeTracking(String id) {
+    _journalAttaching = _attachJournal(id, _JournalMode.resume);
+    _startAutosave();
   }
 
   // Ask what should happen to the outgoing drawing WITHOUT acting on it yet (ADR 0014: load,
@@ -345,12 +376,19 @@ extension _EditorPersistence on _EditorPageState {
     final choice = await _askOutgoingChoice('"${meta?.title ?? 'Untitled'}"');
     if (choice == null) return;
     final outgoingId = _drawingId;
-    await _autosave?.flushNow(); // the outgoing is now on disk, so rollback below is exact
+    // Flush the outgoing (so the rollback below is exact), then stop its autosave and Journal
+    // BEFORE the engine takes the incoming document: a flush after the load used to write the
+    // INCOMING content into the OUTGOING folder under its title, and the Journal marker that
+    // rode along made its Replay disagree with its canvas (ADR 0014 amendment). Its identity
+    // stays put until the incoming load is proven.
+    await _quiesceOutgoing(flush: true);
     final ok = await _loadDrawingIntoEngine(id);
     if (!ok) {
-      // Nothing was released, so the outgoing drawing still owns its identity — put its bytes
-      // back under it and leave the target untouched [G-37, G-38].
-      if (outgoingId != null) await _loadDrawingIntoEngine(outgoingId);
+      // The outgoing drawing still owns its identity — put its bytes back under it, resume
+      // tracking it, and leave the target untouched [G-37, G-38].
+      if (outgoingId != null && await _loadDrawingIntoEngine(outgoingId)) {
+        _resumeTracking(outgoingId);
+      }
       if (mounted) {
         _toast('Could not open that drawing (file missing or corrupt)');
         _refreshState();
@@ -358,7 +396,7 @@ extension _EditorPersistence on _EditorPageState {
       }
       return;
     }
-    await _releaseOutgoing(discard: choice == _OutgoingChoice.discard);
+    await _releaseOutgoing(discard: choice == _OutgoingChoice.discard); // already quiesced: deletes on Discard
     _clubSource = null;
     _restoreProvenance(_resumeDocBytes);
     _adopt(id, meta?.title ?? 'Untitled', meta?.createdAt ?? DateTime.now());

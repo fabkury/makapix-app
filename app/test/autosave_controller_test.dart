@@ -133,6 +133,45 @@ void main() {
     expect(store.docWrites, 0);
   });
 
+  group('document binding (ADR 0014 amendment)', () {
+    test('once isCurrent turns false, neither flushNow nor a cycle serializes or writes', () async {
+      var isCur = true;
+      var serializes = 0, stale = 0;
+      final bound = AutosaveController(
+        id: 'd1',
+        store: store,
+        serialize: () {
+          serializes++;
+          return current;
+        },
+        buildMeta: () => metaFor('d1'),
+        isCurrent: () => isCur,
+        onStale: () => stale++,
+      );
+      await bound.flushNow();
+      expect(store.docWrites, 1);
+      // The engine now holds ANOTHER drawing's document: nothing of it may reach d1's folder.
+      isCur = false;
+      current = bytesOf('someone else');
+      final before = serializes;
+      await bound.flushNow();
+      bound.markActivity();
+      await bound.debugCycle();
+      expect(serializes, before, reason: 'a stale controller must not even serialize');
+      expect(store.docWrites, 1);
+      expect(stale, 2);
+      expect(await store.readDoc('d1'), bytesOf('v1'));
+      await bound.stop();
+    });
+
+    test('flushNow after stop writes nothing', () async {
+      await c.stop();
+      current = bytesOf('late');
+      await c.flushNow();
+      expect(store.docWrites, 0);
+    });
+  });
+
   group('preWrite (the Journal write-ahead hook)', () {
     test('receives the fnv of the exact bytes, BEFORE writeDoc', () async {
       final events = <String>[];

@@ -36,3 +36,14 @@ Consequences: G-40 (Post-to-Club assembling the publish draft from two different
 and G-42 (dispose tearing down the Journal before the write-ahead marker lands, so every session
 end re-anchors) sit in this cluster but are *not* closed by the policy; both are tracked as point
 fixes.
+
+**Amended 2026-09-22.** "Load, then adopt" left the outgoing drawing's autosave and Journal running
+while the incoming document loaded, and the release after the load flushed again: with Keep, the
+outgoing folder got the INCOMING content under its own title, plus a Journal marker for those bytes,
+so its Replay played its real history while its canvas showed another drawing (shipped in 1.9.0 and
+1.10.0). The rule is now *quiesce, load, then adopt*: the outgoing drawing is flushed and its
+autosave and Journal stopped before the engine's content changes; its identity still switches only
+on success, and a failed load resumes tracking it. As a backstop, each autosave is bound to a
+document generation that every release and every editor `engine.load` bumps, and refuses (logs;
+asserts in debug) any write after it moves. Drawings already overwritten are not repaired
+automatically; their pre-bug content survives in the Journal.

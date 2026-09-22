@@ -38,6 +38,16 @@ class AutosaveController {
   /// authoritative; a missed marker merely re-anchors the journal on the next attach.
   final Future<void> Function(int fnv64)? preWrite;
 
+  /// True while whatever [serialize] reads (the engine) still holds the document this controller
+  /// was started for. Checked synchronously before every serialize: once it turns false, every
+  /// write is refused, so another drawing's content can never land in [id]'s folder (ADR 0014,
+  /// amended 2026-09-22). Null = always current.
+  final bool Function()? isCurrent;
+
+  /// Called (non-fatally) when a write is refused because [isCurrent] turned false — a bug in the
+  /// caller's switch sequencing, never a user-facing condition.
+  final void Function()? onStale;
+
   final Duration interval;
 
   AutosaveController({
@@ -47,6 +57,8 @@ class AutosaveController {
     required this.buildMeta,
     this.onError,
     this.preWrite,
+    this.isCurrent,
+    this.onStale,
     this.interval = const Duration(seconds: 5),
   });
 
@@ -69,6 +81,7 @@ class AutosaveController {
   Future<void> _runCycle() async {
     if (_stopped || !_activity) return;
     _activity = false;
+    if (_refuseStale()) return;
     final bytes = serialize();
     if (bytes.isEmpty) return;
     final h = fnv1a64(bytes);
@@ -84,7 +97,9 @@ class AutosaveController {
   /// — e.g. switching drawings — should). Byte-identical state skips the write — the same hash
   /// short-circuit as the periodic cycle, so lifecycle-transition bursts don't rewrite (and
   /// re-fsync) an unchanged document. [battery F11]
+  /// A no-op once [stop] has been called or once [isCurrent] turns false.
   Future<void> flushNow() {
+    if (_stopped || _refuseStale()) return Future<void>.value();
     final bytes = serialize(); // sync: captured before the first await / engine free
     if (bytes.isEmpty) return Future<void>.value();
     final h = fnv1a64(bytes);
@@ -93,6 +108,12 @@ class AutosaveController {
     _lastHash = h;
     _hasSaved = true;
     return _enqueue(bytes, meta, _lastHash);
+  }
+
+  bool _refuseStale() {
+    if (isCurrent == null || isCurrent!()) return false;
+    onStale?.call();
+    return true;
   }
 
   /// Stop the periodic timer without tearing the controller down — the app went to
@@ -143,7 +164,8 @@ class AutosaveController {
     }
   }
 
-  /// Stop the timer and let any pending write finish. Idempotent.
+  /// Stop the timer and let any pending write finish; later [flushNow] calls write nothing.
+  /// Idempotent.
   Future<void> stop() async {
     _stopped = true;
     _timer?.cancel();
