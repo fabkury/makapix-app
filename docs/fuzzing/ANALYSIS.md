@@ -7,6 +7,8 @@ log: `docs/fuzzing/FINDINGS.md`). Targets 1–2 found three real engine bugs (FZ
 FZ-3, all fixed with regressions); targets 3–4 came up clean on first contact. The
 differential uses libwebp (the C reference) as the independent decoder, per §2.3.
 The analysis below is preserved as written.
+**Reviewed 2026-09-30:** `docs/fuzzing-review/` (REVIEW.md, the coverage and staleness
+assessment; PLAN.md, the live tracker for closing its gaps).
 
 **Verdict up front:** fuzzing is not merely "useful" here — the Makapix engine is unusually
 *pre-adapted* to it (deterministic, zero-dep, headless, DSL-driven, oracle-rich) while

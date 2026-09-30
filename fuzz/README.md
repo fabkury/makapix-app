@@ -7,6 +7,9 @@ Rust)** — the engine is platform-independent by construction, so a bug found o
 is a bug everywhere. Builds happen in `~/makapix-fuzz` inside WSL (ext4; `/mnt/c` is
 too slow), and results sync back here automatically.
 
+**Review and work plan (2026-09-30):** `docs/fuzzing-review/` records what the harness
+covers, what it misses, and the tracker for closing the gaps.
+
 ## Targets
 
 - **`fuzz_load_mkpx`** — raw bytes → strict + tolerant `.mkpx` load → FFI read pokes →
