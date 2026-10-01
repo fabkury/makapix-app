@@ -98,3 +98,6 @@ Thumbs.db
 .DS_Store
 
 # NOTE: Cargo.lock IS committed (this is an application workspace).
+
+# ---- gen-l10n output (regenerated from app/lib/l10n/*.arb by pub get / test / build) ----
+app/lib/l10n/app_localizations*.dart

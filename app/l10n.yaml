@@ -1,0 +1,18 @@
+# Flutter gen-l10n configuration (docs/i18n/DESIGN.md). `flutter pub get`, `flutter test`,
+# `flutter run` and `flutter build` regenerate lib/l10n/app_localizations*.dart from the ARB
+# files; run `flutter gen-l10n` by hand after editing an ARB when only analyzing.
+arb-dir: lib/l10n
+template-arb-file: app_en.arb
+output-localization-file: app_localizations.dart
+output-class: AppLocalizations
+# `AppLocalizations.of(context)` is non-null; widgets read it through `context.l10n`
+# (lib/l10n/l10n.dart), which also falls back to English outside a localized tree.
+nullable-getter: false
+# Every message carries an @description: it is the translator's (and the reviewer's) context.
+required-resource-attributes: true
+# Apostrophes are literal text (French and English are full of them), so `'` never escapes.
+# The price: a message cannot contain a literal `{` or `}` — pass one as a placeholder.
+use-escaping: false
+# Keys present in app_en.arb but missing from a translation. test/l10n/arb_integrity_test.dart
+# does the same check without needing this file; it is here for translators' tooling.
+untranslated-messages-file: build/l10n_untranslated.json

@@ -9,32 +9,8 @@ part of 'editor_page.dart';
 extension _EditorToolgrid on _EditorPageState {
   // `selected` = the active draw tool (blue). `active` = an on toggle like Onion/Play (amber).
   // `enabled` = false dims the tile (e.g. Undo/Redo when there's nothing to undo/redo).
-  Widget _tileVisual(ToolDef t, {required bool selected, bool hover = false, bool active = false, bool enabled = true}) {
-    final s = _chromeScale;
-    final fg = selected ? Colors.white : (active ? Colors.amber : Colors.white70);
-    final tile = Container(
-      width: 54 * s,
-      height: 42 * s,
-      margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
-      decoration: BoxDecoration(
-        color: selected ? const Color(0xFF4080C0) : const Color(0xFF26292E),
-        borderRadius: BorderRadius.circular(6),
-        border: hover
-            ? Border.all(color: Colors.amber, width: 2)
-            : (active ? Border.all(color: Colors.amber, width: 1.5) : null),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          t.iconWidget(size: 18 * s, color: fg),
-          const SizedBox(height: 1),
-          Text(t.label,
-              style: TextStyle(fontSize: 8.5 * s, color: active ? Colors.amber : null), maxLines: 1, overflow: TextOverflow.clip),
-        ],
-      ),
-    );
-    return enabled ? tile : Opacity(opacity: 0.4, child: tile);
-  }
+  Widget _tileVisual(ToolDef t, {required bool selected, bool hover = false, bool active = false, bool enabled = true}) =>
+      ToolTile(t, selected: selected, hover: hover, active: active, enabled: enabled, scale: _chromeScale);
 
   bool _actionActive(String dsl) => dsl == 'Onion' && _onion;
 
@@ -202,7 +178,7 @@ extension _EditorToolgrid on _EditorPageState {
             selected: t.dsl == _pinnedThirdTool,
             selectedTileColor: const Color(0x224080C0),
             leading: t.iconWidget(size: 22, color: t.dsl == _pinnedThirdTool ? Colors.white : Colors.white70),
-            title: Text(t.label),
+            title: Text(t.name(context.l10n)),
             trailing: t.dsl == _pinnedThirdTool ? const Icon(Icons.check, color: Color(0xFF4080C0)) : null,
             onTap: () {
               Navigator.pop(ctx);
@@ -262,7 +238,7 @@ extension _EditorToolgrid on _EditorPageState {
       dense: true,
       contentPadding: EdgeInsets.zero,
       leading: t.iconWidget(size: 22, color: fg),
-      title: Text(t.label, style: TextStyle(color: fg)),
+      title: Text(t.name(context.l10n), style: TextStyle(color: fg)),
       subtitle: note.isEmpty
           ? null
           : Text(note, style: TextStyle(fontSize: 11, color: hidden ? Colors.white24 : Colors.white54)),

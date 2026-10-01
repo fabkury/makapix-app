@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app.dart';
 import 'club/api/club_user_agent.dart';
 import 'dev/battery_stats.dart';
+import 'l10n/app_locale.dart';
 import 'shell/launch_pillar.dart';
 
 Future<void> main() async {
@@ -20,9 +21,15 @@ Future<void> main() async {
   // 24 h (ADR 0035), else the Club. Decided before the first frame so nothing flashes; a
   // preferences hiccup means the Club. Never throws, bounded at 2 s.
   final launchPillar = await LaunchPillarMemory.read();
+  // The language the user picked, if any — read before the first frame so the app never opens in
+  // the device's language and then flips. Never throws, bounded at 2 s; null follows the device.
+  final localeOverride = await AppLocalePrefs.read();
   // ProviderScope hosts the Riverpod state (Club social layer + the editor↔Club bridge).
   runApp(ProviderScope(
-    overrides: [launchPillarProvider.overrideWithValue(launchPillar)],
+    overrides: [
+      launchPillarProvider.overrideWithValue(launchPillar),
+      initialAppLocaleProvider.overrideWithValue(localeOverride),
+    ],
     child: const MakapixApp(),
   ));
 }

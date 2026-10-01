@@ -488,7 +488,7 @@ needs a settings home.
 |---|---|---|
 | Aseprite `.aseprite` layered import | Designed 2026-08-12, not implemented, do not start unprompted | `docs/aseprite-import/DESIGN.md`, ADR 0005 |
 | HDR | Analyzed 2026-08-10, not implemented, do not start unprompted | `docs/hdr/ANALYSIS.md` (retired to git history 2026-09-16) |
-| Localization | Deferred by decision | `docs/i18n/DESIGN.md` |
+| Localization | In progress since 2026-10-01 (un-parked) | `docs/i18n/PLAN.md`, ADR 0037 |
 | Eraser "keep RGB" + un-erase | Analyzed 2026-07-28, not committed | `docs/eraser-unerase/` (retired to git history 2026-09-16) |
 | Keyboard rebinding UI (6.B) | Open, do not implement unprompted | `docs/keyboard-shortcuts/DESIGN.md` |
 | Browser / WebAssembly build | Analyzed only | `docs/web-build/ANALYSIS.md` |

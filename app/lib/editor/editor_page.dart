@@ -27,6 +27,7 @@ import 'package:makapix_club/club/state/edit_bridge.dart';
 import 'package:makapix_club/club/ui/publish_page.dart';
 import 'package:makapix_club/dev/battery_stats.dart';
 import 'package:makapix_club/engine_ffi.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 import 'package:makapix_club/share/image_share.dart';
 import 'package:makapix_club/ui/layout.dart';
 
@@ -70,6 +71,7 @@ import 'makapix_icon.dart';
 import 'tools.dart';
 import 'thumbnail.dart';
 import 'widgets/painters.dart';
+import 'widgets/tool_tile.dart';
 import 'widgets/strip_scroller.dart';
 import 'dialogs/crop_dialog.dart';
 import 'dialogs/place_dialog.dart';

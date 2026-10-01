@@ -24,15 +24,19 @@ coverage; with the git log, the live frontier) · `SPEC.md` / `SPEC-CLUB.md` (in
 references for the two pillars — git-ignored, absent from public checkouts; rewritten 2026-08-16 to
 describe the system as built) · `docs/adr/` (the ADR series — 0007 single-coat strokes, 0008 AA, and 0036 stamp footprints
 define *current* engine behavior) · `docs/memlab/REPORT.md` (measured memory limits — the numbers to design
-against) · `docs/play-release.md` + `docs/ios-release/PLAN.md` (store pipelines) · `messages/` (server ↔ app
+against) · `docs/i18n/` (the localization workstream, in progress since 2026-10-01 — `PLAN.md` is the
+live tracker to read first, `TESTING.md` the test layers, `GLOSSARY.md` the terminology; ADR 0037) ·
+`docs/play-release.md` + `docs/ios-release/PLAN.md` (store pipelines) · `messages/` (server ↔ app
 correspondence, one sub-folder per thread, numbered replies — convention in `messages/README.md`; threads
 before 2026-09-09 were `docs/club-server-cr-*.md`, retired to git history 2026-09-16). (The original
 2026-06 build plan, `PLAN.md`, was retired 2026-08-16 — git history holds it; its toolchain-setup
 content lives on in `docs/BUILDING.md`.)
 
 **Conventions:** all new text — code comments, UI strings, docs, commits — is **American English** (repo
-standardized 2026-07-25). Club commits are phase-tagged (`feat(club/C4): …`); phases C0–C3 are complete,
-C4 is complete except highlights-management + categories, C5 shipped player control/registration and live
+standardized 2026-07-25). **UI strings are never hardcoded**: they live in `app/lib/l10n/app_*.arb` in all
+eight languages and are read with `context.l10n.key` (widgets) or `appL10n.key` (context-free code); a
+scanner gate fails a hardcoded one (ADR 0037, `docs/i18n/`). i18n commits are tagged `feat(i18n/L1): …`.
+Club commits are phase-tagged (`feat(club/C4): …`); phases C0–C3 are complete, C4 is complete except highlights-management + categories, C5 shipped player control/registration and live
 SSE notifications (soft-player kiosk is the one open item; the MQTT plan is retired), and C6 shipped
 mod-hashtags, the in-app moderation suite, and remix lineage — `STATUS.md` holds the live frontier.
 
@@ -104,14 +108,18 @@ cargo test --test scenarios             # one integration-test file (crates/engi
 cargo clippy --workspace
 
 cd app
+flutter gen-l10n                        # after editing any lib/l10n/*.arb (test/analyze do NOT regenerate)
 flutter test                            # all Dart tests; append a file path to run one
 flutter analyze                         # keep --fatal-infos clean
+flutter test test_engine                # the real EditorPage against the release engine DLL (i18n sweeps)
 ```
 
 Rust unit tests are inline `#[cfg(test)]` modules; cross-cutting tests live in `crates/engine/tests/`
 (`scenarios.rs`, `perf.rs`, `fuzz_inputs.rs`, `aa_off_pins.rs` — literal hash pins, a changed pin IS the
 bug — and `replay_checkpoint.rs`). Dart tests (unit + widget, `app/test/`) run **without the engine
-binary or network** — keep it that way.
+binary or network** — keep it that way. The one suite that does load the engine is `app/test_engine/`
+(needs `cargo build -p makapix-ffi --release`); it exists so the editor's own screens can be checked in
+every language.
 
 ## Architecture
 

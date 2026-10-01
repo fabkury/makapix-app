@@ -68,10 +68,11 @@ extension _EditorPersistence on _EditorPageState {
       _provenance = DocProvenance.fresh();
       await _createFreshDrawing(title: 'Untitled');
     }
-    if (mounted) {
-      _refreshState();
-      _redraw();
-    }
+    // Unmounted while the restore was in flight (a pillar switch right after opening the
+    // editor): nothing below applies, and `ref` may no longer be read.
+    if (!mounted) return;
+    _refreshState();
+    _redraw();
 
     // ADR 0014 [G-39]: from here on the canvas may accept strokes — before this point a stroke
     // would have been clobbered by the restore and left pixels in no Journal.

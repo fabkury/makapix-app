@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import '../../anim/frame_cache.dart';
 import '../../cache/artwork_cache.dart';
@@ -91,7 +92,7 @@ class SignInPrompt extends StatelessWidget {
             const SizedBox(height: 12),
             Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white60)),
             const SizedBox(height: 12),
-            FilledButton(onPressed: onSignIn, child: const Text('Sign in')),
+            FilledButton(onPressed: onSignIn, child: Text(context.l10n.commonSignIn)),
           ]),
         ),
       );

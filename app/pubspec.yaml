@@ -56,6 +56,9 @@ dependencies:
                                   # server /auth/token apple grant ships — see kAppleSignInEnabled.
   package_info_plus: ^9.0.1       # runtime app version for the About dialog
   device_info_plus: ^12.4.0       # OS version + model for the Club User-Agent (api/club_user_agent.dart)
+  flutter_localizations:
+    sdk: flutter
+  intl: any
 
 dev_dependencies:
   flutter_test:
@@ -72,6 +75,7 @@ dev_dependencies:
   # adaptive icon XML, Windows .ico) from the brand masters in assets/icons/.
   # Regenerate after changing the masters: `dart run flutter_launcher_icons`.
   flutter_launcher_icons: ^0.14.4
+  analyzer: ^13.0.0
 
 # Launcher-icon generation config (consumed by the flutter_launcher_icons tool).
 # Masters live in assets/icons/. Regenerate after changing them: `dart run flutter_launcher_icons`.
@@ -96,6 +100,9 @@ flutter_launcher_icons:
 
 # The following section is specific to Flutter packages.
 flutter:
+
+  # gen-l10n: generate lib/l10n/app_localizations*.dart from the ARB files (see l10n.yaml).
+  generate: true
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

@@ -56,6 +56,11 @@ if ($SkipGates) {
   cargo test
   if ($LASTEXITCODE -ne 0) { Fail "cargo test failed" }
   Push-Location "$root\app"
+  # The localization classes are generated from lib/l10n/*.arb and git-ignored; analyze does not
+  # regenerate them, so do it here or a stale copy would be analyzed and tested.
+  Step "Gate: flutter gen-l10n"
+  flutter gen-l10n
+  if ($LASTEXITCODE -ne 0) { Pop-Location; Fail "flutter gen-l10n failed" }
   Step "Gate: flutter analyze"
   # Infos are non-fatal: they're kept at zero in dev (see `flutter analyze --fatal-infos`), but a
   # stray info (e.g. a new deprecation after a Flutter upgrade) shouldn't block a release —

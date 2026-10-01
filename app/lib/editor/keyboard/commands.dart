@@ -3,6 +3,8 @@
 // customizations by them, so renaming/splitting an id requires a store migration, never a silent
 // drop. Registry ORDER is meaningful: when one Chord binds several Commands (Enter = commit or
 // play), the dispatcher invokes the first whose `enabled` is true.
+import 'package:makapix_club/l10n/l10n.dart';
+
 import 'editor_access.dart';
 import '../tools.dart';
 
@@ -144,7 +146,7 @@ List<CommandDef> buildCommands() {
     for (final t in tools)
       CommandDef(
         id: toolCommandIds[t.dsl]!,
-        label: t.label,
+        label: t.name(appL10n), // TODO(i18n L2): CommandDef.label becomes a per-build lookup
         category: 'Tools',
         enabled: _always,
         invoke: (a) => t.dsl == 'Onion' ? a.toggleOnion() : a.selectTool(t.dsl),

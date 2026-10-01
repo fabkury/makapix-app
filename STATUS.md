@@ -178,6 +178,14 @@ The editor pillar covers the whole core of SPEC.md (engine, tools, selections, a
 `.mkpx`, FFI, three-row UI) but a handful of SPEC v1.1 items are still open; the Club pillar is complete
 through C3 plus most of C4. Verified against the code 2026-07-26:
 
+**In progress — localization (i18n), since 2026-10-01** (ADR 0037; live tracker `docs/i18n/PLAN.md`): the
+whole app in eight languages (en, es, pt-BR, fr, de, ru, ja, zh-Hans), following the device language with
+an override in Settings → Language. L0 is done — gen-l10n wiring, language resolution and picker, the
+i18n test layers (string-file integrity, hardcoded-string scanner, screen sweeps with real font metrics,
+tool-tile fit, screenshots), and `app/test_engine/`, which mounts the real editor against the engine DLL.
+The string extraction (L1 Club, L2 editor) is under way; a release build stays English-only until it is
+complete (`kTranslationsShipped`).
+
 **Editor — SPEC.md items not yet built:**
 1. ~~**Mirror/symmetry drawing** (SPEC §28.3; pulled into v1 by §26.6)~~ — **✅ implemented 2026-09-05,
    released in 1.10.0** (ADR 0026, `docs/symmetry/DESIGN.md`): H · V · Both through a half-pixel axis on
@@ -229,8 +237,7 @@ through C3 plus most of C4. Verified against the code 2026-07-26:
     against a real keyboard) and the build number in reply `0003`.
 
 **Deferred by decision, not omission:**
-- **Localization** (post-v1 per §28.5; strings are currently hardcoded; design ready in
-  `docs/i18n/DESIGN.md` — do not start unprompted) and **in-RAM compression of inactive frames** (file
+- **In-RAM compression of inactive frames** (file
   compression already done). (iPad support, deferred here until 2026-07-19, has since shipped: universal
   iPhone + iPad in iOS 1.0.16.)
 
