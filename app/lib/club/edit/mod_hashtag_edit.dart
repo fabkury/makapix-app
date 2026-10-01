@@ -1,3 +1,5 @@
+import 'package:makapix_club/l10n/l10n.dart';
+
 import '../config/monitored_hashtags.dart';
 
 /// Client-side mirror of the server's hashtag normalization (server D12):
@@ -42,20 +44,20 @@ class ModHashtagEdit {
   bool add(String raw) {
     final normalized = normalizeHashtags([raw]);
     if (normalized.isEmpty) {
-      lastRejection = 'Enter a hashtag.';
+      lastRejection = appL10n.modTagsEnter;
       return false;
     }
     final tag = normalized.first;
     if (tag.length > maxTagLength) {
-      lastRejection = 'Hashtags are limited to $maxTagLength characters.';
+      lastRejection = appL10n.modTagsTooLong(maxTagLength);
       return false;
     }
     if (_tags.contains(tag)) {
-      lastRejection = '#$tag is already on the list.';
+      lastRejection = appL10n.modTagsDuplicate(tag);
       return false;
     }
     if (_tags.length >= cap) {
-      lastRejection = 'Cap reached — $cap moderator hashtags max.';
+      lastRejection = appL10n.modTagsCap(cap);
       return false;
     }
     _tags.add(tag);

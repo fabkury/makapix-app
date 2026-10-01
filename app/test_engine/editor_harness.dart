@@ -16,7 +16,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:makapix_club/editor/editor_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -62,8 +61,9 @@ Future<void> pumpEditor(
   await pumpLocalized(
     tester,
     locale,
-    ProviderScope(overrides: clubOverrides(signedIn: false), child: const EditorPage()),
+    const EditorPage(),
     size: size,
+    overrides: clubOverrides(signedIn: false),
   );
   // The editor restores (or creates) its drawing asynchronously after the first frame. Wait
   // for the drawing to reach disk — unmounting earlier than that races the startup code.

@@ -18,13 +18,14 @@ are the acceptance test.
 | Phase | What | Status |
 |---|---|---|
 | L0 | Infrastructure, test harness, pilot (Settings, language picker, tool names) | **done 2026-10-01** |
-| L1 | Club pillar: extract + translate + sweep, batch by batch | not started |
+| L1 | Club pillar: extract + translate + sweep, batch by batch | in progress — C1 of C1–C9 done |
 | L2 | Editor pillar: extract + translate + sweep, batch by batch | not started (tool names done in L0) |
 | L3 | Independent translation review (one agent per language), fixes, layout hardening | not started |
 | L4 | Seams and periphery, then flip `kTranslationsShipped` | not started |
 
 **Progress number:** the total on line 5 of `app/test/l10n/hardcoded_baseline.txt` — the
-hardcoded strings the scanner still finds. 2,670 after L0. Zero means L1 + L2 are done.
+hardcoded strings the scanner still finds. 2,683 after L0 (scanner as tightened in C1); 2,516
+after C1. Zero means L1 + L2 are done.
 
 **Release safety while this is in progress:** `kTranslationsShipped` is `false`
 (`app/lib/l10n/app_locale.dart`), so a release build offers English only and hides the language
@@ -45,7 +46,12 @@ A batch is a group of related files from the lists below. For each batch:
    Follow GLOSSARY.md for terms and tone. Write the patch file with the Write tool, using raw
    strings (`r'''…'''`); the Bash tool mangles backslashes and apostrophes in heredocs.
 4. Add or extend a sweep test for the screens touched (`app/test/l10n/sweep_*_test.dart` for
-   Club and shared screens, `app/test_engine/` for anything inside the real editor page).
+   Club and shared screens, `app/test_engine/` for anything inside the real editor page). Club
+   screens run on the real providers over `FakeBackend` (`club_fixtures.dart`): add a route per
+   endpoint the screen calls — a missing one fails the sweep by name. Look at the pictures the
+   sweep writes to `app/build/l10n_shots/` for the screens touched.
+   Also audit `dart run tool/l10n/scan.dart --list --lower <files>` once per batch: lowercase
+   single words are not gated (mostly wire values), so UI ones among them need an eye.
 5. Gates, in this order (never two `flutter` commands at once):
    `flutter analyze --fatal-infos` · `flutter test` · `flutter test test_engine`.
 6. `dart run tool/l10n/scan.dart --write-baseline`, tick the batch below, commit
@@ -70,9 +76,10 @@ Rules that keep the batches consistent:
 
 Counts are scanner findings on 2026-10-01; the live number per file is in the baseline.
 
-- [ ] **C1 Shared widgets** — `club/ui/widgets/`: common (4), feed_filter (20), feed_grid (1),
-  player_bar (18), comments_section (42), mention_field (4), badges_sheet (3), download_sheet (10),
-  mod_hashtags_sheet (20), select_player_overlay (1), external_links (2)
+- [x] **C1 Shared widgets** — done 2026-10-01: comments, feed filter, feed grid, player bar and
+  picker, mention field, badges, download sheet, moderator hashtags sheet (+ `edit/mod_hashtag_edit`,
+  `config/monitored_hashtags`), external links, and the shared `timeAgo` / `formatFileSize` /
+  `compactCount` helpers. Sweeps: `sweep_widgets_test.dart`; formats: `formatting_test.dart`.
 - [ ] **C2 Sign-in and onboarding** — `club/ui/auth/` (create_account 21, account_management 25,
   forgot_password 15, delete_account 14, verify_email 7, onboarding_wizard 18), club_welcome (7),
   club_resolving (5), `club/state/` registration (10), password_reset (6), verify_email (6),
@@ -86,7 +93,7 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   pending_approval (12), rules_gate (11)
 - [ ] **C7 Moderation and safety** — user_management (72), moderation_hub (4), report (17),
   blocked_users (6), monitored_hashtags_page (8), mentions_settings (7), `models/safety_copy` (22),
-  `config/monitored_hashtags` (5), `models/report` (3), `edit/mod_hashtag_edit` (4)
+  `models/report` (3)
 - [ ] **C8 Players** — my_players (45), `state/player_providers` (5), `api/player_api` (6),
   `models/player_device` (1)
 - [ ] **C9 Errors and context-free text** — `models/club_error` (5), `api/*` (post 13, moderation
@@ -169,6 +176,9 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 
 ## Session log
 
+- **2026-10-01** — C1 (Club shared widgets): 123 messages × 8 languages; fake Club backend for
+  sweeps; the sweeps found and fixed real overflows (comment action row, filter sheet buttons)
+  and over-long field labels. 1,620 Dart tests pass.
 - **2026-10-01** — L0. gen-l10n wired (`l10n.yaml`, eight ARB files, `lib/l10n/`), language
   resolution + saved override + picker, pilot extraction (Settings page, tool names with short
   tile labels), test layers T1–T6 built and self-checked, engine-backed editor test suite

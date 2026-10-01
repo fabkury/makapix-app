@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,6 +21,7 @@ import 'common.dart';
 /// export ZIP — the share button remains the re-encode-and-share path.
 Future<void> showDownloadSheet(BuildContext context, WidgetRef ref, {required Post post}) {
   final messenger = ScaffoldMessenger.of(context);
+  final l10n = context.l10n;
   final native = post.nativeFile;
   final alternatives = post.files.where((f) => !f.isNative).toList();
   final mkpxEnabled =
@@ -38,7 +40,7 @@ Future<void> showDownloadSheet(BuildContext context, WidgetRef ref, {required Po
     try {
       final bytes = await fetch();
       final path = await FilePicker.saveFile(
-        dialogTitle: 'Save artwork',
+        dialogTitle: l10n.downloadSaveDialogTitle,
         fileName: fileName,
         type: FileType.custom,
         allowedExtensions: [extension],
@@ -49,12 +51,12 @@ Future<void> showDownloadSheet(BuildContext context, WidgetRef ref, {required Po
       if (!Platform.isAndroid && !Platform.isIOS) {
         await File(path).writeAsBytes(bytes);
       }
-      messenger.showSnackBar(SnackBar(content: Text('Saved $fileName')));
+      messenger.showSnackBar(SnackBar(content: Text(l10n.downloadSaved(fileName))));
     } on ClubError catch (e) {
       messenger.showSnackBar(SnackBar(
-          content: Text(e.status == 404 ? 'That file is not available.' : e.message)));
+          content: Text(e.status == 404 ? l10n.downloadUnavailable : e.message)));
     } catch (_) {
-      messenger.showSnackBar(const SnackBar(content: Text('Could not save the file.')));
+      messenger.showSnackBar(SnackBar(content: Text(l10n.downloadFailed)));
     }
   }
 
@@ -65,14 +67,14 @@ Future<void> showDownloadSheet(BuildContext context, WidgetRef ref, {required Po
       final api = ref.read(postApiProvider);
       return SafeArea(
         child: ListView(shrinkWrap: true, children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: Text('Download', style: TextStyle(fontWeight: FontWeight.w600)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Text(ctx.l10n.downloadTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
           ),
           if (native != null)
             ListTile(
               leading: const Icon(Icons.download_outlined),
-              title: const Text('Native format'),
+              title: Text(ctx.l10n.downloadNative),
               subtitle: Text(
                   '${native.format.toUpperCase()} · ${formatFileSize(native.fileBytes)}',
                   style: const TextStyle(fontSize: 11)),
@@ -83,9 +85,8 @@ Future<void> showDownloadSheet(BuildContext context, WidgetRef ref, {required Po
             ),
           ListTile(
             leading: const Icon(Icons.zoom_out_map),
-            title: const Text('Upscaled'),
-            subtitle: const Text('Nearest-neighbor enlargement · WEBP',
-                style: TextStyle(fontSize: 11)),
+            title: Text(ctx.l10n.downloadUpscaled),
+            subtitle: Text(ctx.l10n.downloadUpscaledSubtitle, style: const TextStyle(fontSize: 11)),
             onTap: () => run(ctx,
                 fetch: () => api.downloadUpscaled(post.sqid),
                 fileName: '${baseName}_upscaled.webp',
@@ -104,11 +105,11 @@ Future<void> showDownloadSheet(BuildContext context, WidgetRef ref, {required Po
           if (showMkpx)
             ListTile(
               leading: const Icon(Icons.layers_outlined),
-              title: const Text('Layers file (.mkpx)'),
+              title: Text(ctx.l10n.downloadLayers),
               subtitle: Text(
                   post.mkpxFileBytes != null
                       ? formatFileSize(post.mkpxFileBytes!)
-                      : 'The full layered document',
+                      : ctx.l10n.downloadLayersSubtitle,
                   style: const TextStyle(fontSize: 11)),
               onTap: () => run(ctx,
                   fetch: () => ref.read(mkpxApiProvider).download(post.sqid),

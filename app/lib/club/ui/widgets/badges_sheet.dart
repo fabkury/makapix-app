@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,23 +23,23 @@ void showBadgesSheet(BuildContext context, {required UserProfile profile}) {
         return async.when(
           loading: () =>
               const SizedBox(height: 160, child: Center(child: CircularProgressIndicator())),
-          error: (_, _) => const SizedBox(
+          error: (_, _) => SizedBox(
               height: 160,
               child: Center(
-                  child: Text('Could not load the badges.',
-                      style: TextStyle(color: Colors.white54)))),
+                  child: Text(ctx.l10n.badgesLoadError,
+                      style: const TextStyle(color: Colors.white54)))),
           data: (catalog) {
             final defs = {for (final d in catalog) d.badge: d};
             final granted = profile.badges.where((g) => defs.containsKey(g.badge)).toList();
             return Column(mainAxisSize: MainAxisSize.min, children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(16, 4, 16, 8),
-                child: Text('Badges', style: TextStyle(fontWeight: FontWeight.w600)),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                child: Text(ctx.l10n.badgesTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
               ),
               if (granted.isEmpty)
-                const Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text('No badges yet.', style: TextStyle(color: Colors.white54)))
+                Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(ctx.l10n.badgesEmpty, style: const TextStyle(color: Colors.white54)))
               else
                 Flexible(
                   child: ListView.builder(

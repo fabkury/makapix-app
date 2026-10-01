@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import '../../models/post.dart';
 import '../../state/auth_controller.dart';
@@ -22,7 +23,7 @@ class FeedGrid extends StatefulWidget {
   final Future<void> Function() onLoadMore;
   final Future<void> Function() onRefresh;
   final void Function(Post) onTap;
-  final String emptyMessage;
+  final String? emptyMessage;
 
   /// Custom empty-state widget (e.g. a call-to-action); falls back to a plain
   /// `ClubEmpty` with [emptyMessage].
@@ -38,7 +39,7 @@ class FeedGrid extends StatefulWidget {
     required this.onLoadMore,
     required this.onRefresh,
     required this.onTap,
-    this.emptyMessage = 'Nothing here yet.',
+    this.emptyMessage,
     this.empty,
     this.nested = false,
     this.superPostId,
@@ -80,7 +81,10 @@ class _FeedGridState extends State<FeedGrid> {
       final empty = ListView(
           primary: widget.nested ? true : null,
           children: [
-            SizedBox(height: 240, child: widget.empty ?? ClubEmpty(message: widget.emptyMessage))
+            SizedBox(
+                height: 240,
+                child: widget.empty ??
+                    ClubEmpty(message: widget.emptyMessage ?? context.l10n.feedEmpty))
           ]);
       if (widget.nested) return empty;
       return RefreshIndicator(onRefresh: widget.onRefresh, child: empty);

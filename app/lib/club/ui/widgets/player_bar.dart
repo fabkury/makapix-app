@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -39,6 +40,7 @@ class PlayerBar extends ConsumerWidget {
     final pending = st.pendingFor(active.id);
     final caps = active.capabilities;
     final isPaused = pending?.isPaused ?? active.isPaused ?? false;
+    final l10n = context.l10n;
 
     Future<void> run(Future<String?> Function() action, {String? okMessage}) async {
       final err = await action();
@@ -67,7 +69,7 @@ class PlayerBar extends ConsumerWidget {
             children: [
                 IconButton(
                   icon: const Icon(Icons.more_vert),
-                  tooltip: 'Player options',
+                  tooltip: l10n.playerOptions,
                   onPressed: () => _openAdjustments(context),
                 ),
                 Expanded(
@@ -84,7 +86,7 @@ class PlayerBar extends ConsumerWidget {
                             ),
                       ),
                       Text(
-                        target?.label ?? 'Nothing selected',
+                        target?.label ?? l10n.playerNothingSelected,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodyMedium,
@@ -95,29 +97,29 @@ class PlayerBar extends ConsumerWidget {
                 if (caps.pause)
                   IconButton(
                     icon: Icon(isPaused ? Icons.play_arrow : Icons.pause),
-                    tooltip: isPaused ? 'Resume' : 'Pause',
+                    tooltip: isPaused ? l10n.playerResume : l10n.playerPause,
                     onPressed: () => controller.setPaused(active.id, !isPaused),
                   ),
                 IconButton(
                   icon: const Icon(Icons.skip_previous),
-                  tooltip: 'Previous',
+                  tooltip: l10n.playerPrevious,
                   onPressed: () => run(() => controller.swapBack(active.id)),
                 ),
                 IconButton(
                   icon: const Icon(Icons.skip_next),
-                  tooltip: 'Next',
+                  tooltip: l10n.playerNext,
                   onPressed: () => run(() => controller.swapNext(active.id)),
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   child: IconButton.filled(
                     icon: const Icon(Icons.cast),
-                    tooltip: 'Send to player',
+                    tooltip: l10n.playerSend,
                     onPressed: target == null
                         ? null
                         : () => run(
                               () => controller.send(active.id, target),
-                              okMessage: 'Sent to ${active.displayName}',
+                              okMessage: l10n.playerSent(active.displayName),
                             ),
                   ),
                 ),
@@ -169,6 +171,7 @@ class _AdjustmentsSheetState extends ConsumerState<_AdjustmentsSheet> {
     final pending = st.pendingFor(active.id);
     final caps = active.capabilities;
     final online = st.onlinePlayers;
+    final l10n = context.l10n;
 
     final effRotation = pending?.rotation ?? active.rotation;
     final effMirror = pending?.mirror ?? active.mirror;
@@ -185,7 +188,7 @@ class _AdjustmentsSheetState extends ConsumerState<_AdjustmentsSheet> {
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.cast),
-                title: const Text('Player'),
+                title: Text(l10n.playerLabel),
                 subtitle: Text(active.displayName),
                 trailing: const Icon(Icons.unfold_more),
                 onTap: () async {
@@ -197,7 +200,7 @@ class _AdjustmentsSheetState extends ConsumerState<_AdjustmentsSheet> {
               const Divider(),
             ],
             if (caps.brightness != null) ...[
-              const Text('Brightness'),
+              Text(l10n.playerBrightness),
               Slider(
                 min: caps.brightness!.min.toDouble(),
                 max: caps.brightness!.max.toDouble(),
@@ -213,7 +216,7 @@ class _AdjustmentsSheetState extends ConsumerState<_AdjustmentsSheet> {
               const SizedBox(height: 8),
             ],
             if (caps.rotation.isNotEmpty) ...[
-              const Text('Rotation'),
+              Text(l10n.playerRotation),
               const SizedBox(height: 6),
               Wrap(
                 spacing: 8,
@@ -229,14 +232,14 @@ class _AdjustmentsSheetState extends ConsumerState<_AdjustmentsSheet> {
               const SizedBox(height: 12),
             ],
             if (caps.mirror.isNotEmpty) ...[
-              const Text('Mirror'),
+              Text(l10n.playerMirror),
               const SizedBox(height: 6),
               Wrap(
                 spacing: 8,
                 children: [
                   for (final v in caps.mirror)
                     ChoiceChip(
-                      label: Text(_mirrorLabel(v)),
+                      label: Text(_mirrorLabel(l10n, v)),
                       selected: v == effMirror,
                       onSelected: (_) => controller.setMirror(active.id, v),
                     ),
@@ -247,8 +250,8 @@ class _AdjustmentsSheetState extends ConsumerState<_AdjustmentsSheet> {
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.cast_outlined),
-              title: const Text('Manage players'),
-              subtitle: const Text('Register, rename or remove devices'),
+              title: Text(l10n.playerManage),
+              subtitle: Text(l10n.playerManageSubtitle),
               onTap: () {
                 final nav = Navigator.of(context);
                 nav.pop(); // dismiss the sheet
@@ -267,11 +270,11 @@ class _AdjustmentsSheetState extends ConsumerState<_AdjustmentsSheet> {
     return n > 0 ? n : null;
   }
 
-  String _mirrorLabel(String v) => switch (v) {
-        'none' => 'None',
-        'h' => 'Horizontal',
-        'v' => 'Vertical',
-        'both' => 'Both',
+  String _mirrorLabel(AppLocalizations l10n, String v) => switch (v) {
+        'none' => l10n.playerMirrorNone,
+        'h' => l10n.playerMirrorHorizontal,
+        'v' => l10n.playerMirrorVertical,
+        'both' => l10n.playerMirrorBoth,
         _ => v,
       };
 }

@@ -19,33 +19,59 @@ import 'l10n_test_support.dart';
 
 const _nonLatinScript = {'ja', 'zh', 'ru'};
 
+/// A bare screen with one button, for sweeping a sheet or dialog: the sweep's `act` calls
+/// [tapOpener], which runs [open] with a live context and ref.
+class Opener extends ConsumerWidget {
+  const Opener(this.open, {super.key});
+  final void Function(BuildContext context, WidgetRef ref) open;
+
+  static const ValueKey<String> buttonKey = ValueKey('sweep-opener');
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => Scaffold(
+        body: Center(
+          child: IconButton(
+            key: buttonKey,
+            icon: const Icon(Icons.open_in_new),
+            onPressed: () => open(context, ref),
+          ),
+        ),
+      );
+}
+
+Future<void> tapOpener(WidgetTester tester) => tester.tap(find.byKey(Opener.buttonKey));
+
 /// Registers the sweep tests for one screen state.
 ///
 /// [name] identifies the screen and state ("Settings, signed in"). [build] returns the widget
-/// under test. [overrides] are the Riverpod overrides it needs. [act] runs after the first
+/// under test. [overrides] are the Riverpod overrides it needs; it receives the [backend] this
+/// test created (a fresh fake per test), to hand to `clubOverrides`. [act] runs after the first
 /// pump (open a menu, scroll, tap a tab) so the state under test is on screen. [allowLatin]
 /// lists fixture text; [allowTruncated] lists texts that are cut off by design in every
 /// language (user content shown with an ellipsis). [sizes] narrows the screen sizes.
 void sweepScreen(
   String name, {
   required Widget Function() build,
-  List<Override> Function()? overrides,
+  List<Override> Function(FakeBackend? backend)? overrides,
   Future<void> Function(WidgetTester tester)? act,
   Iterable<Pattern> allowLatin = const [],
   Iterable<Pattern> allowTruncated = const [],
   Map<String, Size>? sizes,
   Map<String, Object> prefs = const {},
+  FakeBackend Function()? backend,
 }) {
   group('sweep: $name', () {
     for (final locale in allLocales) {
       for (final size in (sizes ?? kSweepSizes).entries) {
         testWidgets('$locale @ ${size.key}', (tester) async {
           SharedPreferences.setMockInitialValues(prefs);
+          final fake = backend?.call();
           await pumpLocalized(
             tester,
             locale,
-            ProviderScope(overrides: overrides?.call() ?? const [], child: build()),
+            build(),
             size: size.value,
+            overrides: overrides?.call(fake) ?? const [],
           );
           // Settle one-shot async state (FutureProviders, post-frame callbacks) without
           // waiting on spinners: a few fixed pumps (editor-test-gotchas).
@@ -58,6 +84,16 @@ void sweepScreen(
               await tester.pump(const Duration(milliseconds: 50));
             }
           }
+
+          // One picture per language, at the common phone size, for the visual review (T6).
+          // Taken before the checks so a failing screen is on disk to look at.
+          if (size.key == 'phone') {
+            final slug = name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-');
+            await screenshot(tester, '${slug}_${locale.languageCode}');
+          }
+
+          expect(fake?.unhandled ?? const [], isEmpty,
+              reason: 'requests the fake backend has no route for');
 
           final cut = truncatedTexts(tester)
               .where((t) => !allowTruncated.any((a) => a.allMatches(t.text).isNotEmpty))

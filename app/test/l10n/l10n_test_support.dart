@@ -16,6 +16,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:makapix_club/app.dart';
 import 'package:makapix_club/l10n/app_locale.dart';
@@ -139,11 +140,14 @@ void setSurface(WidgetTester tester, Size size) {
 }
 
 /// Pumps [child] in [locale] on a [size] screen, with real fonts.
+///
+/// As in the app, the `ProviderScope` sits above the `MaterialApp`, so sheets, dialogs, and
+/// pushed routes see the same providers (and [overrides]) as the screen that opened them.
 Future<void> pumpLocalized(WidgetTester tester, Locale locale, Widget child,
-    {Size size = const Size(360, 740)}) async {
+    {Size size = const Size(360, 740), List<Override> overrides = const []}) async {
   await loadAppFonts();
   setSurface(tester, size);
-  await tester.pumpWidget(localizedApp(locale, child));
+  await tester.pumpWidget(ProviderScope(overrides: overrides, child: localizedApp(locale, child)));
   await tester.pump();
   addTearDown(debugResetAppL10n);
 }

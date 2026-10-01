@@ -200,8 +200,12 @@ void main() {
         for (final e in tr.entries) {
           final want = icuShape(en[e.key] ?? '').branches;
           final got = icuShape(e.value).branches;
-          if (want.keys.toSet().difference(got.keys.toSet()).isNotEmpty) {
-            problems.add('${e.key}: lost an ICU argument (${want.keys} → ${got.keys})');
+          // A language with a single plural category (Japanese, Chinese) may write a plain
+          // message where the template has a plural. A select may never be dropped.
+          final lost = want.keys.toSet().difference(got.keys.toSet());
+          final onlyOther = kPluralCategories[locale]!.length == 1;
+          if (lost.any((arg) => arg.endsWith(':select') || !onlyOther)) {
+            problems.add('${e.key}: lost an ICU argument ($lost)');
             continue;
           }
           for (final arg in got.keys) {

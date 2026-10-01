@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -88,11 +89,11 @@ class _ModHashtagsSheetState extends ConsumerState<_ModHashtagsSheet> {
       final ok = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Remove monitored hashtag?'),
-          content: Text('Removing $tags will make this post visible to everyone again.'),
+          title: Text(ctx.l10n.modTagsRemoveMonitoredTitle),
+          content: Text(ctx.l10n.modTagsRemoveMonitoredBody(tags)),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remove')),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.commonCancel)),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(ctx.l10n.commonRemove)),
           ],
         ),
       );
@@ -102,6 +103,7 @@ class _ModHashtagsSheetState extends ConsumerState<_ModHashtagsSheet> {
 
     final messenger = ScaffoldMessenger.of(context);
     final nav = Navigator.of(context);
+    final l10n = context.l10n;
     final note = _noteField.text.trim();
     setState(() {
       _saving = true;
@@ -113,32 +115,29 @@ class _ModHashtagsSheetState extends ConsumerState<_ModHashtagsSheet> {
           .setModHashtags(widget.post.id, _edit.tags, note: note.isEmpty ? null : note);
       ref.invalidate(postDetailProvider(widget.post.sqid));
       nav.pop();
-      messenger.showSnackBar(const SnackBar(content: Text('Moderator hashtags updated.')));
+      messenger.showSnackBar(SnackBar(content: Text(l10n.modTagsUpdated)));
     } on ClubError catch (e) {
       if (!mounted) return;
       if (e.status == 404) {
         // Deleted (or turned playlist) under us — the sheet has no subject left.
         nav.pop();
         ref.invalidate(postDetailProvider(widget.post.sqid));
-        messenger.showSnackBar(const SnackBar(
-            content: Text("This post can't be tagged — it may have been deleted.")));
+        messenger.showSnackBar(SnackBar(content: Text(l10n.modTagsPostGone)));
         return;
       }
       setState(() {
         _saving = false;
         _saveError = switch (e.code) {
-          'forbidden' => 'Only moderators can edit these hashtags.',
+          'forbidden' => l10n.modTagsForbidden,
           'validation_error' => e.message,
-          _ => e.isAuth
-              ? 'Your session expired — sign in again to edit moderator hashtags.'
-              : 'Could not save — check your connection and try again.',
+          _ => e.isAuth ? l10n.modTagsSessionExpired : l10n.commonSaveFailedConnection,
         };
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _saving = false;
-        _saveError = 'Could not save — check your connection and try again.';
+        _saveError = l10n.commonSaveFailedConnection;
       });
     }
   }
@@ -146,6 +145,7 @@ class _ModHashtagsSheetState extends ConsumerState<_ModHashtagsSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final monitored = _edit.tags.toSet().intersection(kMonitoredHashtagTags);
     return Padding(
       // Keep the add-tag field above the soft keyboard.
@@ -159,22 +159,21 @@ class _ModHashtagsSheetState extends ConsumerState<_ModHashtagsSheet> {
             Row(children: [
               Icon(Icons.shield, size: 20, color: theme.colorScheme.primary),
               const SizedBox(width: 8),
-              Text('Edit moderator hashtags', style: theme.textTheme.titleMedium),
+              Flexible(child: Text(l10n.modTagsTitle, style: theme.textTheme.titleMedium)),
             ]),
             const SizedBox(height: 4),
             Text(
-              'Only moderators can add or remove these. They behave like regular '
-              'hashtags, including monitored ones.',
+              l10n.modTagsIntro,
               style: const TextStyle(fontSize: 12, color: Colors.white54),
             ),
             const SizedBox(height: 16),
-            const Text('Quick add', style: TextStyle(fontSize: 12, color: Colors.white54)),
+            Text(l10n.modTagsQuickAdd, style: const TextStyle(fontSize: 12, color: Colors.white54)),
             const SizedBox(height: 6),
             Wrap(spacing: 8, runSpacing: 4, children: [
               for (final m in kMonitoredHashtags)
                 FilterChip(
                   label: Text(m.label),
-                  tooltip: m.description,
+                  tooltip: m.description(l10n),
                   selected: _edit.contains(m.tag),
                   onSelected: _saving
                       ? null
@@ -188,11 +187,10 @@ class _ModHashtagsSheetState extends ConsumerState<_ModHashtagsSheet> {
                 ),
             ]),
             const SizedBox(height: 16),
-            const Text('On this post', style: TextStyle(fontSize: 12, color: Colors.white54)),
+            Text(l10n.modTagsOnPost, style: const TextStyle(fontSize: 12, color: Colors.white54)),
             const SizedBox(height: 6),
             if (_edit.tags.isEmpty)
-              const Text('No moderator hashtags on this post.',
-                  style: TextStyle(fontSize: 13, color: Colors.white38))
+              Text(l10n.modTagsNone, style: const TextStyle(fontSize: 13, color: Colors.white38))
             else
               Wrap(spacing: 8, runSpacing: 4, children: [
                 for (final tag in _edit.tags)
@@ -215,7 +213,7 @@ class _ModHashtagsSheetState extends ConsumerState<_ModHashtagsSheet> {
                   autocorrect: false,
                   textInputAction: TextInputAction.done,
                   decoration: InputDecoration(
-                    labelText: 'Add tag',
+                    labelText: l10n.modTagsAddLabel,
                     border: const OutlineInputBorder(),
                     isDense: true,
                     counterText: '${_edit.tags.length}/${widget.cap}',
@@ -227,7 +225,7 @@ class _ModHashtagsSheetState extends ConsumerState<_ModHashtagsSheet> {
               const SizedBox(width: 8),
               IconButton(
                 icon: const Icon(Icons.add),
-                tooltip: 'Add',
+                tooltip: l10n.commonAdd,
                 onPressed: _saving ? null : () => _tryAdd(_tagField.text),
               ),
             ]),
@@ -240,9 +238,9 @@ class _ModHashtagsSheetState extends ConsumerState<_ModHashtagsSheet> {
             TextField(
               controller: _noteField,
               enabled: !_saving,
-              decoration: const InputDecoration(
-                labelText: 'Note (for the audit log)',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l10n.modTagsNote,
+                border: const OutlineInputBorder(),
                 isDense: true,
               ),
             ),
@@ -255,7 +253,7 @@ class _ModHashtagsSheetState extends ConsumerState<_ModHashtagsSheet> {
             Row(mainAxisAlignment: MainAxisAlignment.end, children: [
               TextButton(
                 onPressed: _saving ? null : () => Navigator.pop(context),
-                child: const Text('Cancel'),
+                child: Text(l10n.commonCancel),
               ),
               const SizedBox(width: 8),
               FilledButton(
@@ -265,7 +263,7 @@ class _ModHashtagsSheetState extends ConsumerState<_ModHashtagsSheet> {
                 child: _saving
                     ? const SizedBox(
                         width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Text('Save'),
+                    : Text(l10n.commonSave),
               ),
             ]),
           ],

@@ -9,13 +9,13 @@ void main() {
   sweepScreen(
     'Settings, signed in',
     build: () => const SettingsPage(),
-    overrides: () => clubOverrides(signedIn: true),
+    overrides: (_) => clubOverrides(signedIn: true),
   );
 
   sweepScreen(
     'Settings, signed out',
     build: () => const SettingsPage(),
-    overrides: () => clubOverrides(signedIn: false),
+    overrides: (_) => clubOverrides(signedIn: false),
   );
 
   sweepScreen(

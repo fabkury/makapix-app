@@ -1,9 +1,11 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../models/feed_filters.dart';
 import '../../state/feed_providers.dart';
@@ -27,7 +29,7 @@ class FilterFabOverlay extends ConsumerWidget {
         bottom: 12,
         child: FloatingActionButton.small(
           heroTag: null, // several feeds can be alive in one route stack
-          tooltip: 'Filter & sort',
+          tooltip: context.l10n.filterTitle,
           onPressed: () => showFeedFilterSheet(context, ref, filterKey),
           child: Badge(
             isLabelVisible: active,
@@ -81,8 +83,11 @@ class _FilterSheetState extends State<_FilterSheet> {
       (kFilterFileBytesCap * math.pow(t.clamp(0.0, 1.0), 4.0)).round();
 
   static String _fmtBytes(int bytes) {
-    if (bytes >= 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MiB';
-    return '${(bytes / 1024).toStringAsFixed(0)} KiB';
+    final locale = appL10n.localeName;
+    // l10n-ignore: KiB / MiB are unit symbols, the same in every language
+    if (bytes >= 1024 * 1024) return '${NumberFormat('0.00', locale).format(bytes / (1024 * 1024))} MiB';
+    // l10n-ignore: unit symbol
+    return '${NumberFormat('0', locale).format(bytes / 1024)} KiB';
   }
 
   FeedFilters _build() {
@@ -140,34 +145,35 @@ class _FilterSheetState extends State<_FilterSheet> {
     final dims = [
       for (final v in kFilterDimensionBadges) (v, v >= 128 ? '128+' : '$v'),
     ];
+    final l10n = context.l10n;
     return SafeArea(
       child: SingleChildScrollView(
         padding: EdgeInsets.only(
             left: 20, right: 20, top: 4, bottom: 16 + MediaQuery.of(context).viewInsets.bottom),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-          Text('Filter & sort', style: Theme.of(context).textTheme.titleMedium),
+          Text(l10n.filterTitle, style: Theme.of(context).textTheme.titleMedium),
           _section(
-            'Sort by',
+            l10n.filterSortBy,
             _chips<String>(
-              options: const [
-                ('created_at', 'Creation date'),
-                ('reactions', 'Reactions'),
-                ('file_bytes', 'File size'),
+              options: [
+                ('created_at', l10n.filterSortCreated),
+                ('reactions', l10n.filterSortReactions),
+                ('file_bytes', l10n.filterFileSize),
               ],
               selected: (v) => _sort == v,
               onTap: (v) => setState(() => _sort = v),
             ),
           ),
           _section(
-            'Order',
+            l10n.filterOrder,
             _chips<String>(
-              options: const [('desc', 'Descending'), ('asc', 'Ascending')],
+              options: [('desc', l10n.filterOrderDesc), ('asc', l10n.filterOrderAsc)],
               selected: (v) => _order == v,
               onTap: (v) => setState(() => _order = v),
             ),
           ),
           _section(
-            'Base — smaller side',
+            l10n.filterBase,
             _chips<int>(
               options: dims,
               selected: (v) => _base == v,
@@ -175,7 +181,7 @@ class _FilterSheetState extends State<_FilterSheet> {
             ),
           ),
           _section(
-            'Size — larger side (up to $kFilterMaxSizeBadges)',
+            l10n.filterSize(kFilterMaxSizeBadges),
             _chips<int>(
               options: dims,
               selected: _sizes.contains,
@@ -185,7 +191,7 @@ class _FilterSheetState extends State<_FilterSheet> {
             ),
           ),
           _section(
-            'File size',
+            l10n.filterFileSizeSection,
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('${_fmtBytes(minBytes)} – ${_fmtBytes(maxBytes)}',
                   style: const TextStyle(fontSize: 12, color: Colors.white54)),
@@ -196,26 +202,35 @@ class _FilterSheetState extends State<_FilterSheet> {
             ]),
           ),
           _section(
-            'Animation',
+            l10n.filterAnimation,
             _chips<String>(
-              options: const [('static', 'Static'), ('animated', 'Animated')],
+              options: [('static', l10n.filterStatic), ('animated', l10n.filterAnimated)],
               selected: _kinds.contains,
               onTap: (v) => setState(
                   () => _kinds.contains(v) ? _kinds.remove(v) : _kinds.add(v)),
             ),
           ),
           const SizedBox(height: 18),
-          Row(children: [
-            TextButton(onPressed: _clearAll, child: const Text('Clear all')),
-            const Spacer(),
-            TextButton(
-                onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-            const SizedBox(width: 8),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, _build()),
-              child: const Text('Apply'),
+          SizedBox(
+            width: double.infinity,
+            child: Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              runSpacing: 4,
+              children: [
+                TextButton(onPressed: _clearAll, child: Text(l10n.filterClearAll)),
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context), child: Text(l10n.commonCancel)),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(context, _build()),
+                    child: Text(l10n.commonApply),
+                  ),
+                ]),
+              ],
             ),
-          ]),
+          ),
         ]),
       ),
     );

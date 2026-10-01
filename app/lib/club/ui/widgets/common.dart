@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:makapix_club/l10n/l10n.dart';
 
 import '../../anim/frame_cache.dart';
@@ -14,7 +15,10 @@ import 'synced_pixel_art_image.dart';
 const Color kArtworkBackdrop = Color(0xFF15171A);
 
 /// Compact count for stat rows, e.g. 999 → "999", 12345 → "12.3k", 3400000 → "3.4M".
+/// Other languages use their own compact notation (German "12.345", Japanese "1.2万").
 String compactCount(int n) {
+  final locale = appL10n.localeName;
+  if (locale != 'en') return NumberFormat.compact(locale: locale).format(n);
   if (n < 1000) return '$n';
   // 999500+ rounds to "1000k" in the k branch — hand it to M ("1M") instead.
   final (v, suffix) = n < 999500 ? (n / 1000.0, 'k') : (n / 1000000.0, 'M');
@@ -27,23 +31,28 @@ String compactCount(int n) {
 /// File size in the nearest of bytes/KiB/MiB, e.g. 512 → "512 bytes",
 /// 38214 → "37.3 KiB", 5452595 → "5.2 MiB".
 String formatFileSize(int bytes) {
-  if (bytes < 1024) return '$bytes bytes';
-  final (v, unit) =
-      bytes < 1024 * 1024 ? (bytes / 1024.0, 'KiB') : (bytes / (1024.0 * 1024.0), 'MiB');
-  return '${v.toStringAsFixed(1).replaceFirst(RegExp(r'\.0$'), '')} $unit';
+  final l10n = appL10n;
+  if (bytes < 1024) return l10n.fileSizeBytes(bytes);
+  // KiB / MiB are unit symbols, the same in every language.
+  final (v, unit) = bytes < 1024 * 1024
+      ? (bytes / 1024.0, 'KiB') // l10n-ignore: unit symbol
+      : (bytes / (1024.0 * 1024.0), 'MiB'); // l10n-ignore: unit symbol
+  // One decimal at most, with the language's decimal separator ("37.3" / "37,3").
+  return '${NumberFormat('0.#', l10n.localeName).format(v)} $unit';
 }
 
 /// Compact relative time, e.g. "3h", "2d".
 String timeAgo(DateTime? t) {
   if (t == null) return '';
+  final l10n = appL10n;
   final d = DateTime.now().toUtc().difference(t.toUtc());
-  if (d.inSeconds < 60) return 'now';
-  if (d.inMinutes < 60) return '${d.inMinutes}m';
-  if (d.inHours < 24) return '${d.inHours}h';
-  if (d.inDays < 7) return '${d.inDays}d';
-  if (d.inDays < 30) return '${(d.inDays / 7).floor()}w';
-  if (d.inDays < 365) return '${(d.inDays / 30).floor()}mo';
-  return '${(d.inDays / 365).floor()}y';
+  if (d.inSeconds < 60) return l10n.timeAgoNow;
+  if (d.inMinutes < 60) return l10n.timeAgoMinutes(d.inMinutes);
+  if (d.inHours < 24) return l10n.timeAgoHours(d.inHours);
+  if (d.inDays < 7) return l10n.timeAgoDays(d.inDays);
+  if (d.inDays < 30) return l10n.timeAgoWeeks((d.inDays / 7).floor());
+  if (d.inDays < 365) return l10n.timeAgoMonths((d.inDays / 30).floor());
+  return l10n.timeAgoYears((d.inDays / 365).floor());
 }
 
 class ClubErrorRetry extends StatelessWidget {
@@ -59,7 +68,7 @@ class ClubErrorRetry extends StatelessWidget {
             const SizedBox(height: 12),
             Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white60)),
             const SizedBox(height: 12),
-            OutlinedButton(onPressed: onRetry, child: const Text('Retry')),
+            OutlinedButton(onPressed: onRetry, child: Text(context.l10n.commonRetry)),
           ]),
         ),
       );

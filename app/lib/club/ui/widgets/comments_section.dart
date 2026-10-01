@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -78,19 +79,24 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
     // signed-out); ref.watch so it shows when the config future resolves.
     final canReport = ref.watch(serverConfigProvider).valueOrNull?.moderationEnabled ?? false;
     final canModerate = ref.watch(isModeratorProvider);
+    final l10n = context.l10n;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Text(
               async.maybeWhen(
-                  data: (tree) => 'Comments (${countComments(tree)})', orElse: () => 'Comments'),
+                  data: (tree) => l10n.commentsTitleCount(countComments(tree)),
+                  orElse: () => l10n.commentsTitle),
               style: const TextStyle(fontWeight: FontWeight.bold))),
       async.when(
         loading: () => const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
-        error: (e, _) => const Padding(
-            padding: EdgeInsets.all(8), child: Text('Could not load comments.', style: TextStyle(color: Colors.white54))),
+        error: (e, _) => Padding(
+            padding: const EdgeInsets.all(8),
+            child: Text(l10n.commentsLoadError, style: const TextStyle(color: Colors.white54))),
         data: (tree) => tree.isEmpty
-            ? const Padding(padding: EdgeInsets.all(12), child: Text('No comments yet.', style: TextStyle(color: Colors.white38)))
+            ? Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(l10n.commentsEmpty, style: const TextStyle(color: Colors.white38)))
             : Column(children: [
                 for (final c in tree) _tile(c, myHandle, canReport, canModerate, depth: 0)
               ]),
@@ -105,7 +111,7 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
         child: OutlinedButton.icon(
           onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ClubAccountPage())),
           icon: const Icon(Icons.login),
-          label: const Text('Sign in to comment'),
+          label: Text(context.l10n.commentsSignIn),
         ),
       );
 
@@ -114,7 +120,8 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
           Padding(
             padding: const EdgeInsets.only(bottom: 4),
             child: Row(children: [
-              Text('Replying to @$_replyToHandle', style: const TextStyle(fontSize: 12, color: Colors.white54)),
+              Text(context.l10n.commentsReplyingTo(_replyToHandle!),
+                  style: const TextStyle(fontSize: 12, color: Colors.white54)),
               const Spacer(),
               IconButton(
                 iconSize: 16,
@@ -141,8 +148,10 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
                 minLines: 1,
                 maxLines: 4,
                 maxLength: 2000,
-                decoration: const InputDecoration(
-                    hintText: 'Add a comment…', border: OutlineInputBorder(), counterText: ''),
+                decoration: InputDecoration(
+                    hintText: context.l10n.commentsHint,
+                    border: const OutlineInputBorder(),
+                    counterText: ''),
               ),
             ),
           ),
@@ -165,6 +174,7 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
       {required int depth}) {
     final isOwn = myHandle != null && c.author?.handle == myHandle;
     final notifier = ref.read(commentsProvider(widget.postId).notifier);
+    final l10n = context.l10n;
     // Only moderators ever receive hidden comments — render them dimmed with a
     // "hidden" chip so the mod sees what the public does not.
     Widget dimIfHidden(Widget child) =>
@@ -183,7 +193,7 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
               Row(children: [
                 dimIfHidden(GestureDetector(
                   onTap: () => _openAuthor(c.author),
-                  child: Text(c.author?.handle ?? 'guest',
+                  child: Text(c.author?.handle ?? l10n.commentsGuest,
                       style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                 )),
                 const SizedBox(width: 6),
@@ -196,13 +206,13 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
                       color: Colors.redAccent.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Text('hidden',
-                        style: TextStyle(fontSize: 10, color: Colors.redAccent)),
+                    child: Text(l10n.commentsHiddenChip,
+                        style: const TextStyle(fontSize: 10, color: Colors.redAccent)),
                   ),
                 ],
               ]),
               dimIfHidden(c.deleted
-                  ? Text(c.deletedByMod ? '[deleted by moderator]' : '[deleted]',
+                  ? Text(c.deletedByMod ? l10n.commentsDeletedByMod : l10n.commentsDeleted,
                       style: const TextStyle(fontSize: 13, color: Colors.white38))
                   : MentionText(
                       markup: c.bodyMarkup,
@@ -210,10 +220,10 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
                       mentions: c.mentions,
                       style: const TextStyle(fontSize: 13, color: Colors.white),
                     )),
-              Row(children: [
+              Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
                 // Tap toggles the like; long-press (with a count) shows who liked.
                 _miniBtn(c.likedByMe ? Icons.favorite : Icons.favorite_border,
-                    c.likeCount > 0 ? '${c.likeCount}' : 'Like',
+                    c.likeCount > 0 ? '${c.likeCount}' : l10n.commentsLike,
                     onTap: () async {
                       final err = await notifier.toggleLike(c);
                       if (err != null && mounted) {
@@ -223,13 +233,14 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
                     onLongPress: c.likeCount > 0 ? () => _showLikeUsers(c) : null,
                     active: c.likedByMe),
                 if (depth == 0)
-                  _miniBtn(Icons.reply, 'Reply', onTap: () => setState(() {
+                  _miniBtn(Icons.reply, l10n.commentsReply, onTap: () => setState(() {
                         _replyTo = c.id;
-                        _replyToHandle = c.author?.handle ?? 'guest';
+                        _replyToHandle = c.author?.handle ?? l10n.commentsGuest;
                       })),
-                if (isOwn) _miniBtn(Icons.delete_outline, 'Delete', onTap: () => notifier.delete(c.id)),
+                if (isOwn)
+                  _miniBtn(Icons.delete_outline, l10n.commonDelete, onTap: () => notifier.delete(c.id)),
                 if (canReport && !isOwn && !c.deleted)
-                  _miniBtn(Icons.flag_outlined, 'Report',
+                  _miniBtn(Icons.flag_outlined, l10n.commonReport,
                       onTap: () => Navigator.push(context,
                           MaterialPageRoute(builder: (_) => ReportPage(target: ReportTarget.comment(c))))),
                 if (canModerate) _modMenu(c, isOwn),
@@ -247,8 +258,9 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
   /// Compact shield menu on every row for moderators: delete (mod tombstone),
   /// undelete, hide/unhide, and purge of the preserved original text.
   Widget _modMenu(Comment c, bool isOwn) {
+    final l10n = context.l10n;
     return PopupMenuButton<String>(
-      tooltip: 'Moderate comment',
+      tooltip: l10n.commentsModTooltip,
       padding: EdgeInsets.zero,
       onSelected: (v) {
         if (v == 'delete') _modDelete(c);
@@ -261,22 +273,22 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
         // Own comments already have the plain Delete button; the mod entry is
         // for other people's comments (writes the moderator tombstone).
         if (!c.deleted && !isOwn)
-          const PopupMenuItem(value: 'delete', child: Text('Delete (mod)…')),
-        if (c.deleted) const PopupMenuItem(value: 'undelete', child: Text('Undelete')),
+          PopupMenuItem(value: 'delete', child: Text(l10n.commentsModDelete)),
+        if (c.deleted) PopupMenuItem(value: 'undelete', child: Text(l10n.commentsModUndelete)),
         if (!c.deleted)
           PopupMenuItem(value: c.hiddenByMod ? 'unhide' : 'hide',
-              child: Text(c.hiddenByMod ? 'Unhide' : 'Hide')),
+              child: Text(c.hiddenByMod ? l10n.commonUnhide : l10n.commonHide)),
         if (c.deleted)
-          const PopupMenuItem(
+          PopupMenuItem(
               value: 'purge',
-              child: Text('Purge original text…', style: TextStyle(color: Colors.redAccent))),
+              child: Text(l10n.commentsModPurge, style: const TextStyle(color: Colors.redAccent))),
       ],
-      child: const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.shield_outlined, size: 14, color: Colors.white54),
-          SizedBox(width: 4),
-          Text('Mod', style: TextStyle(fontSize: 11, color: Colors.white54)),
+          const Icon(Icons.shield_outlined, size: 14, color: Colors.white54),
+          const SizedBox(width: 4),
+          Text(l10n.commentsModChip, style: const TextStyle(fontSize: 11, color: Colors.white54)),
         ]),
       ),
     );
@@ -292,12 +304,11 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
     final yes = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete this comment as moderator?'),
-        content: const Text('It is replaced by a "[deleted by moderator]" tombstone. '
-            'The original text is preserved and the deletion can be undone.'),
+        title: Text(ctx.l10n.commentsModDeleteTitle),
+        content: Text(ctx.l10n.commentsModDeleteBody),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.commonCancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(ctx.l10n.commonDelete)),
         ],
       ),
     );
@@ -321,13 +332,11 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
     final first = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Purge the preserved original text?'),
-        content: const Text('Deleted comments keep their pre-deletion text so they can '
-            'be restored. Purging discards that text — for content that must not be '
-            'retained at all, such as personal information.'),
+        title: Text(ctx.l10n.commentsPurgeTitle),
+        content: Text(ctx.l10n.commentsPurgeBody),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Purge')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.commonCancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(ctx.l10n.commentsPurge)),
         ],
       ),
     );
@@ -335,22 +344,22 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
     final second = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('This cannot be undone'),
-        content: const Text('The original text is discarded forever; a later undelete '
-            'cannot restore it.'),
+        title: Text(ctx.l10n.commentsPurgeFinalTitle),
+        content: Text(ctx.l10n.commentsPurgeFinalBody),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep the text')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.commentsPurgeKeep)),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Purge forever'),
+            child: Text(ctx.l10n.commentsPurgeForever),
           ),
         ],
       ),
     );
-    if (second != true) return;
+    if (second != true || !mounted) return;
+    final purged = context.l10n.commentsPurged;
     final err = await ref.read(commentsProvider(widget.postId).notifier).purgeOriginal(c.id);
-    _toast(err ?? 'Original text purged.');
+    _toast(err ?? purged);
   }
 
   Widget _miniBtn(IconData icon, String label,
@@ -379,17 +388,17 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
           return async.when(
             loading: () => const SizedBox(
                 height: 140, child: Center(child: CircularProgressIndicator())),
-            error: (_, _) => const SizedBox(
+            error: (_, _) => SizedBox(
                 height: 140,
                 child: Center(
-                    child: Text('Could not load who liked this.',
-                        style: TextStyle(color: Colors.white54)))),
+                    child: Text(ctx.l10n.commentsLikesLoadError,
+                        style: const TextStyle(color: Colors.white54)))),
             data: (users) => users.isEmpty
-                ? const SizedBox(
+                ? SizedBox(
                     height: 140,
                     child: Center(
-                        child:
-                            Text('No likes yet.', style: TextStyle(color: Colors.white54))))
+                        child: Text(ctx.l10n.commentsLikesEmpty,
+                            style: const TextStyle(color: Colors.white54))))
                 : ListView.builder(
                     shrinkWrap: true,
                     itemCount: users.length,

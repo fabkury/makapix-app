@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 
@@ -10,7 +11,7 @@ Future<PlayerDevice?> showSelectPlayer(
   BuildContext context,
   List<PlayerDevice> online, {
   String? selectedId,
-  String title = 'Choose a player',
+  String? title,
 }) {
   return showAppSheet<PlayerDevice>(
     context: context,
@@ -24,7 +25,7 @@ Future<PlayerDevice?> showSelectPlayer(
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-              child: Text(title, style: Theme.of(ctx).textTheme.titleMedium),
+              child: Text(title ?? ctx.l10n.playerChoose, style: Theme.of(ctx).textTheme.titleMedium),
             ),
             for (final p in online)
               ListTile(

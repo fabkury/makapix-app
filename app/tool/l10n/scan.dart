@@ -8,6 +8,7 @@
 //   dart run tool/l10n/scan.dart --list     every finding, one per line
 //   dart run tool/l10n/scan.dart --list lib/club/ui/settings_page.dart
 //   dart run tool/l10n/scan.dart --write-baseline   re-pin test/l10n/hardcoded_baseline.txt
+//   dart run tool/l10n/scan.dart --list --lower [path]   lowercase single words (manual audit)
 //
 // A literal is exempt when it sits in a structurally non-UI position (see [_Visitor]), when the
 // line (or the line above) carries a `// l10n-ignore: <why>` comment, or when the file carries
@@ -29,6 +30,10 @@ enum Tier {
 
   /// A single word outside any known sink: a label held in data, or an identifier.
   word,
+
+  /// A single all-lowercase word outside any known sink ('now', 'bytes' — but mostly wire
+  /// values and enum names). Too noisy for the gate; listed with `--lower` for a manual audit.
+  lower,
 }
 
 class Finding {
@@ -53,7 +58,7 @@ const _sinkNames = {
   'counterText', 'prefixText', 'suffixText', 'semanticLabel', 'semanticsLabel', 'title',
   'subtitle', 'content', 'text', 'hint', 'name', 'note', 'caption', 'description',
   'confirmLabel', 'cancelLabel', 'actionLabel', 'dialogTitle', 'subject', 'body', 'header',
-  'emptyText', 'emptyMessage', 'placeholder', 'tip', 'help', 'value', 'barrierLabel',
+  'emptyText', 'emptyMessage', 'placeholder', 'tip', 'help', 'barrierLabel',
 };
 
 /// Constructors / functions whose positional string arguments are shown to the user.
@@ -81,6 +86,7 @@ final _identLike = RegExp(r'^[a-z0-9_./:\-#%@+=?&{}\[\]$*~^|\\]+$'); // lowercas
 final _path = RegExp(r'^/\S*$'); // REST routes: '/post/{}/parents'
 // camelCase / dotted / snake identifiers that start lowercase: 'edit.selectAll', 'watchReplay'.
 final _codeIdent = RegExp(r'^[a-z][A-Za-z0-9]*([._][A-Za-z0-9]+)+$|^[a-z]+[A-Z][A-Za-z0-9]*$');
+final _lowerWord = RegExp(r'^[a-z]{2,}$');
 final _url = RegExp(r'^(https?|mailto|file|package|dart|asset|assets|club\.makapix)[:/]');
 
 class _Visitor extends RecursiveAstVisitor<void> {
@@ -88,7 +94,8 @@ class _Visitor extends RecursiveAstVisitor<void> {
   final LineInfo lines;
   final Set<int> ignoredLines;
   final List<Finding> out;
-  _Visitor(this.file, this.lines, this.ignoredLines, this.out);
+  final bool includeLower;
+  _Visitor(this.file, this.lines, this.ignoredLines, this.out, {this.includeLower = false});
 
   @override
   void visitImportDirective(ImportDirective node) {}
@@ -155,8 +162,19 @@ class _Visitor extends RecursiveAstVisitor<void> {
     } else if (words >= 2) {
       tier = Tier.prose;
     } else {
-      if (_identLike.hasMatch(probe)) return; // 'webp', 'image/png', 'club_locale'
-      tier = Tier.word;
+      // 'now' alone is ambiguous; '{} frames' or '{}mo' (a word glued to a value, with
+      // nothing but letters and spaces around it) is display text.
+      final gluedToValue = text.contains('{}') &&
+          RegExp(r'^[\p{L} ]+$', unicode: true).hasMatch(text.replaceAll('{}', ''));
+      if (gluedToValue) {
+        tier = Tier.word;
+      } else if (_lowerWord.hasMatch(probe)) {
+        if (!includeLower) return;
+        tier = Tier.lower;
+      } else {
+        if (_identLike.hasMatch(probe)) return; // 'image/png', 'club_locale', 'v2'
+        tier = Tier.word;
+      }
     }
     out.add(Finding(file, line, tier, text.replaceAll('\n', r'\n')));
   }
@@ -232,7 +250,7 @@ class _Visitor extends RecursiveAstVisitor<void> {
 }
 
 /// Scans [root] (a directory or a single file) and returns the findings, sorted.
-List<Finding> scan(String root) {
+List<Finding> scan(String root, {bool includeLower = false}) {
   final files = <File>[];
   final type = FileSystemEntity.typeSync(root);
   if (type == FileSystemEntityType.file) {
@@ -259,7 +277,7 @@ List<Finding> scan(String root) {
         if (srcLines[i].trimLeft().startsWith('//')) ignored.add(i + 2);
       }
     }
-    unit.accept(_Visitor(path, unit.lineInfo, ignored, out));
+    unit.accept(_Visitor(path, unit.lineInfo, ignored, out, includeLower: includeLower));
   }
   out.sort((a, b) {
     final c = a.file.compareTo(b.file);
@@ -322,7 +340,11 @@ void main(List<String> args) {
   }
   final list = args.contains('--list');
   final paths = args.where((a) => !a.startsWith('--')).toList();
-  final findings = [for (final p in paths.isEmpty ? ['lib'] : paths) ...scan(p)];
+  final lower = args.contains('--lower');
+  final findings = [
+    for (final p in paths.isEmpty ? ['lib'] : paths) ...scan(p, includeLower: lower),
+  ];
+  if (lower) findings.removeWhere((f) => f.tier != Tier.lower);
   if (list) {
     findings.forEach(stdout.writeln);
   } else {
@@ -338,6 +360,6 @@ void main(List<String> args) {
     }
   }
   int n(Tier t) => findings.where((f) => f.tier == t).length;
-  stdout.writeln('TOTAL ${findings.length}  (sink ${n(Tier.sink)}, prose ${n(Tier.prose)}, word ${n(Tier.word)}) '
+  stdout.writeln('TOTAL ${findings.length}  (sink ${n(Tier.sink)}, prose ${n(Tier.prose)}, word ${n(Tier.word)}, lower ${n(Tier.lower)}) '
       'in ${findings.map((f) => f.file).toSet().length} files');
 }

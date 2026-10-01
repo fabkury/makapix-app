@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import '../../models/club_error.dart';
 import '../../models/mention_candidate.dart';
@@ -359,29 +360,28 @@ class _MentionFieldState extends ConsumerState<MentionField> {
       return wrap(Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Text(
-          'That is ${widget.maxMentions} mentions, the most one post or comment '
-          'can carry. Remove one to add another.',
+          context.l10n.mentionCapReached(widget.maxMentions),
           style: const TextStyle(fontSize: 12, color: Colors.white70),
         ),
       ));
     }
 
     if (_loading && _candidates.isEmpty) {
-      return wrap(const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      return wrap(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          SizedBox(height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2)),
-          SizedBox(width: 10),
-          Text('Looking…', style: TextStyle(fontSize: 12, color: Colors.white70)),
+          const SizedBox(height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+          const SizedBox(width: 10),
+          Text(context.l10n.mentionLooking, style: const TextStyle(fontSize: 12, color: Colors.white70)),
         ]),
       ));
     }
 
     if (_candidates.isEmpty) {
-      return wrap(const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Text('No one to mention by that name.',
-            style: TextStyle(fontSize: 12, color: Colors.white54)),
+      return wrap(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Text(context.l10n.mentionNoMatch,
+            style: const TextStyle(fontSize: 12, color: Colors.white54)),
       ));
     }
 

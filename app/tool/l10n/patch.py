@@ -82,7 +82,11 @@ def m(key, description, en, es, pt, fr, de, ru, ja, zh, **placeholders):
 def _append(locale, entries):
     """entries: list of (key, text, meta-or-None)."""
     path = os.path.join(APP, 'lib', 'l10n', 'app_%s.arb' % locale)
-    src = open(path, encoding='utf-8').read()
+    # An ARB also edited with patch() in this run: build on that text, not the file on disk.
+    if path in _pending:
+        src = _pending.pop(path)[1]
+    else:
+        src = open(path, encoding='utf-8').read()
     existing = json.loads(src)
     out = []
     for key, text, meta in entries:
@@ -113,9 +117,14 @@ def _flush():
             sys.exit('key %s added twice in this patch' % key)
         seen.add(key)
     for locale in LOCALES:
+        path = os.path.join(APP, 'lib', 'l10n', 'app_%s.arb' % locale)
+        patched = _pending.get(path)
         w = _append(locale, [(k, t[locale], meta if locale == 'en' else None) for k, meta, t in _msgs])
         if w:
             writes.append(w)
+        elif patched is not None:
+            json.loads(patched[1])
+            writes.append((path, patched[1]))
     for path, body in writes:
         open(path, 'w', encoding='utf-8', newline='\n').write(body)
     for full, (crlf, s) in _pending.items():

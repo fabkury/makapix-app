@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -127,7 +128,7 @@ class _MonitoredHashtagsPageState extends ConsumerState<MonitoredHashtagsPage> {
         const SizedBox(width: 8),
         _badge(on ? 'Shown' : 'Hidden', on ? cs.primary : Colors.white38),
       ]),
-      subtitle: Text(h.description, style: const TextStyle(color: Colors.white54)),
+      subtitle: Text(h.description(context.l10n), style: const TextStyle(color: Colors.white54)),
     );
   }
 
