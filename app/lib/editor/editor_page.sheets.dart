@@ -75,17 +75,24 @@ extension _EditorSheets on _EditorPageState {
         ),
         onPressed: onTap,
         icon: Icon(icon, size: 16),
+        // Two lines before the ellipsis: half a phone's width holds "Duplicate" but not
+        // every language's word for it.
         label: Text(label,
-            style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis, maxLines: 1),
+            style: const TextStyle(fontSize: 12),
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis,
+            maxLines: 2),
       );
 
-  // A row of equal-width action buttons.
-  Widget _sheetBtnRow(List<Widget> buttons) => Row(children: [
-        for (var k = 0; k < buttons.length; k++) ...[
-          if (k > 0) const SizedBox(width: 8),
-          Expanded(child: buttons[k]),
-        ],
-      ]);
+  // A row of equal-width action buttons, equally tall when one label takes two lines.
+  Widget _sheetBtnRow(List<Widget> buttons) => IntrinsicHeight(
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          for (var k = 0; k < buttons.length; k++) ...[
+            if (k > 0) const SizedBox(width: 8),
+            Expanded(child: buttons[k]),
+          ],
+        ]),
+      );
 
   // The lone destructive action at the bottom of a sheet. Two taps within 3 s (ADR 0022): the
   // first arms and relabels the button, the second confirms. [armKey] = (target index, _sendSeq)
@@ -258,7 +265,7 @@ extension _EditorSheets on _EditorPageState {
         final inGroup = _selLayers.contains(cur);
         final belowLocked = cur > 0 && (layers[cur - 1] as Map<String, dynamic>)['locked'] == true;
         final opacity = dragOpacity ?? ((l['opacity'] ?? 255) as int);
-        final blend = '${l['blend'] ?? 'Normal'}';
+        final blend = '${l['blend'] ?? 'Normal'}'; // l10n-ignore: engine blend mode
 
         final frame = engine.activeFrame;
         final hash = engine.layerHash(frame, cur);
@@ -298,17 +305,17 @@ extension _EditorSheets on _EditorPageState {
           ],
           _sheetHeader(
             thumb: cached, // stale-while-revalidate: old thumb beats a checkerboard flash
-            title: '${l['name']}',
-            subtitle: 'Layer ${cur + 1} of $count',
+            title: shownLayerName(ctx.l10n, '${l['name']}'),
+            subtitle: ctx.l10n.layerOfCount(cur + 1, count),
             onRename: () {
               Navigator.pop(ctx);
-              _renameLayer(cur, '${l['name']}');
+              _renameLayer(cur, shownLayerName(context.l10n, '${l['name']}'));
             },
           ),
           const SizedBox(height: 10),
           // The Layers page (ADR 0033): the whole stack as a list, multi-select, batch
           // operations. Opens with nothing selected, like the ☰ entry.
-          _sheetBtn(Icons.view_list, 'Layers…', () {
+          _sheetBtn(Icons.view_list, ctx.l10n.menuLayers, () {
             Navigator.pop(ctx);
             _openLayersPage();
           }),
@@ -316,7 +323,7 @@ extension _EditorSheets on _EditorPageState {
           Wrap(spacing: 8, runSpacing: 4, children: [
             _stateChip(
               icon: visible ? Icons.visibility : Icons.visibility_off,
-              label: 'Visible',
+              label: ctx.l10n.layerVisible,
               value: visible,
               onChanged: (v) {
                 _act('SetLayerVisible($cur, $v)');
@@ -325,7 +332,7 @@ extension _EditorSheets on _EditorPageState {
             ),
             _stateChip(
               icon: locked ? Icons.lock : Icons.lock_open,
-              label: 'Locked',
+              label: ctx.l10n.layerLocked,
               value: locked,
               onChanged: (v) {
                 _act('SetLayerLocked($cur, $v)');
@@ -334,10 +341,10 @@ extension _EditorSheets on _EditorPageState {
             ),
             _stateChip(
               icon: Icons.open_with,
-              label: 'Move group',
+              label: ctx.l10n.layerMoveGroup,
               value: inGroup,
               accent: const Color(0x59FFC107), // translucent amber, matching the tile badge
-              tooltip: 'Move together with the Move tool (when nothing is selected)',
+              tooltip: ctx.l10n.layerMoveGroupTip,
               onChanged: (v) {
                 setState(() {
                   if (v) {
@@ -354,7 +361,7 @@ extension _EditorSheets on _EditorPageState {
           Row(children: [
             const Icon(Icons.opacity, size: 18, color: Colors.white70),
             const SizedBox(width: 4),
-            const Text('Opacity'),
+            Text(ctx.l10n.layerOpacity),
             Expanded(
               child: Slider(
                 value: opacity.toDouble(),
@@ -396,7 +403,7 @@ extension _EditorSheets on _EditorPageState {
               // Tap-to-type, the editor-wide slider convention (underline = tappable). Raw
               // engine units (0–255), matching what the dialog accepts.
               child: InkWell(
-                onTap: () => _editSliderValue('Opacity', opacity.toDouble(), 0, 255, (v) {
+                onTap: () => _editSliderValue(ctx.l10n.layerOpacity, opacity.toDouble(), 0, 255, (v) {
                   _act('SetLayerOpacity($cur, ${v.round()})');
                   setS(() {});
                 }, integer: true),
@@ -412,7 +419,7 @@ extension _EditorSheets on _EditorPageState {
           Row(children: [
             const Icon(Icons.gradient, size: 18, color: Colors.white70),
             const SizedBox(width: 4),
-            const Text('Blend'),
+            Text(ctx.l10n.layerBlend),
             const Spacer(),
             InkWell(
               onTap: () async {
@@ -429,23 +436,28 @@ extension _EditorSheets on _EditorPageState {
               ),
             ),
           ]),
-          _sheetSection('Arrange'),
+          _sheetSection(ctx.l10n.sheetArrange),
           _sheetBtnRow([
-            _sheetBtn(Icons.arrow_upward, 'Up', cur + 1 < count
+            _sheetBtn(Icons.arrow_upward, ctx.l10n.sheetUp, cur + 1 < count
                 ? () {
                     _reorderLayerTracked(cur, cur + 1);
                     setS(() => cur++);
                     showCur();
                   }
                 : null),
-            _sheetBtn(Icons.arrow_downward, 'Down', cur > 0
+            _sheetBtn(Icons.arrow_downward, ctx.l10n.sheetDown, cur > 0
                 ? () {
                     _reorderLayerTracked(cur, cur - 1);
                     setS(() => cur--);
                     showCur();
                   }
                 : null),
-            _sheetBtn(Icons.call_merge, 'Merge down', (cur > 0 && !belowLocked)
+          ]),
+          const SizedBox(height: 8),
+          // On its own row: as a third button beside Up and Down its label was cut off on a
+          // phone ("Merge do…"), and it is longer in every other language.
+          _sheetBtnRow([
+            _sheetBtn(Icons.call_merge, ctx.l10n.layerMergeDown, (cur > 0 && !belowLocked)
                 ? () {
                     _clearLayerGroup(); // the engine collapses its group to the merged layer
                     _act('MergeDown($cur)');
@@ -455,9 +467,9 @@ extension _EditorSheets on _EditorPageState {
                   }
                 : null),
           ]),
-          _sheetSection('Create'),
+          _sheetSection(ctx.l10n.commonCreate),
           _sheetBtnRow([
-            _sheetBtn(Icons.control_point_duplicate, 'Duplicate', () {
+            _sheetBtn(Icons.control_point_duplicate, ctx.l10n.commonDuplicate, () {
               _clearLayerGroup(); // focus moves to the copy; the engine resets its group too
               _act('DuplicateLayer($cur)');
               // Follow the copy (the engine made it active) — unless the layer cap
@@ -467,7 +479,7 @@ extension _EditorSheets on _EditorPageState {
               });
               WidgetsBinding.instance.addPostFrameCallback((_) => showCur());
             }),
-            _sheetBtn(Icons.add_box_outlined, 'New layer above', () {
+            _sheetBtn(Icons.add_box_outlined, ctx.l10n.layerNewAbove, () {
               _clearLayerGroup();
               _act('AddLayerAt(${cur + 1})');
               setS(() {
@@ -477,7 +489,7 @@ extension _EditorSheets on _EditorPageState {
             }),
           ]),
           const SizedBox(height: 8),
-          _sheetBtn(Icons.dynamic_feed, 'Copy to all frames', () {
+          _sheetBtn(Icons.dynamic_feed, ctx.l10n.layerCopyToAllFrames, () {
             Navigator.pop(ctx);
             final all = List.generate(engine.frameCount, (k) => k)
                 .where((k) => k != engine.activeFrame)
@@ -490,7 +502,7 @@ extension _EditorSheets on _EditorPageState {
           const SizedBox(height: 8),
           const Divider(height: 1),
           const SizedBox(height: 4),
-          _sheetDelete('Delete layer', count > 1
+          _sheetDelete(ctx.l10n.layerDelete, count > 1
               ? () {
                   _remapLayerGroupRemoved(cur); // matches the engine's own remap
                   _act('RemoveLayer($cur)');
@@ -511,7 +523,7 @@ extension _EditorSheets on _EditorPageState {
   Future<void> _blendPicker(int cur) async {
     final layers = _layerList();
     if (cur >= layers.length) return;
-    final orig = '${(layers[cur] as Map<String, dynamic>)['blend'] ?? 'Normal'}';
+    final orig = '${(layers[cur] as Map<String, dynamic>)['blend'] ?? 'Normal'}'; // l10n-ignore: engine blend mode
     var sel = orig;
     await showAppSheet<void>(
       context: context,
@@ -582,41 +594,41 @@ extension _EditorSheets on _EditorPageState {
         return _sheetScaffold(ctx, [
           _sheetHeader(
             thumb: cached, // stale-while-revalidate: old thumb beats a checkerboard flash
-            title: 'Frame ${cur + 1} of $count',
-            subtitle: '${ms.toStringAsFixed(1)} ms · ${(1000 / ms).toStringAsFixed(1)} fps',
+            title: ctx.l10n.frameOfCount(cur + 1, count),
+            subtitle: '${ms.toStringAsFixed(1)} ms · ${(1000 / ms).toStringAsFixed(1)} fps', // l10n-ignore: units
           ),
           const SizedBox(height: 12),
           // The Frames page (ADR 0031): every frame as a grid, multi-select, batch operations.
           // The page opens with nothing selected, like the ☰ entry.
-          _sheetBtn(Icons.grid_view, 'Frames…', () {
+          _sheetBtn(Icons.grid_view, ctx.l10n.menuFrames, () {
             Navigator.pop(ctx);
             _openFramesPage();
           }),
           const SizedBox(height: 8),
-          _sheetBtn(Icons.timer_outlined, 'Edit duration…', () {
+          _sheetBtn(Icons.timer_outlined, ctx.l10n.frameEditDuration, () {
             Navigator.pop(ctx);
             // [G-36] Act on the named frame; no activation, so cancelling costs nothing and the
             // artist's drawing target never moves behind a dialog (ADR 0013).
             _editDuration(frame: cur);
           }),
-          _sheetSection('Arrange'),
+          _sheetSection(ctx.l10n.sheetArrange),
           _sheetBtnRow([
-            _sheetBtn(Icons.chevron_left, 'Move left', cur > 0
+            _sheetBtn(Icons.chevron_left, ctx.l10n.moveLeft, cur > 0
                 ? () {
                     _act('ReorderFrame($cur, ${cur - 1})');
                     setS(() => cur--);
                   }
                 : null),
-            _sheetBtn(Icons.chevron_right, 'Move right', cur + 1 < count
+            _sheetBtn(Icons.chevron_right, ctx.l10n.moveRight, cur + 1 < count
                 ? () {
                     _act('ReorderFrame($cur, ${cur + 1})');
                     setS(() => cur++);
                   }
                 : null),
           ]),
-          _sheetSection('Create'),
+          _sheetSection(ctx.l10n.commonCreate),
           _sheetBtnRow([
-            _sheetBtn(Icons.control_point_duplicate, 'Duplicate', () {
+            _sheetBtn(Icons.control_point_duplicate, ctx.l10n.commonDuplicate, () {
               _clearLayerGroup(); // a different frame becomes active
               _act('DuplicateFrame($cur)');
               // Follow the copy (the engine made it active) — unless the frame cap
@@ -625,7 +637,7 @@ extension _EditorSheets on _EditorPageState {
                 if (engine.frameCount > count) cur++;
               });
             }),
-            _sheetBtn(Icons.add_box_outlined, 'New frame after', () {
+            _sheetBtn(Icons.add_box_outlined, ctx.l10n.frameNewAfter, () {
               _clearLayerGroup();
               _act('AddFrameAt(${cur + 1})');
               setS(() {
@@ -636,7 +648,7 @@ extension _EditorSheets on _EditorPageState {
           const SizedBox(height: 8),
           const Divider(height: 1),
           const SizedBox(height: 4),
-          _sheetDelete('Delete frame', count > 1
+          _sheetDelete(ctx.l10n.frameDelete, count > 1
               ? () {
                   _clearLayerGroup(); // a different frame (with its own layer stack) may become active
                   _act('RemoveFrame($cur)');
@@ -656,15 +668,15 @@ extension _EditorSheets on _EditorPageState {
     final name = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Rename layer'),
+        title: Text(ctx.l10n.layerRenameTitle),
         content: TextField(
           controller: ctrl,
           autofocus: true,
           onSubmitted: (_) => Navigator.pop(ctx, ctrl.text),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('Rename')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(ctx.l10n.commonCancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: Text(ctx.l10n.commonRename)),
         ],
       ),
     );

@@ -89,7 +89,7 @@ class _EditorKeyboardHost implements EditorAccess {
     // arms for THIS frame and says so; a frame change, any engine traffic (_send disarms), or
     // the window's expiry means the next press is a first press again.
     if (!_s._frameDeleteArm.tap(frame)) {
-      _s._toast('Press Delete frame again to delete frame ${frame + 1}', duration: kTapAgainWindow);
+      _s._toast(appL10n.frameDeleteAgain(frame + 1), duration: kTapAgainWindow);
       return;
     }
     if (_s._playing) _s._pause();

@@ -81,6 +81,8 @@ const _nonUiCalls = {
   // The editor's engine calls: their argument is an action-script (DSL) command, and any
   // literal inside it (`_send('SetScope(${f ? 'Frame' : 'Layer'})')`) is an engine value.
   '_send', '_act',
+  // …and the calls that take a tool id (the engine's name for a tool, never shown).
+  '_doToolAction', '_actionEnabled', '_actionActive', '_selectTool',
 };
 
 final _letters = RegExp(r'\p{L}{2,}', unicode: true);

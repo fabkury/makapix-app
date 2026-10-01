@@ -63,9 +63,9 @@ extension _EditorCanvas on _EditorPageState {
         border: Border.all(color: Colors.white24),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        _selMenuButton(Icons.deselect, 'Select none', () => _act('SelectNone()')),
+        _selMenuButton(Icons.deselect, context.l10n.selectNone, () => _act('SelectNone()')),
         const SizedBox(width: 3),
-        _selMenuButton(Icons.tonality, 'Invert selection', () => _act('InvertSelection()')),
+        _selMenuButton(Icons.tonality, context.l10n.selectInvert, () => _act('InvertSelection()')),
       ]),
     );
   }
@@ -109,10 +109,10 @@ extension _EditorCanvas on _EditorPageState {
         border: Border.all(color: Colors.white24),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        _selMenuButton(Icons.close, 'Cancel', _cancelActiveDraft,
+        _selMenuButton(Icons.close, context.l10n.commonCancel, _cancelActiveDraft,
             color: const Color(0xFFB03A3A), iconColor: Colors.white),
         const SizedBox(width: 3),
-        _selMenuButton(Icons.check, 'Commit', _commitActiveDraft,
+        _selMenuButton(Icons.check, context.l10n.draftCommit, _commitActiveDraft,
             color: const Color(0xFF30A050), iconColor: Colors.white),
       ]),
     );
@@ -411,7 +411,7 @@ extension _EditorCanvas on _EditorPageState {
     if (x >= engine.width || y >= engine.height) return;
     // UI-only shell tools (transform groups, Play, Ruler) have no engine draw tool to restore;
     // any non-preview tool serves (the Select Layer exit idiom) — their canvas is inert anyway.
-    final restore = _engineToolName ?? 'Move';
+    final restore = _engineToolName ?? 'Move'; // l10n-ignore: tool id
     if (restore == 'Eyedropper') {
       _send('PointerDown($x,$y); PointerUp()');
     } else {

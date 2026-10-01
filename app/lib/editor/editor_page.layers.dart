@@ -51,7 +51,7 @@ class _EditorLayersHost implements LayersHost {
       _s._suppressRefusalToast = false;
     }
     if (_refusalSeq() == before) return null;
-    return (_s._state['last_refusal'] as String?) ?? 'The engine refused this change';
+    return (_s._state['last_refusal'] as String?) ?? appL10n.engineRefused;
   }
 
   @override

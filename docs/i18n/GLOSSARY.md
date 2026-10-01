@@ -163,6 +163,15 @@ words, so change both together. Decisions:
   Min / Max elsewhere.
 - **AA** and **cleanEdge** are not translated.
 
+### Names stored in documents
+
+- A drawing nobody named is "Untitled" in the current language (`untitled`). The stored title
+  is whatever language the app was in at the time; any language's default reads as unnamed.
+- Layers are named by the engine, in English, inside the document ("Layer 1", "Layer 1
+  copy"). They are translated only for display (`layerDefaultName`, `layerCopyName`); a name
+  the artist typed is never touched.
+- French uses "Annuler" for both Cancel and Undo, as French software does.
+
 ## Open terminology questions
 
 None open.

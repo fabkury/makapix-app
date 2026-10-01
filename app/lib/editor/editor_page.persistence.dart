@@ -62,11 +62,11 @@ extension _EditorPersistence on _EditorPageState {
     if (curId != null && await _store!.exists(curId) && await _loadDrawingIntoEngine(curId)) {
       final meta = await _store!.readMeta(curId);
       _restoreProvenance(_resumeDocBytes);
-      _adopt(curId, meta?.title ?? 'Untitled', meta?.createdAt ?? DateTime.now());
+      _adopt(curId, meta?.title ?? defaultDrawingTitle, meta?.createdAt ?? DateTime.now());
     } else {
       // No restorable current drawing → track the default 64×64 doc as a fresh one.
       _provenance = DocProvenance.fresh();
-      await _createFreshDrawing(title: 'Untitled');
+      await _createFreshDrawing(title: defaultDrawingTitle);
     }
     // Unmounted while the restore was in flight (a pillar switch right after opening the
     // editor): nothing below applies, and `ref` may no longer be read.
@@ -95,7 +95,7 @@ extension _EditorPersistence on _EditorPageState {
         case OpenLocalDrawing(:final id):
           await _openExistingDrawing(id);
         case NewLocalDrawing():
-          await _switchToNewDrawing(title: 'Untitled', mutateEngine: () {
+          await _switchToNewDrawing(title: defaultDrawingTitle, mutateEngine: () {
             _send('NewDocument(64,64)');
             _resendEngineTool();
           });
@@ -374,7 +374,7 @@ extension _EditorPersistence on _EditorPageState {
     if (!mounted) return;
     // ADR 0014, load-then-adopt. Ask first, but do NOT release the outgoing drawing yet: its
     // identity, journal and autosave only change once the incoming document is proven to load.
-    final choice = await _askOutgoingChoice('"${meta?.title ?? 'Untitled'}"');
+    final choice = await _askOutgoingChoice('"${meta?.title ?? defaultDrawingTitle}"');
     if (choice == null) return;
     final outgoingId = _drawingId;
     // Flush the outgoing (so the rollback below is exact), then stop its autosave and Journal
@@ -400,7 +400,7 @@ extension _EditorPersistence on _EditorPageState {
     await _releaseOutgoing(discard: choice == _OutgoingChoice.discard); // already quiesced: deletes on Discard
     _clubSource = null;
     _restoreProvenance(_resumeDocBytes);
-    _adopt(id, meta?.title ?? 'Untitled', meta?.createdAt ?? DateTime.now());
+    _adopt(id, meta?.title ?? defaultDrawingTitle, meta?.createdAt ?? DateTime.now());
     if (mounted) {
       _refreshState();
       _redraw();
@@ -438,7 +438,7 @@ extension _EditorPersistence on _EditorPageState {
         await _openExistingDrawing(result.id!);
         break;
       case GalleryAction.newDrawing:
-        await _switchToNewDrawing(title: 'Untitled', mutateEngine: () {
+        await _switchToNewDrawing(title: defaultDrawingTitle, mutateEngine: () {
           _send('NewDocument(64,64)');
           _resendEngineTool();
         });

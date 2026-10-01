@@ -170,7 +170,7 @@ extension _EditorToolgrid on _EditorPageState {
       showDragHandle: true,
       backgroundColor: const Color(0xFF1A1C1F),
       builder: (ctx) => _sheetScaffold(ctx, [
-        _sheetSection('Pinned tool'),
+        _sheetSection(ctx.l10n.pinnedToolTitle),
         for (final t in tools)
           ListTile(
             dense: true,
@@ -209,13 +209,14 @@ extension _EditorToolgrid on _EditorPageState {
           final atFloor = !canHideAnotherTool(_hiddenTools, all);
           final n = _hiddenTools.length;
           return _sheetScaffold(ctx, [
-            _sheetSection('Tools in the toolbar'),
+            _sheetSection(ctx.l10n.toolsInToolbar),
             ListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
               leading: Icon(Icons.visibility_outlined, size: 22, color: n == 0 ? Colors.white38 : Colors.white),
-              title: Text('Show all', style: TextStyle(color: n == 0 ? Colors.white38 : Colors.white)),
-              subtitle: Text(n == 0 ? 'Every tool is shown' : '$n hidden',
+              title: Text(ctx.l10n.toolsShowAll,
+                  style: TextStyle(color: n == 0 ? Colors.white38 : Colors.white)),
+              subtitle: Text(n == 0 ? ctx.l10n.toolsAllShown : ctx.l10n.toolsHiddenCount(n),
                   style: const TextStyle(fontSize: 11, color: Colors.white54)),
               onTap: n == 0 ? null : () => setSheet(_showAllTools),
             ),
@@ -230,10 +231,15 @@ extension _EditorToolgrid on _EditorPageState {
   Widget _showHideToolRow(ToolDef t, {required bool atFloor, required StateSetter setSheet}) {
     final hidden = _hiddenTools.contains(t.dsl);
     final isActive = !_actionTools.contains(t.dsl) && t.dsl == _tool;
-    final onNow = t.dsl == 'Onion' && _onion;
+    final onNow = t.dsl == 'Onion' && _onion; // l10n-ignore: tool id
     final locked = !hidden && atFloor; // the last visible tool cannot be hidden
     final fg = hidden ? Colors.white38 : Colors.white;
-    final note = [if (isActive) 'active', if (onNow) 'on', if (locked) 'last visible tool'].join(' · ');
+    final l10n = context.l10n;
+    final note = [
+      if (isActive) l10n.toolNoteActive,
+      if (onNow) l10n.toolNoteOn,
+      if (locked) l10n.toolNoteLastVisible,
+    ].join(' · ');
     return ListTile(
       dense: true,
       contentPadding: EdgeInsets.zero,
@@ -506,7 +512,7 @@ extension _EditorToolgrid on _EditorPageState {
       final (:w, :h, :title) = spec;
       // A new canvas is a new library drawing; the previous one stays saved in My Drawings. The
       // optional title lands on the library entry exactly as a rename would (blank = Untitled).
-      await _switchToNewDrawing(title: title.isEmpty ? 'Untitled' : title, mutateEngine: () {
+      await _switchToNewDrawing(title: title.isEmpty ? defaultDrawingTitle : title, mutateEngine: () {
         _send('NewDocument($w,$h)');
         _resendEngineTool();
         _clubSource = null;
@@ -574,15 +580,19 @@ class _NewDocumentDialogState extends State<_NewDocumentDialog> {
     final valid = w != null && h != null;
     final clubOk = !valid || ClubSizeRules.accepted(w, h);
     return AlertDialog(
-      title: const Text('New document'),
+      title: Text(context.l10n.newDocTitle),
       content: SizedBox(
         width: 320,
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Scrolls: with the Club-size warning showing, the content is taller than a small
+        // phone leaves for a dialog.
+        child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           TextField(
             controller: _title,
             maxLength: kDrawingTitleMaxLength,
             textInputAction: TextInputAction.done,
-            decoration: const InputDecoration(labelText: 'Title (optional)', counterText: '', isDense: true),
+            decoration: InputDecoration(
+                labelText: context.l10n.newDocName, counterText: '', isDense: true),
             // Enter/Done on a valid size creates at once — the title is the last thing typed.
             onSubmitted: (_) {
               if (valid) Navigator.pop(context, _spec(w, h));
@@ -590,9 +600,9 @@ class _NewDocumentDialogState extends State<_NewDocumentDialog> {
           ),
           const SizedBox(height: 12),
           Row(children: [
-            _field(_w, 'Width'),
+            _field(_w, context.l10n.canvasWidth),
             const Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('×')),
-            _field(_h, 'Height'),
+            _field(_h, context.l10n.canvasHeight),
           ]),
           const SizedBox(height: 10),
           Wrap(spacing: 6, children: [
@@ -607,20 +617,20 @@ class _NewDocumentDialogState extends State<_NewDocumentDialog> {
           ]),
           if (!valid) ...[
             const SizedBox(height: 10),
-            Text('Each side must be ${Engine.minDim}–${Engine.maxDim} pixels.',
+            Text(context.l10n.newDocSideRange(Engine.minDim, Engine.maxDim),
                 style: const TextStyle(fontSize: 12, color: Colors.white70)),
           ],
           if (valid && !clubOk) ...[
             const SizedBox(height: 10),
             _ClubSizeAlert(w, h),
           ],
-        ]),
+        ])),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(context.l10n.commonCancel)),
         FilledButton(
           onPressed: valid ? () => Navigator.pop(context, _spec(w, h)) : null,
-          child: const Text('Create'),
+          child: Text(context.l10n.commonCreate),
         ),
       ],
     );
@@ -711,7 +721,7 @@ class _ClubSizeStatus extends StatelessWidget {
         const SizedBox(width: 6),
         Expanded(
           child: Text(
-            ok ? 'Club-accepted size' : 'Not a Club size. Nearest ${nearest![0]} × ${nearest[1]}',
+            ok ? context.l10n.clubSizeOk : context.l10n.clubSizeNearest(nearest![0], nearest[1]),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: 12, color: color),
@@ -743,8 +753,7 @@ class _ClubSizeAlert extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: Text(
-            'Makapix Club doesn\'t accept $width × $height artworks, so it can\'t be posted '
-            'to the Club at this size.\nNearest accepted size: ${nearest[0]} × ${nearest[1]}.',
+            context.l10n.clubSizeAlert(width, height, nearest[0], nearest[1]),
             style: const TextStyle(fontSize: 12, color: Colors.amber),
           ),
         ),

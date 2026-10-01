@@ -32,7 +32,7 @@ class DrawingStore {
   static String newId([int? seedMicros, int? seedRand]) {
     final micros = seedMicros ?? DateTime.now().microsecondsSinceEpoch;
     final rand = seedRand ?? DateTime.now().microsecond ^ (micros & 0xFFFF);
-    return 'dwg_${micros.toRadixString(36)}_${(rand & 0xFFFF).toRadixString(36)}';
+    return 'dwg_${micros.toRadixString(36)}_${(rand & 0xFFFF).toRadixString(36)}'; // l10n-ignore: folder name
   }
 
   // ---- writes ----------------------------------------------------------------

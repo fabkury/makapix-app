@@ -27,8 +27,10 @@ import 'package:makapix_club/club/state/edit_bridge.dart';
 import 'package:makapix_club/club/ui/publish_page.dart';
 import 'package:makapix_club/dev/battery_stats.dart';
 import 'package:makapix_club/engine_ffi.dart';
+import 'package:makapix_club/l10n/app_locale.dart';
 import 'package:makapix_club/l10n/l10n.dart';
 import 'package:makapix_club/share/image_share.dart';
+import 'package:makapix_club/ui/language_page.dart';
 import 'package:makapix_club/ui/layout.dart';
 
 import 'blend_modes.dart';
@@ -38,6 +40,7 @@ import 'frames/frame_model.dart';
 import 'frames/frames_host.dart';
 import 'frames/frames_page.dart';
 import 'layers/layer_model.dart';
+import 'layers/layer_names.dart';
 import 'layers/layers_host.dart';
 import 'layers/layers_page.dart';
 import 'gallery/gallery_page.dart';
@@ -129,28 +132,28 @@ const _kPatternRecentsPref = 'editor.patternRecents_v1';
 const _kPatternColorsPref = 'editor.patternColors_v1'; // [ON, OFF] preview colors as #RRGGBBAA
 // Outline (2026-09-04 rider) rides the same "UI-only action group" rails: row-1 buttons, no
 // engine draw tool, an inert canvas.
-const _transformTools = {'Flip', 'Rotate', 'Resize', 'Invert', 'Outline'};
+const _transformTools = {'Flip', 'Rotate', 'Resize', 'Invert', 'Outline'}; // l10n-ignore: tool ids
 // Row-3 "action" tools in the reorderable grid: tapping fires an action/toggle immediately rather
 // than selecting a draw tool (handled in _toolTile / _doToolAction). Undo/Redo are NOT here — they
 // are pinned at the left of row-3 (see _buildToolBar / _pinnedActionTile). Play is NOT here either —
 // it is a selectable tool group whose controls live in row-1 (see _isPlayTool / _buildToolOptions);
 // in 3-row toolbar mode it is also pinned beside Undo/Redo and hidden from the grid.
-const _actionTools = {'Onion'};
+const _actionTools = {'Onion'}; // l10n-ignore: tool ids
 // Tools that support a "Precision" mode (off-finger reticle + act-by-button). Precision is
 // a per-tool toggle, remembered independently per tool — see [_precisionTools].
-const _precisionTools = {'Pencil', 'Brush', 'Airbrush', 'Eraser', 'Bucket', 'Dodge', 'Burn', 'Eyedropper', 'SelectByColor'};
+const _precisionTools = {'Pencil', 'Brush', 'Airbrush', 'Eraser', 'Bucket', 'Dodge', 'Burn', 'Eyedropper', 'SelectByColor'}; // l10n-ignore: tool ids
 // Tools whose mark is a stamp/spray of `brush_size` — the row-1 Size slider's audience and the
 // [ / ] keyboard Commands' enablement (the figure tools use line_width + fill instead).
-const _kBrushSizeTools = {'Pencil', 'Brush', 'Airbrush', 'Eraser', 'Dodge', 'Burn'};
+const _kBrushSizeTools = {'Pencil', 'Brush', 'Airbrush', 'Eraser', 'Dodge', 'Burn'}; // l10n-ignore: tool ids
 // Per-tool starting sizes where 1px is the wrong default; every other size tool starts at 1.
 const _kDefaultBrushSize = {'Airbrush': 8, 'Eraser': 6};
 // The tools a pattern gates (ADR 0025). The Gradient has its own Bayer dither instead and never
 // reads the pattern; every other tool paints ungated.
-const _kPatternTools = {'Pencil', 'Brush', 'Eraser', 'Bucket'};
+const _kPatternTools = {'Pencil', 'Brush', 'Eraser', 'Bucket'}; // l10n-ignore: tool ids
 // The tools whose writes mirror under Symmetry (ADR 0026) — the ones that show the Mirror chip.
 // Gradient, Move/Paste, the selections, Eyedropper, Ruler, the adjustments, and the transforms
 // never mirror (design decision 2026-09-04).
-const _kMirrorTools = {'Pencil', 'Brush', 'Eraser', 'Airbrush', 'Dodge', 'Burn', 'Bucket', 'Line', 'Shape'};
+const _kMirrorTools = {'Pencil', 'Brush', 'Eraser', 'Airbrush', 'Dodge', 'Burn', 'Bucket', 'Line', 'Shape'}; // l10n-ignore: tool ids
 
 class EditorPage extends ConsumerStatefulWidget {
   const EditorPage({super.key});
@@ -171,7 +174,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   /// `engine.load`). Each autosave captures it at start and refuses to write once it moves, so one
   /// drawing's content can never be saved into another's folder (ADR 0014, amended 2026-09-22).
   int _docGen = 0;
-  String _drawingTitle = 'Untitled';
+  String _drawingTitle = defaultDrawingTitle;
   DateTime _drawingCreatedAt = DateTime.now();
   DateTime? _lastAutosaveWarn; // throttles the "couldn't autosave" toast
   // ---- The always-on Journal (CONTEXT.md "Replay vocabulary"; see editor_page.replay.dart):
@@ -240,7 +243,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // the Frames page narrates its own refusals on its status line and suppresses the toast.
   int _refusalSeqSeen = -1;
   bool _suppressRefusalToast = false;
-  String _tool = 'Pencil';
+  String _tool = 'Pencil'; // l10n-ignore: tool id
   Color _primary = const Color(0xFF000000);
   // The last primary before the current one — the X Command's swap partner ("swap with
   // previous color"; the editor has no secondary color by design). Starts white so the very
@@ -314,7 +317,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // untouched until Commit (then replayed as one pointer drag, the engine's immediate-select path).
   // Two endpoints in canvas-pixel coords (or null when no draft is pending) plus the kind toggle.
   Offset? _selA, _selB;
-  String _selShapeKind = 'Rectangle'; // 'Rectangle' | 'Ellipse' | 'Lasso' (row-1 toggle → engine SelectRect/SelectEllipse/SelectFree)
+  String _selShapeKind = 'Rectangle'; // l10n-ignore: mode id. 'Rectangle' | 'Ellipse' | 'Lasso' (row-1 toggle → engine SelectRect/SelectEllipse/SelectFree)
   // The Select Shape tool keeps its OWN aspect-ratio lock, independent of the Shape tool's _lockRatio
   // /_ratio (so locking a square selection never disturbs a locked shape-draw ratio, and vice versa).
   bool _selLockRatio = false; // constrain the selection draft's width:height to _selRatio
@@ -358,7 +361,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   int get _intensity =>
       _intensityByTool[_tool] ?? switch (_tool) { 'Airbrush' => 50, 'Dodge' || 'Burn' => 128, _ => 25 };
   set _intensity(int v) => _intensityByTool[_tool] = v;
-  String _selMode = 'Replace';
+  String _selMode = 'Replace'; // l10n-ignore: engine mode
   int _alphaCutoff = 0; // Sel Lyr: alpha cutoff (0..254); pixels with alpha > this (opaque) are "selected"
   // Gradient: the first color is ALWAYS the primary color; the remaining (count-1) colors are
   // independent (_gradExtra). _gradCount is the total number of evenly-spaced colors, 2 up to
@@ -565,7 +568,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // 3-row mode: the tool pinned in the 3rd slot (below Undo/Redo). Defaults to Pencil; long-press the
   // slot to change. The pinned tool stays in _toolOrder (only hidden from the grid) so pinning never
   // churns the saved order — see _visibleOrder / _pinnedThirdTile / _pinnedThirdConfigSheet.
-  String _pinnedThirdTool = 'Pencil';
+  String _pinnedThirdTool = 'Pencil'; // l10n-ignore: tool id
   // ☰ → View → Show/hide tools (ADR 0018): tools hidden from the row-3 grid. Display-time only —
   // hidden tools keep their slot in _toolOrder (unhide restores it), stay fully reachable through
   // the keyboard / hold-pick / paste / pinned slot, and the active tool may be hidden (it stays
@@ -659,10 +662,10 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // immediate-on-release: the figures (Line/Rect/Ellipse) and the Gradient.
   bool get _isDraftTool => _tool == 'Line' || _tool == 'Shape' || _tool == 'Gradient';
   // Which shape the unified "Shape" tool draws (Ellipse/Triangle/Rectangle); maps to a ToolKind.
-  String _shapeKind = 'Rectangle';
+  String _shapeKind = 'Rectangle'; // l10n-ignore: engine tool kind
   // Which Airbrush mode is active (Dots/Soft/Mist); stored as the engine ToolKind name the
   // shell grouping resolves to ('Airbrush' = Dots, for journal back-compat). [ADR 0006]
-  String _airbrushMode = 'Airbrush';
+  String _airbrushMode = 'Airbrush'; // l10n-ignore: engine tool kind
   bool get _hasShapeDraft => _shapeA != null && _shapeB != null;
 
   // The unified "Select" tool's Rect/Oval DRAFT flow: drag → adjust reticles → Commit, like the
@@ -934,6 +937,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Text(
+                // l10n-ignore: a developer message; only a desktop build without its engine library sees it
                 'Engine load failed:\n$_error\n\nBuild the DLL with:\n  cargo build -p makapix-ffi --release',
                 textAlign: TextAlign.center),
           ),

@@ -25,7 +25,7 @@ are the acceptance test.
 
 **Progress number:** the total on line 5 of `app/test/l10n/hardcoded_baseline.txt` — the
 hardcoded strings the scanner still finds. 2,683 after L0 (scanner as tightened in C1); 2,516
-after C1; 2,334 after C2; 2,253 after C3; 2,125 after C4; 2,000 after C5; 1,856 after C6; 1,709 after C7; 1,654 after C8; 1,598 after C9 (all in `lib/editor`); 1,048 after E1 + E8. Zero means L1 + L2 are done.
+after C1; 2,334 after C2; 2,253 after C3; 2,125 after C4; 2,000 after C5; 1,856 after C6; 1,709 after C7; 1,654 after C8; 1,598 after C9 (all in `lib/editor`); 1,048 after E1 + E8; 877 after E2. Zero means L1 + L2 are done.
 
 **Release safety while this is in progress:** `kTranslationsShipped` is `false`
 (`app/lib/l10n/app_locale.dart`), so a release build offers English only and hides the language
@@ -132,8 +132,17 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   their label as the DSL argument). `AA` and `cleanEdge` stay as they are in every language.
   Tests: `test/l10n/tool_tip_fit_test.dart` (T5b), `test_engine/editor_tool_options_test.dart`.
   Still English inside this row until E5: pattern and dither names in the swatch tooltip.
-- [ ] **E2 Editor chrome** — editor_page.toolgrid (16), .canvas (20), .timeline (64), .sheets (56),
-  .dart (59), .engine (78), .layers (5), .frames (4), .keyboard (13)
+- [x] **E2 Editor chrome** — done 2026-10-01: the ☰ menu and its five submenus, the timeline
+  tooltips, the layer and frame sheets, the pinned-tool and Show/hide tools sheets, the
+  New document dialog, the floating selection and commit menus. **Language…** is in the ☰
+  menu (shown when more than one language ships). Default names:
+  - a drawing's default title is `defaultDrawingTitle` (the current language's "Untitled");
+    a stored title that is any language's default reads as the current one
+    (`persistence/drawing_meta.dart`);
+  - the engine names layers "Layer N" / "… copy" in the document; `layers/layer_names.dart`
+    (`shownLayerName`) translates those when shown. Applied in the layer sheet here; the
+    Layers page, the layer-name picker, and the strip are batch E4.
+  Test: `test_engine/editor_chrome_test.dart`.
 - [ ] **E3 Files** — editor_page.fileio (103), .persistence (19), open_file (2), gallery (17),
   dialogs: crop (41), place (30), duration (4), rename (4), persistence/drawing_meta (4)
 - [ ] **E4 Frames and layers** — frames/ (page 44, more_sheet 44, dialogs 22, action_bar 7,
@@ -208,6 +217,14 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 
 ## Findings outside i18n
 
+- **Editor sheets and dialogs on small phones** (found by `editor_chrome_test`, 2026-10-01, all
+  in English too, all fixed):
+  - the ☰ submenu sheets did not scroll: Canvas overflowed by 124 px on a 320 × 568 phone and
+    by 27 px on 360 × 740; Import & export and View by 9.5 px on the small one;
+  - the New document dialog overflowed by 61 px when the Club-size warning showed;
+  - in the layer sheet "Merge down" was cut off as a third button beside Up and Down (now its
+    own row; sheet buttons may take two lines).
+
 - **Copy & paste help tip cut off in English.** On a 360 px phone the tip needed three lines
   and the band shows two, so its last sentence ended in an ellipsis. Reworded shorter
   (2026-10-01): "Copy, Cut, Paste, or Clear the selection. Copy from the layer or the whole
@@ -240,6 +257,11 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 
 ## Session log
 
+- **2026-10-01** — E2 (editor chrome): 82 messages. `test_engine/editor_chrome_test.dart`
+  walks the real editor through the menu, every submenu, the sheets, and the New document
+  dialog (32 runs). It found five layout defects on small phones that English had too, all
+  fixed (see "Findings outside i18n"), and one Russian label too long for its field.
+  Blend mode names ("Normal") are still English in the layer sheet until E5.
 - **2026-10-01** — E1 + E8 (tool tips, the options row, engine-name file): 187 messages.
   - The help band shows two lines. A new fit test lays every tip out at the band's width on
     a 360 px phone: seven languages had tips needing a third line, and so did English (the

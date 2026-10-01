@@ -1,5 +1,28 @@
 import 'dart:convert';
 
+import 'package:makapix_club/l10n/app_locale.dart';
+import 'package:makapix_club/l10n/l10n.dart';
+
+/// The name a drawing has until the artist names it, in the app's current language.
+String get defaultDrawingTitle => appL10n.untitled;
+
+/// The default name in every language the app has. A drawing created before a language switch
+/// (or on another device) carries that language's word for "untitled"; it is still unnamed.
+final Set<String> _defaultTitles = {
+  for (final l in kAppLanguages) lookupAppLocalizations(l.locale).untitled,
+};
+
+/// Whether [title] is no name at all: empty, or the default name in any language.
+bool isDefaultDrawingTitle(String? title) {
+  final t = title?.trim() ?? '';
+  return t.isEmpty || _defaultTitles.contains(t);
+}
+
+/// What to show for a stored [title]: the artist's own name for the drawing, or the default
+/// name in the current language when they never gave one.
+String shownDrawingTitle(String? title) =>
+    isDefaultDrawingTitle(title) ? defaultDrawingTitle : title!;
+
 /// Sidecar metadata for one library drawing (`meta.json`). Non-authoritative: title/dates/dims are
 /// a convenience for the gallery and can be rebuilt from the `.mkpx` + file mtime if lost. The
 /// drawing's pixels live in `doc.mkpx`, never here.
@@ -76,7 +99,7 @@ class DrawingMeta {
 
       return DrawingMeta(
         id: id,
-        title: (m['title'] as String?)?.trim().isNotEmpty == true ? m['title'] as String : 'Untitled',
+        title: shownDrawingTitle(m['title'] as String?),
         createdAt: when('createdAt'),
         updatedAt: when('updatedAt'),
         width: intOr('width', 0),

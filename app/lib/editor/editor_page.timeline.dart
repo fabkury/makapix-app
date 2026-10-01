@@ -119,7 +119,7 @@ extension _EditorTimeline on _EditorPageState {
       Container(width: vertical ? null : 1, height: vertical ? 1 : null, color: Colors.black26),
       IconButton(
           iconSize: 20,
-          tooltip: 'Add frame',
+          tooltip: context.l10n.editorAddFrame,
           onPressed: () {
             _clearLayerGroup();
             _act('AddFrameAt(${engine.activeFrame + 1})'); // right after the active frame, not at the end
@@ -171,7 +171,7 @@ extension _EditorTimeline on _EditorPageState {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ListTile(
             leading: const Icon(Icons.add_box_outlined),
-            title: const Text('Add animation frame'),
+            title: Text(ctx.l10n.editorAddAnimationFrame),
             onTap: () {
               Navigator.pop(ctx);
               _clearLayerGroup();
@@ -201,8 +201,9 @@ extension _EditorTimeline on _EditorPageState {
       );
 
   Widget _editorMenuButton() {
+    final l10n = context.l10n;
     return PopupMenuButton<String>(
-      tooltip: 'Menu',
+      tooltip: l10n.editorMenu,
       icon: const Icon(Icons.menu),
       // Opening any menu stops the animation preview (the Play tool's contract).
       onOpened: () {
@@ -226,20 +227,22 @@ extension _EditorTimeline on _EditorPageState {
         ),
         PopupMenuItem<String>(
           enabled: false,
-          child: Text(
-              '${engine.width} × ${engine.height} px, ${engine.frameCount} ${engine.frameCount == 1 ? 'frame' : 'frames'}',
+          child: Text(l10n.editorDocInfo(engine.width, engine.height, engine.frameCount),
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
         ),
-        _menuRow('frames', Icons.grid_view, 'Frames…'),
-        _menuRow('layers', Icons.view_list, 'Layers…'),
-        _menuRow('watchReplay', Icons.replay, 'Watch replay'),
+        _menuRow('frames', Icons.grid_view, l10n.menuFrames),
+        _menuRow('layers', Icons.view_list, l10n.menuLayers),
+        _menuRow('watchReplay', Icons.replay, l10n.menuWatchReplay),
         const PopupMenuDivider(),
-        _menuRow('social', Icons.groups_outlined, 'Social', submenu: true),
-        _menuRow('file', Icons.folder_outlined, 'File', submenu: true),
-        _menuRow('share', Icons.import_export, 'Import & export', submenu: true),
-        _menuRow('canvas', Icons.crop_rotate, 'Canvas', submenu: true),
-        _menuRow('view', Icons.visibility_outlined, 'View', submenu: true),
-        _menuRow('keyboard', Icons.keyboard_outlined, 'Keyboard'),
+        _menuRow('social', Icons.groups_outlined, l10n.menuSocial, submenu: true),
+        _menuRow('file', Icons.folder_outlined, l10n.menuFile, submenu: true),
+        _menuRow('share', Icons.import_export, l10n.menuImportExport, submenu: true),
+        _menuRow('canvas', Icons.crop_rotate, l10n.menuCanvas, submenu: true),
+        _menuRow('view', Icons.visibility_outlined, l10n.menuView, submenu: true),
+        _menuRow('keyboard', Icons.keyboard_outlined, l10n.menuKeyboard),
+        // The editor is reachable without ever opening the Club's Settings, so the language
+        // choice has its own entry here. Hidden while the app ships one language.
+        if (availableLanguages.length > 1) _menuRow('language', Icons.language, l10n.menuLanguage),
       ],
     );
   }
@@ -276,6 +279,9 @@ extension _EditorTimeline on _EditorPageState {
       case 'keyboard':
         _openKeyboardHelp();
         break;
+      case 'language':
+        Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const LanguagePage()));
+        break;
     }
   }
 
@@ -284,12 +290,16 @@ extension _EditorTimeline on _EditorPageState {
   void _editorSubMenu(String title, List<Widget> Function(BuildContext) rows) {
     showAppSheet(
       context: context,
+      // Scrolls: the Canvas submenu is taller than half of a small phone (it overflowed
+      // by 124 px on a 320 x 568 screen).
       builder: (ctx) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(dense: true, title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold))),
-          const Divider(height: 1),
-          ...rows(ctx),
-        ]),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            ListTile(dense: true, title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold))),
+            const Divider(height: 1),
+            ...rows(ctx),
+          ]),
+        ),
       ),
     );
   }
@@ -306,52 +316,53 @@ extension _EditorTimeline on _EditorPageState {
 
   // The Club-facing actions: leave for the Club pillar, publish this drawing, or hand it to another
   // app. The system share sheet is a mobile concept; desktop users export to a file instead.
-  void _socialMenu() => _editorSubMenu('Social', (ctx) => [
-        _sheetItem(ctx, Icons.public, 'Go to Club', () => ref.read(openClubProvider.notifier).state++),
-        _sheetItem(ctx, Icons.cloud_upload_outlined, 'Post to Club', _postToClub),
-        if (Platform.isAndroid || Platform.isIOS) _sheetItem(ctx, Icons.share, 'Share…', _share),
+  void _socialMenu() => _editorSubMenu(context.l10n.menuSocial, (ctx) => [
+        _sheetItem(ctx, Icons.public, ctx.l10n.menuGoToClub, () => ref.read(openClubProvider.notifier).state++),
+        _sheetItem(ctx, Icons.cloud_upload_outlined, ctx.l10n.publishTitle, _postToClub),
+        if (Platform.isAndroid || Platform.isIOS) _sheetItem(ctx, Icons.share, ctx.l10n.menuShare, _share),
       ]);
 
-  void _fileMenu() => _editorSubMenu('File', (ctx) => [
-        _sheetItem(ctx, Icons.insert_drive_file_outlined, 'New', _newDialog),
-        _sheetItem(ctx, Icons.collections_bookmark_outlined, 'My Drawings', _openGallery),
-        _sheetItem(ctx, Icons.folder_open, 'Open', _open),
-        _sheetItem(ctx, Icons.save, 'Save', _save),
+  void _fileMenu() => _editorSubMenu(context.l10n.menuFile, (ctx) => [
+        _sheetItem(ctx, Icons.insert_drive_file_outlined, ctx.l10n.fileNew, _newDialog),
+        _sheetItem(ctx, Icons.collections_bookmark_outlined, ctx.l10n.fileMyDrawings, _openGallery),
+        _sheetItem(ctx, Icons.folder_open, ctx.l10n.fileOpen, _open),
+        _sheetItem(ctx, Icons.save, ctx.l10n.commonSave, _save),
       ]);
 
-  void _importExportMenu() => _editorSubMenu('Import & export', (ctx) => [
-        _sheetItem(ctx, Icons.image_outlined, 'Import image…', _importImage),
+  void _importExportMenu() => _editorSubMenu(context.l10n.menuImportExport, (ctx) => [
+        _sheetItem(ctx, Icons.image_outlined, ctx.l10n.ioImportImage, _importImage),
         // Frame/layer stills offer PNG or lossless WebP inside the export dialog.
-        _sheetItem(ctx, Icons.photo_outlined, 'Export frame…', _exportFrame),
-        _sheetItem(ctx, Icons.layers_outlined, 'Export layer…', _exportLayer),
-        _sheetItem(ctx, Icons.gif_box_outlined, 'Export animation as GIF…', _exportGif),
-        _sheetItem(ctx, Icons.animation, 'Export animation as WebP…', _exportWebp),
+        _sheetItem(ctx, Icons.photo_outlined, ctx.l10n.ioExportFrame, _exportFrame),
+        _sheetItem(ctx, Icons.layers_outlined, ctx.l10n.ioExportLayer, _exportLayer),
+        _sheetItem(ctx, Icons.gif_box_outlined, ctx.l10n.ioExportAnimation('GIF'), _exportGif), // l10n-ignore: format name
+        _sheetItem(ctx, Icons.animation, ctx.l10n.ioExportAnimation('WebP'), _exportWebp), // l10n-ignore: format name
         // Post to Club lives in the Social submenu, beside Go to Club.
       ]);
 
   // Whole-canvas operations (all frames + layers). The Rotate/Flip *tools* act on the active layer
   // or selection; these are the document-wide versions.
-  void _canvasMenu() => _editorSubMenu('Canvas', (ctx) => [
-        _sheetItem(ctx, Icons.aspect_ratio, 'Resize canvas…', _resizeCanvasDialog),
-        _sheetItem(ctx, Icons.crop, 'Crop canvas…', _cropCanvasPage),
+  void _canvasMenu() => _editorSubMenu(context.l10n.menuCanvas, (ctx) => [
+        _sheetItem(ctx, Icons.aspect_ratio, ctx.l10n.canvasResize, _resizeCanvasDialog),
+        _sheetItem(ctx, Icons.crop, ctx.l10n.canvasCrop, _cropCanvasPage),
         const Divider(height: 1),
-        _sheetItem(ctx, Icons.rotate_right, 'Rotate 90° CW', () => _act('Rotate(1)')),
-        _sheetItem(ctx, Icons.rotate_left, 'Rotate 90° CCW', () => _act('Rotate(3)')),
-        _sheetItem(ctx, Icons.sync, 'Rotate 180°', () => _act('Rotate(2)')),
+        _sheetItem(ctx, Icons.rotate_right, ctx.l10n.optRotateCw, () => _act('Rotate(1)')),
+        _sheetItem(ctx, Icons.rotate_left, ctx.l10n.optRotateCcw, () => _act('Rotate(3)')),
+        _sheetItem(ctx, Icons.sync, ctx.l10n.canvasRotate180, () => _act('Rotate(2)')),
         const Divider(height: 1),
-        _sheetItem(ctx, Icons.swap_horiz, 'Flip horizontal', () => _act('FlipCanvasH()')),
-        _sheetItem(ctx, Icons.swap_vert, 'Flip vertical', () => _act('FlipCanvasV()')),
+        _sheetItem(ctx, Icons.swap_horiz, ctx.l10n.canvasFlipH, () => _act('FlipCanvasH()')),
+        _sheetItem(ctx, Icons.swap_vert, ctx.l10n.canvasFlipV, () => _act('FlipCanvasV()')),
       ]);
 
-  void _viewMenu() => _editorSubMenu('View', (ctx) => [
-        _sheetItem(ctx, _grid ? Icons.grid_on : Icons.grid_off, _grid ? 'Grid: on' : 'Grid: off', () {
+  void _viewMenu() => _editorSubMenu(context.l10n.menuView, (ctx) => [
+        _sheetItem(ctx, _grid ? Icons.grid_on : Icons.grid_off,
+            _grid ? ctx.l10n.viewGridOn : ctx.l10n.viewGridOff, () {
           setState(() => _grid = !_grid);
           _redraw();
         }),
         _sheetItem(
           ctx,
           _overscan ? Icons.crop_free : Icons.crop_din,
-          _overscan ? 'Overscan: on' : 'Overscan: off',
+          _overscan ? ctx.l10n.viewOverscanOn : ctx.l10n.viewOverscanOff,
           () {
             setState(() => _overscan = !_overscan);
             // Through _act (not a bare _send): the toggle changes the DISPLAY size (canvas ↔
@@ -366,7 +377,7 @@ extension _EditorTimeline on _EditorPageState {
         _sheetItem(
           ctx,
           _threeRowToolbar ? Icons.table_rows : Icons.table_rows_outlined,
-          _threeRowToolbar ? '3-row toolbar: on' : '3-row toolbar: off',
+          _threeRowToolbar ? ctx.l10n.viewThreeRowOn : ctx.l10n.viewThreeRowOff,
           () {
             setState(() => _threeRowToolbar = !_threeRowToolbar);
             _persistThreeRowToolbar();
@@ -376,10 +387,12 @@ extension _EditorTimeline on _EditorPageState {
         _sheetItem(
           ctx,
           Icons.checklist,
-          _hiddenTools.isEmpty ? 'Show/hide tools…' : 'Show/hide tools… (${_hiddenTools.length} hidden)',
+          _hiddenTools.isEmpty
+              ? ctx.l10n.viewShowHideTools
+              : ctx.l10n.viewShowHideToolsCount(_hiddenTools.length),
           _showHideToolsSheet,
         ),
-        _sheetItem(ctx, Icons.fit_screen, 'Fit to screen', _fitView),
+        _sheetItem(ctx, Icons.fit_screen, ctx.l10n.viewFit, _fitView),
       ]);
 
   List<dynamic> _layerList() {
@@ -503,7 +516,7 @@ extension _EditorTimeline on _EditorPageState {
       child: Flex(direction: vertical ? Axis.vertical : Axis.horizontal, children: [
         IconButton(
             iconSize: 20,
-            tooltip: 'Add layer',
+            tooltip: context.l10n.editorAddLayer,
             onPressed: () {
               _clearLayerGroup(); // focus moves to the new layer; the engine resets its group too
               // Insert just above the active layer (not at the top of the stack), like the
@@ -597,7 +610,7 @@ extension _EditorTimeline on _EditorPageState {
                           ]),
                         ),
                       // bottom-right: two-letter blend-mode badge, only when non-Normal
-                      if (blendBadge('${l['blend'] ?? 'Normal'}').isNotEmpty)
+                      if (blendBadge('${l['blend'] ?? 'Normal'}').isNotEmpty) // l10n-ignore: engine blend mode
                         Positioned(
                           right: 1,
                           bottom: 1,
@@ -605,7 +618,7 @@ extension _EditorTimeline on _EditorPageState {
                             padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
                             color: const Color(0xCC000000),
                             child: Text(
-                              blendBadge('${l['blend'] ?? 'Normal'}'),
+                              blendBadge('${l['blend'] ?? 'Normal'}'), // l10n-ignore: engine blend mode
                               style: const TextStyle(
                                   fontSize: 8, color: Colors.white70, fontWeight: FontWeight.w600),
                             ),

@@ -48,7 +48,7 @@ class _EditorFramesHost implements FramesHost {
       _s._suppressRefusalToast = false;
     }
     if (_refusalSeq() == before) return null;
-    return (_s._state['last_refusal'] as String?) ?? 'The engine refused this change';
+    return (_s._state['last_refusal'] as String?) ?? appL10n.engineRefused;
   }
 
   // Undo/Redo take the editor's tile path (ADR 0017): a pending Move draft is discarded first,
