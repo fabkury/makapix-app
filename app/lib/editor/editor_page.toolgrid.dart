@@ -403,12 +403,12 @@ extension _EditorToolgrid on _EditorPageState {
           controller: ctrl,
           autofocus: true,
           keyboardType: TextInputType.numberWithOptions(decimal: !integer, signed: min < 0),
-          decoration: InputDecoration(labelText: 'Value (${fmt(min)} – ${fmt(max)})'),
+          decoration: InputDecoration(labelText: ctx.l10n.sliderValueRange(fmt(min), fmt(max))),
           onSubmitted: (s) => Navigator.pop(ctx, double.tryParse(s.trim())),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(ctx, double.tryParse(ctrl.text.trim())), child: const Text('OK')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(ctx.l10n.commonCancel)),
+          TextButton(onPressed: () => Navigator.pop(ctx, double.tryParse(ctrl.text.trim())), child: Text(ctx.l10n.commonOk)),
         ],
       ),
     );

@@ -25,7 +25,7 @@ are the acceptance test.
 
 **Progress number:** the total on line 5 of `app/test/l10n/hardcoded_baseline.txt` — the
 hardcoded strings the scanner still finds. 2,683 after L0 (scanner as tightened in C1); 2,516
-after C1; 2,334 after C2; 2,253 after C3; 2,125 after C4; 2,000 after C5; 1,856 after C6; 1,709 after C7; 1,654 after C8; 1,598 after C9 (all in `lib/editor`). Zero means L1 + L2 are done.
+after C1; 2,334 after C2; 2,253 after C3; 2,125 after C4; 2,000 after C5; 1,856 after C6; 1,709 after C7; 1,654 after C8; 1,598 after C9 (all in `lib/editor`); 1,048 after E1 + E8. Zero means L1 + L2 are done.
 
 **Release safety while this is in progress:** `kTranslationsShipped` is `false`
 (`app/lib/l10n/app_locale.dart`), so a release build offers English only and hides the language
@@ -124,7 +124,14 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 ## L2 — Editor pillar (≈1,600 findings, many of them engine names to mark, not translate)
 
 - [x] **E0 Tool names** — short tile label + full name per tool (`tool_l10n.dart`), done in L0
-- [ ] **E1 Tool help and row-1 options** — tools.dart tips (≈30), editor_page.controls (258)
+- [x] **E1 Tool help and row-1 options** — done 2026-10-01: the 28 help-band tips (moved
+  from `tools.dart` to `tool_l10n.dart`, `toolTip(l10n, dsl)`) and all of
+  `editor_page.controls.dart`: the per-tool options row, palette strip, gradient and palette
+  swatch menus, mirror chip and sheet, pattern swatch, replace-color and color-name dialogs.
+  Labels are separate from the engine values they control (the Select-by-alpha buttons used
+  their label as the DSL argument). `AA` and `cleanEdge` stay as they are in every language.
+  Tests: `test/l10n/tool_tip_fit_test.dart` (T5b), `test_engine/editor_tool_options_test.dart`.
+  Still English inside this row until E5: pattern and dither names in the swatch tooltip.
 - [ ] **E2 Editor chrome** — editor_page.toolgrid (16), .canvas (20), .timeline (64), .sheets (56),
   .dart (59), .engine (78), .layers (5), .frames (4), .keyboard (13)
 - [ ] **E3 Files** — editor_page.fileio (103), .persistence (19), open_file (2), gallery (17),
@@ -138,8 +145,8 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   the L0 bridge `t.name(appL10n)` in commands.dart is marked TODO), cheat_sheet (18), chords (13)
 - [ ] **E7 Replay and timelapse** — editor_page.replay (28), replay/ (page 9, host 4,
   journal_format 5, action_runner 2, timelapse_plan 2, timelapse_export 1), tap_again (1)
-- [ ] **E8 Engine-name files** — replay/visible_index (212): DSL verb names only; confirm and
-  mark `// l10n-ignore-file`
+- [x] **E8 Engine-name files** — done 2026-10-01: `replay/visible_index.dart` holds only DSL
+  verb and tool names (checked: 212 of 212) and is marked `l10n-ignore-file`.
 
 ## L3 — Review and hardening
 
@@ -201,6 +208,11 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 
 ## Findings outside i18n
 
+- **Copy & paste help tip cut off in English.** On a 360 px phone the tip needed three lines
+  and the band shows two, so its last sentence ended in an ellipsis. Reworded shorter
+  (2026-10-01): "Copy, Cut, Paste, or Clear the selection. Copy from the layer or the whole
+  frame. Paste drops a movable draft." Say so if the old wording should come back.
+
 - **Editor unmount during startup.** Unmounting `EditorPage` while `_initPersistence` is still
   restoring the drawing threw `Cannot use "ref" after the widget was disposed`
   (`editor_page.persistence.dart`), found by the engine-backed test harness on 2026-10-01. Fixed
@@ -228,6 +240,17 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 
 ## Session log
 
+- **2026-10-01** — E1 + E8 (tool tips, the options row, engine-name file): 187 messages.
+  - The help band shows two lines. A new fit test lays every tip out at the band's width on
+    a 360 px phone: seven languages had tips needing a third line, and so did English (the
+    Copy & paste tip, reworded shorter). All fit now.
+  - The real editor is swept by `test_engine/editor_tool_options_test.dart`: one mount per
+    language and size, every tool selected, every chip switched on (32 runs, about 4 min).
+    It writes one screenshot per tool and language (`editor-tool-<tool>_<lang>.png`).
+  - `l10n_test_support.dart`: the text checks take `within:` to look at one part of a page.
+  - `patch.py`: `setv(key, de='…')` rewords an existing message.
+  - Scanner: literals inside `_send(...)` / `_act(...)` are engine values, not display text.
+  - 5,485 Dart tests + 40 engine-backed tests pass.
 - **2026-10-01** — C9 (errors, context-free text, image share): 41 messages. Scanner fix: a
   message inside `throw ClubError(...)` was skipped as developer text, but screens print it;
   the scanner now reads it (found 10 sign-in errors). Sweep finding fixed: the Export / Share

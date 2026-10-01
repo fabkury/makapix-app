@@ -18,7 +18,7 @@ extension _EditorCanvas on _EditorPageState {
     final inset = MediaQuery.of(context).viewPadding.bottom;
     final minPad = compact ? 8.0 : 16.0;
     final gesturePad = inset < minPad ? minPad : inset;
-    final tip = toolTips[_tool] ?? '';
+    final tip = toolTip(context.l10n, _tool);
     final tool = tools.firstWhere((t) => t.dsl == _tool, orElse: () => tools.first);
     // FIXED height = exactly the text lines + top padding + the reserved gesture pad, so the
     // band never changes height (no reflow of the rest of the screen).
@@ -26,6 +26,7 @@ extension _EditorCanvas on _EditorPageState {
     final lines = compact ? 1 : 2;
     final bandHeight = 6 + lineH * lines + 6 + gesturePad;
     return Container(
+      key: const ValueKey('editor-help-band'), // the i18n sweeps find the band by this
       width: double.infinity,
       height: bandHeight,
       color: const Color(0xFF0E1012),

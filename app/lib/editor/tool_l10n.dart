@@ -44,6 +44,75 @@ const Map<String, (_Msg short, _Msg name)> _names = {
   'Repeat': (_repeatShort, _repeat),
 };
 
+// Succinct, teach-as-you-go help shown in the gesture-safe band at the bottom. Keep each to two
+// short lines: brief, professional, the core of the tool (not its nuances), no em dashes. Assume
+// fluency with the draft/commit model: tips never teach or remind the user to Commit.
+const Map<String, _Msg> _tips = {
+  'Pencil': _tipPencil,
+  'Brush': _tipBrush,
+  'Airbrush': _tipAirbrush,
+  'Eraser': _tipEraser,
+  'Bucket': _tipBucket,
+  'Outline': _tipOutline,
+  'Gradient': _tipGradient,
+  'Line': _tipLine,
+  'Shape': _tipShape,
+  'Ruler': _tipRuler,
+  'Dodge': _tipDodge,
+  'Burn': _tipBurn,
+  'Eyedropper': _tipEyedropper,
+  'Move': _tipMove,
+  'CopyPaste': _tipCopyPaste,
+  'SelectShape': _tipSelectShape,
+  'SelectCircle': _tipSelectCircle,
+  'SelectPoly': _tipSelectPoly,
+  'SelectByColor': _tipSelectByColor,
+  'SelectLayer': _tipSelectLayer,
+  'HsvShift': _tipHsv,
+  'BrightnessContrast': _tipBrightness,
+  'Levels': _tipLevels,
+  'Flip': _tipFlip,
+  'Rotate': _tipRotate,
+  'Resize': _tipResize,
+  'Invert': _tipInvert,
+  'PlayPause': _tipPlay,
+};
+
+String _tipPencil(AppLocalizations l) => l.tipPencil;
+String _tipBrush(AppLocalizations l) => l.tipBrush;
+String _tipAirbrush(AppLocalizations l) => l.tipAirbrush;
+String _tipEraser(AppLocalizations l) => l.tipEraser;
+String _tipBucket(AppLocalizations l) => l.tipBucket;
+String _tipOutline(AppLocalizations l) => l.tipOutline;
+String _tipGradient(AppLocalizations l) => l.tipGradient;
+String _tipLine(AppLocalizations l) => l.tipLine;
+String _tipShape(AppLocalizations l) => l.tipShape;
+String _tipRuler(AppLocalizations l) => l.tipRuler;
+String _tipDodge(AppLocalizations l) => l.tipDodge;
+String _tipBurn(AppLocalizations l) => l.tipBurn;
+String _tipEyedropper(AppLocalizations l) => l.tipEyedropper;
+String _tipMove(AppLocalizations l) => l.tipMove;
+String _tipCopyPaste(AppLocalizations l) => l.tipCopyPaste;
+String _tipSelectShape(AppLocalizations l) => l.tipSelectShape;
+String _tipSelectCircle(AppLocalizations l) => l.tipSelectCircle;
+String _tipSelectPoly(AppLocalizations l) => l.tipSelectPoly;
+String _tipSelectByColor(AppLocalizations l) => l.tipSelectByColor;
+String _tipSelectLayer(AppLocalizations l) => l.tipSelectLayer;
+String _tipHsv(AppLocalizations l) => l.tipHsv;
+String _tipBrightness(AppLocalizations l) => l.tipBrightness;
+String _tipLevels(AppLocalizations l) => l.tipLevels;
+String _tipFlip(AppLocalizations l) => l.tipFlip;
+String _tipRotate(AppLocalizations l) => l.tipRotate;
+String _tipResize(AppLocalizations l) => l.tipResize;
+String _tipInvert(AppLocalizations l) => l.tipInvert;
+String _tipPlay(AppLocalizations l) => l.tipPlay;
+
+/// The tools that have a help tip.
+Iterable<String> get toolsWithTips => _tips.keys;
+
+/// The help-band tip for the tool whose DSL name is [dsl]; empty for a tool without one.
+String toolTip(AppLocalizations l, String dsl) => _tips[dsl]?.call(l) ?? '';
+
 /// Every face that has a name — the tool catalog plus Undo / Redo / Repeat.
 Iterable<String> get toolFaces => _names.keys;
 

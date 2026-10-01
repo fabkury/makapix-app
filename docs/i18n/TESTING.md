@@ -20,6 +20,7 @@ flutter test test_engine         # the real editor, in every language
 | T3 Language choice | Wrong language for a device locale, the override not winning, the pick not surviving a restart, the picker not switching live | `test/l10n/app_locale_test.dart` |
 | T4 Screen sweep | Overflow, cut-off text, and leftover English, per screen × language × screen size | `test/l10n/sweep.dart` + `sweep_*_test.dart`; editor screens in `test_engine/` |
 | T5 Tool tile fit | A toolbar label wider than its 54 px tile | `test/l10n/tool_label_fit_test.dart` |
+| T5b Tool tip fit | A help tip longer than the two lines the help band shows on a 360 px phone | `test/l10n/tool_tip_fit_test.dart` |
 | T6 Screenshots | What only eyes catch: awkward wraps, misaligned rows, illegible small type | `screenshot()` in the harness → `app/build/l10n_shots/*.png` |
 | T7 Live pass | What only the real binary shows: device-language pickup, system font fallback | Windows build, Pixel over adb (PLAN.md L4) |
 | T8 Translation review | Wrong meaning, wrong register, inconsistent terms | One independent agent per language (PLAN.md L3) |
@@ -78,7 +79,10 @@ real engine DLL (`../target/release/makapix_ffi.dll`, which the engine loader al
 for). `editor_harness.dart` fakes `path_provider` and `shared_preferences`, waits for the first
 drawing to reach disk, and tears the editor down cleanly. One mount costs about 1.5 s, so an
 editor sweep mounts once per language × size and walks through the tools and sheets inside that
-one test.
+one test. `editor_tool_options_test.dart` is the model: it selects every tool, switches
+every chip on, and checks the options row and the help band with `within:` (the part of the
+page under test, found by a `ValueKey`), collecting problems and failing once at the end with
+all of them.
 
 ## The tool tile budget
 

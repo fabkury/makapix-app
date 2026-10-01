@@ -2,6 +2,7 @@
 // No engine binary, no widget pumping.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:makapix_club/editor/levels_math.dart';
+import 'package:makapix_club/editor/tool_l10n.dart';
 import 'package:makapix_club/editor/tools.dart';
 
 void main() {
@@ -99,7 +100,7 @@ void main() {
   group('tool catalog', () {
     test('Levels is a real catalog tool with a help tip', () {
       expect(tools.any((t) => t.dsl == 'Levels'), isTrue);
-      expect(toolTips.containsKey('Levels'), isTrue);
+      expect(toolsWithTips.contains('Levels'), isTrue);
     });
   });
 }

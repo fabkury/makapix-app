@@ -1,5 +1,6 @@
-// Editor tool catalog: the row-3 tool grid's DSL/icon definitions (names: tool_l10n.dart) and the
-// teach-as-you-go help text shown in the gesture-safe band. Pure data, no engine coupling.
+// Editor tool catalog: the row-3 tool grid's DSL/icon definitions. Pure data, no engine coupling.
+// What the artist reads (names and the help-band tips) is in tool_l10n.dart.
+// l10n-ignore-file: the strings here are engine DSL tool names, not display text.
 import 'package:flutter/material.dart';
 
 import 'package:makapix_club/l10n/l10n.dart';
@@ -145,36 +146,3 @@ String selectShapeEngineTool(String kind) => switch (kind) {
       _ => 'SelectRect',
     };
 
-// Succinct, teach-as-you-go help shown in the gesture-safe band at the bottom. Keep each to two
-// short lines: brief, professional, the core of the tool (not its nuances), no em dashes. Assume
-// fluency with the draft/commit model: tips never teach or remind the user to Commit.
-const toolTips = <String, String>{
-  'Pencil': 'Drag to draw hard pixels in the primary color.',
-  'Brush': 'Drag to paint, blending onto existing pixels.',
-  'Airbrush': 'Drag to spray the primary color. Dots, Soft, and Mist lay different paint.',
-  'Eraser': 'Drag to erase pixels to transparent.',
-  'Bucket': 'Tap an area to flood-fill. Threshold sets color tolerance; Diagonal lets the fill cross corners.',
-  'Outline': 'Apply draws a ring around the layer\'s pixels in the primary color. Side, Corners and Width shape it.',
-  'Gradient': 'Drag to set the gradient fill.',
-  'Line': 'Drag to place a line.',
-  'Shape': 'Drag to place a shape (Ellipse / Triangle / Rectangle toggle).',
-  'Ruler': 'Drag to measure a line. Angle mode shows the angle at the shared point.',
-  'Dodge': 'Drag to lighten pixels. Set intensity.',
-  'Burn': 'Drag to darken pixels. Set intensity.',
-  'Eyedropper': 'Tap a pixel to pick its color as primary. Drag to keep picking as you move.',
-  'Move': 'Drag to move the selected pixels, or the whole layer if nothing is selected. Slow gears the drag for exact placement.',
-  'CopyPaste': 'Clipboard for the selection: Copy, Cut, Paste, Clear. Copy from the layer or the composited frame. Paste drops a movable draft you position.',
-  'SelectShape': 'Rect / Oval: drag to draft a selection and adjust the reticles. Lasso: draw freely around pixels.',
-  'SelectCircle': 'Drag from the center to select a circle.',
-  'SelectPoly': 'Trace an outline to select an area.',
-  'SelectByColor': 'Tap to select similar colors. Threshold sets tolerance; Diagonal lets the region cross corners.',
-  'SelectLayer': 'Turn the layer\'s opaque pixels into a selection. Tap a mode to apply.',
-  'HsvShift': 'Shift hue, saturation and value.',
-  'BrightnessContrast': 'Adjust brightness and contrast.',
-  'Levels': 'Drag the black, gamma and white thumbs to remap tones.',
-  'Flip': 'Mirror the layer horizontally or vertically. Acts on the selection if any.',
-  'Rotate': 'Rotate the layer or frame 90°, 180°, or by a free Angle. (Whole canvas: ☰ menu.)',
-  'Resize': 'Scale the layer or frame: ½×, 2×, or drag a free Scale. (Whole canvas: ☰ menu.)',
-  'Invert': 'Invert the image colors.',
-  'PlayPause': 'Play or pause the animation. Step to the previous or next frame, or jump to one.',
-};

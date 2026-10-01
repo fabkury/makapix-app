@@ -173,18 +173,27 @@ class Truncated {
 final RegExp _cjk = RegExp(r'[぀-ヿ㐀-鿿]');
 
 /// Each laid-out paragraph once (`allRenderObjects` repeats a render object for every element
-/// that resolves to it).
-Iterable<RenderParagraph> paragraphs(WidgetTester tester) => {
+/// that resolves to it). [within] narrows it to one part of the screen — for a page that is
+/// only partly translated yet, or to name the part a failure is in.
+Iterable<RenderParagraph> paragraphs(WidgetTester tester, {Finder? within}) {
+  if (within == null) {
+    return {
       for (final ro in tester.allRenderObjects)
         if (ro is RenderParagraph && ro.attached) ro,
     };
+  }
+  return {
+    for (final e in find.descendant(of: within, matching: find.byType(RichText)).evaluate())
+      if (e.renderObject case final RenderParagraph p when p.attached) p,
+  };
+}
 
 /// Every text on screen that is cut off: it ran past its last allowed line, or (single-line)
 /// it is wider than its box, or (wrapping) one of its words is wider than the box and was
 /// split across lines. A translated label must never be here.
-List<Truncated> truncatedTexts(WidgetTester tester) {
+List<Truncated> truncatedTexts(WidgetTester tester, {Finder? within}) {
   final out = <Truncated>[];
-  for (final ro in paragraphs(tester)) {
+  for (final ro in paragraphs(tester, within: within)) {
     if (!ro.hasSize) continue;
     final text = ro.text.toPlainText();
     if (_withoutIconGlyphs(text).trim().isEmpty) continue; // an Icon, not a label
@@ -212,13 +221,16 @@ String _withoutIconGlyphs(String s) => String.fromCharCodes(s.runes.where((r) =>
     !(r >= 0xE000 && r <= 0xF8FF) && !(r >= 0xF0000 && r <= 0x10FFFF)));
 
 /// All text currently laid out: paragraphs, plus tooltip messages.
-List<String> visibleTexts(WidgetTester tester) {
+List<String> visibleTexts(WidgetTester tester, {Finder? within}) {
   final out = <String>[];
-  for (final ro in paragraphs(tester)) {
+  for (final ro in paragraphs(tester, within: within)) {
     final t = _withoutIconGlyphs(ro.text.toPlainText()).trim();
     if (t.isNotEmpty) out.add(t);
   }
-  for (final w in tester.allWidgets) {
+  final widgets = within == null
+      ? tester.allWidgets
+      : find.descendant(of: within, matching: find.byType(Tooltip)).evaluate().map((e) => e.widget);
+  for (final w in widgets) {
     if (w is Tooltip) {
       final m = w.message ?? w.richMessage?.toPlainText();
       if (m != null && m.trim().isNotEmpty) out.add(m.trim());
@@ -241,9 +253,10 @@ final RegExp _latinWord = RegExp(r'[A-Za-z]{3,}');
 /// Texts on a screen pumped in a non-Latin-script language ([locale] ja / zh / ru) that still
 /// contain Latin words: a string the extraction missed, or one never translated. [allow] lists
 /// fixture content (user names, post titles) the test itself put on screen.
-List<String> leftoverLatin(WidgetTester tester, {Iterable<Pattern> allow = const []}) {
+List<String> leftoverLatin(WidgetTester tester,
+    {Iterable<Pattern> allow = const [], Finder? within}) {
   final out = <String>[];
-  for (final t in visibleTexts(tester)) {
+  for (final t in visibleTexts(tester, within: within)) {
     var s = t;
     for (final a in allow) {
       s = s.replaceAll(a, ' ');
@@ -279,7 +292,7 @@ Map<String, Map<String, dynamic>> readArbMeta() {
 /// Texts on a screen pumped in a Latin-script language (es / pt / fr / de) that are still the
 /// English wording: the rendered text equals an English message whose [locale] translation
 /// is different.
-List<String> leftoverEnglish(WidgetTester tester, String locale) {
+List<String> leftoverEnglish(WidgetTester tester, String locale, {Finder? within}) {
   final en = readArb('en');
   final tr = readArb(locale);
   final englishOnly = <String>{
@@ -287,7 +300,7 @@ List<String> leftoverEnglish(WidgetTester tester, String locale) {
       if (tr[e.key] != e.value && !tr.containsValue(e.value)) e.value,
   };
   return [
-    for (final t in visibleTexts(tester))
+    for (final t in visibleTexts(tester, within: within))
       if (englishOnly.contains(t)) t,
   ];
 }

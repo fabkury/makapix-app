@@ -125,6 +125,9 @@ label must not be longer than the full name, and no two tools may share one.
 | onion skin | papel cebolla | papel cebola | pelure d'oignon | Zwiebelhaut | калька | オニオンスキン | 洋葱皮 |
 | undo / redo / repeat | deshacer / rehacer / repetir | desfazer / refazer / repetir | annuler / rétablir / répéter | rückgängig / wiederherstellen / erneut anwenden | отменить / вернуть / повторить | 元に戻す / やり直し / 繰り返し | 撤销 / 重做 / 重复 |
 | open / import / export / save | abrir / importar / exportar / guardar | abrir / importar / exportar / salvar | ouvrir / importer / exporter / enregistrer | öffnen / importieren / exportieren / speichern | открыть / импорт / экспорт / сохранить | 開く / インポート / エクスポート / 保存 | 打开 / 导入 / 导出 / 保存 |
+| draft (pending, uncommitted change) | boceto | rascunho | ébauche | Entwurf | черновик | 下書き | 草稿 |
+| slow (geared drag) | lento | lento | lent | langsam | медленно | スロー | 慢速 |
+| threshold | umbral | limiar | seuil | Schwelle | порог | しきい値 | 阈值 |
 | replay | repetición | replay | replay | Replay | повтор | リプレイ | 回放 |
 | timelapse | time-lapse | timelapse | timelapse | Zeitraffer | таймлапс | タイムラプス | 延时视频 |
 
@@ -143,7 +146,23 @@ glossary. Notable choices:
 - **Redo vs. Repeat** must stay distinct (German: Wiederherstellen vs. Erneut anwenden; Russian:
   Вернуть vs. Повторить).
 
+### Tool options
+
+The option labels are the `opt*` messages; the help tips (`tip*`) name options by those same
+words, so change both together. Decisions:
+
+- **Draft vs. Eraser in Spanish.** Both are naturally "borrador"; the Eraser keeps it and a
+  draft is "boceto".
+- **Shape** is two words in Russian: the Shape tool is Фигура, the brush tip's shape is Форма.
+- **Fill** is two messages: the button that fills at the reticle (a verb: Rellenar, Füllen)
+  and the filled-shape mode (Relleno, Gefüllt).
+- **Width** of a stroke is its thickness (Grosor, Épaisseur, Stärke, Толщина), not the canvas
+  width (Ancho, Largeur, Breite), which is a separate message.
+- **One-letter slider labels**: H / S / V stay Latin; Brightness / Contrast take each
+  language's own letters (de H / K, ru Я / К); the Levels inputs are L / H in English and
+  Min / Max elsewhere.
+- **AA** and **cleanEdge** are not translated.
+
 ## Open terminology questions
 
-- **Draft** (CONTEXT.md: visible but uncommitted editor state) vs. **Eraser** in Spanish: both
-  are naturally "borrador". Decide when batch E1/E2 shows where "draft" appears in UI text.
+None open.

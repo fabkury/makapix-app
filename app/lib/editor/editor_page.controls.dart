@@ -79,7 +79,7 @@ extension _EditorControls on _EditorPageState {
               padding: const EdgeInsets.fromLTRB(16, 8, 4, 0),
               child: Row(
                 children: [
-                  Text('Clipboard ${img.width}×${img.height}',
+                  Text(ctx.l10n.clipboardTitle(img.width, img.height),
                       style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                   const Spacer(),
                   IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.of(ctx).pop()),
@@ -116,6 +116,11 @@ extension _EditorControls on _EditorPageState {
   }
 
   Widget _buildToolOptions() {
+    final l10n = context.l10n;
+    // A chip that is on wears a check after its label.
+    String chk(String s, bool on) => on ? '$s ✔' : s;
+    // The Layer / Frame scope toggle most tools share.
+    final scope = [l10n.optLayer, l10n.optFrame];
     final children = <Widget>[];
     void label(String s) => children.add(Padding(
         padding: const EdgeInsets.only(left: 8, right: 4),
@@ -131,7 +136,7 @@ extension _EditorControls on _EditorPageState {
       children.add(Padding(
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: Tooltip(
-          message: 'Precision mode',
+          message: l10n.optPrecision,
           child: FilterChip(
             selected: _isPrecision,
             showCheckmark: false,
@@ -145,12 +150,12 @@ extension _EditorControls on _EditorPageState {
     }
     if (_isPrecision) {
       // off-finger reticle nudge pad (1px steps), shared by every precision tool
-      children.add(IconButton(iconSize: 20, tooltip: 'Nudge left', onPressed: () => _nudgeCursor(-1, 0), icon: const Icon(Icons.chevron_left)));
+      children.add(IconButton(iconSize: 20, tooltip: l10n.optNudgeLeft, onPressed: () => _nudgeCursor(-1, 0), icon: const Icon(Icons.chevron_left)));
       children.add(Column(mainAxisAlignment: MainAxisAlignment.center, children: [
         InkWell(onTap: () => _nudgeCursor(0, -1), child: const Icon(Icons.keyboard_arrow_up, size: 18)),
         InkWell(onTap: () => _nudgeCursor(0, 1), child: const Icon(Icons.keyboard_arrow_down, size: 18)),
       ]));
-      children.add(IconButton(iconSize: 20, tooltip: 'Nudge right', onPressed: () => _nudgeCursor(1, 0), icon: const Icon(Icons.chevron_right)));
+      children.add(IconButton(iconSize: 20, tooltip: l10n.optNudgeRight, onPressed: () => _nudgeCursor(1, 0), icon: const Icon(Icons.chevron_right)));
       children.add(const SizedBox(width: 4));
       if (_tool == 'Eyedropper') {
         // PICK (one-time color pick at the reticle, off-finger). The eyedropper has no continuous
@@ -161,7 +166,7 @@ extension _EditorControls on _EditorPageState {
             style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
             onPressed: () { _send('EyedropCursor()'); _refreshState(); _redraw(); },
             icon: const MakapixIcon(MpxIcons.pick, size: 16),
-            label: const Text('Pick'),
+            label: Text(l10n.optPick),
           ),
         ));
       } else if (_tool == 'SelectByColor') {
@@ -174,7 +179,7 @@ extension _EditorControls on _EditorPageState {
             style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
             onPressed: () { _send('SelectColorCursor()'); _refreshState(); _redraw(); },
             icon: const MakapixIcon(MpxIcons.selColor, size: 16),
-            label: const Text('Select'),
+            label: Text(l10n.optSelect),
           ),
         ));
       } else if (_tool == 'Bucket') {
@@ -187,7 +192,7 @@ extension _EditorControls on _EditorPageState {
             style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
             onPressed: () { _send('FillCursor()'); _refreshState(); _redraw(); },
             icon: const MakapixIcon(MpxIcons.fill, size: 16),
-            label: const Text('Fill'),
+            label: Text(l10n.optFill),
           ),
         ));
       } else {
@@ -199,7 +204,7 @@ extension _EditorControls on _EditorPageState {
               style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
               onPressed: () { _send('AirbrushCursor()'); _refreshState(); _redraw(); },
               icon: const MakapixIcon(MpxIcons.airbrush, size: 16),
-              label: const Text('Spray'),
+              label: Text(l10n.optSpray),
             ),
           ));
         } else {
@@ -210,7 +215,7 @@ extension _EditorControls on _EditorPageState {
               style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
               onPressed: () { _send('PlotCursor()'); _refreshState(); _redraw(); },
               icon: const Icon(Icons.brush, size: 16),
-              label: const Text('Draw'),
+              label: Text(l10n.optDraw),
             ),
           ));
         }
@@ -219,7 +224,7 @@ extension _EditorControls on _EditorPageState {
           padding: const EdgeInsets.symmetric(horizontal: 3),
           child: FilterChip(
             selected: _penDown,
-            label: Text(_penDown ? 'Hold ✔' : 'Hold'),
+            label: Text(chk(l10n.optHold, _penDown)),
             selectedColor: const Color(0xFF30A050),
             onSelected: (v) {
               setState(() => _penDown = v);
@@ -238,25 +243,25 @@ extension _EditorControls on _EditorPageState {
       // the canvas clip off) — applies to layer, pixel AND selection-mask moves. (The former
       // "Protect pixels" chip was removed 2026-09-04, ADR 0023; the engine verb lives on for replay.)
       final hasSel = _outlineEdges.isNotEmpty;
-      children.add(_toggle(['Move layer/pixels', 'Move selection'], _moveSelectionMode ? 1 : 0, (i) {
+      children.add(_toggle([l10n.optMoveLayerPixels, l10n.optMoveSelection], _moveSelectionMode ? 1 : 0, (i) {
         // Switching the move mode mid-draft discards the pending draft first.
         if (_hasMoveDraft) _cancelMoveDraft();
         setState(() => _moveSelectionMode = i == 1);
       }));
-      label(_moveSelectionMode ? 'Move selection' : (hasSel ? 'Move pixels' : 'Move layer'));
-      children.add(IconButton(iconSize: 20, tooltip: 'Nudge left', onPressed: () => _nudgeMove(-1, 0), icon: const Icon(Icons.chevron_left)));
+      label(_moveSelectionMode ? l10n.optMoveSelection : (hasSel ? l10n.optMovePixels : l10n.optMoveLayer));
+      children.add(IconButton(iconSize: 20, tooltip: l10n.optNudgeLeft, onPressed: () => _nudgeMove(-1, 0), icon: const Icon(Icons.chevron_left)));
       children.add(Column(mainAxisAlignment: MainAxisAlignment.center, children: [
         InkWell(onTap: () => _nudgeMove(0, -1), child: const Icon(Icons.keyboard_arrow_up, size: 18)),
         InkWell(onTap: () => _nudgeMove(0, 1), child: const Icon(Icons.keyboard_arrow_down, size: 18)),
       ]));
-      children.add(IconButton(iconSize: 20, tooltip: 'Nudge right', onPressed: () => _nudgeMove(1, 0), icon: const Icon(Icons.chevron_right)));
+      children.add(IconButton(iconSize: 20, tooltip: l10n.optNudgeRight, onPressed: () => _nudgeMove(1, 0), icon: const Icon(Icons.chevron_right)));
       children.add(const SizedBox(width: 6));
       // Wrap applies to layer, pixel, and selection-mask moves alike.
       children.add(Padding(
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: FilterChip(
           selected: _wrap,
-          label: Text(_wrap ? 'Wrap ✔' : 'Wrap'),
+          label: Text(chk(l10n.optWrap, _wrap)),
           selectedColor: const Color(0xFF30A050),
           onSelected: (v) {
             setState(() => _wrap = v);
@@ -267,10 +272,10 @@ extension _EditorControls on _EditorPageState {
       children.add(_slowChip()); // at the END of row-1 by decision (ADR 0020)
     }
     if (_tool == 'Ruler') {
-      label('Ruler');
+      label(toolName(l10n, 'Ruler')); // l10n-ignore: tool id
       // Length = one measured line; Angle = a second arm A→C and the angle at the shared vertex A.
       // Purely local overlay state — the engine never hears about the Ruler.
-      children.add(_toggle(['Length', 'Angle'], _rulerAngle ? 1 : 0, (i) {
+      children.add(_toggle([l10n.optLength, l10n.optAngle], _rulerAngle ? 1 : 0, (i) {
         setState(() {
           _rulerAngle = i == 1;
           if (_rulerAngle && _hasRuler && _rulerC == null) {
@@ -286,12 +291,12 @@ extension _EditorControls on _EditorPageState {
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: FilterChip(
           selected: _rulerPinned,
-          label: Text(_rulerPinned ? 'Pin ✔' : 'Pin'),
+          label: Text(chk(l10n.optPin, _rulerPinned)),
           selectedColor: const Color(0xFF30A050),
           onSelected: _hasRuler ? (v) => setState(() => _rulerPinned = v) : null,
         ),
       ));
-      children.add(_miniBtn('Clear', () {
+      children.add(_miniBtn(l10n.optClear, () {
         setState(() {
           _rulerA = null;
           _rulerB = null;
@@ -304,8 +309,8 @@ extension _EditorControls on _EditorPageState {
     if (_tool == 'Airbrush') {
       // Airbrush mode (Dots / Soft / Mist): three engine ToolKinds behind one tile, like the
       // Shape kinds. 'Airbrush' stays the Dots kind name for journal back-compat. [ADR 0006]
-      const modes = ['Airbrush', 'AirbrushSoft', 'AirbrushMist'];
-      children.add(_toggle(const ['Dots', 'Soft', 'Mist'], modes.indexOf(_airbrushMode), (i) {
+      const modes = ['Airbrush', 'AirbrushSoft', 'AirbrushMist']; // l10n-ignore: engine tool kinds
+      children.add(_toggle([l10n.optDots, l10n.optSoft, l10n.optMist], modes.indexOf(_airbrushMode), (i) {
         setState(() => _airbrushMode = modes[i]);
         _send('SelectTool($_airbrushMode)'); // the engine draws by ToolKind; the shell groups them
       }));
@@ -317,16 +322,16 @@ extension _EditorControls on _EditorPageState {
     const sizeTools = _kBrushSizeTools;
     // Stamp SHAPE (Round/Square): only tools that stamp a footprint of `brush_shape`. The airbrush
     // always sprays a disc (no shape), and figures don't stamp — both are excluded.
-    const shapeTools = {'Pencil', 'Brush', 'Eraser', 'Dodge', 'Burn'};
+    const shapeTools = {'Pencil', 'Brush', 'Eraser', 'Dodge', 'Burn'}; // l10n-ignore: tool ids
     if (sizeTools.contains(_tool)) {
-      _labeledSlider(children, 'Size', _brushSize.toDouble(), 1, 32, (v) {
+      _labeledSlider(children, l10n.optSize, _brushSize.toDouble(), 1, 32, (v) {
         setState(() => _brushSize = v.round());
         _send('SetBrushSize($_brushSize)');
       });
     }
     if (shapeTools.contains(_tool)) {
-      label('Shape');
-      children.add(_iconToggle(const [Icons.circle, Icons.square], const ['Round', 'Square'], _round ? 0 : 1, (i) {
+      label(l10n.optShape);
+      children.add(_iconToggle(const [Icons.circle, Icons.square], [l10n.optRound, l10n.optSquare], _round ? 0 : 1, (i) {
         setState(() => _round = i == 0);
         _send('SetBrushShape(${_round ? 'Round' : 'Square'})');
       }));
@@ -335,8 +340,8 @@ extension _EditorControls on _EditorPageState {
       // Pick source: Frame = the composited frame (default); Layer = the active layer's raw
       // stored pixels (its opacity/visibility ignored). Applies to taps, drags, and the
       // precision-mode Pick button alike.
-      label('Source');
-      children.add(_toggle(['Frame', 'Layer'], _eyedropLayer ? 1 : 0, (i) {
+      label(l10n.optSource);
+      children.add(_toggle([l10n.optFrame, l10n.optLayer], _eyedropLayer ? 1 : 0, (i) {
         setState(() => _eyedropLayer = i == 1);
         _send('SetEyedropSource(${_eyedropLayer ? 'Layer' : 'Frame'})');
       }));
@@ -350,7 +355,7 @@ extension _EditorControls on _EditorPageState {
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: FilterChip(
           selected: _perfect,
-          label: Text(_perfect ? 'Perfect ✔' : 'Perfect'),
+          label: Text(chk(l10n.optPerfect, _perfect)),
           selectedColor: const Color(0xFF30A050),
           onSelected: perfectEnabled
               ? (v) {
@@ -362,7 +367,7 @@ extension _EditorControls on _EditorPageState {
       ));
     }
     if (_tool == 'Airbrush' || _tool == 'Dodge' || _tool == 'Burn') {
-      _labeledSlider(children, 'Intensity', _intensity.toDouble(), 1, 255, (v) {
+      _labeledSlider(children, l10n.optIntensity, _intensity.toDouble(), 1, 255, (v) {
         setState(() => _intensity = v.round());
         _send('SetIntensity($_intensity)');
       });
@@ -380,10 +385,10 @@ extension _EditorControls on _EditorPageState {
       children.add(Padding(
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: Tooltip(
-          message: gated ? 'Off while a pattern is on' : '',
+          message: gated ? l10n.optAaGated : '',
           child: FilterChip(
             selected: _aa,
-            label: Text(_aa ? 'AA ✔' : 'AA'),
+            label: Text(chk('AA', _aa)), // l10n-ignore: AA is never translated (GLOSSARY)
             selectedColor: const Color(0xFF30A050),
             onSelected: gated
                 ? null
@@ -404,11 +409,11 @@ extension _EditorControls on _EditorPageState {
     // (Spacing is gone: strokes are single-coat — ADR 0007 — so there is no stamp metering
     // left to expose.)
     if (_tool == 'Bucket' || _tool == 'SelectByColor') {
-      _labeledSlider(children, 'Threshold', _threshold.toDouble(), 0, 255, (v) {
+      _labeledSlider(children, l10n.optThreshold, _threshold.toDouble(), 0, 255, (v) {
         setState(() => _threshold = v.round());
         _send('SetThreshold($_threshold)');
       });
-      children.add(_toggle(['Contiguous', 'Global'], _contiguous ? 0 : 1, (i) {
+      children.add(_toggle([l10n.optContiguous, l10n.optGlobal], _contiguous ? 0 : 1, (i) {
         setState(() => _contiguous = i == 0);
         _send('SetContiguous($_contiguous)');
       }));
@@ -420,9 +425,9 @@ extension _EditorControls on _EditorPageState {
           padding: const EdgeInsets.symmetric(horizontal: 3),
           child: FilterChip(
             selected: _diagonal,
-            label: Text(_diagonal ? 'Diagonal ✔' : 'Diagonal'),
+            label: Text(chk(l10n.optDiagonal, _diagonal)),
             selectedColor: const Color(0xFF30A050),
-            tooltip: 'Diagonal neighbors: let the region cross corners (8-connected)',
+            tooltip: l10n.optDiagonalTip,
             onSelected: (v) {
               setState(() => _diagonal = v);
               _send('SetDiagonal($_diagonal)');
@@ -434,8 +439,8 @@ extension _EditorControls on _EditorPageState {
         // Source: Frame = the composited frame (default, "what you see is what you select");
         // Layer = the active layer's raw stored pixels (its opacity/visibility ignored).
         // Applies to taps and the precision-mode Select button alike.
-        label('Source');
-        children.add(_toggle(['Frame', 'Layer'], _selColorLayer ? 1 : 0, (i) {
+        label(l10n.optSource);
+        children.add(_toggle([l10n.optFrame, l10n.optLayer], _selColorLayer ? 1 : 0, (i) {
           setState(() => _selColorLayer = i == 1);
           _send('SetSelectColorSource(${_selColorLayer ? 'Layer' : 'Frame'})');
         }));
@@ -447,7 +452,7 @@ extension _EditorControls on _EditorPageState {
           padding: const EdgeInsets.symmetric(horizontal: 3),
           child: FilterChip(
             selected: _fillAllLayers,
-            label: Text(_fillAllLayers ? 'All layers ✔' : 'All layers'),
+            label: Text(chk(l10n.optAllLayers, _fillAllLayers)),
             selectedColor: const Color(0xFF30A050),
             onSelected: (v) {
               setState(() => _fillAllLayers = v);
@@ -459,7 +464,7 @@ extension _EditorControls on _EditorPageState {
     }
     // Stroke width for figures that have one: Line always, Rect/Ellipse only in Outline mode.
     void addWidth() {
-      _labeledSlider(children, 'Width', _lineWidth.toDouble(), 1, 16, (v) {
+      _labeledSlider(children, l10n.optWidth, _lineWidth.toDouble(), 1, 16, (v) {
         setState(() => _lineWidth = v.round());
         _send('SetLineWidth($_lineWidth)');
         if (_hasShapeDraft) _redraw(); // the pending preview reflects the new width live
@@ -473,10 +478,10 @@ extension _EditorControls on _EditorPageState {
       // Which shape to draw. Switching the kind keeps any pending draft (re-previews it live).
       // The glyphs render filled or hollow to track the Fill/Outline mode below; the names
       // stay reachable as long-press tooltips.
-      const kinds = ['Ellipse', 'Triangle', 'Rectangle'];
+      const kinds = ['Ellipse', 'Triangle', 'Rectangle']; // l10n-ignore: engine tool kinds
       children.add(_glyphToggle(
         [for (final k in kinds) ShapeGlyph(kind: k, filled: _shapeFill)],
-        kinds,
+        [l10n.optEllipse, l10n.optTriangle, l10n.optRectangle],
         kinds.indexOf(_shapeKind),
         (i) {
           setState(() => _shapeKind = kinds[i]);
@@ -484,7 +489,7 @@ extension _EditorControls on _EditorPageState {
           if (_hasShapeDraft) _redraw();
         },
       ));
-      children.add(_toggle(['Fill', 'Outline'], _shapeFill ? 0 : 1, (i) {
+      children.add(_toggle([l10n.optFilled, l10n.optOutlined], _shapeFill ? 0 : 1, (i) {
         setState(() => _shapeFill = i == 0);
         _send('SetShapeFill($_shapeFill)');
         if (_hasShapeDraft) _redraw(); // the pending preview reflects fill/outline live
@@ -496,7 +501,7 @@ extension _EditorControls on _EditorPageState {
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: FilterChip(
           selected: _lockRatio,
-          label: Text(_lockRatio ? 'Ratio ✔' : 'Lock Ratio'),
+          label: Text(_lockRatio ? chk(l10n.optRatio, true) : l10n.optLockRatio),
           selectedColor: const Color(0xFF30A050),
           onSelected: (v) {
             setState(() => _lockRatio = v);
@@ -506,7 +511,7 @@ extension _EditorControls on _EditorPageState {
       ));
       if (_lockRatio) {
         // Logarithmic 0.2..5 with 1.0 at the center (each half spans an equal ratio range).
-        _labeledLogSlider(children, 'Ratio', _ratio, 0.2, 5.0, (v) {
+        _labeledLogSlider(children, l10n.optRatio, _ratio, 0.2, 5.0, (v) {
           setState(() => _ratio = v);
           _reapplyRatio();
         });
@@ -518,7 +523,7 @@ extension _EditorControls on _EditorPageState {
     }
     if (_tool == 'Gradient') {
       // Changing the gradient (type, color count or any color) updates a pending draft instantly.
-      children.add(_toggle(['Linear', 'Radial'], _radial ? 1 : 0, (i) {
+      children.add(_toggle([l10n.optLinear, l10n.optRadial], _radial ? 1 : 0, (i) {
         setState(() => _radial = i == 1);
         _send('SetGradientType(${_radial ? 'Radial' : 'Linear'})');
         if (_hasShapeDraft) _redraw();
@@ -528,7 +533,7 @@ extension _EditorControls on _EditorPageState {
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: FilterChip(
           selected: _gradSmooth,
-          label: Text(_gradSmooth ? 'Smoothstep ✔' : 'Smoothstep'),
+          label: Text(chk(l10n.optSmoothstep, _gradSmooth)),
           selectedColor: const Color(0xFF30A050),
           onSelected: (v) {
             setState(() => _gradSmooth = v);
@@ -600,18 +605,24 @@ extension _EditorControls on _EditorPageState {
     if (_tool == 'SelectLayer') {
       // Alpha cutoff: pixels with alpha > threshold (the opaque pixels) are "selected"
       // (0 = all non-transparent; raise to keep only more-opaque pixels).
-      _labeledSlider(children, 'Threshold', _alphaCutoff.toDouble(), 0, 254, (v) {
+      _labeledSlider(children, l10n.optThreshold, _alphaCutoff.toDouble(), 0, 254, (v) {
         setState(() => _alphaCutoff = v.round());
         _send('SetAlphaCutoff($_alphaCutoff)');
         _redraw(); // refresh the live preview overlay
       });
       // Replace/Add/Subtract/Intersect are one-off triggers (each applies the alpha→selection op
       // against the current selection right now) — NOT a remembered/toggled mode.
-      for (final m in const ['Replace', 'Add', 'Subtract', 'Intersect']) {
-        children.add(_miniBtn(m, () => _act('SelectByAlpha($m)')));
+      // (label, engine mode) pairs: the engine's mode names are never shown.
+      for (final (name, mode) in [
+        (l10n.optReplace, 'Replace'), // l10n-ignore: engine mode
+        (l10n.optAdd, 'Add'), // l10n-ignore: engine mode
+        (l10n.optSubtract, 'Subtract'), // l10n-ignore: engine mode
+        (l10n.optIntersect, 'Intersect'), // l10n-ignore: engine mode
+      ]) {
+        children.add(_miniBtn(name, () => _act('SelectByAlpha($mode)')));
       }
       children.add(const SizedBox(width: 6));
-      children.add(_miniBtn('All', () => _act('SelectAll()')));
+      children.add(_miniBtn(l10n.optAll, () => _act('SelectAll()')));
       // Select None (and Invert) live on the floating selection-menu over the canvas.
     }
     if (_tool == 'SelectShape') {
@@ -619,8 +630,8 @@ extension _EditorControls on _EditorPageState {
       // and re-points the engine tool so Commit combines the right shape. Flipping to Lasso
       // discards a pending draft (it can't survive into the immediate freeform path) — same
       // shell-side-only cancel as switching tools.
-      const kinds = ['Rectangle', 'Ellipse', 'Lasso'];
-      children.add(_toggle(['Rect', 'Oval', 'Lasso'], kinds.indexOf(_selShapeKind), (i) {
+      const kinds = ['Rectangle', 'Ellipse', 'Lasso']; // l10n-ignore: selection mode ids
+      children.add(_toggle([l10n.optRect, l10n.optOval, l10n.optLasso], kinds.indexOf(_selShapeKind), (i) {
         setState(() => _selShapeKind = kinds[i]);
         if (_selShapeKind == 'Lasso' && _hasSelDraft) _cancelSelDraft();
         _send('SelectTool(${selectShapeEngineTool(_selShapeKind)})');
@@ -631,12 +642,13 @@ extension _EditorControls on _EditorPageState {
       }));
     }
     if (_tool.startsWith('Select') && _tool != 'SelectLayer') {
-      children.add(_toggle(['Replace', 'Add', 'Subtract', 'Intersect'],
-          ['Replace', 'Add', 'Subtract', 'Intersect'].indexOf(_selMode), (i) {
-        setState(() => _selMode = ['Replace', 'Add', 'Subtract', 'Intersect'][i]);
+      const selModes = ['Replace', 'Add', 'Subtract', 'Intersect']; // l10n-ignore: engine modes
+      children.add(_toggle([l10n.optReplace, l10n.optAdd, l10n.optSubtract, l10n.optIntersect],
+          selModes.indexOf(_selMode), (i) {
+        setState(() => _selMode = selModes[i]);
         _send('SetSelectionMode($_selMode)');
       }));
-      children.add(_miniBtn('All', () => _act('SelectAll()')));
+      children.add(_miniBtn(l10n.optAll, () => _act('SelectAll()')));
       // Select None / Invert live on the floating selection-menu over the canvas (they act on an
       // existing selection, which is exactly when that menu shows). Clipboard ops (Copy/Cut/Paste)
       // and Clear live in the dedicated Copy & Paste tool.
@@ -649,7 +661,7 @@ extension _EditorControls on _EditorPageState {
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: FilterChip(
           selected: _selLockRatio,
-          label: Text(_selLockRatio ? 'Ratio ✔' : 'Lock Ratio'),
+          label: Text(_selLockRatio ? chk(l10n.optRatio, true) : l10n.optLockRatio),
           selectedColor: const Color(0xFF30A050),
           onSelected: (v) {
             setState(() => _selLockRatio = v);
@@ -659,7 +671,7 @@ extension _EditorControls on _EditorPageState {
       ));
       if (_selLockRatio) {
         // Logarithmic 0.2..5 with 1.0 at the center (each half spans an equal ratio range).
-        _labeledLogSlider(children, 'Ratio', _selRatio, 0.2, 5.0, (v) {
+        _labeledLogSlider(children, l10n.optRatio, _selRatio, 0.2, 5.0, (v) {
           setState(() => _selRatio = v);
           _reapplySelRatio();
         });
@@ -669,15 +681,15 @@ extension _EditorControls on _EditorPageState {
       // Copy source: Layer = the active layer's raw stored pixels (default); Frame = the
       // composited frame, what the canvas shows. Cut is a layer edit, so it is hidden in Frame
       // mode rather than pretending to cut a composite. Session-only, like the Eyedropper's.
-      children.add(_toggle(const ['Layer', 'Frame'], _copyLayer ? 0 : 1, (i) {
+      children.add(_toggle(scope, _copyLayer ? 0 : 1, (i) {
         setState(() => _copyLayer = i == 0);
         _send('SetCopySource(${_copyLayer ? 'Layer' : 'Frame'})');
       }));
       children.add(_clipboardSwatch());
-      children.add(_miniBtn('Copy', () => _act('Copy()')));
-      if (_copyLayer) children.add(_miniBtn('Cut', () => _act('Cut()')));
-      children.add(_miniBtn('Paste', () => _act('PasteDraft()')));
-      children.add(_miniBtn('Clear', () => _act('ClearSelection()')));
+      children.add(_miniBtn(l10n.optCopy, () => _act('Copy()')));
+      if (_copyLayer) children.add(_miniBtn(l10n.optCut, () => _act('Cut()')));
+      children.add(_miniBtn(l10n.optPaste, () => _act('PasteDraft()')));
+      children.add(_miniBtn(l10n.optClear, () => _act('ClearSelection()')));
       children.add(_slowChip()); // gears the paste-draft drag too (ADR 0020)
     }
     if (_tool == 'HsvShift') {
@@ -696,7 +708,7 @@ extension _EditorControls on _EditorPageState {
       }
 
       // The scope lives in the engine too (SetHsvScope) so the live preview honors it.
-      children.add(_toggle(const ['Layer', 'Frame'], _hsvFrame ? 1 : 0, (i) {
+      children.add(_toggle(scope, _hsvFrame ? 1 : 0, (i) {
         setState(() => _hsvFrame = i == 1);
         _send('SetHsvScope(${_hsvFrame ? 'Frame' : 'Layer'})');
         _redraw();
@@ -721,14 +733,14 @@ extension _EditorControls on _EditorPageState {
         _redraw(full: false, refetchSelection: false);
       }
 
-      children.add(_toggle(const ['Layer', 'Frame'], _bcFrame ? 1 : 0, (i) {
+      children.add(_toggle(scope, _bcFrame ? 1 : 0, (i) {
         setState(() => _bcFrame = i == 1);
         _send('SetBcScope(${_bcFrame ? 'Frame' : 'Layer'})');
         _redraw();
       }));
-      _labeledSlider(children, 'B', _bcBright, -255, 255, (v) => syncBc(() => _bcBright = v),
+      _labeledSlider(children, l10n.optBrightnessLetter, _bcBright, -255, 255, (v) => syncBc(() => _bcBright = v),
           onChangeEnd: () => _redraw());
-      _labeledSlider(children, 'C', _bcContrast, -100, 100, (v) => syncBc(() => _bcContrast = v),
+      _labeledSlider(children, l10n.optContrastLetter, _bcContrast, -100, 100, (v) => syncBc(() => _bcContrast = v),
           onChangeEnd: () => _redraw());
     }
     if (_tool == 'Levels') {
@@ -766,7 +778,7 @@ extension _EditorControls on _EditorPageState {
         ));
       }
 
-      children.add(_toggle(const ['Layer', 'Frame'], _lvFrame ? 1 : 0, (i) {
+      children.add(_toggle(scope, _lvFrame ? 1 : 0, (i) {
         setState(() => _lvFrame = i == 1);
         _send('SetLevelsScope(${_lvFrame ? 'Frame' : 'Layer'})');
         _redraw();
@@ -782,19 +794,19 @@ extension _EditorControls on _EditorPageState {
           onChangeEnd: () => _redraw(),
         ),
       ));
-      valueLabel('L', '$_lvLow', () {
-        _editSliderValue('Low input', _lvLow.toDouble(), 0, 254, (v) {
+      valueLabel(l10n.optLevelsLow, '$_lvLow', () {
+        _editSliderValue(l10n.optLowInput, _lvLow.toDouble(), 0, 254, (v) {
           final (lo, hi) = levelsEnterLow(v.round(), _lvHigh);
           syncLevels(lo, _lvGammaTh, hi, settle: true);
         }, integer: true);
       });
       valueLabel('γ', levelsGammaLabel(_lvGammaTh), () {
-        _editSliderValue('Gamma', _lvGammaTh / 1000, 0.1, 10, (v) {
+        _editSliderValue(l10n.optGamma, _lvGammaTh / 1000, 0.1, 10, (v) {
           syncLevels(_lvLow, (v * 1000).round().clamp(100, 10000), _lvHigh, settle: true);
         }, integer: false, decimals: 2);
       });
-      valueLabel('H', '$_lvHigh', () {
-        _editSliderValue('High input', _lvHigh.toDouble(), 1, 255, (v) {
+      valueLabel(l10n.optLevelsHigh, '$_lvHigh', () {
+        _editSliderValue(l10n.optHighInput, _lvHigh.toDouble(), 1, 255, (v) {
           final (lo, hi) = levelsEnterHigh(v.round(), _lvLow);
           syncLevels(lo, _lvGammaTh, hi, settle: true);
         }, integer: true);
@@ -804,9 +816,9 @@ extension _EditorControls on _EditorPageState {
       // Outline (2026-09-04 rider of the Symmetry release): a ring around the active layer's
       // opaque pixels (the selection's, when one exists) in the primary color. Apply commits one
       // undo step and arms Repeat; the canvas is inert (an action group, like Flip).
-      label(_outlineEdges.isNotEmpty ? 'Outline selection' : 'Outline layer');
-      children.add(_toggle(const ['Outside', 'Inside'], _outlineInside ? 1 : 0, (i) => setState(() => _outlineInside = i == 1)));
-      children.add(_toggle(const ['Round', 'Square'], _outlineSquare ? 1 : 0, (i) => setState(() => _outlineSquare = i == 1)));
+      label(_outlineEdges.isNotEmpty ? l10n.optOutlineSelection : l10n.optOutlineLayer);
+      children.add(_toggle([l10n.optOutside, l10n.optInside], _outlineInside ? 1 : 0, (i) => setState(() => _outlineInside = i == 1)));
+      children.add(_toggle([l10n.optRound, l10n.optSquare], _outlineSquare ? 1 : 0, (i) => setState(() => _outlineSquare = i == 1)));
       Widget step(String s, VoidCallback? onTap) => Padding(
             padding: const EdgeInsets.symmetric(horizontal: 3),
             child: ElevatedButton(
@@ -822,19 +834,19 @@ extension _EditorControls on _EditorPageState {
       children.add(step('−', _outlineWidth > 1 ? () => setState(() => _outlineWidth--) : null));
       children.add(Padding(
         padding: const EdgeInsets.symmetric(horizontal: 2),
-        child: Text('$_outlineWidth px', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+        child: Text('$_outlineWidth px', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)), // l10n-ignore: unit
       ));
       children.add(step('+', _outlineWidth < 4 ? () => setState(() => _outlineWidth++) : null));
       children.add(_miniBtn(
-          'Apply',
+          l10n.commonApply,
           () => _act(
               'Outline(${_hex(_primary)},${_outlineInside ? 'inside' : 'outside'},${_outlineSquare ? 'square' : 'round'},$_outlineWidth)')));
     }
     if (_tool == 'Flip') {
-      label(_flipFrame ? 'Flip frame' : (_outlineEdges.isNotEmpty ? 'Flip selection' : 'Flip layer'));
-      children.add(_toggle(const ['Layer', 'Frame'], _flipFrame ? 1 : 0, (i) => setState(() => _flipFrame = i == 1)));
-      children.add(_miniBtn('Flip H', () => _act(_flipFrame ? 'FlipFrameH()' : 'FlipH()')));
-      children.add(_miniBtn('Flip V', () => _act(_flipFrame ? 'FlipFrameV()' : 'FlipV()')));
+      label(_flipFrame ? l10n.optFlipFrame : (_outlineEdges.isNotEmpty ? l10n.optFlipSelection : l10n.optFlipLayer));
+      children.add(_toggle(scope, _flipFrame ? 1 : 0, (i) => setState(() => _flipFrame = i == 1)));
+      children.add(_miniBtn(l10n.optFlipH, () => _act(_flipFrame ? 'FlipFrameH()' : 'FlipH()')));
+      children.add(_miniBtn(l10n.optFlipV, () => _act(_flipFrame ? 'FlipFrameV()' : 'FlipV()')));
     }
     if (_tool == 'Rotate') {
       // cleanEdge resampling toggle + its line width. Shown in BOTH row-1 states (idle and
@@ -845,7 +857,7 @@ extension _EditorControls on _EditorPageState {
           padding: const EdgeInsets.symmetric(horizontal: 3),
           child: FilterChip(
             selected: _cleanEdge,
-            label: Text(_cleanEdge ? 'cleanEdge ✔' : 'cleanEdge'),
+            label: Text(chk('cleanEdge', _cleanEdge)), // l10n-ignore: the algorithm's name
             selectedColor: const Color(0xFF30A050),
             onSelected: (v) {
               setState(() => _cleanEdge = v);
@@ -855,7 +867,7 @@ extension _EditorControls on _EditorPageState {
           ),
         ));
         if (_cleanEdge) {
-          _labeledSlider(children, 'Line', _cleanEdgeWidth, 0.0, 2.0, (v) {
+          _labeledSlider(children, l10n.optLine, _cleanEdgeWidth, 0.0, 2.0, (v) {
             setState(() => _cleanEdgeWidth = v);
             _send('SetCleanEdgeWidth(${(v * 1000).round()})');
             if (_hasRotateDraft) _redraw(full: false, refetchSelection: false);
@@ -866,19 +878,19 @@ extension _EditorControls on _EditorPageState {
       if (_hasRotateDraft) {
         // Free-angle "Angle" mode in progress: the floating commit-menu bakes/discards the draft;
         // the 90°/180° controls hide until it resolves. Row-1 just teaches the gesture.
-        label('Drag the handle to set the angle · drag the draft to move it');
+        label(l10n.optRotateHint);
         cleanEdgeControls();
       } else {
         // 90°/180° and the free-angle draft act on the active layer (or the selected pixels), or
         // on every layer of the active frame in Frame scope.
-        label(_rotateFrame ? 'Rotate frame' : (_outlineEdges.isNotEmpty ? 'Rotate selection' : 'Rotate layer'));
-        children.add(_toggle(const ['Layer', 'Frame'], _rotateFrame ? 1 : 0, (i) => setState(() => _rotateFrame = i == 1)));
-        final verb = _rotateFrame ? 'RotateFrame' : 'RotateLayer';
-        children.add(IconButton(iconSize: 18, tooltip: 'Rotate 90° CW', onPressed: () => _act('$verb(1)'), icon: const Icon(Icons.rotate_right)));
-        children.add(IconButton(iconSize: 18, tooltip: 'Rotate 90° CCW', onPressed: () => _act('$verb(3)'), icon: const Icon(Icons.rotate_left)));
+        label(_rotateFrame ? l10n.optRotateFrame : (_outlineEdges.isNotEmpty ? l10n.optRotateSelection : l10n.optRotateLayer));
+        children.add(_toggle(scope, _rotateFrame ? 1 : 0, (i) => setState(() => _rotateFrame = i == 1)));
+        final verb = _rotateFrame ? 'RotateFrame' : 'RotateLayer'; // l10n-ignore: DSL verbs
+        children.add(IconButton(iconSize: 18, tooltip: l10n.optRotateCw, onPressed: () => _act('$verb(1)'), icon: const Icon(Icons.rotate_right)));
+        children.add(IconButton(iconSize: 18, tooltip: l10n.optRotateCcw, onPressed: () => _act('$verb(3)'), icon: const Icon(Icons.rotate_left)));
         children.add(_miniBtn('180°', () => _act('$verb(2)')));
         children.add(const SizedBox(width: 6));
-        children.add(_miniBtn('Angle', _beginRotateDraft));
+        children.add(_miniBtn(l10n.optAngle, _beginRotateDraft));
         cleanEdgeControls();
       }
     }
@@ -892,7 +904,7 @@ extension _EditorControls on _EditorPageState {
           padding: const EdgeInsets.symmetric(horizontal: 3),
           child: FilterChip(
             selected: _resizeCleanEdge,
-            label: Text(_resizeCleanEdge ? 'cleanEdge ✔' : 'cleanEdge'),
+            label: Text(chk('cleanEdge', _resizeCleanEdge)), // l10n-ignore: the algorithm's name
             selectedColor: const Color(0xFF30A050),
             onSelected: (v) {
               setState(() => _resizeCleanEdge = v);
@@ -902,7 +914,7 @@ extension _EditorControls on _EditorPageState {
           ),
         ));
         if (_resizeCleanEdge) {
-          _labeledSlider(children, 'Line', _resizeCleanEdgeWidth, 0.0, 2.0, (v) {
+          _labeledSlider(children, l10n.optLine, _resizeCleanEdgeWidth, 0.0, 2.0, (v) {
             setState(() => _resizeCleanEdgeWidth = v);
             _send('SetScaleCleanEdgeWidth(${(v * 1000).round()})');
             if (_hasResizeDraft) _redraw(full: false, refetchSelection: false);
@@ -927,7 +939,7 @@ extension _EditorControls on _EditorPageState {
           padding: const EdgeInsets.symmetric(horizontal: 3),
           child: FilterChip(
             selected: _resizeLockRatio,
-            label: Text(_resizeLockRatio ? 'Lock ✔' : 'Lock'),
+            label: Text(chk(l10n.optLock, _resizeLockRatio)),
             selectedColor: const Color(0xFF30A050),
             onSelected: (v) {
               setState(() => _resizeLockRatio = v);
@@ -944,20 +956,20 @@ extension _EditorControls on _EditorPageState {
       } else {
         // ½×/2× and the free-scale draft act on the active layer (or the selected pixels), or
         // on every layer of the active frame in Frame scope.
-        label(_resizeFrame ? 'Resize frame' : (_outlineEdges.isNotEmpty ? 'Resize selection' : 'Resize layer'));
-        children.add(_toggle(const ['Layer', 'Frame'], _resizeFrame ? 1 : 0, (i) => setState(() => _resizeFrame = i == 1)));
-        final verb = _resizeFrame ? 'ScaleFrame' : 'ScaleLayer';
+        label(_resizeFrame ? l10n.optResizeFrame : (_outlineEdges.isNotEmpty ? l10n.optResizeSelection : l10n.optResizeLayer));
+        children.add(_toggle(scope, _resizeFrame ? 1 : 0, (i) => setState(() => _resizeFrame = i == 1)));
+        final verb = _resizeFrame ? 'ScaleFrame' : 'ScaleLayer'; // l10n-ignore: DSL verbs
         children.add(_miniBtn('½×', () => _act('$verb(500,500)')));
         children.add(_miniBtn('2×', () => _act('$verb(2000,2000)')));
         children.add(const SizedBox(width: 6));
-        children.add(_miniBtn('Scale', _beginResizeDraft));
+        children.add(_miniBtn(l10n.optScale, _beginResizeDraft));
         cleanEdgeControls();
       }
     }
     if (_tool == 'Invert') {
-      label(_invertFrame ? 'Invert frame' : (_outlineEdges.isNotEmpty ? 'Invert selection' : 'Invert layer'));
-      children.add(_toggle(const ['Layer', 'Frame'], _invertFrame ? 1 : 0, (i) => setState(() => _invertFrame = i == 1)));
-      children.add(_miniBtn('Invert colors', () => _act(_invertFrame ? 'InvertFrame()' : 'Invert()')));
+      label(_invertFrame ? l10n.optInvertFrame : (_outlineEdges.isNotEmpty ? l10n.optInvertSelection : l10n.optInvertLayer));
+      children.add(_toggle(scope, _invertFrame ? 1 : 0, (i) => setState(() => _invertFrame = i == 1)));
+      children.add(_miniBtn(l10n.optInvertColors, () => _act(_invertFrame ? 'InvertFrame()' : 'Invert()')));
     }
     if (_tool == 'PlayPause') {
       final n = engine.frameCount;
@@ -973,13 +985,13 @@ extension _EditorControls on _EditorPageState {
           ),
           onPressed: n > 1 ? () => _playing ? _pause() : _play() : null,
           icon: Icon(_playing ? Icons.pause : Icons.play_arrow, size: 16),
-          label: Text(_playing ? 'Pause' : 'Play'),
+          label: Text(_playing ? l10n.playbackPause : l10n.playbackPlay),
         ),
       ));
       children.add(const SizedBox(width: 6));
       // Prev / Next frame — pressing either auto-pauses playback first (see _stepFrame), with the
       // current "Frame X / N" between them.
-      children.add(IconButton(iconSize: 22, tooltip: 'Previous frame', onPressed: () => _stepFrame(-1), icon: const Icon(Icons.skip_previous)));
+      children.add(IconButton(iconSize: 22, tooltip: l10n.optPrevFrame, onPressed: () => _stepFrame(-1), icon: const Icon(Icons.skip_previous)));
       // While playing this counts the PLAYHEAD — the frame actually on screen — which is a
       // different thing from the Active target the strokes land on (ADR 0012; CONTEXT.md
       // "Playhead"). Pausing returns to the Active target, so the number snaps back with it.
@@ -989,18 +1001,19 @@ extension _EditorControls on _EditorPageState {
         child: ValueListenableBuilder<int>(
           valueListenable: _playheadVN,
           builder: (_, playhead, _) => Text(
-            'Frame ${(_playing ? playhead : active) + 1} / $n',
+            l10n.optFrameOf((_playing ? playhead : active) + 1, n),
             style: const TextStyle(fontSize: 11, color: Colors.white60),
           ),
         ),
       ));
-      children.add(IconButton(iconSize: 22, tooltip: 'Next frame', onPressed: () => _stepFrame(1), icon: const Icon(Icons.skip_next)));
+      children.add(IconButton(iconSize: 22, tooltip: l10n.optNextFrame, onPressed: () => _stepFrame(1), icon: const Icon(Icons.skip_next)));
       children.add(const SizedBox(width: 6));
       // Go to… — type a frame number and jump to it (also auto-pauses playback first).
-      children.add(_miniBtn('Go to…', _gotoFrameDialog));
+      children.add(_miniBtn(l10n.optGoTo, _gotoFrameDialog));
     }
 
     return Container(
+      key: const ValueKey('editor-options-row'), // the i18n sweeps find the row by this
       height: 48,
       width: double.infinity, // span full width so narrow content doesn't expose the black background on each side
       color: const Color(0xFF202327),
@@ -1072,7 +1085,7 @@ extension _EditorControls on _EditorPageState {
     );
     // palette management: opens the full-screen palette page
     final manageBtn =
-        IconButton(iconSize: 18, tooltip: 'Palettes', onPressed: _openPalettePage, icon: const Icon(Icons.palette, color: Colors.white70));
+        IconButton(iconSize: 18, tooltip: context.l10n.optPalettes, onPressed: _openPalettePage, icon: const Icon(Icons.palette, color: Colors.white70));
     return Container(
       color: const Color(0xFF1C1F22),
       child: SizedBox(
@@ -1124,8 +1137,8 @@ extension _EditorControls on _EditorPageState {
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: FilterChip(
           selected: _slowDrafts,
-          label: Text(_slowDrafts ? 'Slow ✔' : 'Slow'),
-          tooltip: 'Gear the drag down so the draft moves less than your finger, for exact placement',
+          label: Text(_slowDrafts ? '${context.l10n.optSlow} ✔' : context.l10n.optSlow),
+          tooltip: context.l10n.optSlowTip,
           selectedColor: const Color(0xFF30A050),
           onSelected: (v) => setState(() => _slowDrafts = v),
         ),
@@ -1145,14 +1158,14 @@ extension _EditorControls on _EditorPageState {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ListTile(
             leading: AlphaSwatch(color: color, width: 28, height: 28, diagonal: true, borderRadius: 4),
-            title: Text('Gradient color ${idx + 2}'),
+            title: Text(ctx.l10n.gradColorN(idx + 2)),
             subtitle: Text(_hex(color)),
             dense: true,
           ),
           const Divider(height: 1),
           ListTile(
             leading: AlphaSwatch(color: _primary, width: 24, height: 24, borderRadius: 4),
-            title: const Text('Use primary color'),
+            title: Text(ctx.l10n.colorUsePrimary),
             onTap: () {
               Navigator.pop(ctx);
               _setGradExtra(idx, _primary);
@@ -1160,7 +1173,7 @@ extension _EditorControls on _EditorPageState {
           ),
           ListTile(
             leading: const Icon(Icons.colorize),
-            title: const Text('Set as primary'),
+            title: Text(ctx.l10n.colorSetAsPrimary),
             onTap: () {
               Navigator.pop(ctx);
               _setPrimary(color);
@@ -1168,7 +1181,7 @@ extension _EditorControls on _EditorPageState {
           ),
           ListTile(
             leading: const Icon(Icons.edit),
-            title: const Text('Edit color'),
+            title: Text(ctx.l10n.colorEdit),
             onTap: () {
               Navigator.pop(ctx);
               _pickColor(initial: color, onPick: (c) => _setGradExtra(idx, c));
@@ -1189,7 +1202,7 @@ extension _EditorControls on _EditorPageState {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ListTile(
             leading: const Icon(Icons.add_circle_outline),
-            title: const Text('Add current color'),
+            title: Text(ctx.l10n.paletteAddCurrent),
             onTap: () {
               Navigator.pop(ctx);
               _act('AddPaletteColor(${_hex(_primary)})');
@@ -1217,13 +1230,11 @@ extension _EditorControls on _EditorPageState {
 
   Widget _mirrorChip() {
     final on = _symOn;
-    final label = _movingAxis ? 'Moving axis…' : _symLabel;
+    final label = _movingAxis ? context.l10n.mirrorMovingAxis : _symLabel;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 3),
       child: Tooltip(
-        message: _movingAxis
-            ? 'Drag the canvas to move the axis; tap to finish'
-            : 'Mirror drawing: tap to cycle Off · H · V · Both, hold for the axis',
+        message: _movingAxis ? context.l10n.mirrorMovingTip : context.l10n.mirrorChipTip,
         child: GestureDetector(
           onLongPress: _mirrorMenu,
           onSecondaryTap: _mirrorMenu,
@@ -1249,7 +1260,7 @@ extension _EditorControls on _EditorPageState {
   void _cycleSymmetry({bool fromKey = false}) {
     _setSymmetry((_symMode + 1) % 4);
     if (fromKey && !_kMirrorTools.contains(_tool)) {
-      _toast(_symOn ? _symLabel.replaceAll(' ✔', '') : 'Mirror off');
+      _toast(_symOn ? _symLabel.replaceAll(' ✔', '') : context.l10n.mirrorOffToast);
     }
   }
 
@@ -1296,28 +1307,34 @@ extension _EditorControls on _EditorPageState {
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const ListTile(
-            leading: Icon(Icons.flip),
-            title: Text('Mirror drawing'),
-            subtitle: Text('Every stroke, figure, and fill lands on both sides of the axis'),
+          ListTile(
+            leading: const Icon(Icons.flip),
+            title: Text(ctx.l10n.mirrorTitle),
+            subtitle: Text(ctx.l10n.mirrorSubtitle),
             dense: true,
           ),
           const Divider(height: 1),
-          for (final (i, name) in const [(0, 'Off'), (1, 'Horizontal (left ↔ right)'), (2, 'Vertical (top ↔ bottom)'), (3, 'Both')].indexed)
+          // The four modes in engine order: 0 off, 1 horizontal, 2 vertical, 3 both.
+          for (final (i, name) in [
+            ctx.l10n.mirrorModeOff,
+            ctx.l10n.mirrorModeH,
+            ctx.l10n.mirrorModeV,
+            ctx.l10n.mirrorModeBoth,
+          ].indexed)
             ListTile(
               leading: Icon(_symMode == i ? Icons.radio_button_checked : Icons.radio_button_off),
-              title: Text(name.$2),
+              title: Text(name),
               selected: _symMode == i,
               onTap: () {
                 Navigator.pop(ctx);
-                _setSymmetry(name.$1);
+                _setSymmetry(i);
               },
             ),
           const Divider(height: 1),
           ListTile(
             leading: const Icon(Icons.open_with),
-            title: const Text('Move axis…'),
-            subtitle: const Text('Drag anywhere on the canvas; Slow gears it; tap the handle to type a value'),
+            title: Text(ctx.l10n.mirrorMoveAxis),
+            subtitle: Text(ctx.l10n.mirrorMoveAxisBody),
             enabled: _symOn,
             onTap: () {
               Navigator.pop(ctx);
@@ -1326,7 +1343,7 @@ extension _EditorControls on _EditorPageState {
           ),
           ListTile(
             leading: const Icon(Icons.center_focus_strong),
-            title: const Text('Recenter axis'),
+            title: Text(ctx.l10n.mirrorRecenter),
             enabled: _symOn && !centered,
             onTap: () {
               Navigator.pop(ctx);
@@ -1348,26 +1365,26 @@ extension _EditorControls on _EditorPageState {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Mirror axis'),
+        title: Text(ctx.l10n.mirrorAxisTitle),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           if (_symH)
             TextField(
               controller: hCtrl,
               autofocus: true,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(labelText: 'Vertical axis at x (0 – ${engine.width - 1}, .5 = between columns)'),
+              decoration: InputDecoration(labelText: ctx.l10n.mirrorAxisX(engine.width - 1)),
             ),
           if (_symV)
             TextField(
               controller: vCtrl,
               autofocus: !_symH,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(labelText: 'Horizontal axis at y (0 – ${engine.height - 1}, .5 = between rows)'),
+              decoration: InputDecoration(labelText: ctx.l10n.mirrorAxisY(engine.height - 1)),
             ),
         ]),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('OK')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.commonCancel)),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(ctx.l10n.commonOk)),
         ],
       ),
     );
@@ -1394,10 +1411,11 @@ extension _EditorControls on _EditorPageState {
     // 50 % density; the gated tools' swatch shows the tile itself.
     final dither = _gradDither.isOff ? _gradDitherLast : _gradDither;
     final tile = _pattern ?? bayerTile(2, 2);
-    final label = gradient ? 'Dither' : 'Pattern';
+    final l10n = context.l10n;
+    final label = gradient ? l10n.optDither : l10n.optPattern;
     final name = gradient
-        ? (on ? _gradDither.name : 'Off')
-        : (on ? (patternName(_pattern!) ?? 'Custom pattern') : 'Off');
+        ? (on ? _gradDither.name : l10n.optOff)
+        : (on ? (patternName(_pattern!) ?? l10n.patternCustom) : l10n.optOff);
     // The swatch reads like the row's other toggles (user decision 2026-09-04): while On it
     // sits in the same green chip the active FilterChips wear, with a check to its right;
     // while Off it is a plain dark chip holding the dimmed, slashed tile.
@@ -1430,7 +1448,7 @@ extension _EditorControls on _EditorPageState {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 3),
       child: Tooltip(
-        message: on ? '$label: $name · tap the tile to change, the green edge to turn off' : '$label: $name',
+        message: on ? l10n.patternSwatchTipOn(label, name) : l10n.patternSwatchTip(label, name),
         child: GestureDetector(
           onTap: on ? _togglePattern : _openPatternsPage,
           onLongPress: _togglePattern,
@@ -1520,7 +1538,8 @@ extension _EditorControls on _EditorPageState {
       return;
     }
     if (_pattern == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tap the swatch to pick a pattern first'), duration: Duration(seconds: 2)));
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.patternPickFirst), duration: const Duration(seconds: 2)));
       return;
     }
     setState(() => _patternOn[_tool] = !(_patternOn[_tool] ?? false));
@@ -1603,7 +1622,7 @@ extension _EditorControls on _EditorPageState {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text('Color ${cur + 1} of $n'),
+                      Text(ctx.l10n.paletteColorOf(cur + 1, n)),
                       // The name lives on its own line under the number — beside it the
                       // space was too tight for anything readable. Names run up to 64
                       // characters, so allow two lines before the ellipsis.
@@ -1621,7 +1640,7 @@ extension _EditorControls on _EditorPageState {
                           iconSize: 15,
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints.tightFor(width: 30, height: 30),
-                          tooltip: name == null ? 'Name this color' : 'Edit name',
+                          tooltip: name == null ? ctx.l10n.paletteNameThis : ctx.l10n.paletteEditName,
                           onPressed: () async {
                             final renamed = await _editColorName(cur, name);
                             if (renamed) setS(() {});
@@ -1633,24 +1652,24 @@ extension _EditorControls on _EditorPageState {
                   ),
                 ),
                 Row(mainAxisSize: MainAxisSize.min, children: [
-                  arrow(Icons.arrow_back, 'Move left', t.left),
+                  arrow(Icons.arrow_back, ctx.l10n.moveLeft, t.left),
                   Column(mainAxisSize: MainAxisSize.min, children: [
-                    arrow(Icons.arrow_upward, 'Move up', t.up),
-                    arrow(Icons.arrow_downward, 'Move down', t.down),
+                    arrow(Icons.arrow_upward, ctx.l10n.moveUp, t.up),
+                    arrow(Icons.arrow_downward, ctx.l10n.moveDown, t.down),
                   ]),
-                  arrow(Icons.arrow_forward, 'Move right', t.right),
+                  arrow(Icons.arrow_forward, ctx.l10n.moveRight, t.right),
                 ]),
               ]),
             ),
             const Divider(height: 1),
-            ListTile(leading: const Icon(Icons.edit), title: const Text('Edit color'), onTap: () {
+            ListTile(leading: const Icon(Icons.edit), title: Text(ctx.l10n.colorEdit), onTap: () {
               Navigator.pop(ctx);
               _pickColor(initial: color, onPick: (nc) => _act('EditPaletteColor($cur, ${_hex(nc)})'));
             }),
             ListTile(
               leading: const Icon(Icons.find_replace),
-              title: const Text('Replace in artwork…'),
-              subtitle: const Text('Recolor this color to the primary'),
+              title: Text(ctx.l10n.paletteReplaceInArtwork),
+              subtitle: Text(ctx.l10n.paletteReplaceInArtworkBody),
               onTap: () {
                 Navigator.pop(ctx);
                 _replaceColorDialog(color);
@@ -1658,25 +1677,27 @@ extension _EditorControls on _EditorPageState {
             ),
             ListTile(
               leading: AlphaSwatch(color: _primary, width: 24, height: 24, borderRadius: 4),
-              title: const Text('Overwrite with primary color'),
+              title: Text(ctx.l10n.paletteOverwrite),
               onTap: () async {
+                final l10n = ctx.l10n;
                 Navigator.pop(ctx);
                 // Palette state lives OUTSIDE the engine's undo history, so overwriting is
                 // irreversible — reconfirm (same rule as the palette page's destructive ops).
                 if (await _confirmPaletteAction(
-                    'Overwrite color?', 'Replaces this palette color with the primary color. This cannot be undone.', 'Overwrite')) {
+                    l10n.paletteOverwriteTitle, l10n.paletteOverwriteBody, l10n.paletteOverwriteAction)) {
                   _act('EditPaletteColor($cur, ${_hex(_primary)})');
                 }
               },
             ),
-            ListTile(leading: const Icon(Icons.copy), title: const Text('Duplicate'), onTap: () { Navigator.pop(ctx); _act('DuplicatePaletteColor($cur)'); }),
+            ListTile(leading: const Icon(Icons.copy), title: Text(ctx.l10n.commonDuplicate), onTap: () { Navigator.pop(ctx); _act('DuplicatePaletteColor($cur)'); }),
             ListTile(
               leading: const Icon(Icons.delete),
-              title: const Text('Remove'),
+              title: Text(ctx.l10n.commonRemove),
               onTap: () async {
+                final l10n = ctx.l10n;
                 Navigator.pop(ctx);
                 if (await _confirmPaletteAction(
-                    'Remove color?', 'Removes this color from the palette. This cannot be undone.', 'Remove')) {
+                    l10n.paletteRemoveTitle, l10n.paletteRemoveBody, l10n.commonRemove)) {
                   _act('RemovePaletteColor($cur)');
                 }
               },
@@ -1701,31 +1722,34 @@ extension _EditorControls on _EditorPageState {
       context: context,
       builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
         return AlertDialog(
-          title: const Text('Replace color'),
+          title: Text(ctx.l10n.replaceColorTitle),
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               AlphaSwatch(color: from, width: 32, height: 32, borderRadius: 4),
               const Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Icon(Icons.arrow_forward)),
               AlphaSwatch(color: to, width: 32, height: 32, borderRadius: 4),
               const SizedBox(width: 10),
-              Expanded(child: Text(same ? 'Pick a different primary color first' : '${_hex(from)} → ${_hex(to)} (the primary)', style: const TextStyle(fontSize: 12))),
+              Expanded(
+                  child: Text(
+                      same ? ctx.l10n.replaceColorSame : ctx.l10n.replaceColorFromTo(_hex(from), _hex(to)),
+                      style: const TextStyle(fontSize: 12))),
             ]),
             const SizedBox(height: 12),
-            Text('Tolerance $tolerance', style: const TextStyle(fontSize: 12)),
+            Text(ctx.l10n.replaceColorTolerance(tolerance), style: const TextStyle(fontSize: 12)),
             Slider(
               value: tolerance.toDouble(),
               min: 0,
               max: 255,
               onChanged: (v) => setS(() => tolerance = v.round()),
             ),
-            const Text('0 replaces the exact color; higher values also take nearby colors (the Bucket threshold metric).',
-                style: TextStyle(fontSize: 11, color: Colors.white60)),
+            Text(ctx.l10n.replaceColorToleranceHelp,
+                style: const TextStyle(fontSize: 11, color: Colors.white60)),
             const SizedBox(height: 12),
             SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: 'layer', label: Text('Layer')),
-                ButtonSegment(value: 'frame', label: Text('Frame')),
-                ButtonSegment(value: 'all', label: Text('All frames')),
+              segments: [
+                ButtonSegment(value: 'layer', label: Text(ctx.l10n.optLayer)),
+                ButtonSegment(value: 'frame', label: Text(ctx.l10n.optFrame)),
+                ButtonSegment(value: 'all', label: Text(ctx.l10n.optAllFrames)),
               ],
               selected: {scope},
               onSelectionChanged: (s) => setS(() => scope = s.first),
@@ -1733,8 +1757,8 @@ extension _EditorControls on _EditorPageState {
             ),
           ]),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            FilledButton(onPressed: same ? null : () => Navigator.pop(ctx, true), child: const Text('Replace')),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.commonCancel)),
+            FilledButton(onPressed: same ? null : () => Navigator.pop(ctx, true), child: Text(ctx.l10n.optReplace)),
           ],
         );
       }),
@@ -1751,7 +1775,7 @@ extension _EditorControls on _EditorPageState {
         title: Text(title),
         content: Text(message),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.commonCancel)),
           FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(action)),
         ],
       ),
@@ -1766,17 +1790,18 @@ extension _EditorControls on _EditorPageState {
     final raw = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(current == null ? 'Name this color' : 'Edit color name'),
+        title: Text(current == null ? ctx.l10n.paletteNameThis : ctx.l10n.paletteEditColorName),
         content: TextField(
           controller: ctrl,
           autofocus: true,
           maxLength: 64,
-          decoration: const InputDecoration(labelText: 'Name', helperText: 'Leave empty to remove the name'),
+          decoration: InputDecoration(
+              labelText: ctx.l10n.commonNameLabel, helperText: ctx.l10n.paletteNameHelper),
           onSubmitted: (v) => Navigator.pop(ctx, v),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('Save')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(ctx.l10n.commonCancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: Text(ctx.l10n.commonSave)),
         ],
       ),
     );

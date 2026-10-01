@@ -68,6 +68,7 @@ import 'replay/replay_page.dart';
 import 'replay/timelapse_export.dart';
 import 'replay/timelapse_plan.dart';
 import 'makapix_icon.dart';
+import 'tool_l10n.dart';
 import 'tools.dart';
 import 'thumbnail.dart';
 import 'widgets/painters.dart';
@@ -613,7 +614,15 @@ class _EditorPageState extends ConsumerState<EditorPage>
   static const _kSymModeTokens = ['off', 'h', 'v', 'both'];
   // The verb the engine needs (what _pushToolSettings emits and every change sends).
   String get _symDsl => 'SetSymmetry(${_kSymModeTokens[_symMode]},${_symAx ?? 'c'},${_symAy ?? 'c'})';
-  String get _symLabel => const ['Mirror', 'Mirror H ✔', 'Mirror V ✔', 'Mirror H+V ✔'][_symMode];
+  String get _symLabel {
+    final l10n = context.l10n;
+    return switch (_symMode) {
+      1 => '${l10n.mirrorChipH} ✔',
+      2 => '${l10n.mirrorChipV} ✔',
+      3 => '${l10n.mirrorChipBoth} ✔',
+      _ => l10n.mirrorChip,
+    };
+  }
   // The resolved half-pixel sums the engine will use (its own clamp mirrored here), or null for
   // a direction that is not mirrored — the overlay, the ghost cursor, and the drag read these.
   int? get _symHAxis => _symH ? _resolveAxis(_symAx, engine.width) : null;

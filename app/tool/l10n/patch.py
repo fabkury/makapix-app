@@ -18,6 +18,9 @@ The patch file is Python. It may call:
         'num' | {'type': ..., 'format': ...}. A key that already exists with the same
         English text is left alone; with different text it is an error.
 
+    setv(key, en='…', de='…')
+        Reword an existing message in the named languages.
+
 Write patch files with raw strings (r'''...'''). Nothing is written unless every
 replacement in the file applies and every ARB stays valid JSON.
 """
@@ -77,6 +80,24 @@ def m(key, description, en, es, pt, fr, de, ru, ja, zh, **placeholders):
     if not re.match(r'^[a-z][A-Za-z0-9]*$', key):
         sys.exit('bad key %r' % key)
     _msgs.append((key, meta, dict(zip(LOCALES, [en, es, pt, fr, de, ru, ja, zh]))))
+
+
+def setv(key, **texts):
+    """Reword an existing message: setv('tipMove', en='…', de='…'). Locales not named keep
+    their text. The key must already exist in each named locale."""
+    for locale, text in texts.items():
+        if locale not in LOCALES:
+            sys.exit('setv(%s): unknown locale %r' % (key, locale))
+        path = os.path.join('lib', 'l10n', 'app_%s.arb' % locale)
+        full = _load(path)
+        crlf, s = _pending[full]
+        old = json.loads(s).get(key)
+        if old is None:
+            sys.exit('setv: %s has no key %s' % (locale, key))
+        row = lambda t: '  %s: %s' % (json.dumps(key), json.dumps(t, ensure_ascii=False))
+        if s.count(row(old)) != 1:
+            sys.exit('setv: cannot locate %s in %s' % (key, locale))
+        _pending[full] = (crlf, s.replace(row(old), row(text)))
 
 
 def _append(locale, entries):

@@ -78,6 +78,9 @@ const _nonUiCalls = {
   'UnsupportedError', 'AssertionError', 'UnimplementedError', 'RangeError',
   'FlutterError', 'debugFillProperties', 'join', 'open', 'DynamicLibrary',
   'removePrefix', 'trimPrefix', 'hasMatch', 'firstMatch', 'allMatches',
+  // The editor's engine calls: their argument is an action-script (DSL) command, and any
+  // literal inside it (`_send('SetScope(${f ? 'Frame' : 'Layer'})')`) is an engine value.
+  '_send', '_act',
 };
 
 final _letters = RegExp(r'\p{L}{2,}', unicode: true);

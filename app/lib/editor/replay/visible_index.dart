@@ -29,6 +29,7 @@
 /// verb counts as visible (a rare dead tick is harmless; a skipped real change is not) and as
 /// an event. The empirically dangerous direction — classifying a change-producing verb
 /// invisible — is validated against composite hashes in the offline oracle harness.
+// l10n-ignore-file: the strings are action-script (DSL) verb and tool names, never shown.
 library;
 
 import 'dart:typed_data';
