@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -46,6 +47,7 @@ class _ReportPageState extends ConsumerState<ReportPage> {
       _error = null;
     });
     final notes = _notes.text.trim();
+    final l10n = context.l10n;
     try {
       await ref.read(safetyApiProvider).report(
             _target,
@@ -63,7 +65,7 @@ class _ReportPageState extends ConsumerState<ReportPage> {
         });
       } else if (e.status == 404 || e.code == 'not_found') {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('This content is no longer available.')));
+            .showSnackBar(SnackBar(content: Text(l10n.reportContentGone)));
         Navigator.of(context).pop();
       } else if (e.code == 'validation_error' || e.status == 422) {
         setState(() {
@@ -73,14 +75,14 @@ class _ReportPageState extends ConsumerState<ReportPage> {
       } else {
         setState(() {
           _submitting = false;
-          _error = 'Could not send the report — check your connection and try again.';
+          _error = l10n.reportSendFailed;
         });
       }
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _submitting = false;
-        _error = 'Could not send the report — check your connection and try again.';
+        _error = l10n.reportSendFailed;
       });
     }
   }
@@ -102,8 +104,8 @@ class _ReportPageState extends ConsumerState<ReportPage> {
     await showDialog<void>(
       context: context,
       builder: (dctx) => AlertDialog(
-        title: const Text('Report sent'),
-        content: const Text('Thanks — a moderator will review it.'),
+        title: Text(dctx.l10n.reportSentTitle),
+        content: Text(dctx.l10n.reportSentBody),
         actions: [
           if (blockSqid != null && handle != null)
             TextButton(
@@ -111,14 +113,14 @@ class _ReportPageState extends ConsumerState<ReportPage> {
                 Navigator.of(dctx).pop(); // close the dialog first
                 await _blockAfterReport(blockSqid, handle, rules);
               },
-              child: Text('Block @$handle'),
+              child: Text(dctx.l10n.reportBlockUser(handle)),
             ),
           TextButton(
             onPressed: () {
               Navigator.of(dctx).pop(); // dialog
               Navigator.of(context).pop(); // report page
             },
-            child: const Text('Done'),
+            child: Text(dctx.l10n.commonDone),
           ),
         ],
       ),
@@ -126,10 +128,12 @@ class _ReportPageState extends ConsumerState<ReportPage> {
   }
 
   Future<void> _blockAfterReport(String sqid, String handle, ModerationRules rules) async {
+    final l10n = context.l10n;
     try {
       await blockUser(ref, sqid);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Blocked @$handle')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(l10n.blockedToast(handle))));
     } on ClubError catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -137,7 +141,7 @@ class _ReportPageState extends ConsumerState<ReportPage> {
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Could not update the block — try again.')));
+          .showSnackBar(SnackBar(content: Text(l10n.blockUpdateFailed)));
     }
     // The report itself succeeded; leave the page regardless of the block result.
     if (mounted) Navigator.of(context).pop();
@@ -147,13 +151,13 @@ class _ReportPageState extends ConsumerState<ReportPage> {
   Widget build(BuildContext context) {
     final rules = ref.watch(serverConfigProvider).valueOrNull?.moderation;
     return Scaffold(
-      appBar: AppBar(title: const Text('Report')),
+      appBar: AppBar(title: Text(context.l10n.reportTitle)),
       body: rules == null
-          ? const Center(
+          ? Center(
               child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text('Reporting is not available right now.',
-                    style: TextStyle(color: Colors.white60)),
+                padding: const EdgeInsets.all(24),
+                child: Text(context.l10n.reportUnavailable,
+                    textAlign: TextAlign.center, style: const TextStyle(color: Colors.white60)),
               ),
             )
           : CenteredContent(child: _form(rules)),
@@ -161,13 +165,14 @@ class _ReportPageState extends ConsumerState<ReportPage> {
   }
 
   Widget _form(ModerationRules rules) {
+    final l10n = context.l10n;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Text('Reporting ${_target.label}',
+        Text(l10n.reportingTarget(_target.label),
             style: const TextStyle(fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
         const SizedBox(height: 4),
-        const Text('Why are you reporting this?', style: TextStyle(color: Colors.white60)),
+        Text(l10n.reportWhy, style: const TextStyle(color: Colors.white60)),
         const SizedBox(height: 8),
         RadioGroup<String>(
           groupValue: _reason,
@@ -180,7 +185,7 @@ class _ReportPageState extends ConsumerState<ReportPage> {
               for (final r in rules.reportReasons)
                 RadioListTile<String>(
                   value: r.code,
-                  title: Text(r.label),
+                  title: Text(reportReasonLabel(r.code, reasons: rules.reportReasons) ?? r.label),
                   contentPadding: EdgeInsets.zero,
                   dense: true,
                 ),
@@ -188,16 +193,17 @@ class _ReportPageState extends ConsumerState<ReportPage> {
           ),
         ),
         const SizedBox(height: 12),
+        // The question sits above the field, not inside it as a label: a label is one line,
+        // and this sentence is wider than a phone in every language.
+        Text(l10n.reportNotes, style: const TextStyle(color: Colors.white60)),
+        const SizedBox(height: 8),
         TextField(
           controller: _notes,
           minLines: 2,
           maxLines: 5,
           maxLength: 2000,
           enabled: !_submitting,
-          decoration: const InputDecoration(
-            labelText: 'Anything else we should know? (optional)',
-            border: OutlineInputBorder(),
-          ),
+          decoration: const InputDecoration(border: OutlineInputBorder()),
         ),
         if (_error != null)
           Padding(
@@ -209,7 +215,7 @@ class _ReportPageState extends ConsumerState<ReportPage> {
           onPressed: (_reason == null || _submitting) ? null : () => _submit(rules),
           child: _submitting
               ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
-              : const Text('Submit report'),
+              : Text(l10n.reportSubmit),
         ),
         const SizedBox(height: 20),
         const Divider(height: 1),
@@ -219,12 +225,12 @@ class _ReportPageState extends ConsumerState<ReportPage> {
           TextButton.icon(
             onPressed: () => openExternalUrl(context, rules.guidelinesUrl),
             icon: const Icon(Icons.gavel_outlined, size: 18),
-            label: const Text('See the community rules'),
+            label: Text(l10n.reportSeeRules),
           ),
         TextButton.icon(
           onPressed: () => openEmail(context, rules.contactEmail),
           icon: const Icon(Icons.mail_outline, size: 18),
-          label: Text('Questions? Email ${rules.contactEmail}'),
+          label: Text(l10n.reportQuestions(rules.contactEmail)),
         ),
       ],
     );

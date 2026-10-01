@@ -1,3 +1,5 @@
+import 'package:makapix_club/l10n/l10n.dart';
+
 /// Who may mention this user (`users.mention_policy`, server message 0004/0002
 /// §4). Served on the full user object only — never on a public profile.
 enum MentionPolicy {
@@ -22,21 +24,15 @@ enum MentionPolicy {
       };
 
   String get label => switch (this) {
-        MentionPolicy.everyone => 'Everyone',
-        MentionPolicy.following => 'People I follow',
-        MentionPolicy.nobody => 'No one',
+        MentionPolicy.everyone => appL10n.mentionEveryone,
+        MentionPolicy.following => appL10n.mentionFollowing,
+        MentionPolicy.nobody => appL10n.mentionNobody,
       };
 
   String get description => switch (this) {
-        MentionPolicy.everyone =>
-          'Any member who can see your artwork can mention you.',
-        MentionPolicy.following =>
-          'Only members you follow can mention you. Members you do not follow '
-              'can still write your handle, but it will be plain text and you '
-              'will not be notified.',
-        MentionPolicy.nobody =>
-          'No one can mention you. Your handle stays plain text everywhere and '
-              'you are never notified about it.',
+        MentionPolicy.everyone => appL10n.mentionEveryoneBody,
+        MentionPolicy.following => appL10n.mentionFollowingBody,
+        MentionPolicy.nobody => appL10n.mentionNobodyBody,
       };
 }
 

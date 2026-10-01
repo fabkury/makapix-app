@@ -2,12 +2,11 @@
 # file. test/l10n/hardcoded_strings_test.dart fails if a file has MORE than its number (a
 # new hardcoded string) or FEWER (strings were extracted: re-pin with
 # `dart run tool/l10n/scan.dart --write-baseline`). Done when this file is empty.
-# total 1856 in 83 files
+# total 1709 in 74 files
 255 lib/editor/editor_page.controls.dart
 212 lib/editor/replay/visible_index.dart
 103 lib/editor/editor_page.fileio.dart
 78 lib/editor/editor_page.engine.dart
-73 lib/club/ui/user_management_page.dart
 67 lib/editor/keyboard/commands.dart
 64 lib/editor/tools.dart
 61 lib/editor/layers/layers_more_sheet.dart
@@ -24,7 +23,6 @@
 34 lib/editor/layers/layers_page.dart
 30 lib/editor/dialogs/place_dialog.dart
 27 lib/editor/layers/layers_dialogs.dart
-23 lib/club/models/safety_copy.dart
 23 lib/editor/artwork_colors_page.dart
 23 lib/editor/editor_page.replay.dart
 22 lib/editor/frames/frames_dialogs.dart
@@ -33,21 +31,16 @@
 20 lib/editor/editor_page.toolgrid.dart
 19 lib/editor/editor_page.persistence.dart
 18 lib/editor/keyboard/cheat_sheet.dart
-17 lib/club/ui/report_page.dart
 14 lib/editor/patterns/patterns_page.dart
 13 lib/editor/gallery/drawing_library_grid.dart
 13 lib/editor/layers/layer_model.dart
 12 lib/editor/keyboard/chords.dart
 8 lib/club/state/post_providers.dart
-8 lib/club/ui/monitored_hashtags_page.dart
 8 lib/editor/editor_page.keyboard.dart
 8 lib/editor/replay/replay_page.dart
-7 lib/club/ui/mentions_settings_page.dart
 7 lib/editor/frames/frames_action_bar.dart
 7 lib/editor/layers/layers_action_bar.dart
 6 lib/club/api/player_api.dart
-6 lib/club/models/club_user.dart
-6 lib/club/ui/blocked_users_page.dart
 5 lib/club/models/club_error.dart
 5 lib/club/state/player_providers.dart
 5 lib/editor/dialogs/color_picker_dialog.dart
@@ -56,14 +49,12 @@
 5 lib/editor/replay/journal_format.dart
 4 lib/club/api/club_user_agent.dart
 4 lib/club/models/mention_candidate.dart
-4 lib/club/ui/moderation_hub_page.dart
 4 lib/editor/dialogs/duration_dialog.dart
 4 lib/editor/dialogs/rename_drawing_dialog.dart
 4 lib/editor/frames/frame_set.dart
 4 lib/editor/frames/layer_name_picker.dart
 4 lib/editor/layers/layers_select_sheet.dart
 4 lib/editor/replay/replay_host.dart
-3 lib/club/models/report.dart
 3 lib/editor/editor_page.frames.dart
 3 lib/editor/editor_page.layers.dart
 3 lib/editor/widgets/painters.dart

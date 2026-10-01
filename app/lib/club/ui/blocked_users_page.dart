@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -46,6 +47,7 @@ class _BlockedUsersPageState extends ConsumerState<BlockedUsersPage> {
       ref.read(serverConfigProvider).valueOrNull?.moderation?.maxBlocksPerUser ?? 1000;
 
   Future<void> _unblock(BlockedUser u) async {
+    final l10n = context.l10n;
     try {
       await ref.read(safetyApiProvider).unblock(u.publicSqid);
       ref.read(blockedUsersProvider.notifier).remove(u.publicSqid);
@@ -54,7 +56,7 @@ class _BlockedUsersPageState extends ConsumerState<BlockedUsersPage> {
       ref.invalidate(feedProvider);
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Unblocked @${u.handle}')));
+            .showSnackBar(SnackBar(content: Text(l10n.unblockedToast(u.handle))));
       }
     } on ClubError catch (e) {
       if (mounted) {
@@ -64,7 +66,7 @@ class _BlockedUsersPageState extends ConsumerState<BlockedUsersPage> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Could not update the block — try again.')));
+            .showSnackBar(SnackBar(content: Text(l10n.blockUpdateFailed)));
       }
     }
   }
@@ -79,7 +81,7 @@ class _BlockedUsersPageState extends ConsumerState<BlockedUsersPage> {
     } else if (!s.initialized && s.loading) {
       body = const Center(child: CircularProgressIndicator());
     } else if (s.items.isEmpty) {
-      body = const ClubEmpty(message: "You haven't blocked anyone.", icon: Icons.block);
+      body = ClubEmpty(message: context.l10n.blockedEmpty, icon: Icons.block);
     } else {
       body = RefreshIndicator(
         onRefresh: n.refresh,
@@ -101,14 +103,23 @@ class _BlockedUsersPageState extends ConsumerState<BlockedUsersPage> {
       );
     }
     return Scaffold(
-        appBar: AppBar(title: const Text('Blocked users')), body: CenteredContent(child: body));
+        appBar: AppBar(title: Text(context.l10n.settingsBlockedUsers)),
+        body: CenteredContent(child: body));
   }
 
   Widget _row(BlockedUser u) => ListTile(
+        // Tight on purpose: "Unblock" is a long word in some languages ("Blockierung
+        // aufheben"), and on a 320 px phone the handle was left 49 px.
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+        horizontalTitleGap: 12,
         leading: HandleAvatar(url: u.avatarUrl, handle: u.handle, radius: 18),
-        title: Text('@${u.handle}'),
-        subtitle: Text('Blocked ${timeAgo(u.blockedAt)}', style: const TextStyle(fontSize: 11)),
-        trailing: TextButton(onPressed: () => _unblock(u), child: const Text('Unblock')),
+        title: Text('@${u.handle}', maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: Text(context.l10n.blockedWhen(timeAgo(u.blockedAt)),
+            style: const TextStyle(fontSize: 11)),
+        trailing: TextButton(
+            style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+            onPressed: () => _unblock(u),
+            child: Text(context.l10n.unblockAction)),
         onTap: () => Navigator.push(
             context, MaterialPageRoute(builder: (_) => ProfilePage(sqid: u.publicSqid))),
       );

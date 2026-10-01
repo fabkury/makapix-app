@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -23,13 +24,13 @@ class UserManagementPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(umdUserProvider(sqid));
     return Scaffold(
-      appBar: AppBar(title: Text('Manage @$handle')),
+      appBar: AppBar(title: Text(context.l10n.umdTitle(handle))),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => ClubErrorRetry(
           message: e is ClubError
-              ? (e.status == 403 ? 'The site owner cannot be managed.' : e.message)
-              : 'Could not load this user.',
+              ? (e.status == 403 ? context.l10n.umdOwnerProtected : e.message)
+              : context.l10n.umdLoadFailed,
           onRetry: () async => ref.invalidate(umdUserProvider(sqid)),
         ),
         data: (u) => _UmdBody(user: u),
@@ -48,13 +49,14 @@ class _UmdBody extends ConsumerWidget {
   Future<void> _run(BuildContext context, WidgetRef ref, Future<void> Function() call,
       {required String done, required String failed}) async {
     final messenger = ScaffoldMessenger.of(context);
+    final ownerProtected = context.l10n.umdOwnerProtected;
     try {
       await call();
       _refresh(ref);
       messenger.showSnackBar(SnackBar(content: Text(done)));
     } on ClubError catch (e) {
-      messenger.showSnackBar(SnackBar(
-          content: Text(e.status == 403 ? 'The site owner cannot be managed.' : e.message)));
+      messenger.showSnackBar(
+          SnackBar(content: Text(e.status == 403 ? ownerProtected : e.message)));
     } catch (_) {
       messenger.showSnackBar(SnackBar(content: Text(failed)));
     }
@@ -62,54 +64,58 @@ class _UmdBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         _header(context),
         const SizedBox(height: 16),
-        _sectionCard(context, 'Moderator actions', [
+        _sectionCard(context, l10n.umdActions, [
           SwitchListTile(
             value: user.autoPublicApproval,
-            title: const Text('Trusted'),
-            subtitle: const Text('New posts skip the pending-approval queue'),
+            title: Text(l10n.umdTrusted),
+            subtitle: Text(l10n.umdTrustedBody),
             secondary: const Icon(Icons.verified_outlined),
             onChanged: (v) => _run(context, ref,
                 () => ref.read(moderationApiProvider).setUserTrusted(user.sqid, v),
-                done: v ? '@${user.handle} is now trusted.' : 'Trust revoked.',
-                failed: 'Could not update trust.'),
+                done: v ? l10n.umdTrustGranted(user.handle) : l10n.umdTrustRevoked,
+                failed: l10n.umdTrustFailed),
           ),
           ListTile(
             leading: Icon(
                 user.hiddenByMod ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-            title: Text(user.hiddenByMod ? 'Unhide profile' : 'Hide profile…'),
-            subtitle: Text(user.hiddenByMod
-                ? 'The profile is currently hidden by moderators'
-                : 'Hide the profile from public browsing'),
+            title: Text(user.hiddenByMod ? l10n.umdUnhideProfile : l10n.umdHideProfile),
+            subtitle:
+                Text(user.hiddenByMod ? l10n.umdProfileHiddenNow : l10n.umdHideProfileBody),
             onTap: () => _toggleHidden(context, ref),
           ),
           if (user.isBanned)
             ListTile(
               leading: const Icon(Icons.gavel, color: Colors.redAccent),
               title: Text(user.isPermanentlyBanned
-                  ? 'Banned permanently'
-                  : 'Banned until ${_fmtDate(user.bannedUntil!)}'),
-              subtitle: const Text('The user cannot sign in; their data is kept'),
-              trailing: TextButton(
-                onPressed: () => _unban(context, ref),
-                child: const Text('Unban'),
-              ),
+                  ? l10n.umdBannedPermanently
+                  : l10n.umdBannedUntil(_fmtDate(user.bannedUntil!))),
+              subtitle: Text(l10n.umdBannedBody),
+            ),
+          // Its own row, like the other actions: as a trailing button, a long "Unban" left the
+          // status line 25 px on a phone.
+          if (user.isBanned)
+            ListTile(
+              leading: const Icon(Icons.lock_open),
+              title: Text(l10n.umdUnban),
+              onTap: () => _unban(context, ref),
             )
           else
             ListTile(
               leading: const Icon(Icons.gavel),
-              title: const Text('Ban user…'),
-              subtitle: const Text('Blocks sign-in for a period; deletes nothing'),
+              title: Text(l10n.umdBanUser),
+              subtitle: Text(l10n.umdBanUserBody),
               onTap: () => _ban(context, ref),
             ),
           ListTile(
             leading: const Icon(Icons.alternate_email),
-            title: const Text('Reveal email…'),
-            subtitle: const Text('The reveal is recorded in the audit log'),
+            title: Text(l10n.umdRevealEmail),
+            subtitle: Text(l10n.umdRevealEmailBody),
             onTap: () => _revealEmail(context, ref),
           ),
         ]),
@@ -130,9 +136,9 @@ class _UmdBody extends ConsumerWidget {
           const SizedBox(height: 2),
           Text(
             [
-              'Reputation ${user.reputation}',
+              context.l10n.umdReputationLine(user.reputation),
               if (user.roles.any((r) => r != 'user')) user.roles.join(', '),
-              if (user.createdAt != null) 'joined ${_fmtDate(user.createdAt!)}',
+              if (user.createdAt != null) context.l10n.umdJoined(_fmtDate(user.createdAt!)),
             ].join('  ·  '),
             style: const TextStyle(fontSize: 12, color: Colors.white54),
           ),
@@ -175,16 +181,18 @@ class _UmdBody extends ConsumerWidget {
 
   Future<void> _toggleHidden(BuildContext context, WidgetRef ref) async {
     final hide = !user.hiddenByMod;
+    final l10n = context.l10n;
     if (hide) {
       final yes = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: Text('Hide @${user.handle}?'),
-          content: const Text(
-              'The profile disappears from public browsing. The user cannot undo this; you can.'),
+          title: Text(ctx.l10n.umdHideTitle(user.handle)),
+          content: Text(ctx.l10n.umdHideBody),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Hide')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.commonCancel)),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true), child: Text(ctx.l10n.commonHide)),
           ],
         ),
       );
@@ -192,28 +200,30 @@ class _UmdBody extends ConsumerWidget {
     }
     await _run(context, ref,
         () => ref.read(moderationApiProvider).setUserHidden(user.sqid, hide),
-        done: hide ? 'Profile hidden.' : 'Profile is visible again.',
-        failed: 'Could not update the profile visibility.');
+        done: hide ? l10n.umdProfileHidden : l10n.umdProfileVisible,
+        failed: l10n.umdVisibilityFailed);
   }
 
   Future<void> _unban(BuildContext context, WidgetRef ref) async {
+    final l10n = context.l10n;
     final yes = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Unban @${user.handle}?'),
-        content: const Text('They can sign in again immediately.'),
+        title: Text(ctx.l10n.umdUnbanTitle(user.handle)),
+        content: Text(ctx.l10n.umdUnbanBody),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Unban')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.commonCancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(ctx.l10n.umdUnban)),
         ],
       ),
     );
     if (yes != true || !context.mounted) return;
     await _run(context, ref, () => ref.read(moderationApiProvider).unbanUser(user.sqid),
-        done: '@${user.handle} unbanned.', failed: 'Could not lift the ban.');
+        done: l10n.umdUnbanned(user.handle), failed: l10n.umdUnbanFailed);
   }
 
   Future<void> _ban(BuildContext context, WidgetRef ref) async {
+    final l10n = context.l10n;
     final days = await showBanDurationDialog(context, handle: user.handle);
     if (days == null || !context.mounted) return;
     if (days == kPermanentBan) {
@@ -222,15 +232,15 @@ class _UmdBody extends ConsumerWidget {
       final second = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Ban permanently?'),
-          content: Text('@${user.handle} stays banned until a moderator lifts it — '
-              'it never expires on its own.'),
+          title: Text(ctx.l10n.umdBanPermTitle),
+          content: Text(ctx.l10n.umdBanPermBody(user.handle)),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.commonCancel)),
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Ban permanently'),
+              child: Text(ctx.l10n.umdBanPermAction),
             ),
           ],
         ),
@@ -244,24 +254,25 @@ class _UmdBody extends ConsumerWidget {
             .read(moderationApiProvider)
             .banUser(user.sqid, durationDays: days == kPermanentBan ? null : days),
         done: days == kPermanentBan
-            ? '@${user.handle} banned permanently.'
-            : '@${user.handle} banned for $days ${days == 1 ? 'day' : 'days'}.',
-        failed: 'Could not ban the user.');
+            ? l10n.umdBannedPermToast(user.handle)
+            : l10n.umdBannedForToast(user.handle, days),
+        failed: l10n.umdBanFailed);
   }
 
   /// Two dialogs by design: consent first (the server audit-logs the reveal
   /// BEFORE returning the address), then the address with a copy affordance.
   Future<void> _revealEmail(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
     final yes = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Reveal @${user.handle}’s email?'),
-        content: const Text('Use only for moderation duties. '
-            'The reveal is recorded in the moderation audit log.'),
+        title: Text(ctx.l10n.umdRevealTitle(user.handle)),
+        content: Text(ctx.l10n.umdRevealBody),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Reveal')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.commonCancel)),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true), child: Text(ctx.l10n.umdRevealAction)),
         ],
       ),
     );
@@ -273,7 +284,7 @@ class _UmdBody extends ConsumerWidget {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
       return;
     } catch (_) {
-      messenger.showSnackBar(const SnackBar(content: Text('Could not reveal the email.')));
+      messenger.showSnackBar(SnackBar(content: Text(l10n.umdRevealFailed)));
       return;
     }
     if (!context.mounted) return;
@@ -281,18 +292,18 @@ class _UmdBody extends ConsumerWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('@${user.handle}'),
-        content: SelectableText(email.isEmpty ? '(no email on file)' : email),
+        content: SelectableText(email.isEmpty ? ctx.l10n.umdNoEmail : email),
         actions: [
           if (email.isNotEmpty)
             TextButton(
               onPressed: () {
                 Clipboard.setData(ClipboardData(text: email));
                 Navigator.pop(ctx);
-                messenger.showSnackBar(const SnackBar(content: Text('Email copied.')));
+                messenger.showSnackBar(SnackBar(content: Text(l10n.emailCopied)));
               },
-              child: const Text('Copy'),
+              child: Text(ctx.l10n.commonCopy),
             ),
-          FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+          FilledButton(onPressed: () => Navigator.pop(ctx), child: Text(ctx.l10n.commonClose)),
         ],
       ),
     );
@@ -337,6 +348,7 @@ class _ReputationCardState extends ConsumerState<_ReputationCard> {
 
   Future<void> _apply() async {
     final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
     final delta = _delta;
     setState(() => _busy = true);
     try {
@@ -348,12 +360,11 @@ class _ReputationCardState extends ConsumerState<_ReputationCard> {
       _reason.clear();
       _setGear(0);
       messenger.showSnackBar(SnackBar(
-          content: Text('Reputation ${delta > 0 ? '+' : ''}$delta — now $total. '
-              'The user is notified.')));
+          content: Text(l10n.umdRepApplied('${delta > 0 ? '+' : ''}$delta', total))));
     } on ClubError catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     } catch (_) {
-      messenger.showSnackBar(const SnackBar(content: Text('Could not adjust reputation.')));
+      messenger.showSnackBar(SnackBar(content: Text(l10n.umdRepFailed)));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -363,18 +374,19 @@ class _ReputationCardState extends ConsumerState<_ReputationCard> {
   Widget build(BuildContext context) {
     final delta = _delta;
     final valid = reputationAdjustValid(delta, _reason.text);
+    final l10n = context.l10n;
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Reputation',
-              style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white70)),
+          Text(l10n.umdReputationTitle,
+              style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white70)),
           const SizedBox(height: 4),
           Text(
             delta == 0
-                ? 'Current: ${widget.user.reputation}'
-                : 'Current: ${widget.user.reputation}   →   '
+                ? l10n.umdRepCurrent(widget.user.reputation)
+                : '${l10n.umdRepCurrent(widget.user.reputation)}   →   '
                     '${widget.user.reputation + delta} (${delta > 0 ? '+' : ''}$delta)',
             style: const TextStyle(fontSize: 13),
           ),
@@ -393,18 +405,18 @@ class _ReputationCardState extends ConsumerState<_ReputationCard> {
                 controller: _deltaField,
                 enabled: !_busy,
                 keyboardType: const TextInputType.numberWithOptions(signed: true),
-                decoration: const InputDecoration(
-                  labelText: 'Delta',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: l10n.umdRepDelta,
+                  border: const OutlineInputBorder(),
                   isDense: true,
                 ),
                 onChanged: _setDeltaText,
               ),
             ),
             const SizedBox(width: 12),
-            const Expanded(
-              child: Text('Reputation tiers upload limits and storage quota.',
-                  style: TextStyle(fontSize: 11, color: Colors.white38)),
+            Expanded(
+              child: Text(l10n.umdRepNote,
+                  style: const TextStyle(fontSize: 11, color: Colors.white38)),
             ),
           ]),
           const SizedBox(height: 12),
@@ -412,9 +424,10 @@ class _ReputationCardState extends ConsumerState<_ReputationCard> {
             controller: _reason,
             enabled: !_busy,
             maxLength: 500,
-            decoration: const InputDecoration(
-              labelText: 'Reason (required, min 8 characters)',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: l10n.umdRepReason,
+              helperText: l10n.umdRepReasonHelper,
+              border: const OutlineInputBorder(),
               counterText: '',
               isDense: true,
             ),
@@ -425,7 +438,7 @@ class _ReputationCardState extends ConsumerState<_ReputationCard> {
             alignment: Alignment.centerRight,
             child: FilledButton(
               onPressed: _busy || !valid ? null : _apply,
-              child: Text(_busy ? 'Applying…' : 'Apply'),
+              child: Text(_busy ? l10n.umdApplying : l10n.commonApply),
             ),
           ),
         ]),
@@ -441,41 +454,37 @@ const int kPermanentBan = -1;
 /// Pops the chosen day count, [kPermanentBan] for permanent, null on cancel.
 /// Top-level so it's widget-testable.
 Future<int?> showBanDurationDialog(BuildContext context, {required String handle}) {
-  const presets = <int, String>{
-    1: '1 day',
-    7: '7 days',
-    30: '30 days',
-    90: '90 days',
-    365: '365 days',
-    kPermanentBan: 'Permanent',
-  };
+  const presets = [1, 7, 30, 90, 365, kPermanentBan];
   var choice = 7;
   return showDialog<int>(
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setState) => AlertDialog(
-        title: Text('Ban @$handle?'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
+        title: Text(ctx.l10n.banTitle(handle)),
+        content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
           RadioGroup<int>(
             groupValue: choice,
             onChanged: (v) => setState(() => choice = v ?? choice),
             child: Column(children: [
-              for (final e in presets.entries)
+              for (final days in presets)
                 RadioListTile<int>(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
-                  title: Text(e.value),
-                  value: e.key,
+                  title: Text(days == kPermanentBan
+                      ? ctx.l10n.banPermanent
+                      : ctx.l10n.daysCount(days)),
+                  value: days,
                 ),
             ]),
           ),
           const SizedBox(height: 4),
-          const Text('Banning blocks sign-in; the account and its posts are not deleted.',
-              style: TextStyle(fontSize: 12, color: Colors.white54)),
-        ]),
+          Text(ctx.l10n.banNote, style: const TextStyle(fontSize: 12, color: Colors.white54)),
+        ])),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, choice), child: const Text('Ban')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(ctx.l10n.commonCancel)),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, choice), child: Text(ctx.l10n.banAction)),
         ],
       ),
     ),

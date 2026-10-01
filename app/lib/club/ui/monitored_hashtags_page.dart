@@ -41,9 +41,10 @@ class _MonitoredHashtagsPageState extends ConsumerState<MonitoredHashtagsPage> {
   Future<void> _save() async {
     final userKey = ref.read(authControllerProvider).me?.user.userKey ?? '';
     if (userKey.isEmpty) {
-      _toast('Could not determine your account id.');
+      _toast(context.l10n.commonNoAccountId);
       return;
     }
+    final l10n = context.l10n;
     setState(() => _saving = true);
     try {
       final result =
@@ -59,7 +60,7 @@ class _MonitoredHashtagsPageState extends ConsumerState<MonitoredHashtagsPage> {
         _initial = {...applied};
         _saving = false;
       });
-      _toast('Saved.');
+      _toast(l10n.commonSaved);
     } on ClubError catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -67,7 +68,7 @@ class _MonitoredHashtagsPageState extends ConsumerState<MonitoredHashtagsPage> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);
-      _toast('Could not save settings.');
+      _toast(l10n.commonSaveChangesFailed);
     }
   }
 
@@ -77,16 +78,12 @@ class _MonitoredHashtagsPageState extends ConsumerState<MonitoredHashtagsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Monitored hashtags')),
+      appBar: AppBar(title: Text(context.l10n.settingsMonitoredHashtags)),
       body: CenteredContent(
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            const Text(
-              'Posts tagged with these are hidden by default. Tick a tag to opt in to '
-              'seeing it across feeds, search and notifications.',
-              style: TextStyle(color: Colors.white60),
-            ),
+            Text(context.l10n.monitoredIntro, style: const TextStyle(color: Colors.white60)),
             const SizedBox(height: 12),
             for (final h in kMonitoredHashtags) _tagTile(h),
             const SizedBox(height: 24),
@@ -97,7 +94,7 @@ class _MonitoredHashtagsPageState extends ConsumerState<MonitoredHashtagsPage> {
                 child: _saving
                     ? const SizedBox(
                         height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Text('Save changes'),
+                    : Text(context.l10n.commonSaveChanges),
               ),
             ),
           ],
@@ -122,11 +119,12 @@ class _MonitoredHashtagsPageState extends ConsumerState<MonitoredHashtagsPage> {
               }),
       controlAffinity: ListTileControlAffinity.leading,
       contentPadding: EdgeInsets.zero,
-      title: Row(children: [
+      // A Wrap: the badge drops under the tag when a long word ("Ausgeblendet") does not fit.
+      title: Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
         Text(h.label,
             style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.w600)),
-        const SizedBox(width: 8),
-        _badge(on ? 'Shown' : 'Hidden', on ? cs.primary : Colors.white38),
+        _badge(on ? context.l10n.monitoredShown : context.l10n.monitoredHidden,
+            on ? cs.primary : Colors.white38),
       ]),
       subtitle: Text(h.description(context.l10n), style: const TextStyle(color: Colors.white54)),
     );

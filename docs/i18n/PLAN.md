@@ -18,14 +18,14 @@ are the acceptance test.
 | Phase | What | Status |
 |---|---|---|
 | L0 | Infrastructure, test harness, pilot (Settings, language picker, tool names) | **done 2026-10-01** |
-| L1 | Club pillar: extract + translate + sweep, batch by batch | in progress — C1–C6 of C1–C9 done |
+| L1 | Club pillar: extract + translate + sweep, batch by batch | in progress — C1–C7 of C1–C9 done |
 | L2 | Editor pillar: extract + translate + sweep, batch by batch | not started (tool names done in L0) |
 | L3 | Independent translation review (one agent per language), fixes, layout hardening | not started |
 | L4 | Seams and periphery, then flip `kTranslationsShipped` | not started |
 
 **Progress number:** the total on line 5 of `app/test/l10n/hardcoded_baseline.txt` — the
 hardcoded strings the scanner still finds. 2,683 after L0 (scanner as tightened in C1); 2,516
-after C1; 2,334 after C2; 2,253 after C3; 2,125 after C4; 2,000 after C5; 1,856 after C6. Zero means L1 + L2 are done.
+after C1; 2,334 after C2; 2,253 after C3; 2,125 after C4; 2,000 after C5; 1,856 after C6; 1,709 after C7. Zero means L1 + L2 are done.
 
 **Release safety while this is in progress:** `kTranslationsShipped` is `false`
 (`app/lib/l10n/app_locale.dart`), so a release build offers English only and hides the language
@@ -101,9 +101,13 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   New `lib/l10n/rich.dart` (`boldSpans`): a bold phrase inside one message, marked `<b>…</b>`.
   Sweeps: `sweep_publish_test.dart`. Not swept (plain dialogs, low risk): the "publish
   without remix claim" dialog and the "Posted" success page.
-- [ ] **C7 Moderation and safety** — user_management (72), moderation_hub (4), report (17),
-  blocked_users (6), monitored_hashtags_page (8), mentions_settings (7), `models/safety_copy` (22),
-  `models/report` (3)
+- [x] **C7 Moderation and safety** — done 2026-10-01: report form and its sent dialog, blocked
+  users, Mentions and Monitored hashtags settings, moderation hub, user management (trust,
+  hide, ban, reveal email, reputation) with every dialog, and the report notifications'
+  sentences (`models/safety_copy.dart`). Report reasons: the app's own translation of a
+  known code wins outside English; the server's English label still wins in English.
+  `ReportTarget.label` is now composed when read (it was a stored sentence).
+  Sweeps: `sweep_safety_test.dart`.
 - [ ] **C8 Players** — my_players (45), `state/player_providers` (5), `api/player_api` (6),
   `models/player_device` (1)
 - [ ] **C9 Errors and context-free text** — `models/club_error` (5), `api/*` (post 13, moderation
@@ -214,6 +218,13 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 
 ## Session log
 
+- **2026-10-01** — C7 (moderation and safety): 117 messages. Sweep findings fixed: the report
+  form's notes question and the reputation reason label were cut off on phones in every
+  language, English included (the question moved above the field; the requirement moved to
+  helper text); the monitored-hashtag badge overflowed in German (row is now a Wrap); a long
+  "Unban" squeezed the ban status to 25 px (it is its own row now); the blocked-users row
+  left 49 px for the handle in German. Russian "Blocked users" is now «Чёрный список»
+  (the long form did not fit a top bar). 5,073 Dart tests pass.
 - **2026-10-01** — C6 (publish, post details, My Posts, approval queue, rules gate): 121
   messages. Sweep findings fixed: the "no license" dropdown option and the hashtags label were
   cut off on phones in six languages (shorter wording; the comma hint moved to helper text);

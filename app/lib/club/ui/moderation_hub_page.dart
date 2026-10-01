@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'pending_approval_page.dart';
@@ -13,26 +14,23 @@ class ModerationHubPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Moderation')),
+      appBar: AppBar(title: Text(context.l10n.menuModeration)),
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
           ListTile(
             leading: const Icon(Icons.fact_check_outlined),
-            title: const Text('Pending approval'),
-            subtitle: const Text('Artworks awaiting public visibility'),
+            title: Text(context.l10n.pendingTitle),
+            subtitle: Text(context.l10n.modHubPendingSubtitle),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const PendingApprovalPage())),
           ),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 24, 16, 0),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
             child: Text(
-              'Post and comment actions live where the content is: the artwork '
-              'page’s menu, each comment’s Mod menu, and User Management on '
-              'profiles. The website’s Moderator Dashboard has the rest '
-              '(reports, pulse, audit log, metrics).',
-              style: TextStyle(fontSize: 12, color: Colors.white38),
+              context.l10n.modHubNote,
+              style: const TextStyle(fontSize: 12, color: Colors.white38),
             ),
           ),
         ],

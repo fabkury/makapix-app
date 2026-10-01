@@ -96,6 +96,11 @@ label must not be longer than the full name, and no two tools may share one.
 | download (a ZIP export of your artworks) | descarga | download | téléchargement | Download | загрузка | ダウンロード | 下载 |
 | community rules | normas de la comunidad | regras da comunidade | règles de la communauté | Community-Regeln | правила сообщества | コミュニティルール | 社区规则 |
 | Terms of Service | Términos del servicio | Termos de Serviço | Conditions d'utilisation | Nutzungsbedingungen | Условия использования | 利用規約 | 服务条款 |
+| ban / unban (moderator; distinct from a user's block) | expulsar / readmitir | banir / remover banimento | bannir / lever le bannissement | sperren / entsperren | забанить / разбанить | 利用停止 / 利用停止を解除 | 封禁 / 解除封禁 |
+| trusted (user) | de confianza | confiável | de confiance | vertraut | доверенный | 信頼済み | 受信任 |
+| reputation | reputación | reputação | réputation | Reputation | репутация | 評価 | 声望 |
+| report (noun) | denuncia | denúncia | signalement | Meldung | жалоба | 通報 | 举报 |
+| blocked users (the list) | usuarios bloqueados | usuários bloqueados | utilisateurs bloqués | blockierte Nutzer | чёрный список | ブロックしたユーザー | 已屏蔽的用户 |
 | monitored hashtags | hashtags supervisados | hashtags monitoradas | hashtags surveillés | überwachte Hashtags | отслеживаемые хештеги | 監視対象のハッシュタグ | 受监控的话题标签 |
 
 ### Editor

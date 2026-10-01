@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -40,10 +41,11 @@ class _MentionsSettingsPageState extends ConsumerState<MentionsSettingsPage> {
     if (next == _policy || _saving) return;
     final userKey = ref.read(authControllerProvider).me?.user.userKey ?? '';
     if (userKey.isEmpty) {
-      _toast('Could not determine your account id.');
+      _toast(context.l10n.commonNoAccountId);
       return;
     }
     final previous = _policy;
+    final saveFailed = context.l10n.commonSaveChangesFailed;
     setState(() {
       _policy = next;
       _saving = true;
@@ -70,26 +72,22 @@ class _MentionsSettingsPageState extends ConsumerState<MentionsSettingsPage> {
         _policy = previous;
         _saving = false;
       });
-      _toast('Could not save that setting.');
+      _toast(saveFailed);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Scaffold(
-      appBar: AppBar(title: const Text('Mentions')),
+      appBar: AppBar(title: Text(l10n.settingsMentions)),
       body: CenteredContent(
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            const Text(
-              'When someone mentions you in a comment or in an artwork '
-              'description, your handle becomes a link to your profile and you '
-              'get a notification.',
-              style: TextStyle(color: Colors.white70),
-            ),
+            Text(l10n.mentionsIntro, style: const TextStyle(color: Colors.white70)),
             const SizedBox(height: 20),
-            Text('Who can mention me',
+            Text(l10n.mentionsWho,
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 4),
             RadioGroup<MentionPolicy>(
@@ -111,17 +109,16 @@ class _MentionsSettingsPageState extends ConsumerState<MentionsSettingsPage> {
             ),
             const SizedBox(height: 8),
             if (_saving)
-              const Row(children: [
-                SizedBox(height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2)),
-                SizedBox(width: 8),
-                Text('Saving…', style: TextStyle(color: Colors.white54, fontSize: 12)),
+              Row(children: [
+                const SizedBox(
+                    height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+                const SizedBox(width: 8),
+                Text(l10n.commonSaving,
+                    style: const TextStyle(color: Colors.white54, fontSize: 12)),
               ]),
             const Divider(height: 32),
-            const Text(
-              'Blocking still applies on top of this: a member you have blocked '
-              'can never mention you, whatever this is set to.',
-              style: TextStyle(color: Colors.white38, fontSize: 12),
-            ),
+            Text(l10n.mentionsBlockNote,
+                style: const TextStyle(color: Colors.white38, fontSize: 12)),
           ],
         ),
       ),

@@ -85,8 +85,17 @@ ClubServerConfig fixtureServerConfig() => ClubServerConfig.fromJson({
       },
       'moderation': {
         'report_reasons': [
+          // The server labels are English; every known code is here so the report form
+          // shows that the app replaces them with its own translations.
           {'code': 'spam', 'label': 'Spam or misleading'},
           {'code': 'harassment', 'label': 'Harassment or bullying'},
+          {'code': 'hate', 'label': 'Hate or discrimination'},
+          {'code': 'sexual_explicit', 'label': 'Sexual or explicit content'},
+          {'code': 'violence_gore', 'label': 'Violence or gore'},
+          {'code': 'illegal_csam', 'label': 'Illegal content or child endangerment'},
+          {'code': 'self_harm', 'label': 'Self-harm or suicide'},
+          {'code': 'copyright', 'label': 'Copyright or IP violation'},
+          {'code': 'other', 'label': 'Something else'},
         ],
         'contact_email': 'acme@makapix.club',
         'guidelines_url': 'https://makapix.club/about?tab=rules',

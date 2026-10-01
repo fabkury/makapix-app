@@ -1,6 +1,7 @@
 import 'comment.dart';
 import 'post.dart';
 import 'user_profile.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 /// A content report as returned by `POST /v1/report` (201). The app only needs
 /// it for confirmation + tests; the moderator-only `reporter_handle`,
@@ -44,22 +45,38 @@ class Report {
 class ReportTarget {
   final String type; // 'post' | 'comment' | 'user'
   final String id;
-  final String label; // shown as "Reporting ‹label›"
+
+  /// A post target's title (may be empty); null for the other kinds.
+  final String? postTitle;
   final String? offenderSqid;
   final String? offenderHandle;
 
   const ReportTarget({
     required this.type,
     required this.id,
-    required this.label,
+    this.postTitle,
     this.offenderSqid,
     this.offenderHandle,
   });
 
+  /// Shown as "Reporting ‹label›". Composed when read, in the app's current language — a
+  /// target outlives a language switch, a stored sentence would not.
+  String get label {
+    final l10n = appL10n;
+    return switch (type) {
+      'post' => (postTitle ?? '').isEmpty
+          ? l10n.reportTargetThisPost
+          : l10n.reportTargetTitled(postTitle!),
+      // "guest" matches how the comments UI renders anonymous authors.
+      'comment' => l10n.reportTargetComment(offenderHandle ?? l10n.commentsGuest),
+      _ => '@${offenderHandle ?? ''}',
+    };
+  }
+
   factory ReportTarget.post(Post p) => ReportTarget(
         type: 'post',
         id: p.id.toString(),
-        label: p.title.isEmpty ? 'this post' : '“${p.title}”',
+        postTitle: p.title,
         offenderSqid: p.owner.sqid.isEmpty ? null : p.owner.sqid,
         offenderHandle: p.owner.handle,
       );
@@ -67,8 +84,6 @@ class ReportTarget {
   factory ReportTarget.comment(Comment c) => ReportTarget(
         type: 'comment',
         id: c.id,
-        // "guest" matches how the comments UI renders anonymous authors.
-        label: 'comment by @${c.author?.handle ?? 'guest'}',
         offenderSqid: c.author?.sqid,
         offenderHandle: c.author?.handle,
       );
@@ -76,7 +91,6 @@ class ReportTarget {
   factory ReportTarget.user(UserProfile u) => ReportTarget(
         type: 'user',
         id: u.sqid,
-        label: '@${u.handle}',
         offenderSqid: u.sqid.isEmpty ? null : u.sqid,
         offenderHandle: u.handle,
       );
