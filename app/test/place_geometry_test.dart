@@ -80,7 +80,7 @@ void main() {
       expect(geo.keptRect, geo.placedRect);
       expect(geo.parkedEdges, (left: 1, top: 0, right: 1, bottom: 0));
       expect(geo.droppedEdges, (left: 0, top: 0, right: 0, bottom: 0));
-      expect(overhangText(geo.parkedEdges), '1 px left, 1 px right');
+      expect(overhangText(geo.parkedEdges), '←1 →1 px');
       expect(overhangText(geo.droppedEdges), '');
     });
 
@@ -97,7 +97,7 @@ void main() {
       expect(geo.keptRect, const Rect.fromLTWH(7, 7, 1, 1));
       expect(geo.parkedEdges, (left: 0, top: 0, right: 1, bottom: 1));
       expect(geo.droppedEdges, (left: 0, top: 0, right: 1, bottom: 1));
-      expect(overhangText(geo.droppedEdges), '1 px right, 1 px bottom');
+      expect(overhangText(geo.droppedEdges), '→1 ↓1 px');
       geo.x = -9;
       geo.y = 0;
       expect(geo.nothingKept, isTrue);

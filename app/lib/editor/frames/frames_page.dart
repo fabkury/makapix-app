@@ -14,6 +14,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 
@@ -239,9 +240,9 @@ class _FramesPageState extends State<FramesPage> {
     final n = idx.length;
     final r = await showDurationDialog(
       context,
-      title: '$n ${n == 1 ? 'frame' : 'frames'} — duration',
+      title: context.l10n.framesDurationTitle(n),
       initialMs: _frames[idx.first].durationMs,
-      actions: ['Apply to $n ${n == 1 ? 'frame' : 'frames'}'],
+      actions: [context.l10n.framesApplyTo(n)],
     );
     if (r == null || !mounted) return;
     final requestedUs = (r.ms * 1000).round();
@@ -249,11 +250,12 @@ class _FramesPageState extends State<FramesPage> {
     _runBatch(
       dslForOp(const SetDurationOp(), idx, ms: r.ms),
       _BatchKind.durations,
-      report: pinned > 0 ? '$pinned ${pinned == 1 ? 'frame' : 'frames'} pinned at ${_pinLabel(requestedUs)}' : null,
+      report: pinned > 0 ? context.l10n.framesPinned(pinned, _pinLimit(floor: requestedUs < kMinDurationUs)) : null,
     );
   }
 
-  String _pinLabel(int requestedUs) => requestedUs < kMinDurationUs ? '16.7 ms' : '1000 ms';
+  /// The shortest or the longest duration a frame can have, as the status line shows it.
+  String _pinLimit({required bool floor}) => floor ? '16.7 ms' : '1000 ms'; // l10n-ignore: a duration
 
   void _nudge(int delta) {
     final idx = _indices;
@@ -300,7 +302,7 @@ class _FramesPageState extends State<FramesPage> {
         _runBatch(
           dslForOp(op, idx, permille: permille),
           _BatchKind.durations,
-          report: pinned > 0 ? '$pinned ${pinned == 1 ? 'frame' : 'frames'} pinned at the ${permille < 1000 ? '16.7 ms floor' : '1000 ms ceiling'}' : null,
+          report: pinned > 0 ? context.l10n.framesPinned(pinned, _pinLimit(floor: permille < 1000)) : null,
         );
       case RepeatAfterOp():
         _runBatch(dslForOp(op, idx), _BatchKind.repeat);
@@ -310,9 +312,9 @@ class _FramesPageState extends State<FramesPage> {
         _runBatch(dslForOp(op, idx), _BatchKind.content);
       case RemoveLayerNamedOp() || SetLayersVisibleOp() || SetLayersLockedOp():
         final title = switch (op) {
-          RemoveLayerNamedOp() => 'Remove layer named…',
-          SetLayersVisibleOp(:final visible) => visible ? 'Show layer named…' : 'Hide layer named…',
-          SetLayersLockedOp(:final locked) => locked ? 'Lock layer named…' : 'Unlock layer named…',
+          RemoveLayerNamedOp() => context.l10n.framesRemoveLayerNamed,
+          SetLayersVisibleOp(:final visible) => visible ? context.l10n.framesShowLayerNamed : context.l10n.framesHideLayerNamed,
+          SetLayersLockedOp(:final locked) => locked ? context.l10n.framesLockLayerNamed : context.l10n.framesUnlockLayerNamed,
           _ => '',
         };
         final name = await showLayerNamePicker(context, title: title, names: layerNameHits(_frames, idx), selectedCount: idx.length);
@@ -371,16 +373,16 @@ class _FramesPageState extends State<FramesPage> {
       backgroundColor: const Color(0xFF1A1C1F),
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(dense: true, title: Text('Frame ${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold))),
+          ListTile(dense: true, title: Text(ctx.l10n.frameNumber(index + 1), style: const TextStyle(fontWeight: FontWeight.bold))),
           const Divider(height: 1),
-          ListTile(leading: const Icon(Icons.login), title: Text('Go to frame ${index + 1}'), onTap: () => Navigator.pop(ctx, 'goto')),
+          ListTile(leading: const Icon(Icons.login), title: Text(ctx.l10n.framesGoTo(index + 1)), onTap: () => Navigator.pop(ctx, 'goto')),
           ListTile(
             leading: const Icon(Icons.linear_scale),
-            title: const Text('Select to here'),
+            title: Text(ctx.l10n.batchSelectToHere),
             enabled: anchorOk,
             onTap: anchorOk ? () => Navigator.pop(ctx, 'range') : null,
           ),
-          ListTile(leading: const Icon(Icons.tune), title: const Text('Frame options…'), onTap: () => Navigator.pop(ctx, 'sheet')),
+          ListTile(leading: const Icon(Icons.tune), title: Text(ctx.l10n.framesFrameOptions), onTap: () => Navigator.pop(ctx, 'sheet')),
         ]),
       ),
     );
@@ -425,7 +427,7 @@ class _FramesPageState extends State<FramesPage> {
       if (_deleteArm.tap(_armKey)) {
         _delete();
       } else {
-        setState(() => _status = (warn: false, text: 'Press Delete again to delete ${_sel.length} ${_sel.length == 1 ? 'frame' : 'frames'}'));
+        setState(() => _status = (warn: false, text: context.l10n.framesDeleteAgain(_sel.length)));
       }
       return KeyEventResult.handled;
     }
@@ -461,17 +463,19 @@ class _FramesPageState extends State<FramesPage> {
   Widget _statusLine() {
     final s = _status;
     final n = _sel.length;
-    final idle = n == 0 ? 'Tap or slide to select · hold for options · double-tap to go to' : '$n selected · ${formatFrameSetHuman(_indices)}';
+    final idle = n == 0 ? context.l10n.framesIdleHint : context.l10n.batchSelSummary(n, formatFrameSetHuman(_indices));
     final text = s?.text ?? idle;
     final color = s == null ? Colors.white38 : (s.warn ? Colors.amber : Colors.white70);
     final icon = s == null ? null : (s.warn ? Icons.warning_amber_rounded : Icons.info_outline);
+    // Two lines, fixed height (no reflow when the text changes): on one line the idle hint was
+    // cut off on a 360 px phone, in English too.
     return SizedBox(
-      height: 22,
+      height: 30,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Row(children: [
           if (icon != null) ...[Icon(icon, size: 14, color: color), const SizedBox(width: 6)],
-          Expanded(child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: color))),
+          Expanded(child: Text(text, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, height: 1.25, color: color))),
         ]),
       ),
     );
@@ -484,12 +488,16 @@ class _FramesPageState extends State<FramesPage> {
       backgroundColor: _kPageBg,
       appBar: AppBar(
         backgroundColor: _kPageBg,
-        title: Text('Frames · ${_frames.length}'),
+        title: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: AlignmentDirectional.centerStart,
+          child: Text(context.l10n.framesPageTitle(_frames.length)),
+        ),
         actions: [
-          IconButton(tooltip: 'Undo', icon: const Icon(Icons.undo), onPressed: host.canUndo ? _undo : null),
-          IconButton(tooltip: 'Redo', icon: const Icon(Icons.redo), onPressed: host.canRedo ? _redo : null),
+          IconButton(tooltip: context.l10n.toolUndo, icon: const Icon(Icons.undo), onPressed: host.canUndo ? _undo : null),
+          IconButton(tooltip: context.l10n.toolRedo, icon: const Icon(Icons.redo), onPressed: host.canRedo ? _redo : null),
           PopupMenuButton<String>(
-            tooltip: 'Select',
+            tooltip: context.l10n.optSelect,
             onSelected: (v) {
               switch (v) {
                 case 'all':
@@ -508,15 +516,15 @@ class _FramesPageState extends State<FramesPage> {
                   _setColumns(_columns + 1);
               }
             },
-            itemBuilder: (_) => [
-              const PopupMenuItem(value: 'all', child: Text('Select all')),
-              const PopupMenuItem(value: 'none', child: Text('Select none')),
-              const PopupMenuItem(value: 'invert', child: Text('Invert selection')),
-              const PopupMenuItem(value: 'range', child: Text('Select frames…')),
-              const PopupMenuItem(value: 'nth', child: Text('Every Nth frame…')),
+            itemBuilder: (ctx) => [
+              PopupMenuItem(value: 'all', child: Text(ctx.l10n.selectAll)),
+              PopupMenuItem(value: 'none', child: Text(ctx.l10n.selectNone)),
+              PopupMenuItem(value: 'invert', child: Text(ctx.l10n.selectInvert)),
+              PopupMenuItem(value: 'range', child: Text(ctx.l10n.framesSelectRangeMenu)),
+              PopupMenuItem(value: 'nth', child: Text(ctx.l10n.framesEveryNthMenu)),
               const PopupMenuDivider(),
-              PopupMenuItem(value: 'fewer', enabled: _columns > kFramesMinColumns, child: const Text('Bigger tiles')),
-              PopupMenuItem(value: 'more', enabled: _columns < kFramesMaxColumns, child: const Text('Smaller tiles')),
+              PopupMenuItem(value: 'fewer', enabled: _columns > kFramesMinColumns, child: Text(ctx.l10n.framesBiggerTiles)),
+              PopupMenuItem(value: 'more', enabled: _columns < kFramesMaxColumns, child: Text(ctx.l10n.framesSmallerTiles)),
             ],
           ),
         ],

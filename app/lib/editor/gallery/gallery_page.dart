@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import '../persistence/drawing_store.dart';
 import 'drawing_library_grid.dart';
@@ -28,10 +29,16 @@ class GalleryPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('My Drawings'),
+        // Scales down a little before it would be cut: three actions leave a 320 px phone
+        // 184 px, and the German title needs 192.
+        title: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: AlignmentDirectional.centerStart,
+          child: Text(context.l10n.fileMyDrawings),
+        ),
         actions: [
           IconButton(
-            tooltip: 'New drawing',
+            tooltip: context.l10n.galleryNew,
             icon: const Icon(Icons.add),
             onPressed: () => Navigator.of(context).pop(const GalleryResult.newDrawing()),
           ),

@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
@@ -256,7 +257,8 @@ class CropView {
 
   /// The status readout. "View", not "Zoom: fit": the import dialog's scaling chooser already
   /// has a "Fit" option, and a user who picked Crop read "Zoom: fit" as the mode having changed.
-  String get label => isFit ? 'View: fit to screen' : 'View: ${(zoom * 100).round()}%';
+  String get label =>
+      isFit ? appL10n.viewZoomFit : appL10n.viewZoomPercent((zoom * 100).round());
 
   /// Double-tap: back to fit when zoomed, else 4× fit about the tapped point.
   void toggleDoubleTap(Offset p) {
@@ -335,10 +337,10 @@ class _NudgeArrowsState extends State<NudgeArrows> {
 
   @override
   Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
-        _btn(Icons.keyboard_arrow_left, -1, 0, 'Left 1 px (hold to repeat)'),
-        _btn(Icons.keyboard_arrow_up, 0, -1, 'Up 1 px (hold to repeat)'),
-        _btn(Icons.keyboard_arrow_down, 0, 1, 'Down 1 px (hold to repeat)'),
-        _btn(Icons.keyboard_arrow_right, 1, 0, 'Right 1 px (hold to repeat)'),
+        _btn(Icons.keyboard_arrow_left, -1, 0, context.l10n.nudgeLeft),
+        _btn(Icons.keyboard_arrow_up, 0, -1, context.l10n.nudgeUp),
+        _btn(Icons.keyboard_arrow_down, 0, 1, context.l10n.nudgeDown),
+        _btn(Icons.keyboard_arrow_right, 1, 0, context.l10n.nudgeRight),
       ]);
 }
 
@@ -385,17 +387,79 @@ class ViewZoomControls extends StatelessWidget {
               : null,
         );
     return Row(mainAxisSize: MainAxisSize.min, children: [
-      btn(Icons.zoom_out, 'Zoom out', view.canZoomOut, false),
+      btn(Icons.zoom_out, context.l10n.zoomOut, view.canZoomOut, false),
       Text(view.label, style: const TextStyle(fontSize: 12, color: Colors.white60)),
-      btn(Icons.zoom_in, 'Zoom in', view.canZoomIn, true),
+      btn(Icons.zoom_in, context.l10n.zoomIn, view.canZoomIn, true),
     ]);
+  }
+}
+
+/// The status row both pages put at the top of their panel: the transport buttons and the
+/// frame counter on the left, the zoom cluster on the right.
+///
+/// On one line only when there is plainly room (600 px, a tablet). On a phone the zoom cluster
+/// drops to a second line: side by side they overflowed a 320 px screen in English, and a
+/// 360 px one in every language whose words for "Frame" and "View" are longer. The choice
+/// depends on the width alone, never on the text, so the panel's height stays fixed while the
+/// page is open (the no-reflow rule: the panel height feeds the preview's fit scale).
+class PreviewStatusRow extends StatelessWidget {
+  final List<Widget> transport;
+  final FramePreview preview;
+  final int current;
+  final Widget zoom;
+  const PreviewStatusRow({
+    super.key,
+    required this.transport,
+    required this.preview,
+    required this.current,
+    required this.zoom,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final left = <Widget>[
+      ...transport,
+      Flexible(
+        child: Text(
+          preview.animated ? l10n.previewFrameOf(current + 1, preview.frames.length) : l10n.previewStatic,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 13),
+        ),
+      ),
+      if (preview.truncated)
+        Flexible(
+          child: Padding(
+            padding: const EdgeInsets.only(left: 8),
+            // Short (2026-09-15: the long sentence was cut off next to the zoom cluster on a
+            // phone); the tooltip carries the sentence.
+            child: Tooltip(
+              message: l10n.previewTruncated,
+              child: Text(l10n.previewCut,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11, color: Colors.white54)),
+            ),
+          ),
+        ),
+    ];
+    return LayoutBuilder(builder: (context, constraints) {
+      if (constraints.maxWidth >= 600) {
+        return Row(children: [...left, const Spacer(), zoom]);
+      }
+      return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: left),
+        Align(alignment: AlignmentDirectional.centerEnd, child: zoom),
+      ]);
+    });
   }
 }
 
 /// The one-line gesture legend under the status row: the view gestures were undiscoverable
 /// (a user asked how to change "Zoom: fit" and tried the app-bar icons).
-Widget viewGestureHint(String oneFinger) => Text(
-      'Pinch, double-tap, or scroll to zoom. One finger $oneFinger.',
+Widget viewGestureHint(String hint) => Text(
+      hint,
       style: const TextStyle(fontSize: 11, color: Colors.white54),
     );
 
@@ -502,7 +566,7 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
   late final CropGeometry _geo;
   late final CropView _view;
   late final Ticker _ticker;
-  final FocusNode _focus = FocusNode(debugLabel: 'CropPage');
+  final FocusNode _focus = FocusNode(debugLabel: 'CropPage'); // l10n-ignore: debug label
   /// Import mode: an oversize region keeps its size (default) or is downscaled to the canvas.
   late bool _native = widget.initialNative;
   int _current = 0;
@@ -722,7 +786,7 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
     final v = await showDialog<int>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('$label (px)'),
+        title: Text(ctx.l10n.fieldPixels(label)),
         content: TextField(
           controller: ctrl,
           autofocus: true,
@@ -731,8 +795,10 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
           onSubmitted: (t) => Navigator.pop(ctx, int.tryParse(t.trim())),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, int.tryParse(ctrl.text.trim())), child: const Text('Set')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(ctx.l10n.commonCancel)),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, int.tryParse(ctrl.text.trim())),
+              child: Text(ctx.l10n.commonSet)),
         ],
       ),
     );
@@ -770,16 +836,24 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
       onKeyEvent: _onKey,
       child: Scaffold(
         appBar: AppBar(
-          title: Text(canvasMode ? 'Crop canvas' : 'Crop'),
+          // Four actions leave a phone little room for the title: they sit closer together,
+          // and the title scales down before it would be cut ("Crop canvas" was, at 360 px).
+          title: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: AlignmentDirectional.centerStart,
+            child: Text(canvasMode ? context.l10n.cropCanvasTitle : context.l10n.importCrop),
+          ),
           actions: [
             IconButton(
-              tooltip: 'Fit to screen',
+              tooltip: context.l10n.viewFit,
+              visualDensity: VisualDensity.compact,
               icon: const Icon(Icons.fit_screen),
               onPressed: _view.isHome ? null : () => setState(_view.fit),
             ),
             if (canvasMode)
               IconButton(
-                tooltip: trim == null ? 'Nothing to trim: the drawing is empty' : 'Trim to content',
+                tooltip: trim == null ? context.l10n.cropNothingToTrim : context.l10n.cropTrim,
+                visualDensity: VisualDensity.compact,
                 icon: const Icon(Icons.crop_free),
                 onPressed: trim == null || trimIsCurrent
                     ? null
@@ -789,7 +863,8 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
                         }),
               ),
             IconButton(
-              tooltip: _geo.aspectLocked ? 'Aspect locked to canvas' : 'Lock to canvas aspect',
+              tooltip: _geo.aspectLocked ? context.l10n.cropAspectLocked : context.l10n.cropAspectLock,
+              visualDensity: VisualDensity.compact,
               icon: Icon(_geo.aspectLocked ? Icons.lock : Icons.lock_open),
               // [G-45] Kill any live drag first: an in-flight corner/move drag would otherwise
               // keep writing geometry derived from before the toggle.
@@ -799,7 +874,8 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
               }),
             ),
             IconButton(
-              tooltip: 'Reset crop',
+              tooltip: context.l10n.cropReset,
+              visualDensity: VisualDensity.compact,
               icon: const Icon(Icons.restart_alt),
               onPressed: () => setState(() {
                 // [G-45] Same here: without this the still-held drag resurrects the pre-reset rect.
@@ -819,7 +895,7 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
         body: Column(children: [
           Expanded(
             child: p.loadError
-                ? const Center(child: Text('Could not decode this image.'))
+                ? Center(child: Text(context.l10n.previewDecodeFailed))
                 : !p.loaded
                     ? const Center(child: CircularProgressIndicator())
                     : LayoutBuilder(builder: (ctx, cons) {
@@ -880,94 +956,110 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                IconButton(
-                  tooltip: 'Previous frame',
-                  icon: const Icon(Icons.skip_previous, size: 20),
-                  visualDensity: VisualDensity.compact,
-                  onPressed: animated ? () => _stepFrame(-1) : null,
-                ),
-                IconButton(
-                  tooltip: _playing ? 'Pause' : 'Play',
-                  icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
-                  visualDensity: VisualDensity.compact,
-                  onPressed: animated ? _togglePlay : null,
-                ),
-                IconButton(
-                  tooltip: 'Next frame',
-                  icon: const Icon(Icons.skip_next, size: 20),
-                  visualDensity: VisualDensity.compact,
-                  onPressed: animated ? () => _stepFrame(1) : null,
-                ),
-                Text(
-                  animated ? 'Frame ${_current + 1} / ${p.frames.length}' : 'Static',
-                  style: const TextStyle(fontSize: 13),
-                ),
-                if (p.truncated)
-                  const Padding(
-                    padding: EdgeInsets.only(left: 8),
-                    // Short (2026-09-15: the long sentence was cut off next to the zoom cluster
-                    // on a phone); the tooltip carries the sentence.
-                    child: Tooltip(
-                      message: 'Preview truncated: the full animation still imports.',
-                      child: Text('(preview cut)', style: TextStyle(fontSize: 11, color: Colors.white54)),
-                    ),
+              PreviewStatusRow(
+                transport: [
+                  IconButton(
+                    tooltip: context.l10n.optPrevFrame,
+                    icon: const Icon(Icons.skip_previous, size: 20),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: animated ? () => _stepFrame(-1) : null,
                   ),
-                const Spacer(),
-                ViewZoomControls(view: _view, onChanged: () => setState(() {})),
-              ]),
-              viewGestureHint('moves the crop'),
+                  IconButton(
+                    tooltip: _playing ? context.l10n.playbackPause : context.l10n.playbackPlay,
+                    icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: animated ? _togglePlay : null,
+                  ),
+                  IconButton(
+                    tooltip: context.l10n.optNextFrame,
+                    icon: const Icon(Icons.skip_next, size: 20),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: animated ? () => _stepFrame(1) : null,
+                  ),
+                ],
+                preview: p,
+                current: _current,
+                zoom: ViewZoomControls(view: _view, onChanged: () => setState(() {})),
+              ),
+              viewGestureHint(context.l10n.viewHintCrop),
               const SizedBox(height: 4),
               // Position row: the X/Y chips with the nudge arrows that move them (the Place page's
               // row); size row: W/H with what sets a size — the 1:1 / fit choice (import) or the
               // presets (canvas). Two rows of fixed composition, so the panel height never
               // depends on the rect (the no-reflow rule: the panel height feeds the fit scale).
               Row(children: [
-                _coordChip('x', 'X', _geo.x),
+                // Scales down a few pixels when the chips and the arrows do not fit side by side.
+                Expanded(
+                  child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: AlignmentDirectional.centerStart,
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      _coordChip('x', 'X', _geo.x), // l10n-ignore: axis letter
+                      const SizedBox(width: 6),
+                      _coordChip('y', 'Y', _geo.y), // l10n-ignore: axis letter
+                    ]),
+                  ),
+                  ),
+                ),
                 const SizedBox(width: 6),
-                _coordChip('y', 'Y', _geo.y),
-                const Spacer(),
                 NudgeArrows(onNudge: _nudge),
               ]),
               const SizedBox(height: 4),
-              Row(children: [
-                _coordChip('w', 'W', _geo.w),
-                const SizedBox(width: 6),
-                _coordChip('h', 'H', _geo.h),
-                if (!canvasMode) ...[
-                  const Spacer(),
-                  // Only meaningful for an oversize region; kept in the layout (invisible, same
-                  // size) otherwise so a corner drag across the canvas size does not reflow.
-                  Visibility(
-                    visible: oversize,
-                    maintainSize: true,
-                    maintainAnimation: true,
-                    maintainState: true,
-                    child: SegmentedButton<bool>(
-                      segments: const [
-                        ButtonSegment(value: true, label: Text('1:1')),
-                        ButtonSegment(value: false, label: Text('Fit to canvas')),
-                      ],
-                      selected: {_native},
-                      showSelectedIcon: false,
-                      style: const ButtonStyle(visualDensity: VisualDensity.compact),
-                      onSelectionChanged: (s) => setState(() {
-                        _endCropDrag();
-                        _native = s.first;
-                      }),
-                    ),
+              LayoutBuilder(builder: (context, constraints) {
+                final sizeChips = Row(mainAxisSize: MainAxisSize.min, children: [
+                  _coordChip('w', context.l10n.canvasWidthLetter, _geo.w),
+                  const SizedBox(width: 6),
+                  _coordChip('h', context.l10n.canvasHeightLetter, _geo.h),
+                ]);
+                if (canvasMode) return Row(children: [sizeChips]);
+                // Only meaningful for an oversize region; kept in the layout (invisible, same
+                // size) otherwise so a corner drag across the canvas size does not reflow.
+                final choice = Visibility(
+                  visible: oversize,
+                  maintainSize: true,
+                  maintainAnimation: true,
+                  maintainState: true,
+                  child: SegmentedButton<bool>(
+                    segments: [
+                      const ButtonSegment(value: true, label: Text('1:1')),
+                      ButtonSegment(value: false, label: Text(context.l10n.cropFitToCanvas)),
+                    ],
+                    selected: {_native},
+                    showSelectedIcon: false,
+                    style: const ButtonStyle(visualDensity: VisualDensity.compact),
+                    onSelectionChanged: (s) => setState(() {
+                      _endCropDrag();
+                      _native = s.first;
+                    }),
                   ),
-                ],
-              ]),
+                );
+                // Side by side only with plain room (a tablet). On a phone the choice takes its
+                // own line: beside "W 900  H 700" it overflowed by 26 px at 360 px wide, in
+                // English. The width decides, never the text, so the panel height stays fixed.
+                if (constraints.maxWidth >= 600) {
+                  return Row(children: [sizeChips, const Spacer(), choice]);
+                }
+                return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      sizeChips,
+                      const SizedBox(height: 4),
+                      Align(alignment: AlignmentDirectional.centerEnd, child: choice),
+                    ]);
+              }),
               if (canvasMode)
                 // Size presets (the Resize canvas dialog's), only those that fit some side — on
                 // their own captioned row: they set a size, the chips above show the rectangle.
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-                    const Padding(
-                      padding: EdgeInsets.only(right: 8),
-                      child: Text('Presets', style: TextStyle(fontSize: 12, color: Colors.white60)),
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Text(context.l10n.cropPresets,
+                          style: const TextStyle(fontSize: 12, color: Colors.white60)),
                     ),
                     Expanded(
                       child: Wrap(spacing: 6, runSpacing: 4, children: [
@@ -992,14 +1084,14 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
                 height: canvasMode ? null : _resultSlotHeight,
                 child: Text(
                   canvasMode
-                      ? 'New canvas: ${_geo.w} × ${_geo.h} px'
+                      ? context.l10n.cropNewCanvas(_geo.w, _geo.h)
                       : downscaled
-                          ? 'On canvas: $rw × $rh px (downscaled to fit ${widget.canvasW}×${widget.canvasH})'
+                          ? context.l10n.cropResultDownscaled(rw, rh, widget.canvasW, widget.canvasH)
                           : beyondStorage
-                              ? 'Placed 1:1: $rw × $rh px, larger than the off-canvas area. The far part is dropped at import.'
+                              ? context.l10n.cropResultBeyond(rw, rh)
                               : oversize
-                                  ? 'Placed 1:1: $rw × $rh px. The part beyond the ${widget.canvasW}×${widget.canvasH} canvas is kept off-canvas.'
-                                  : 'On canvas: $rw × $rh px (placed 1:1)',
+                                  ? context.l10n.cropResultOversize(rw, rh, widget.canvasW, widget.canvasH)
+                                  : context.l10n.cropResultNative(rw, rh),
                   maxLines: canvasMode ? 1 : 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 12, height: 1.3, color: beyondStorage ? Colors.amber : Colors.white60),
@@ -1013,14 +1105,14 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+              TextButton(onPressed: () => Navigator.pop(context), child: Text(context.l10n.commonCancel)),
               const SizedBox(width: 8),
               FilledButton(
                 // Canvas mode: a whole-canvas rect has nothing to crop, so OK stays disabled.
                 onPressed: !p.loaded || (canvasMode && _geo.isWhole)
                     ? null
                     : () => Navigator.pop(context, CropChoice(_geo.toRect(), native: native)),
-                child: Text(canvasMode ? 'Crop' : 'Use crop'),
+                child: Text(canvasMode ? context.l10n.importCrop : context.l10n.cropUse),
               ),
             ]),
           ),

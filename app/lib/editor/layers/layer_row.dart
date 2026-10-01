@@ -8,11 +8,13 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
-import '../blend_modes.dart';
+import '../blend_l10n.dart';
 import '../frames/frame_tile.dart' show kFramesAccent, kFramesSelect;
 import '../widgets/painters.dart';
 import 'layer_model.dart';
+import 'layer_names.dart';
 
 /// The row height in unscaled logical pixels for the two densities.
 const double kLayerRowHeightCompact = 44;
@@ -70,8 +72,8 @@ class LayerRowTile extends StatelessWidget {
       if (!layer.visible) Icon(Icons.visibility_off, size: 14 * scale, color: Colors.white54),
       if (layer.locked) Icon(Icons.lock, size: 14 * scale, color: Colors.white54),
       if (layer.opacity < 255) Text('${(layer.opacity * 100 / 255).round()} %', style: tagStyle),
-      if (layer.blend != 'Normal') Text(blendBadge(layer.blend), style: tagStyle),
-      if (layer.isEmpty) Text('empty', style: tagStyle.copyWith(fontStyle: FontStyle.italic)),
+      if (layer.blend != 'Normal') Text(blendBadgeText(context.l10n, layer.blend), style: tagStyle),
+      if (layer.isEmpty) Text(context.l10n.layersTagEmpty, style: tagStyle.copyWith(fontStyle: FontStyle.italic)),
     ];
     return SizedBox(
       height: height,
@@ -98,7 +100,7 @@ class LayerRowTile extends StatelessWidget {
               AspectRatio(aspectRatio: imgAspect, child: Opacity(opacity: dim ? 0.4 : 1, child: thumb)),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(layer.name.isEmpty ? '(unnamed)' : layer.name, maxLines: 1, softWrap: false, overflow: TextOverflow.ellipsis, style: nameStyle),
+                child: Text(shownLayerName(context.l10n, layer.name), maxLines: 1, softWrap: false, overflow: TextOverflow.ellipsis, style: nameStyle),
               ),
               for (final t in tags) ...[const SizedBox(width: 8), t],
             ]),

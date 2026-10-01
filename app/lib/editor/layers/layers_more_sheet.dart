@@ -5,6 +5,7 @@
 // `dslForLayerOp` is the pure mapping from an op to the verb line, tested without widgets.
 
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 
@@ -105,7 +106,7 @@ String dslForLayerOp(LayersOp op, List<int> indices, {int? delta, int? opacity, 
     SetVisibleOp(:final visible) => layerSetDsl('SetLayersVisible', indices, [visible ? '1' : '0']),
     SetLockedOp(:final locked) => layerSetDsl('SetLayersLocked', indices, [locked ? '1' : '0']),
     OpacityOp() => layerSetDsl('SetLayersOpacity', indices, ['${(opacity ?? 255).clamp(0, 255)}']),
-    BlendOp() => layerSetDsl('SetLayersBlend', indices, [blend ?? 'Normal']),
+    BlendOp() => layerSetDsl('SetLayersBlend', indices, [blend ?? 'Normal']), // l10n-ignore: engine blend mode
     ResetLayersOp() => layerSetDsl('ResetLayers', indices),
     RenameLayersOp() => layerSetDsl('RenameLayers', indices, [sanitizeName(name ?? '')]),
     FlipLayersOp(:final horizontal) => layerSetDsl(horizontal ? 'FlipLayersH' : 'FlipLayersV', indices),
@@ -140,7 +141,6 @@ Future<LayersOp?> showLayersMoreSheet(
   required int frameCount,
 }) {
   final n = selectedCount;
-  final plural = n == 1 ? 'layer' : 'layers';
   return showAppSheet<LayersOp>(
     context: context,
     isScrollControlled: true,
@@ -149,51 +149,52 @@ Future<LayersOp?> showLayersMoreSheet(
     builder: (ctx) {
       void pick(LayersOp op) => Navigator.pop(ctx, op);
       final maxH = MediaQuery.sizeOf(ctx).height * 0.85;
+      final l = ctx.l10n;
       final lockNote = lockedSelected > 0;
-      final capNote = underCap ? null : 'The stack is at the $kMaxLayers-layer cap';
+      final capNote = underCap ? null : l.layersAtCap(kMaxLayers);
       return SafeArea(
         child: ConstrainedBox(
           constraints: BoxConstraints(maxHeight: maxH),
           child: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              ListTile(dense: true, title: Text('$n selected $plural', style: const TextStyle(fontWeight: FontWeight.bold))),
+              ListTile(dense: true, title: Text(l.layersSelectedCount(n), style: const TextStyle(fontWeight: FontWeight.bold))),
               const Divider(height: 1),
-              _section('Stack'),
-              _row(Icons.control_point_duplicate, 'Duplicate', capNote ?? 'A copy right above each selected layer', underCap ? () => pick(const DuplicateLayersOp()) : null),
-              _row(Icons.vertical_align_top, 'Move to top', null, canShiftUp ? () => pick(const ToEdgeOp(top: true)) : null),
-              _row(Icons.vertical_align_bottom, 'Move to bottom', null, canShiftDown ? () => pick(const ToEdgeOp(top: false)) : null),
-              _row(Icons.swap_vert, 'Reverse order', n < 2 ? 'Select two or more layers' : null, n < 2 ? null : () => pick(const ReverseLayersOp())),
-              _row(Icons.add_box_outlined, 'Insert blank above each', capNote, underCap ? () => pick(const InsertBlankLayersOp(above: true)) : null),
-              _row(Icons.add_box_outlined, 'Insert blank below each', capNote, underCap ? () => pick(const InsertBlankLayersOp(above: false)) : null),
-              _section('State'),
+              _section(l.sectionStack),
+              _row(Icons.control_point_duplicate, l.commonDuplicate, capNote ?? l.layersDuplicateSub, underCap ? () => pick(const DuplicateLayersOp()) : null),
+              _row(Icons.vertical_align_top, l.layersToTop, null, canShiftUp ? () => pick(const ToEdgeOp(top: true)) : null),
+              _row(Icons.vertical_align_bottom, l.layersToBottom, null, canShiftDown ? () => pick(const ToEdgeOp(top: false)) : null),
+              _row(Icons.swap_vert, l.batchReverse, n < 2 ? l.layersNeedTwo : null, n < 2 ? null : () => pick(const ReverseLayersOp())),
+              _row(Icons.add_box_outlined, l.layersInsertAbove, capNote, underCap ? () => pick(const InsertBlankLayersOp(above: true)) : null),
+              _row(Icons.add_box_outlined, l.layersInsertBelow, capNote, underCap ? () => pick(const InsertBlankLayersOp(above: false)) : null),
+              _section(l.sectionState),
               _chips([
-                ('Show', () => pick(const SetVisibleOp(visible: true))),
-                ('Hide', () => pick(const SetVisibleOp(visible: false))),
-                ('Lock', () => pick(const SetLockedOp(locked: true))),
-                ('Unlock', () => pick(const SetLockedOp(locked: false))),
+                (l.layersShow, () => pick(const SetVisibleOp(visible: true))),
+                (l.layersHide, () => pick(const SetVisibleOp(visible: false))),
+                (l.layersLock, () => pick(const SetLockedOp(locked: true))),
+                (l.layersUnlock, () => pick(const SetLockedOp(locked: false))),
               ]),
-              _row(Icons.opacity, 'Opacity…', 'One opacity for every selected layer', () => pick(const OpacityOp())),
-              _row(Icons.gradient, 'Blend…', 'One blend mode for every selected layer', () => pick(const BlendOp())),
-              _row(Icons.restart_alt, 'Reset', 'Visible, unlocked, opacity 255, Normal', () => pick(const ResetLayersOp())),
-              _section('Name'),
-              _row(Icons.drive_file_rename_outline, 'Rename…', 'One name; {n} numbers them from the top', () => pick(const RenameLayersOp())),
-              _section('Content'),
-              _slot(lockNote ? (Icons.lock, '$lockedSelected selected ${lockedSelected == 1 ? 'layer is' : 'layers are'} locked — these refuse', Colors.amber) : null),
-              _slot(retainedBytes > kLayersRetainedWarnBytes ? (Icons.warning_amber_rounded, 'Undo will hold about ${_mb(retainedBytes)} MB', Colors.amber) : null),
-              _slot(canvasSquare ? null : (Icons.info_outline, 'Not square: a rotated overhang parks in the gutter (Move recovers it)', Colors.white54)),
+              _row(Icons.opacity, l.layersOpacityMenu, l.layersOpacitySub, () => pick(const OpacityOp())),
+              _row(Icons.gradient, l.layersBlendMenu, l.layersBlendSub, () => pick(const BlendOp())),
+              _row(Icons.restart_alt, l.layersReset, l.layersResetSub, () => pick(const ResetLayersOp())),
+              _section(l.commonNameLabel),
+              _row(Icons.drive_file_rename_outline, l.layersRenameMenu, l.layersRenameSub('{n}'), () => pick(const RenameLayersOp())),
+              _section(l.sectionContent),
+              _slot(lockNote ? (Icons.lock, l.layersLockedNote(lockedSelected), Colors.amber) : null),
+              _slot(retainedBytes > kLayersRetainedWarnBytes ? (Icons.warning_amber_rounded, l.batchUndoHolds(_mb(retainedBytes)), Colors.amber) : null),
+              _slot(canvasSquare ? null : (Icons.info_outline, l.batchNotSquare, Colors.white54)),
               _chips([
-                ('Flip H', lockNote ? null : () => pick(const FlipLayersOp(horizontal: true))),
-                ('Flip V', lockNote ? null : () => pick(const FlipLayersOp(horizontal: false))),
-                ('Rotate 90°', lockNote ? null : () => pick(const RotateLayersOp(1))),
+                (l.opFlipH, lockNote ? null : () => pick(const FlipLayersOp(horizontal: true))),
+                (l.opFlipV, lockNote ? null : () => pick(const FlipLayersOp(horizontal: false))),
+                (l.opRotate90, lockNote ? null : () => pick(const RotateLayersOp(1))),
                 ('180°', lockNote ? null : () => pick(const RotateLayersOp(2))),
                 ('270°', lockNote ? null : () => pick(const RotateLayersOp(3))),
-                ('Invert', lockNote ? null : () => pick(const InvertLayersOp())),
-                ('Clear', lockNote ? null : () => pick(const ClearLayersOp())),
+                (l.toolInvert, lockNote ? null : () => pick(const InvertLayersOp())),
+                (l.layersClear, lockNote ? null : () => pick(const ClearLayersOp())),
               ]),
-              _section('Across frames'),
-              _row(Icons.dynamic_feed, 'Copy to frames…', frameCount > 1 ? 'On top of each chosen frame\'s stack' : 'The animation has one frame; copies land on top of it', () => pick(const CopyToFramesOp())),
-              _section('Move group'),
-              _row(Icons.open_with, 'Use as Move group', 'Move these layers together with the Move tool', () => pick(const UseAsMoveGroupOp())),
+              _section(l.sectionAcrossFrames),
+              _row(Icons.dynamic_feed, l.layersCopyToFrames, frameCount > 1 ? l.layersCopyToFramesSub : l.layersCopyOneFrame, () => pick(const CopyToFramesOp())),
+              _section(l.layerMoveGroup),
+              _row(Icons.open_with, l.layersUseAsMoveGroup, l.layersUseAsMoveGroupSub, () => pick(const UseAsMoveGroupOp())),
               const SizedBox(height: 8),
             ]),
           ),
@@ -224,9 +225,10 @@ Widget _chips(List<(String, VoidCallback?)> items) => Padding(
       ]),
     );
 
-/// A fixed 20 px note line: text and color change, the height never does (no reflow).
+/// A fixed two-line note slot: text and color change, the height never does (no reflow). Two
+/// lines because one cut the "not square" note off on a phone, in English too.
 Widget _slot((IconData, String, Color)? note) => SizedBox(
-      height: 20,
+      height: 30,
       child: note == null
           ? const SizedBox.shrink()
           : Padding(
@@ -234,7 +236,7 @@ Widget _slot((IconData, String, Color)? note) => SizedBox(
               child: Row(children: [
                 Icon(note.$1, size: 14, color: note.$3),
                 const SizedBox(width: 6),
-                Expanded(child: Text(note.$2, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: note.$3))),
+                Expanded(child: Text(note.$2, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, height: 1.25, color: note.$3))),
               ]),
             ),
     );

@@ -5,9 +5,11 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 
+import '../blend_l10n.dart';
 import '../blend_modes.dart';
 import '../frames/frame_set.dart' show parseFrameRangeEntry, formatFrameSetHuman;
 import 'layer_model.dart';
@@ -24,15 +26,17 @@ Future<List<int>?> showLayerRangeDialog(BuildContext context, {required int laye
           if (parsed.indices != null) Navigator.pop(ctx, parsed.indices);
         }
         return AlertDialog(
-          title: const Text('Select layers'),
+          title: Text(ctx.l10n.layersSelectRangeTitle),
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             TextField(
               controller: ctrl,
               autofocus: true,
               decoration: InputDecoration(
                 hintText: '1-4, 9, 20-25',
-                helperText: 'Layer numbers and ranges, 1 (bottom) to $layerCount (top)',
+                helperText: ctx.l10n.layersRangeHelper(layerCount),
+                helperMaxLines: 3,
                 errorText: ctrl.text.trim().isEmpty ? null : parsed.error,
+                errorMaxLines: 3,
                 isDense: true,
               ),
               onChanged: (_) => setS(() {}),
@@ -40,8 +44,8 @@ Future<List<int>?> showLayerRangeDialog(BuildContext context, {required int laye
             ),
           ]),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(onPressed: parsed.indices == null ? null : submit, child: const Text('Select')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(ctx.l10n.commonCancel)),
+            FilledButton(onPressed: parsed.indices == null ? null : submit, child: Text(ctx.l10n.optSelect)),
           ],
         );
       });
@@ -59,7 +63,7 @@ Future<int?> showLayersOpacityDialog(BuildContext context, {required int selecte
       return StatefulBuilder(builder: (ctx, setS) {
         void submit() => Navigator.pop(ctx, value);
         return AlertDialog(
-          title: Text('Opacity of $selectedCount ${selectedCount == 1 ? 'layer' : 'layers'}'),
+          title: Text(ctx.l10n.layersOpacityTitle(selectedCount)),
           content: Row(children: [
             Expanded(
               child: Slider(
@@ -88,8 +92,8 @@ Future<int?> showLayersOpacityDialog(BuildContext context, {required int selecte
             ),
           ]),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(onPressed: submit, child: const Text('Apply')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(ctx.l10n.commonCancel)),
+            FilledButton(onPressed: submit, child: Text(ctx.l10n.commonApply)),
           ],
         );
       });
@@ -115,13 +119,18 @@ Future<String?> showLayersRenameDialog(BuildContext context, {required int selec
           if (ok) Navigator.pop(ctx, text.trim());
         }
         return AlertDialog(
-          title: Text('Rename $selectedCount ${selectedCount == 1 ? 'layer' : 'layers'}'),
+          title: Text(ctx.l10n.layersRenameTitle(selectedCount)),
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             TextField(
               controller: ctrl,
               autofocus: true,
               maxLength: kLayerNameMaxLength,
-              decoration: const InputDecoration(hintText: 'Sketch {n}', helperText: '{n} = 1, 2, 3… counting from the top', isDense: true),
+              decoration: InputDecoration(
+                hintText: ctx.l10n.layersRenameHint('{n}'),
+                helperText: ctx.l10n.layersRenameHelper('{n}'),
+                helperMaxLines: 3,
+                isDense: true,
+              ),
               onChanged: (_) => setS(() {}),
               onSubmitted: (_) => submit(),
             ),
@@ -132,8 +141,8 @@ Future<String?> showLayersRenameDialog(BuildContext context, {required int selec
             ),
           ]),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(onPressed: ok ? submit : null, child: const Text('Rename')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(ctx.l10n.commonCancel)),
+            FilledButton(onPressed: ok ? submit : null, child: Text(ctx.l10n.commonRename)),
           ],
         );
       });
@@ -154,25 +163,28 @@ Future<List<int>?> showCopyToFramesDialog(BuildContext context, {required int fr
           if (parsed.indices != null) Navigator.pop(ctx, parsed.indices);
         }
         return AlertDialog(
-          title: Text('Copy $selectedCount ${selectedCount == 1 ? 'layer' : 'layers'} to frames'),
+          scrollable: true,
+          title: Text(ctx.l10n.layersCopyTitle(selectedCount)),
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             TextField(
               controller: ctrl,
               autofocus: true,
               decoration: InputDecoration(
                 hintText: '1-12, 20',
-                helperText: 'Frame numbers and ranges, 1 to $frameCount; the copies land on top of each stack',
+                helperText: ctx.l10n.layersCopyHelper(frameCount),
+                helperMaxLines: 4,
                 errorText: ctrl.text.trim().isEmpty ? null : parsed.error,
+                errorMaxLines: 3,
                 isDense: true,
               ),
               onChanged: (_) => setS(() {}),
               onSubmitted: (_) => submit(),
             ),
             const SizedBox(height: 8),
-            Wrap(spacing: 6, children: [
-              ActionChip(label: const Text('All frames'), onPressed: () => setS(() => ctrl.text = frameCount == 1 ? '1' : '1-$frameCount')),
+            Wrap(spacing: 6, runSpacing: 4, children: [
+              ActionChip(label: Text(ctx.l10n.optAllFrames), onPressed: () => setS(() => ctrl.text = frameCount == 1 ? '1' : '1-$frameCount')),
               ActionChip(
-                label: const Text('Other frames'),
+                label: Text(ctx.l10n.layersOtherFrames),
                 onPressed: frameCount < 2
                     ? null
                     : () => setS(() => ctrl.text = formatFrameSetHuman([for (var i = 0; i < frameCount; i++) if (i != activeFrameIndex) i])),
@@ -180,8 +192,8 @@ Future<List<int>?> showCopyToFramesDialog(BuildContext context, {required int fr
             ]),
           ]),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(onPressed: parsed.indices == null ? null : submit, child: const Text('Copy')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(ctx.l10n.commonCancel)),
+            FilledButton(onPressed: parsed.indices == null ? null : submit, child: Text(ctx.l10n.commonCopy)),
           ],
         );
       });
@@ -202,19 +214,19 @@ Future<String?> showLayersBlendPicker(BuildContext context, {required int select
         constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * 0.8),
         child: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            ListTile(dense: true, title: Text('Blend of $selectedCount ${selectedCount == 1 ? 'layer' : 'layers'}', style: const TextStyle(fontWeight: FontWeight.bold))),
+            ListTile(dense: true, title: Text(ctx.l10n.layersBlendTitle(selectedCount), style: const TextStyle(fontWeight: FontWeight.bold))),
             const Divider(height: 1),
             for (final (label, modes) in kBlendGroups) ...[
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
-                child: Text(label.toUpperCase(), style: const TextStyle(fontSize: 11, letterSpacing: 1.2, color: Colors.white54)),
+                child: Text(blendGroupName(ctx.l10n, label).toUpperCase(), style: const TextStyle(fontSize: 11, letterSpacing: 1.2, color: Colors.white54)),
               ),
               for (final m in modes)
                 ListTile(
                   dense: true,
                   selected: m == current,
                   selectedTileColor: const Color(0x224080C0),
-                  title: Text(blendDisplayName(m)),
+                  title: Text(blendName(ctx.l10n, m)),
                   trailing: m == current ? const Icon(Icons.check, color: Color(0xFF4080C0)) : null,
                   onTap: () => Navigator.pop(ctx, m),
                 ),

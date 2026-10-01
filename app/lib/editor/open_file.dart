@@ -7,6 +7,8 @@
 // crops, or places — that is Import, into the current drawing. A raster larger than the canvas
 // cap therefore cannot Open and is refused toward Import (2026-09-03).
 
+import 'package:makapix_club/l10n/l10n.dart';
+
 /// Raster formats Open accepts — the same set the Import picker offers.
 const List<String> kOpenImageExtensions = ['png', 'gif', 'apng', 'webp', 'jpg', 'jpeg', 'bmp'];
 
@@ -50,6 +52,6 @@ String importedFormatFromFileName(String name) {
 /// points there.
 String? openRasterRefusal(int w, int h, {required int maxDim}) {
   if (w >= 1 && h >= 1 && w <= maxDim && h <= maxDim) return null;
-  if (w < 1 || h < 1) return "This image is empty and can't be opened.";
-  return '$w×$h is larger than the $maxDim×$maxDim maximum. Use Import image… to scale or crop it.';
+  if (w < 1 || h < 1) return appL10n.openEmptyImage;
+  return appL10n.openOverMax(w, h, maxDim);
 }

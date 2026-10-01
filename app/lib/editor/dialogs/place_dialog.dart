@@ -23,11 +23,20 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import 'crop_dialog.dart'
-    show CropView, NudgeArrows, ViewZoomControls, fitNoUpscale, kImportModeNative, nudgeKeyHandler, viewGestureHint;
+    show
+        CropView,
+        NudgeArrows,
+        PreviewStatusRow,
+        ViewZoomControls,
+        fitNoUpscale,
+        kImportModeNative,
+        nudgeKeyHandler,
+        viewGestureHint;
 import 'raster_preview.dart';
 
 /// The on-canvas size (canvas pixels) an import will have, mirroring the engine's placement math
@@ -155,13 +164,21 @@ class PlaceGeometry {
 /// How far an image hangs past each edge of a rectangle, in whole canvas px.
 typedef Overhang = ({int left, int top, int right, int bottom});
 
-/// "32 px left, 8 px top": the non-zero edges of an [Overhang] in reading order; empty when none.
-String overhangText(Overhang e) => [
-      if (e.left > 0) '${e.left} px left',
-      if (e.top > 0) '${e.top} px top',
-      if (e.right > 0) '${e.right} px right',
-      if (e.bottom > 0) '${e.bottom} px bottom',
-    ].join(', ');
+/// "←32 ↑8 px": the non-zero edges of an [Overhang] in reading order; empty when none.
+///
+/// Arrows, not words: with all four edges named in words ("64 px left, 64 px top, …") one
+/// sentence ran past a phone's width and the two-line slot cut the second one off, in English
+/// too — and an oversize import starts out hanging past all four edges. The arrows read the
+/// same in every language.
+String overhangText(Overhang e) {
+  final parts = [
+    if (e.left > 0) '←${e.left}',
+    if (e.top > 0) '↑${e.top}',
+    if (e.right > 0) '→${e.right}',
+    if (e.bottom > 0) '↓${e.bottom}',
+  ];
+  return parts.isEmpty ? '' : '${parts.join(' ')} px'; // l10n-ignore: unit
+}
 
 class PlacePage extends StatefulWidget {
   const PlacePage({
@@ -214,7 +231,7 @@ class _PlacePageState extends State<PlacePage> with SingleTickerProviderStateMix
   late final PlaceGeometry _geo;
   late final CropView _view;
   late final Ticker _ticker;
-  final FocusNode _focus = FocusNode(debugLabel: 'PlacePage');
+  final FocusNode _focus = FocusNode(debugLabel: 'PlacePage'); // l10n-ignore: debug label
   int _current = 0;
   bool _playing = false;
   Duration _last = Duration.zero;
@@ -369,7 +386,7 @@ class _PlacePageState extends State<PlacePage> with SingleTickerProviderStateMix
     final v = await showDialog<int>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('$label (canvas px)'),
+        title: Text(ctx.l10n.fieldCanvasPixels(label)),
         content: TextField(
           controller: ctrl,
           autofocus: true,
@@ -378,8 +395,10 @@ class _PlacePageState extends State<PlacePage> with SingleTickerProviderStateMix
           onSubmitted: (t) => Navigator.pop(ctx, int.tryParse(t.trim())),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, int.tryParse(ctrl.text.trim())), child: const Text('Set')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(ctx.l10n.commonCancel)),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, int.tryParse(ctrl.text.trim())),
+              child: Text(ctx.l10n.commonSet)),
         ],
       ),
     );
@@ -422,21 +441,25 @@ class _PlacePageState extends State<PlacePage> with SingleTickerProviderStateMix
   /// Where the pixels go: on the canvas, parked off-canvas, or dropped beyond storage.
   Widget _placementSlot() {
     if (_geo.nothingKept) {
-      return _slot(Icons.block, 'Entirely beyond the storage area. Nothing would land.', Colors.amber, lines: 2);
+      return _slot(Icons.block, context.l10n.placeNothingKept, Colors.amber, lines: 2);
     }
+    final l10n = context.l10n;
     // Per-edge overhangs (user decision 2026-09-15), one line each in the two-line slot.
     final parked = overhangText(_geo.parkedEdges);
     final dropped = overhangText(_geo.droppedEdges);
     if (dropped.isNotEmpty) {
-      final beyond = widget.gutterW > 0 || widget.gutterH > 0 ? 'storage' : 'the canvas';
-      final lines = [if (parked.isNotEmpty) 'Parked off-canvas: $parked.', 'Dropped beyond $beyond: $dropped.'];
+      final hasGutter = widget.gutterW > 0 || widget.gutterH > 0;
+      final lines = [
+        if (parked.isNotEmpty) l10n.placeParked(parked),
+        hasGutter ? l10n.placeDroppedStorage(dropped) : l10n.placeDroppedCanvas(dropped),
+      ];
       return _slot(Icons.warning_amber_rounded, lines.join('\n'), Colors.amber, lines: 2);
     }
     if (parked.isNotEmpty) {
-      return _slot(Icons.open_in_full, 'Parked off-canvas: $parked (the Move tool and the Overscan view reach it).',
+      return _slot(Icons.open_in_full, '${l10n.placeParked(parked)}\n${l10n.placeReachHint}',
           Colors.white60, lines: 2);
     }
-    return _slot(Icons.check_circle_outline, 'Fits on the canvas.', Colors.white60, lines: 2);
+    return _slot(Icons.check_circle_outline, l10n.placeFits, Colors.white60, lines: 2);
   }
 
   /// The memory note (user decision 2026-09-09: a warning only — the engine's budget gate stays
@@ -444,16 +467,21 @@ class _PlacePageState extends State<PlacePage> with SingleTickerProviderStateMix
   Widget _memorySlot() {
     final p = widget.preview;
     final frames = p.sourceFrames;
-    if (!p.loaded || frames <= 0) return _slot(Icons.memory, 'Memory: estimating…', Colors.white38);
+    final l10n = context.l10n;
+    if (!p.loaded || frames <= 0) {
+      return _slot(Icons.memory, l10n.placeMemoryEstimating, Colors.white38, lines: 2);
+    }
     final est = importBytesEstimate(frames: frames, kept: _geo.keptRect);
     final over = importMayExceedBudget(estimate: est, budgetedBytes: widget.memBudgetedBytes, hardBudget: widget.memHardBudget);
     final free = math.max(0, widget.memHardBudget - widget.memBudgetedBytes);
     final text = widget.memHardBudget <= 0
-        ? 'Adds up to ~${_mb(est)} MB ($frames ${frames == 1 ? 'frame' : 'frames'}).'
+        ? l10n.placeMemoryFrames(_mb(est), frames)
         : over
-            ? 'Adds up to ~${_mb(est)} MB, over the ${_mb(free)} MB left — the import may be refused.'
-            : 'Adds up to ~${_mb(est)} MB of the ${_mb(free)} MB left.';
-    return _slot(over ? Icons.warning_amber_rounded : Icons.memory, text, over ? Colors.amber : Colors.white60);
+            ? l10n.placeMemoryOver(_mb(est), _mb(free))
+            : l10n.placeMemoryOf(_mb(est), _mb(free));
+    // Two lines: the warning sentence is longer than a phone's width in every language.
+    return _slot(over ? Icons.warning_amber_rounded : Icons.memory, text, over ? Colors.amber : Colors.white60,
+        lines: 2);
   }
 
   @override
@@ -465,15 +493,15 @@ class _PlacePageState extends State<PlacePage> with SingleTickerProviderStateMix
       onKeyEvent: _onKey,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Place'),
+          title: Text(context.l10n.placeTitle),
           actions: [
             IconButton(
-              tooltip: 'Fit to screen',
+              tooltip: context.l10n.viewFit,
               icon: const Icon(Icons.fit_screen),
               onPressed: _view.isHome ? null : () => setState(_view.fit),
             ),
             IconButton(
-              tooltip: 'Center the import',
+              tooltip: context.l10n.placeCenter,
               icon: const Icon(Icons.center_focus_strong),
               onPressed: () => setState(() {
                 _dragging = false;
@@ -485,7 +513,7 @@ class _PlacePageState extends State<PlacePage> with SingleTickerProviderStateMix
         body: Column(children: [
           Expanded(
             child: p.loadError
-                ? const Center(child: Text('Could not decode this image.'))
+                ? Center(child: Text(context.l10n.previewDecodeFailed))
                 : !p.loaded
                     ? const Center(child: CircularProgressIndicator())
                     : LayoutBuilder(builder: (ctx, cons) {
@@ -532,44 +560,49 @@ class _PlacePageState extends State<PlacePage> with SingleTickerProviderStateMix
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                IconButton(
-                  icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
-                  onPressed: p.animated ? _togglePlay : null,
-                ),
-                Text(p.animated ? 'Frame ${_current + 1} / ${p.frames.length}' : 'Static',
-                    style: const TextStyle(fontSize: 13)),
-                if (p.truncated)
-                  const Padding(
-                    padding: EdgeInsets.only(left: 8),
-                    // Short (2026-09-15: the long sentence was cut off next to the zoom cluster
-                    // on a phone); the tooltip carries the sentence.
-                    child: Tooltip(
-                      message: 'Preview truncated: the full animation still imports.',
-                      child: Text('(preview cut)', style: TextStyle(fontSize: 11, color: Colors.white54)),
-                    ),
+              PreviewStatusRow(
+                transport: [
+                  IconButton(
+                    icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
+                    onPressed: p.animated ? _togglePlay : null,
                   ),
-                const Spacer(),
-                ViewZoomControls(view: _view, onChanged: () => setState(() {})),
-              ]),
-              viewGestureHint('moves the import'),
+                ],
+                preview: p,
+                current: _current,
+                zoom: ViewZoomControls(view: _view, onChanged: () => setState(() {})),
+              ),
+              viewGestureHint(context.l10n.viewHintPlace),
               const SizedBox(height: 4),
               Row(children: [
-                ActionChip(label: Text('X ${_geo.x}'), onPressed: () => _editField('X', _geo.x, (v) => _geo.x = v)),
+                // Scales down a few pixels when the chips and the arrows do not fit side by side:
+                // with negative three-digit coordinates they overflowed a 320 px phone.
+                Expanded(
+                  child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: AlignmentDirectional.centerStart,
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      ActionChip(label: Text('X ${_geo.x}'), onPressed: () => _editField('X', _geo.x, (v) => _geo.x = v)), // l10n-ignore: axis letter
+                      const SizedBox(width: 6),
+                      ActionChip(label: Text('Y ${_geo.y}'), onPressed: () => _editField('Y', _geo.y, (v) => _geo.y = v)), // l10n-ignore: axis letter
+                    ]),
+                  ),
+                  ),
+                ),
                 const SizedBox(width: 6),
-                ActionChip(label: Text('Y ${_geo.y}'), onPressed: () => _editField('Y', _geo.y, (v) => _geo.y = v)),
-                const Spacer(),
                 NudgeArrows(onNudge: _nudge),
               ]),
               const SizedBox(height: 6),
+              // Two lines, fixed: the sentence is wider than a phone in every language.
               SizedBox(
-                height: 18,
+                height: 34,
                 child: Text(
-                  'Import ${_geo.w} × ${_geo.h} px at (${_geo.x}, ${_geo.y}) on the ${widget.canvasW}×${widget.canvasH} canvas. '
-                  'Backdrop: frame ${widget.startFrame + 1}.',
-                  maxLines: 1,
+                  context.l10n.placeSummary(_geo.w, _geo.h, _geo.x, _geo.y, widget.canvasW,
+                      widget.canvasH, widget.startFrame + 1),
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12, color: Colors.white60),
+                  style: const TextStyle(fontSize: 12, height: 1.3, color: Colors.white60),
                 ),
               ),
               _placementSlot(),
@@ -581,11 +614,11 @@ class _PlacePageState extends State<PlacePage> with SingleTickerProviderStateMix
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Back')),
+              TextButton(onPressed: () => Navigator.pop(context), child: Text(context.l10n.commonBack)),
               const SizedBox(width: 8),
               FilledButton(
                 onPressed: p.loaded && !_geo.nothingKept ? () => Navigator.pop(context, (_geo.x, _geo.y)) : null,
-                child: const Text('Import'),
+                child: Text(context.l10n.importAction),
               ),
             ]),
           ),

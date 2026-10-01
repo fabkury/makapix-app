@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/engine_ffi.dart';
 
@@ -149,14 +150,14 @@ class _DrawingLibraryGridState extends State<DrawingLibraryGrid> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Delete "${m.title}"?'),
-        content: const Text('This permanently removes the drawing from this device.'),
+        title: Text(ctx.l10n.drawingDeleteTitle(m.title)),
+        content: Text(ctx.l10n.drawingDeleteBody),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.commonCancel)),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            child: Text(ctx.l10n.commonDelete),
           ),
         ],
       ),
@@ -191,11 +192,11 @@ class _DrawingLibraryGridState extends State<DrawingLibraryGrid> {
           children: [
             const Icon(Icons.brush_outlined, size: 48, color: Colors.white24),
             const SizedBox(height: 12),
-            const Text('No drawings yet', style: TextStyle(color: Colors.white54)),
+            Text(context.l10n.galleryEmpty, style: const TextStyle(color: Colors.white54)),
             const SizedBox(height: 12),
             FilledButton.icon(
               icon: const Icon(Icons.add),
-              label: const Text('New drawing'),
+              label: Text(context.l10n.galleryNew),
               onPressed: widget.onNew,
             ),
           ],
@@ -235,7 +236,8 @@ class _DrawingLibraryGridState extends State<DrawingLibraryGrid> {
                           color: const Color(0xCC30A050),
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: const Text('Open', style: TextStyle(fontSize: 10, color: Colors.white)),
+                        child: Text(context.l10n.galleryOpenBadge,
+                            style: const TextStyle(fontSize: 10, color: Colors.white)),
                       ),
                     ),
                   Positioned(
@@ -247,10 +249,11 @@ class _DrawingLibraryGridState extends State<DrawingLibraryGrid> {
                         if (v == 'rename') _rename(m);
                         if (v == 'delete') _delete(m);
                       },
-                      itemBuilder: (_) => [
-                        const PopupMenuItem(value: 'rename', child: Text('Rename')),
+                      itemBuilder: (ctx) => [
+                        PopupMenuItem(value: 'rename', child: Text(ctx.l10n.commonRename)),
                         // The open drawing can't be deleted from here (autosave would recreate it).
-                        if (!isCurrent) const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                        if (!isCurrent)
+                          PopupMenuItem(value: 'delete', child: Text(ctx.l10n.commonDelete)),
                       ],
                     ),
                   ),
@@ -260,18 +263,19 @@ class _DrawingLibraryGridState extends State<DrawingLibraryGrid> {
           ),
           const SizedBox(height: 4),
           Text(m.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
-          Text('${m.width}×${m.height} · ${_ago(m.updatedAt)}',
+          Text('${m.width}×${m.height} · ${_ago(context.l10n, m.updatedAt)}',
               style: const TextStyle(fontSize: 11, color: Colors.white38)),
         ],
       ),
     );
   }
 
-  static String _ago(DateTime t) {
+  /// A compact age, in the same words the Club uses ("5m", "3h", "2d").
+  static String _ago(AppLocalizations l, DateTime t) {
     final d = DateTime.now().difference(t);
-    if (d.inMinutes < 1) return 'just now';
-    if (d.inMinutes < 60) return '${d.inMinutes}m ago';
-    if (d.inHours < 24) return '${d.inHours}h ago';
-    return '${d.inDays}d ago';
+    if (d.inMinutes < 1) return l.timeAgoNow;
+    if (d.inMinutes < 60) return l.timeAgoMinutes(d.inMinutes);
+    if (d.inHours < 24) return l.timeAgoHours(d.inHours);
+    return l.timeAgoDays(d.inDays);
   }
 }

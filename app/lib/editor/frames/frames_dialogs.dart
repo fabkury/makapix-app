@@ -4,6 +4,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'frame_set.dart';
 
@@ -19,15 +20,17 @@ Future<List<int>?> showFrameRangeDialog(BuildContext context, {required int fram
           if (parsed.indices != null) Navigator.pop(ctx, parsed.indices);
         }
         return AlertDialog(
-          title: const Text('Select frames'),
+          title: Text(ctx.l10n.framesSelectRangeTitle),
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             TextField(
               controller: ctrl,
               autofocus: true,
               decoration: InputDecoration(
                 hintText: '1-12, 20, 30-40',
-                helperText: 'Frame numbers and ranges, 1 to $frameCount',
+                helperText: ctx.l10n.framesRangeHelper(frameCount),
+                helperMaxLines: 3,
                 errorText: ctrl.text.trim().isEmpty ? null : parsed.error,
+                errorMaxLines: 3,
                 isDense: true,
               ),
               onChanged: (_) => setS(() {}),
@@ -35,8 +38,8 @@ Future<List<int>?> showFrameRangeDialog(BuildContext context, {required int fram
             ),
           ]),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(onPressed: parsed.indices == null ? null : submit, child: const Text('Select')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(ctx.l10n.commonCancel)),
+            FilledButton(onPressed: parsed.indices == null ? null : submit, child: Text(ctx.l10n.optSelect)),
           ],
         );
       });
@@ -54,23 +57,28 @@ Future<({int n, int offset, bool withinSelection})?> showEveryNthDialog(BuildCon
       var within = hasSelection;
       return StatefulBuilder(builder: (ctx, setS) {
         void submit() => Navigator.pop(ctx, (n: n, offset: offset - 1, withinSelection: within));
+        // Two labeled fields, one per line: a sentence with the fields inside it ("Every [2]
+        // frames, starting at frame [1]") has no word order that works in every language.
+        Widget field(String label, Widget input) => Row(children: [
+              Expanded(child: Text(label)),
+              const SizedBox(width: 8),
+              input,
+            ]);
         return AlertDialog(
-          title: const Text('Every Nth frame'),
+          scrollable: true,
+          title: Text(ctx.l10n.framesEveryNthTitle),
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-              const Text('Every'),
-              _IntField(value: n, min: 1, max: 1024, onChanged: (v) => setS(() => n = v)),
-              const Text('frames, starting at frame'),
-              _IntField(value: offset, min: 1, max: 1024, onChanged: (v) => setS(() => offset = v)),
-            ]),
+            field(ctx.l10n.framesNthInterval, _IntField(value: n, min: 1, max: 1024, onChanged: (v) => setS(() => n = v))),
+            const SizedBox(height: 8),
+            field(ctx.l10n.framesNthFirst, _IntField(value: offset, min: 1, max: 1024, onChanged: (v) => setS(() => offset = v))),
             const SizedBox(height: 12),
             FittedBox(
               fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
+              alignment: AlignmentDirectional.centerStart,
               child: SegmentedButton<bool>(
                 segments: [
-                  ButtonSegment(value: true, label: const Text('Within selection'), enabled: hasSelection),
-                  const ButtonSegment(value: false, label: Text('Whole roll')),
+                  ButtonSegment(value: true, label: Text(ctx.l10n.framesNthWithin), enabled: hasSelection),
+                  ButtonSegment(value: false, label: Text(ctx.l10n.framesNthWhole)),
                 ],
                 selected: {within},
                 onSelectionChanged: (s) => setS(() => within = s.first),
@@ -78,8 +86,8 @@ Future<({int n, int offset, bool withinSelection})?> showEveryNthDialog(BuildCon
             ),
           ]),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(onPressed: submit, child: const Text('Select')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(ctx.l10n.commonCancel)),
+            FilledButton(onPressed: submit, child: Text(ctx.l10n.optSelect)),
           ],
         );
       });
@@ -100,25 +108,31 @@ Future<int?> showShiftByDialog(BuildContext context, {required List<int> indices
           if (k != 0) Navigator.pop(ctx, k);
         }
         return AlertDialog(
-          title: const Text('Shift frames by'),
+          scrollable: true,
+          title: Text(ctx.l10n.framesShiftTitle),
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               _IntField(value: delta, min: -1024, max: 1024, onChanged: (v) => setS(() => delta = v), onSubmitted: submit),
               const SizedBox(width: 8),
-              const Text('frames (negative = earlier)'),
+              Expanded(child: Text(ctx.l10n.framesShiftHint, style: const TextStyle(fontSize: 12, color: Colors.white70))),
             ]),
             const SizedBox(height: 8),
+            // Two lines, fixed: the text changes while typing and must not move the buttons.
             SizedBox(
-              height: 20,
+              height: 34,
               child: Text(
-                k == 0 ? 'No room to move that way' : (k == delta ? 'Moves by $k' : 'Moves by $k (clamped from $delta)'),
-                style: TextStyle(fontSize: 12, color: k == 0 ? Colors.amber : Colors.white70),
+                k == 0
+                    ? ctx.l10n.framesShiftNoRoom
+                    : (k == delta ? ctx.l10n.framesShiftMoves(k) : ctx.l10n.framesShiftClamped(k, delta)),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, height: 1.3, color: k == 0 ? Colors.amber : Colors.white70),
               ),
             ),
           ]),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(onPressed: k == 0 ? null : submit, child: const Text('Shift')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(ctx.l10n.commonCancel)),
+            FilledButton(onPressed: k == 0 ? null : submit, child: Text(ctx.l10n.barShift)),
           ],
         );
       });
@@ -139,7 +153,7 @@ Future<int?> showScaleFactorDialog(BuildContext context) {
           if (ok) Navigator.pop(ctx, (v * 1000).round());
         }
         return AlertDialog(
-          title: const Text('Scale durations'),
+          title: Text(ctx.l10n.framesScaleTitle),
           content: Row(children: [
             const Text('×'),
             const SizedBox(width: 8),
@@ -150,15 +164,15 @@ Future<int?> showScaleFactorDialog(BuildContext context) {
                 autofocus: true,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
-                decoration: InputDecoration(isDense: true, errorText: ok || ctrl.text.isEmpty ? null : '0.1 to 10'),
+                decoration: InputDecoration(isDense: true, errorText: ok || ctrl.text.isEmpty ? null : ctx.l10n.framesScaleRange),
                 onChanged: (_) => setS(() {}),
                 onSubmitted: (_) => submit(),
               ),
             ),
           ]),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(onPressed: ok ? submit : null, child: const Text('Scale')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(ctx.l10n.commonCancel)),
+            FilledButton(onPressed: ok ? submit : null, child: Text(ctx.l10n.framesScaleAction)),
           ],
         );
       });

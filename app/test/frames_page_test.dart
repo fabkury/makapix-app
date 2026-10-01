@@ -353,8 +353,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Hide layer named…'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('2 of 3 selected frames have a layer named "Shading"'), findsOneWidget);
-      expect(find.textContaining('3 of 3 selected frames have a layer named "Layer 1"'), findsOneWidget);
+      expect(find.text('In 2 of 3 selected frames'), findsOneWidget, reason: 'under "Shading"');
+      expect(find.text('In 3 of 3 selected frames'), findsOneWidget, reason: 'under "Layer 1"');
       await tester.tap(find.text('Shading'));
       await tester.pumpAndSettle();
       expect(host.scripts, ['SetLayersVisibleNamed(0-2, 0, Shading)']);
@@ -372,7 +372,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Set duration…'));
       await tester.pumpAndSettle();
-      expect(find.text('2 frames — duration'), findsOneWidget);
+      expect(find.text('Duration of 2 frames'), findsOneWidget);
       await tester.enterText(find.byType(TextField), '10');
       await tester.pump();
       await tester.tap(find.text('Apply to 2 frames'));

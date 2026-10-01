@@ -7,6 +7,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import '../tap_again.dart';
 
@@ -63,16 +64,21 @@ class FramesActionBar extends StatelessWidget {
             Expanded(
               flex: _kDeleteFlex,
               child: Center(
-                child: TapAgainDeleteButton(
-                  label: 'Delete',
-                  armedText: 'Tap again',
+                // Scaled down when the word for Delete is wider than the slot (it is, on a
+                // phone, in five languages).
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: TapAgainDeleteButton(
+                  label: context.l10n.commonDelete,
+                  armedText: context.l10n.tapAgainShort,
                   arm: deleteArm,
                   armKey: armKey,
                   onConfirmed: canDelete ? onDelete : null,
                 ),
+                ),
               ),
             ),
-            _BarButton(icon: Icons.control_point_duplicate, label: 'Duplicate', onPressed: any ? onDuplicate : null, scale: scale),
+            _BarButton(icon: Icons.control_point_duplicate, label: context.l10n.commonDuplicate, onPressed: any ? onDuplicate : null, scale: scale),
             _ShiftGroup(
               scale: scale,
               enabled: any,
@@ -80,7 +86,7 @@ class FramesActionBar extends StatelessWidget {
               canRight: any && canNudgeRight,
               onNudge: onNudge,
             ),
-            _BarButton(icon: Icons.more_horiz, label: 'More', onPressed: any ? onMore : null, scale: scale),
+            _BarButton(icon: Icons.more_horiz, label: context.l10n.barMore, onPressed: any ? onMore : null, scale: scale),
           ]),
         ),
       ),
@@ -100,7 +106,11 @@ Widget _iconOverLabel({required Widget icon, required Widget label, required dou
           child: OverflowBox(maxHeight: 32 * scale, child: icon), // width stays the parent's (the chevron row fills it)
         ),
         const SizedBox(height: 2),
-        label,
+        // One line, scaled down when a translation is wider than its slot.
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: FittedBox(fit: BoxFit.scaleDown, child: label),
+        ),
       ],
     );
 
@@ -149,13 +159,13 @@ class _ShiftGroup extends StatelessWidget {
       flex: 2 * _kItemFlex,
       child: Stack(fit: StackFit.expand, children: [
         Row(children: [
-          _HoldRepeatTarget(label: 'Shift left', enabled: canLeft, onFire: () => onNudge(-1)),
-          _HoldRepeatTarget(label: 'Shift right', enabled: canRight, onFire: () => onNudge(1)),
+          _HoldRepeatTarget(label: context.l10n.framesShiftLeft, enabled: canLeft, onFire: () => onNudge(-1)),
+          _HoldRepeatTarget(label: context.l10n.framesShiftRight, enabled: canRight, onFire: () => onNudge(1)),
         ]),
         IgnorePointer(
           child: _iconOverLabel(
             icon: Row(children: [chevron(Icons.chevron_left, canLeft), chevron(Icons.chevron_right, canRight)]),
-            label: Text('Shift', style: _labelStyle(scale, labelColor)),
+            label: Text(context.l10n.barShift, style: _labelStyle(scale, labelColor)),
             scale: scale,
           ),
         ),

@@ -97,7 +97,7 @@ class FrameTile extends StatelessWidget {
                   style: TextStyle(fontSize: 10 * scale, color: active ? Colors.white : Colors.white70, fontWeight: FontWeight.w600)),
               const SizedBox(width: 4),
               Expanded(
-                child: Text('${durationMs.toStringAsFixed(durationMs == durationMs.roundToDouble() ? 0 : 1)} ms',
+                child: Text('${durationMs.toStringAsFixed(durationMs == durationMs.roundToDouble() ? 0 : 1)} ms', // l10n-ignore: unit
                     textAlign: TextAlign.right,
                     maxLines: 1,
                     softWrap: false,

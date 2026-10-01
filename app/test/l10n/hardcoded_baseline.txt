@@ -2,49 +2,24 @@
 # file. test/l10n/hardcoded_strings_test.dart fails if a file has MORE than its number (a
 # new hardcoded string) or FEWER (strings were extracted: re-pin with
 # `dart run tool/l10n/scan.dart --write-baseline`). Done when this file is empty.
-# total 877 in 45 files
-99 lib/editor/editor_page.fileio.dart
+# total 363 in 20 files
 68 lib/editor/editor_page.engine.dart
 67 lib/editor/keyboard/commands.dart
-61 lib/editor/layers/layers_more_sheet.dart
-44 lib/editor/frames/frames_more_sheet.dart
 44 lib/editor/palette_page.dart
-41 lib/editor/dialogs/crop_dialog.dart
-38 lib/editor/blend_modes.dart
 38 lib/editor/patterns/gradient_dither.dart
-37 lib/editor/frames/frames_page.dart
-34 lib/editor/layers/layers_page.dart
-30 lib/editor/dialogs/place_dialog.dart
-27 lib/editor/layers/layers_dialogs.dart
 23 lib/editor/artwork_colors_page.dart
-22 lib/editor/frames/frames_dialogs.dart
 22 lib/editor/patterns/patterns_catalog.dart
 21 lib/editor/editor_page.replay.dart
 18 lib/editor/keyboard/cheat_sheet.dart
 14 lib/editor/patterns/patterns_page.dart
-13 lib/editor/editor_page.persistence.dart
-13 lib/editor/gallery/drawing_library_grid.dart
-13 lib/editor/layers/layer_model.dart
 12 lib/editor/keyboard/chords.dart
 8 lib/editor/replay/replay_page.dart
-7 lib/editor/frames/frames_action_bar.dart
-7 lib/editor/layers/layers_action_bar.dart
 5 lib/editor/dialogs/color_picker_dialog.dart
 5 lib/editor/palette_io.dart
 5 lib/editor/replay/journal_format.dart
-4 lib/editor/dialogs/duration_dialog.dart
-4 lib/editor/dialogs/rename_drawing_dialog.dart
-4 lib/editor/frames/frame_set.dart
-4 lib/editor/frames/layer_name_picker.dart
-4 lib/editor/layers/layers_select_sheet.dart
 4 lib/editor/replay/replay_host.dart
 3 lib/editor/widgets/painters.dart
-2 lib/editor/gallery/gallery_page.dart
-2 lib/editor/layers/layer_row.dart
-2 lib/editor/open_file.dart
 2 lib/editor/replay/action_runner.dart
 2 lib/editor/replay/timelapse_plan.dart
-1 lib/editor/frames/frame_tile.dart
-1 lib/editor/keyboard/dispatcher.dart
 1 lib/editor/replay/timelapse_export.dart
 1 lib/editor/tap_again.dart

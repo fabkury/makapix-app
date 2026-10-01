@@ -83,6 +83,10 @@ const _nonUiCalls = {
   '_send', '_act',
   // …and the calls that take a tool id (the engine's name for a tool, never shown).
   '_doToolAction', '_actionEnabled', '_actionActive', '_selectTool',
+  // The batch verbs of the Frames and Layers pages: the first argument is the verb's name.
+  'frameSetDsl', 'layerSetDsl',
+  // A focus node's debugLabel.
+  'FocusNode',
 };
 
 final _letters = RegExp(r'\p{L}{2,}', unicode: true);

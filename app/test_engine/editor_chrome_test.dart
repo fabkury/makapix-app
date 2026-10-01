@@ -1,11 +1,14 @@
 // T4-E (docs/i18n/TESTING.md): the REAL editor's chrome in every language — the main screen,
-// the ☰ menu and its five submenus, the Show/hide tools sheet, the New document dialog, and
-// the layer and frame sheets.
+// the ☰ menu and its five submenus, the Show/hide tools sheet, the New document dialog, the
+// layer and frame sheets, the blend mode list, the duration and Resize canvas dialogs, the
+// rename dialog, My Drawings, and the keep-or-discard question.
 //
 // One mount per language and size; the walk through the menus happens inside it, and every
 // stop is checked: nothing overflows, no text is cut off, nothing is left untranslated.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'package:makapix_club/editor/gallery/gallery_page.dart';
 
 import 'editor_harness.dart';
 
@@ -43,7 +46,6 @@ void main() {
             _ => leftoverEnglish(tester, lang),
           };
           for (final t in left) {
-            if (t == 'Normal') continue; // blend mode names: batch E5
             problems.add('$where: not translated: "$t"');
           }
           if (size.key == 'phone') {
@@ -112,12 +114,90 @@ void main() {
         await tester.longPress(find.byIcon(Icons.visibility).first);
         await settleReal(tester, rounds: 9);
         await check('layer sheet');
+        // Its blend mode list (the row shows the current mode, Normal).
+        await tester.tap(find.text(l.blendNormal).last);
+        await settleReal(tester, rounds: 9);
+        await check('layer sheet, blend list');
+        await dismiss();
         await dismiss();
 
         await tester.longPress(find.text('1').first);
         await settleReal(tester, rounds: 9);
         await check('frame sheet');
         await dismiss();
+
+        // The frame sheet's duration dialog.
+        await tester.longPress(find.text('1').first);
+        await settleReal(tester, rounds: 9);
+        await tester.tap(find.byIcon(Icons.timer_outlined));
+        await settleReal(tester, rounds: 9);
+        await check('frame duration');
+        await dismiss();
+
+        // Canvas → Resize canvas…, then with a size the Club does not accept.
+        await openMenu();
+        await tester.tap(find.byIcon(Icons.crop_rotate).last);
+        await settleReal(tester, rounds: 9);
+        await tester.tap(find.byIcon(Icons.aspect_ratio).last); // the Resize tool's tile wears it too
+        await settleReal(tester, rounds: 9);
+        await check('resize canvas');
+        await tester.tap(find.text('32²'));
+        await tester.pump();
+        await tester.tap(find.byIcon(Icons.north_west));
+        await check('resize canvas, anchored');
+        await dismiss();
+
+        // Rename drawing (the first row of the menu).
+        await openMenu();
+        await tester.tap(find.byIcon(Icons.edit).last);
+        await settleReal(tester, rounds: 9);
+        await check('rename drawing');
+        await dismiss();
+
+        // File → My Drawings, its per-drawing menu, and back.
+        await openMenu();
+        await tester.tap(find.byIcon(Icons.folder_outlined).last);
+        await settleReal(tester, rounds: 9);
+        await tester.tap(find.byIcon(Icons.collections_bookmark_outlined));
+        await settleReal(tester, rounds: 12);
+        await check('my drawings');
+        await tester.tap(find.byIcon(Icons.more_vert).first);
+        await settleReal(tester, rounds: 9);
+        await check('my drawings, drawing menu');
+        await dismiss();
+        // Leave My Drawings the way the system back gesture does.
+        tester.state<NavigatorState>(find.byType(Navigator).first).pop();
+        await settleReal(tester, rounds: 12);
+        expect(find.byType(GalleryPage), findsNothing);
+
+        // Add a layer so the drawing is worth keeping (a one-layer, never-painted document is
+        // replaced without a question), then File → New → Create: the keep-or-discard
+        // question, and the second confirmation behind Discard.
+        await tester.longPress(find.byIcon(Icons.visibility).first);
+        await settleReal(tester, rounds: 9);
+        await tester.ensureVisible(find.byIcon(Icons.add_box_outlined).last);
+        await tester.tap(find.byIcon(Icons.add_box_outlined).last);
+        await settleReal(tester, rounds: 3);
+        await dismiss();
+        await openMenu();
+        await tester.tap(find.byIcon(Icons.folder_outlined).last);
+        await settleReal(tester, rounds: 9);
+        await tester.tap(find.byIcon(Icons.insert_drive_file_outlined));
+        await settleReal(tester, rounds: 9);
+        await tester.tap(find.descendant(
+            of: find.byType(AlertDialog), matching: find.text(l.commonCreate)));
+        await settleReal(tester, rounds: 9);
+        if (find.text(l.outgoingKeep).evaluate().isNotEmpty) {
+          await check('keep or discard');
+          await tester.tap(find.text(l.outgoingDiscard));
+          await settleReal(tester, rounds: 9);
+          await check('discard, are you sure');
+          await tester.tap(find.descendant(
+              of: find.byType(AlertDialog), matching: find.text(l.commonCancel)));
+          await settleReal(tester, rounds: 9);
+        } else {
+          problems.add('the keep-or-discard dialog did not open');
+        }
 
         await closeEditor(tester);
         expect(problems, isEmpty);

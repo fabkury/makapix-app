@@ -18,14 +18,14 @@ are the acceptance test.
 | Phase | What | Status |
 |---|---|---|
 | L0 | Infrastructure, test harness, pilot (Settings, language picker, tool names) | **done 2026-10-01** |
-| L1 | Club pillar: extract + translate + sweep, batch by batch | Club done (C1–C9); editor (L2) next |
-| L2 | Editor pillar: extract + translate + sweep, batch by batch | not started (tool names done in L0) |
+| L1 | Club pillar: extract + translate + sweep, batch by batch | **done 2026-10-01** (C1–C9) |
+| L2 | Editor pillar: extract + translate + sweep, batch by batch | in progress: E0–E4 and E8 done; E5, E6, E7 left |
 | L3 | Independent translation review (one agent per language), fixes, layout hardening | not started |
 | L4 | Seams and periphery, then flip `kTranslationsShipped` | not started |
 
 **Progress number:** the total on line 5 of `app/test/l10n/hardcoded_baseline.txt` — the
 hardcoded strings the scanner still finds. 2,683 after L0 (scanner as tightened in C1); 2,516
-after C1; 2,334 after C2; 2,253 after C3; 2,125 after C4; 2,000 after C5; 1,856 after C6; 1,709 after C7; 1,654 after C8; 1,598 after C9 (all in `lib/editor`); 1,048 after E1 + E8; 877 after E2. Zero means L1 + L2 are done.
+after C1; 2,334 after C2; 2,253 after C3; 2,125 after C4; 2,000 after C5; 1,856 after C6; 1,709 after C7; 1,654 after C8; 1,598 after C9 (all in `lib/editor`); 1,048 after E1 + E8; 877 after E2; 363 after E3 + E4. Zero means L1 + L2 are done.
 
 **Release safety while this is in progress:** `kTranslationsShipped` is `false`
 (`app/lib/l10n/app_locale.dart`), so a release build offers English only and hides the language
@@ -143,13 +143,36 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
     (`shownLayerName`) translates those when shown. Applied in the layer sheet here; the
     Layers page, the layer-name picker, and the strip are batch E4.
   Test: `test_engine/editor_chrome_test.dart`.
-- [ ] **E3 Files** — editor_page.fileio (103), .persistence (19), open_file (2), gallery (17),
-  dialogs: crop (41), place (30), duration (4), rename (4), persistence/drawing_meta (4)
-- [ ] **E4 Frames and layers** — frames/ (page 44, more_sheet 44, dialogs 22, action_bar 7,
-  layer_name_picker 4, frame_set 4, tile 1, selection 1), layers/ (page 41, more_sheet 61,
-  dialogs 27, action_bar 7, select_sheet 4, layer_model 13, row 2)
-- [ ] **E5 Color** — palette_page (52), palette_io (7), artwork_colors_page (24),
-  color_picker_dialog (6), blend_modes (38), patterns/ (gradient_dither 39, catalog 18, page 14, tile 2)
+- [x] **E3 Files** — done 2026-10-01: open, save, import, export, and share toasts and
+  dialogs (`editor_page.fileio`, `.persistence`, `open_file`), My Drawings (`gallery/`), the
+  rename, duration, and Resize canvas dialogs, the crop page and the place page.
+  - An overhang past the canvas is written with arrows (`←64 ↑64 →64 ↓64 px`), not words:
+    four edges named in words did not fit two lines on a phone in any language.
+  - Both pages keep fixed-height status slots (the panel height feeds the preview's fit
+    scale), so a longer translation cannot grow them: the slots that hold a sentence are two
+    lines now, and `PreviewStatusRow` puts the zoom cluster on its own line under 600 px.
+  Tests: `test/l10n/sweep_import_test.dart` (crop and place pages, six states) and the
+  second half of `test_engine/editor_chrome_test.dart` (duration, Resize canvas, rename,
+  My Drawings, keep-or-discard).
+- [x] **E4 Frames and layers** — done 2026-10-01: the Frames page and the Layers page with
+  their menus, More sheets, dialogs, bottom bars, and status lines; the layer-name picker;
+  the range-entry errors (`frame_set.dart`, `layer_model.dart`, through `appL10n`). Also the
+  **blend modes** (moved up from E5, since both pages list them): `blend_l10n.dart` gives the
+  name, the group heading, and the tile badge per language; `blend_modes.dart` keeps the
+  engine tokens only.
+  - `shownLayerName` is applied everywhere a layer name shows (rows, row menu, the merge
+    report, the name picker). The picker shows the translated name and still hands the verb
+    the stored one.
+  - A literal `{n}` (the rename pattern) cannot sit in a message (`use-escaping` is off):
+    the messages take it as a `{token}` placeholder.
+  - "Every Nth frame" was a sentence with two fields inside it; it is two labeled fields now.
+  - The scanner treats `frameSetDsl(` / `layerSetDsl(` arguments as engine verbs.
+  Tests: `test/l10n/sweep_frames_layers_test.dart` (24 states, on the scripted hosts of the
+  page tests), `test/blend_modes_test.dart` (names and badges unique in every language).
+- [ ] **E5 Color** — palette_page (44), palette_io (5), artwork_colors_page (23),
+  color_picker_dialog (5), patterns/ (gradient_dither 38, catalog 22, page 14);
+  `editor_page.engine` (68: check what of it is user-facing) and `widgets/painters` (3) are
+  not assigned to a batch yet: take them here. Pattern and dither names in the swatch tooltip.
 - [ ] **E6 Keyboard** — keyboard/commands (67; make `CommandDef.label` a per-build lookup —
   the L0 bridge `t.name(appL10n)` in commands.dart is marked TODO), cheat_sheet (18), chords (13)
 - [ ] **E7 Replay and timelapse** — editor_page.replay (28), replay/ (page 9, host 4,
@@ -217,6 +240,38 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 
 ## Findings outside i18n
 
+- **Crop and place pages on a phone** (found by `sweep_import_test`, 2026-10-01, in English
+  too, all fixed):
+  - crop page, import mode: the `W` / `H` chips and the "1:1 / Fit to canvas" choice
+    overflowed their row by 26 px on a 360 px phone (66 px on 320). The choice has its own
+    line under 600 px;
+  - crop page, canvas mode: the title "Crop canvas" was cut off beside its four actions on a
+    360 px phone (the actions sit closer now and the title scales down before it is cut);
+  - both pages: the frame counter and the zoom cluster overflowed one row on a 320 px phone;
+  - place page: the placement sentence named each overhanging edge in words and ran past its
+    two lines; the X / Y chips and the nudge arrows overflowed by 4 px on 320 px with
+    three-digit negative coordinates. The overhang text is arrows now: say so if the words
+    should come back.
+
+- **Frames and Layers pages on a phone** (found by `sweep_frames_layers_test`, 2026-10-01, in
+  English too, all fixed):
+  - the status line was one line, and the idle hint ("Tap or slide to select · hold for
+    options · double-tap to go to") did not fit it on a 360 px phone; it is two lines (the
+    page gives 8 px more to it);
+  - More sheet: the "Not square…" note did not fit its one line; the note slots are two lines.
+
+  English wording changed with the extraction, where a message had an em dash or was a
+  fragment: "Every layer removed. One blank layer took their place."; "Merge needs
+  neighboring layers: the selection has a gap."; "N selected layers are locked. Unlock them
+  first."; "N selected layers are locked: these are unavailable"; "Duration of N frames";
+  "In 2 of 3 selected frames" (under each name in the layer-name picker); "N frames pinned
+  at 16.7 ms" for both ways of hitting the limit; "Shift frames" with a hint beside the
+  field; "Copied to N frames".
+
+- **Smaller ones** (same day, fixed): the frame duration dialog overflowed a 320 × 568 phone
+  by 2 px in Japanese (it scrolls now); the My Drawings title was cut off in German on a
+  320 px phone (it scales down).
+
 - **Editor sheets and dialogs on small phones** (found by `editor_chrome_test`, 2026-10-01, all
   in English too, all fixed):
   - the ☰ submenu sheets did not scroll: Canvas overflowed by 124 px on a 320 × 568 phone and
@@ -256,6 +311,13 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   editor was cut off.
 
 ## Session log
+
+- **2026-10-01** — E3 + E4 (files; Frames and Layers pages; blend modes): 158 messages in E4,
+  about 190 in E3. Baseline 877 → 363. Two new sweep files (`sweep_import_test.dart`, 240
+  runs; `sweep_frames_layers_test.dart`, 960 runs) and a longer walk in
+  `test_engine/editor_chrome_test.dart`. What is left in the baseline is E5 (color, palette,
+  patterns), E6 (keyboard), E7 (replay), and `editor_page.engine.dart` (unassigned: 68
+  findings, mostly engine values to mark).
 
 - **2026-10-01** — E2 (editor chrome): 82 messages. `test_engine/editor_chrome_test.dart`
   walks the real editor through the menu, every submenu, the sheets, and the New document

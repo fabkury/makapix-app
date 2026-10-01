@@ -1,6 +1,7 @@
-// Layer blend-mode metadata for the shell: engine tokens (the DSL/probe strings, wire order),
-// picker grouping, display names, and the two-letter tile badges. Pure Dart — no engine, no
-// Flutter — so tests cover it without the native binary.
+// Layer blend-mode metadata for the shell: engine tokens (the DSL/probe strings, wire order)
+// and the picker grouping. Pure Dart — no engine, no Flutter — so tests cover it without the
+// native binary. What the modes are called on screen is in blend_l10n.dart.
+// l10n-ignore-file: engine tokens and group keys, never shown as they are
 
 /// Engine blend tokens in wire order (crates/engine `BlendMode::name()`).
 const List<String> kBlendModes = [
@@ -17,7 +18,8 @@ const List<String> kBlendModes = [
   'HardLight',
 ];
 
-/// Picker sections, the family grouping art apps use.
+/// Picker sections, the family grouping art apps use. The first item is a key
+/// (`blendGroupName` gives the heading), not text.
 const List<(String, List<String>)> kBlendGroups = [
   ('Normal', ['Normal']),
   ('Darken', ['Multiply', 'Darken', 'Subtract']),
@@ -25,21 +27,3 @@ const List<(String, List<String>)> kBlendGroups = [
   ('Contrast', ['Overlay', 'HardLight']),
   ('Compare', ['Difference', 'Exclusion']),
 ];
-
-/// UI display name for an engine token.
-String blendDisplayName(String token) => token == 'HardLight' ? 'Hard Light' : token;
-
-/// Two-letter tile badge for a non-Normal mode; '' for Normal (no badge).
-String blendBadge(String token) => switch (token) {
-      'Multiply' => 'Mu',
-      'Screen' => 'Sc',
-      'Overlay' => 'Ov',
-      'Darken' => 'Da',
-      'Lighten' => 'Li',
-      'Addition' => 'Ad',
-      'Subtract' => 'Su',
-      'Difference' => 'Di',
-      'Exclusion' => 'Ex',
-      'HardLight' => 'HL',
-      _ => '',
-    };

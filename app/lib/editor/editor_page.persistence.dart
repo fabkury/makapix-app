@@ -160,7 +160,7 @@ extension _EditorPersistence on _EditorPageState {
     final now = DateTime.now();
     if (_lastAutosaveWarn == null || now.difference(_lastAutosaveWarn!) > const Duration(seconds: 30)) {
       _lastAutosaveWarn = now;
-      if (mounted) _toast("Couldn't autosave — check device storage");
+      if (mounted) _toast(appL10n.autosaveFailed);
     }
   }
 
@@ -291,14 +291,17 @@ extension _EditorPersistence on _EditorPageState {
   // incoming document first and abandon the whole switch if it will not load — so a corrupt
   // target can neither take the outgoing drawing's identity [G-37] nor cause it to be released
   // and then resurrected [G-38]. Returns null when the artist cancels.
-  Future<_OutgoingChoice?> _askOutgoingChoice(String incoming) async {
+  /// [incoming] is the name of what is about to open, or null for a new, empty drawing.
+  Future<_OutgoingChoice?> _askOutgoingChoice(String? incoming) async {
     if (!_engineReady || !mounted) return null;
     if (_isBlankDocument()) return _OutgoingChoice.discard; // nothing to protect, never asked
     final choice = await showDialog<_OutgoingChoice>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Open $incoming?'),
-        content: Text('What should happen to your current drawing, "$_drawingTitle"?'),
+        title: Text(incoming == null
+            ? ctx.l10n.outgoingOpenNew
+            : ctx.l10n.outgoingOpenNamed(incoming)),
+        content: Text(ctx.l10n.outgoingBody(_drawingTitle)),
         // Discard sits alone at the far LEFT, opposite Keep, so a mis-click near the usual
         // confirm corner can't destroy work; it also re-confirms below. On narrow phones the
         // row can't fit, so the dialog's OverflowBar stacks the buttons vertically — reversed
@@ -311,12 +314,12 @@ extension _EditorPersistence on _EditorPageState {
           TextButton(
             style: TextButton.styleFrom(foregroundColor: const Color(0xFFE06060)),
             onPressed: () => Navigator.pop(ctx, _OutgoingChoice.discard),
-            child: const Text('Discard it'),
+            child: Text(ctx.l10n.outgoingDiscard),
           ),
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(ctx.l10n.commonCancel)),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, _OutgoingChoice.save),
-            child: const Text('Keep in My Drawings'),
+            child: Text(ctx.l10n.outgoingKeep),
           ),
         ],
       ),
@@ -327,14 +330,14 @@ extension _EditorPersistence on _EditorPageState {
       final sure = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: Text('Discard "$_drawingTitle"?'),
-          content: const Text('It will not be kept in My Drawings. This cannot be undone.'),
+          title: Text(ctx.l10n.discardDrawingTitle(_drawingTitle)),
+          content: Text(ctx.l10n.discardDrawingBody),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(ctx.l10n.commonCancel)),
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: const Color(0xFFC62828)),
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Discard'),
+              child: Text(ctx.l10n.commonDiscard),
             ),
           ],
         ),
@@ -346,7 +349,7 @@ extension _EditorPersistence on _EditorPageState {
 
   // Ask AND release, for the callers whose incoming content cannot fail to load (New, and the
   // byte-carrying paths that already hold their content in hand).
-  Future<bool> _releaseOutgoingDrawingInteractive(String incoming) async {
+  Future<bool> _releaseOutgoingDrawingInteractive(String? incoming) async {
     final choice = await _askOutgoingChoice(incoming);
     if (choice == null) return false;
     await _releaseOutgoing(discard: choice == _OutgoingChoice.discard);
@@ -360,7 +363,7 @@ extension _EditorPersistence on _EditorPageState {
     required String title,
     required void Function() mutateEngine,
   }) async {
-    if (!await _releaseOutgoingDrawingInteractive('a new drawing')) return;
+    if (!await _releaseOutgoingDrawingInteractive(null)) return;
     mutateEngine();
     _provenance = DocProvenance.fresh(); // a new document is provably never-imported from birth
     await _createFreshDrawing(title: title);
@@ -374,7 +377,7 @@ extension _EditorPersistence on _EditorPageState {
     if (!mounted) return;
     // ADR 0014, load-then-adopt. Ask first, but do NOT release the outgoing drawing yet: its
     // identity, journal and autosave only change once the incoming document is proven to load.
-    final choice = await _askOutgoingChoice('"${meta?.title ?? defaultDrawingTitle}"');
+    final choice = await _askOutgoingChoice(meta?.title ?? defaultDrawingTitle);
     if (choice == null) return;
     final outgoingId = _drawingId;
     // Flush the outgoing (so the rollback below is exact), then stop its autosave and Journal
@@ -391,7 +394,7 @@ extension _EditorPersistence on _EditorPageState {
         _resumeTracking(outgoingId);
       }
       if (mounted) {
-        _toast('Could not open that drawing (file missing or corrupt)');
+        _toast(appL10n.drawingOpenFailed);
         _refreshState();
         _redraw();
       }
@@ -412,7 +415,7 @@ extension _EditorPersistence on _EditorPageState {
   Future<void> _openGallery() async {
     final store = _store;
     if (store == null) {
-      _toast('Library is still loading…');
+      _toast(appL10n.libraryLoading);
       return;
     }
     if (_playing) _pause();

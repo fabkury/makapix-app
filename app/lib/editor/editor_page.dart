@@ -34,6 +34,7 @@ import 'package:makapix_club/ui/language_page.dart';
 import 'package:makapix_club/ui/layout.dart';
 
 import 'blend_modes.dart';
+import 'blend_l10n.dart';
 import 'drag_gear.dart';
 import 'frames/frame_grid_geometry.dart';
 import 'frames/frame_model.dart';

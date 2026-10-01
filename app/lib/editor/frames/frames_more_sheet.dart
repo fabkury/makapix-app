@@ -6,6 +6,7 @@
 // to the verb line, tested without widgets.
 
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 
@@ -132,50 +133,51 @@ Future<FramesOp?> showFramesMoreSheet(
     backgroundColor: const Color(0xFF1A1C1F),
     builder: (ctx) {
       void pick(FramesOp op) => Navigator.pop(ctx, op);
+      final l = ctx.l10n;
       final maxH = MediaQuery.sizeOf(ctx).height * 0.85;
       return SafeArea(
         child: ConstrainedBox(
           constraints: BoxConstraints(maxHeight: maxH),
           child: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              ListTile(dense: true, title: Text('$n selected ${n == 1 ? 'frame' : 'frames'}', style: const TextStyle(fontWeight: FontWeight.bold))),
+              ListTile(dense: true, title: Text(l.framesSelectedCount(n), style: const TextStyle(fontWeight: FontWeight.bold))),
               const Divider(height: 1),
-              _section('Structure'),
-              _row(Icons.repeat, 'Repeat after', 'The selection copied as one block after its last frame', () => pick(const RepeatAfterOp())),
-              _row(Icons.add_box_outlined, 'Insert blank before each', null, () => pick(const InsertBlankOp(before: true))),
-              _row(Icons.add_box_outlined, 'Insert blank after each', null, () => pick(const InsertBlankOp(before: false))),
-              _row(Icons.swap_horiz, 'Reverse order', n < 2 ? 'Select two or more frames' : null, n < 2 ? null : () => pick(const ReverseOp())),
-              _row(Icons.moving, 'Shift by N…', null, () => pick(const ShiftByOp())),
-              _section('Timing'),
-              _row(Icons.timer_outlined, 'Set duration…', 'One duration or an fps preset for every selected frame', () => pick(const SetDurationOp())),
+              _section(l.sectionStructure),
+              _row(Icons.repeat, l.framesRepeatAfter, l.framesRepeatAfterSub, () => pick(const RepeatAfterOp())),
+              _row(Icons.add_box_outlined, l.framesInsertBefore, null, () => pick(const InsertBlankOp(before: true))),
+              _row(Icons.add_box_outlined, l.framesInsertAfter, null, () => pick(const InsertBlankOp(before: false))),
+              _row(Icons.swap_horiz, l.batchReverse, n < 2 ? l.framesNeedTwo : null, n < 2 ? null : () => pick(const ReverseOp())),
+              _row(Icons.moving, l.framesShiftByN, null, () => pick(const ShiftByOp())),
+              _section(l.sectionTiming),
+              _row(Icons.timer_outlined, l.framesSetDuration, l.framesSetDurationSub, () => pick(const SetDurationOp())),
               _chips([
                 ('× 0.5', () => pick(const ScaleOp(500))),
                 ('× 2', () => pick(const ScaleOp(2000))),
                 ('× …', () => pick(const ScaleOp(null))),
               ]),
-              _section('Transform'),
+              _section(l.sectionTransform),
               _slot(
                 retainedBytes > kRetainedWarnBytes
-                    ? (Icons.warning_amber_rounded, 'Undo will hold about ${_mb(retainedBytes)} MB', Colors.amber)
+                    ? (Icons.warning_amber_rounded, l.batchUndoHolds(_mb(retainedBytes)), Colors.amber)
                     : null,
               ),
-              _slot(canvasSquare ? null : (Icons.info_outline, 'Not square: a rotated overhang parks in the gutter (Move recovers it)', Colors.white54)),
+              _slot(canvasSquare ? null : (Icons.info_outline, l.batchNotSquare, Colors.white54)),
               _chips([
-                ('Flip H', () => pick(const FlipOp(horizontal: true))),
-                ('Flip V', () => pick(const FlipOp(horizontal: false))),
-                ('Rotate 90°', () => pick(const RotateOp(1))),
+                (l.opFlipH, () => pick(const FlipOp(horizontal: true))),
+                (l.opFlipV, () => pick(const FlipOp(horizontal: false))),
+                (l.opRotate90, () => pick(const RotateOp(1))),
                 ('180°', () => pick(const RotateOp(2))),
                 ('270°', () => pick(const RotateOp(3))),
-                ('Invert', () => pick(const InvertOp())),
+                (l.toolInvert, () => pick(const InvertOp())),
               ]),
-              _section('Layers'),
-              _row(Icons.layers, 'Copy active layer to frames', anyTargetAtLayerCap ? 'A selected frame is at the $kMaxLayers-layer cap' : null,
+              _section(l.sectionLayers),
+              _row(Icons.layers, l.framesCopyActiveLayer, anyTargetAtLayerCap ? l.framesAtLayerCap(kMaxLayers) : null,
                   anyTargetAtLayerCap ? null : () => pick(const CopyLayerOp())),
-              _row(Icons.layers_clear, 'Remove layer named…', hasLayerNames ? null : 'No layers in the selection', hasLayerNames ? () => pick(const RemoveLayerNamedOp()) : null),
-              _row(Icons.visibility, 'Show layer named…', null, hasLayerNames ? () => pick(const SetLayersVisibleOp(visible: true)) : null),
-              _row(Icons.visibility_off, 'Hide layer named…', null, hasLayerNames ? () => pick(const SetLayersVisibleOp(visible: false)) : null),
-              _row(Icons.lock, 'Lock layer named…', null, hasLayerNames ? () => pick(const SetLayersLockedOp(locked: true)) : null),
-              _row(Icons.lock_open, 'Unlock layer named…', null, hasLayerNames ? () => pick(const SetLayersLockedOp(locked: false)) : null),
+              _row(Icons.layers_clear, l.framesRemoveLayerNamed, hasLayerNames ? null : l.framesNoLayers, hasLayerNames ? () => pick(const RemoveLayerNamedOp()) : null),
+              _row(Icons.visibility, l.framesShowLayerNamed, null, hasLayerNames ? () => pick(const SetLayersVisibleOp(visible: true)) : null),
+              _row(Icons.visibility_off, l.framesHideLayerNamed, null, hasLayerNames ? () => pick(const SetLayersVisibleOp(visible: false)) : null),
+              _row(Icons.lock, l.framesLockLayerNamed, null, hasLayerNames ? () => pick(const SetLayersLockedOp(locked: true)) : null),
+              _row(Icons.lock_open, l.framesUnlockLayerNamed, null, hasLayerNames ? () => pick(const SetLayersLockedOp(locked: false)) : null),
               const SizedBox(height: 8),
             ]),
           ),
@@ -206,9 +208,10 @@ Widget _chips(List<(String, VoidCallback)> items) => Padding(
       ]),
     );
 
-/// A fixed 20 px note line: text and color change, the height never does (no reflow).
+/// A fixed two-line note slot: text and color change, the height never does (no reflow). Two
+/// lines because one cut the "not square" note off on a phone, in English too.
 Widget _slot((IconData, String, Color)? note) => SizedBox(
-      height: 20,
+      height: 30,
       child: note == null
           ? const SizedBox.shrink()
           : Padding(
@@ -216,7 +219,7 @@ Widget _slot((IconData, String, Color)? note) => SizedBox(
               child: Row(children: [
                 Icon(note.$1, size: 14, color: note.$3),
                 const SizedBox(width: 6),
-                Expanded(child: Text(note.$2, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: note.$3))),
+                Expanded(child: Text(note.$2, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, height: 1.25, color: note.$3))),
               ]),
             ),
     );

@@ -4,7 +4,10 @@
 
 import 'package:flutter/material.dart';
 
+import 'package:makapix_club/l10n/l10n.dart';
 import 'package:makapix_club/ui/layout.dart';
+
+import '../layers/layer_names.dart';
 
 Future<String?> showLayerNamePicker(
   BuildContext context, {
@@ -29,9 +32,11 @@ Future<String?> showLayerNamePicker(
                 ListTile(
                   dense: true,
                   leading: const Icon(Icons.layers, size: 20),
-                  title: Text(n.name.isEmpty ? '(unnamed)' : n.name),
+                  // The engine's own names ("Layer 3") are shown translated; the verb still
+                  // gets the stored name ([n.name], popped below).
+                  title: Text(shownLayerName(ctx.l10n, n.name)),
                   subtitle: Text(
-                    '${n.hits} of $selectedCount selected ${selectedCount == 1 ? 'frame has' : 'frames have'} a layer named "${n.name}"',
+                    ctx.l10n.framesLayerNameHits(n.hits, selectedCount),
                     style: const TextStyle(fontSize: 11),
                   ),
                   onTap: () => Navigator.pop(ctx, n.name),

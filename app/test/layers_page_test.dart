@@ -86,7 +86,7 @@ void main() {
       await tester.tap(find.byType(TapAgainDeleteButton));
       await tester.pump();
       expect(host.scripts, ['RemoveLayers(0-2)']);
-      expect(find.text('Every layer removed — one blank layer took their place'), findsOneWidget);
+      expect(find.text('Every layer removed. One blank layer took their place.'), findsOneWidget);
       expect(find.text('Layers · 1'), findsOneWidget);
     });
 
@@ -99,7 +99,7 @@ void main() {
       await tester.tap(find.text('Merge'));
       await tester.pump();
       expect(host.scripts, isEmpty);
-      expect(find.textContaining('contiguous run'), findsOneWidget);
+      expect(find.textContaining('the selection has a gap'), findsOneWidget);
 
       host.onRun = (dsl) {
         if (dsl.startsWith('MergeLayers')) host.layers = [fakeLayers(5)[0], fakeLayers(5)[3], fakeLayers(5)[4]];
@@ -129,7 +129,7 @@ void main() {
       await tester.tap(find.text('Merge'));
       await tester.pump();
       expect(host.scripts, isEmpty);
-      expect(find.text('1 selected layer is locked — unlock it first'), findsOneWidget);
+      expect(find.text('1 selected layer is locked. Unlock it first.'), findsOneWidget);
     });
 
     testWidgets('a refusal from the engine leaves the selection alone and shows the reason', (tester) async {
@@ -201,7 +201,7 @@ void main() {
       await tester.pump();
       await tester.tap(find.text('More'));
       await tester.pumpAndSettle();
-      expect(find.text('1 selected layer is locked — these refuse'), findsOneWidget);
+      expect(find.text('1 selected layer is locked: these are unavailable'), findsOneWidget);
       final chip = tester.widget<ActionChip>(find.widgetWithText(ActionChip, 'Flip H'));
       expect(chip.onPressed, isNull);
     });

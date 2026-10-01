@@ -3,6 +3,8 @@
 // formulas, and the pre-checks the page shows before a tap. Pure Dart, tested without the
 // engine; every rule here mirrors `crates/engine/src/session/frames.rs`.
 
+import 'package:makapix_club/l10n/l10n.dart';
+
 import 'frame_model.dart';
 
 /// The canonical 0-based wire form: sorted, deduplicated, coalesced into maximal inclusive
@@ -44,11 +46,11 @@ String formatFrameSetHuman(Iterable<int> indices) {
 /// range, empty, or unparsable input yields an error message instead of indices.
 ({List<int>? indices, String? error}) parseFrameRangeEntry(String text, {required int frameCount}) {
   final tokens = text.replaceAll('–', '-').split(RegExp(r'[,\s]+')).where((t) => t.isNotEmpty).toList();
-  if (tokens.isEmpty) return (indices: null, error: 'Enter frame numbers, like 1-12, 20');
+  if (tokens.isEmpty) return (indices: null, error: appL10n.framesErrEnter);
   final out = <int>{};
   for (final tok in tokens) {
     final m = RegExp(r'^(\d+)(?:-(\d+))?$').firstMatch(tok);
-    if (m == null) return (indices: null, error: 'Use frame numbers and ranges, like 1-12, 20');
+    if (m == null) return (indices: null, error: appL10n.framesErrFormat);
     var lo = int.parse(m.group(1)!);
     var hi = m.group(2) == null ? lo : int.parse(m.group(2)!);
     if (lo > hi) {
@@ -56,8 +58,8 @@ String formatFrameSetHuman(Iterable<int> indices) {
       lo = hi;
       hi = t;
     }
-    if (lo < 1) return (indices: null, error: 'Frames start at 1');
-    if (hi > frameCount) return (indices: null, error: 'Frame $hi is beyond the last frame ($frameCount)');
+    if (lo < 1) return (indices: null, error: appL10n.framesErrStart);
+    if (hi > frameCount) return (indices: null, error: appL10n.framesErrBeyond(hi, frameCount));
     for (var k = lo; k <= hi; k++) {
       out.add(k - 1);
     }

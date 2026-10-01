@@ -7,20 +7,28 @@ part of 'editor_page.dart';
 // The Resize-canvas 3×3 anchor grid, indexed [y][x]: the engine DSL name, the arrow icon per
 // cell, and the human phrase for the caption.
 const _anchorNames = [
-  ['TopLeft', 'Top', 'TopRight'],
-  ['Left', 'Center', 'Right'],
-  ['BottomLeft', 'Bottom', 'BottomRight'],
+  ['TopLeft', 'Top', 'TopRight'], // l10n-ignore: DSL anchor names
+  ['Left', 'Center', 'Right'], // l10n-ignore: DSL anchor names
+  ['BottomLeft', 'Bottom', 'BottomRight'], // l10n-ignore: DSL anchor names
 ];
 const _anchorIcons = [
   [Icons.north_west, Icons.north, Icons.north_east],
   [Icons.west, Icons.filter_center_focus, Icons.east],
   [Icons.south_west, Icons.south, Icons.south_east],
 ];
-const _anchorHuman = [
-  ['to the top-left', 'to the top', 'to the top-right'],
-  ['to the left', 'at the center', 'to the right'],
-  ['to the bottom-left', 'to the bottom', 'to the bottom-right'],
-];
+/// The caption for the anchor cell at column [x], row [y]: one whole sentence per cell, so
+/// each language words its own.
+String _anchorCaption(AppLocalizations l, int x, int y) => switch ((y, x)) {
+      (0, 0) => l.anchorTopLeft,
+      (0, 1) => l.anchorTop,
+      (0, 2) => l.anchorTopRight,
+      (1, 0) => l.anchorLeft,
+      (1, 2) => l.anchorRight,
+      (2, 0) => l.anchorBottomLeft,
+      (2, 1) => l.anchorBottom,
+      (2, 2) => l.anchorBottomRight,
+      _ => l.anchorCenter,
+    };
 
 // Save/open .mkpx, image import, PNG/GIF export, Post-to-Club, edit/remix intake,
 // and the resize/duration dialogs + color-picker entry point.
@@ -32,9 +40,10 @@ extension _EditorFileIo on _EditorPageState {
     // render-snapshot paths (PNG/GIF/WebP export) keep the cheap plain profile; `_open` loads either.
     // Provenance travels with the file (META chunk), so lineage survives export/share round trips.
     final bytes = engine.saveCompactWithMeta(_provenance.toMeta());
+    final l10n = context.l10n;
     try {
       final path = await FilePicker.saveFile(
-        dialogTitle: 'Save .mkpx',
+        dialogTitle: l10n.fileSaveTitle,
         fileName: 'untitled.mkpx',
         type: FileType.custom,
         allowedExtensions: ['mkpx'],
@@ -46,20 +55,19 @@ extension _EditorFileIo on _EditorPageState {
       if (!Platform.isAndroid && !Platform.isIOS) {
         await File(path).writeAsBytes(bytes);
       }
-      if (mounted) _toast('Saved ${bytes.length ~/ 1024} KiB');
+      if (mounted) _toast(l10n.fileSaved(bytes.length ~/ 1024));
     } catch (e) {
-      if (mounted) _toast('Could not save: $e');
+      if (mounted) _toast(l10n.fileSaveFailed('$e'));
     }
   }
 
   /// User-facing message for a failed `.mkpx` load, by cause.
   String _loadFailureMessage(LoadStatus s) => switch (s) {
-        LoadStatus.unsupportedVersion =>
-          'This file was made with a newer version of Makapix — update the app to open it.',
-        LoadStatus.notMkpx => "This isn't a .mkpx file.",
-        LoadStatus.corrupt => "This file is damaged and can't be opened.",
-        LoadStatus.overBudget => 'This artwork is too large to open on this device.',
-        _ => 'Could not open this file.',
+        LoadStatus.unsupportedVersion => appL10n.loadNewerVersion,
+        LoadStatus.notMkpx => appL10n.loadNotMkpx,
+        LoadStatus.corrupt => appL10n.loadCorrupt,
+        LoadStatus.overBudget => appL10n.loadOverBudget,
+        _ => appL10n.loadFailed,
       };
 
   // File → Open: any supported file becomes a NEW library drawing, true to the source (CONTEXT.md
@@ -95,7 +103,7 @@ extension _EditorFileIo on _EditorPageState {
       h = probe.height;
       probe.dispose();
     } catch (_) {
-      if (mounted) _toast("Couldn't open $name: it isn't a .mkpx file or a supported image.");
+      if (mounted) _toast(appL10n.openNotSupported(name));
       return;
     }
     if (!mounted) return;
@@ -113,13 +121,13 @@ extension _EditorFileIo on _EditorPageState {
     }
     if (img == null) {
       _toast(decodeStatus == ImportStatus.tooLarge
-          ? "Couldn't open $name: too many frames or pixels for this device."
-          : "Couldn't open $name (unsupported or corrupt).");
+          ? appL10n.openTooLarge(name)
+          : appL10n.openUnsupported(name));
       return;
     }
     var ok = false;
     try {
-      if (!await _releaseOutgoingDrawingInteractive('"$name"')) return;
+      if (!await _releaseOutgoingDrawingInteractive(name)) return;
       if (!mounted) return;
       // A fresh canvas at the source size, then a 1:1 fill: Stretch onto an equal-sized canvas
       // is the identity (the Club-edit path's idiom), and every frame lands as a new frame.
@@ -135,9 +143,7 @@ extension _EditorFileIo on _EditorPageState {
     _provenance = ok ? (DocProvenance.fresh()..markImported(importedFormatFromFileName(name))) : DocProvenance.unknown();
     await _createFreshDrawing(title: titleFromFileName(name), contentFromBytes: true, reason: 'open');
     if (!mounted) return;
-    _toast(ok
-        ? 'Opened $name (${engine.frameCount} ${engine.frameCount == 1 ? 'frame' : 'frames'})'
-        : "Couldn't open $name: it would not fit in the memory budget.");
+    _toast(ok ? appL10n.openedFrames(name, engine.frameCount) : appL10n.openNoMemory(name));
     _refreshState();
     _redraw();
   }
@@ -147,7 +153,7 @@ extension _EditorFileIo on _EditorPageState {
     // keep/discard/cancel for a non-blank canvas, release the current drawing accordingly, then
     // load; only adopt a new drawing if the load succeeds, so a corrupt file leaves the current
     // drawing intact.
-    if (!await _releaseOutgoingDrawingInteractive('"$name"')) return;
+    if (!await _releaseOutgoingDrawingInteractive(name)) return;
     final status = _loadIntoEngine(bytes);
     if (status.loaded) {
       if (status == LoadStatus.okWithWarnings) {
@@ -156,7 +162,7 @@ extension _EditorFileIo on _EditorPageState {
       _clubSource = null;
       _restoreProvenance(bytes);
       await _createFreshDrawing(title: titleFromFileName(name), contentFromBytes: true, reason: 'open');
-      if (mounted) _toast('Opened $name');
+      if (mounted) _toast(appL10n.opened(name));
     } else {
       // Load failed; resume autosaving (and journaling) the still-current drawing. The
       // release above detached the journal; re-attach in resume mode — the keep-branch's
@@ -253,10 +259,12 @@ extension _EditorFileIo on _EditorPageState {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setS) => AlertDialog(
-          title: Text('Import ${res.files.single.name} ($srcW×$srcH)'),
-          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          title: Text(ctx.l10n.importTitle(res.files.single.name, srcW, srcH)),
+          // Scrolls: every choice of the dialog on screen at once is taller than a small phone.
+          content: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             if (sizeClass == ImportSizeClass.large) ...[
-              const Text('Scaling', style: caption),
+              Text(ctx.l10n.importScaling, style: caption),
               const SizedBox(height: 4),
               ToggleButtons(
                 isSelected: [mode == 0, mode == 1, mode == 2, if (nativeOffered) mode == 3],
@@ -272,9 +280,9 @@ extension _EditorFileIo on _EditorPageState {
                   }
                 },
                 children: [
-                  const Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('Fit')),
-                  const Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('Stretch')),
-                  const Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('Crop')),
+                  Padding(padding: const EdgeInsets.symmetric(horizontal: 10), child: Text(ctx.l10n.importFit)),
+                  Padding(padding: const EdgeInsets.symmetric(horizontal: 10), child: Text(ctx.l10n.importStretch)),
+                  Padding(padding: const EdgeInsets.symmetric(horizontal: 10), child: Text(ctx.l10n.importCrop)),
                   if (nativeOffered) const Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('1:1')),
                 ],
               ),
@@ -282,7 +290,7 @@ extension _EditorFileIo on _EditorPageState {
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
-                    'Placed 1:1. The part beyond the ${engine.width}×${engine.height} canvas is kept off-canvas.',
+                    ctx.l10n.importNativeNote(engine.width, engine.height),
                     style: caption,
                   ),
                 ),
@@ -297,7 +305,7 @@ extension _EditorFileIo on _EditorPageState {
                     final how = placed.w < cw || placed.h < ch ? '→ ${placed.w}×${placed.h}' : '1:1';
                     return OutlinedButton.icon(
                       icon: const Icon(Icons.crop, size: 16),
-                      label: Text('Crop: $cw×$ch ($how). Edit…'),
+                      label: Text(ctx.l10n.importCropSummary(cw, ch, how)),
                       onPressed: () => pickCrop(setS),
                     );
                   }),
@@ -305,17 +313,17 @@ extension _EditorFileIo on _EditorPageState {
             ] else ...[
               Text(
                 sizeClass == ImportSizeClass.exact
-                    ? 'Same size as the canvas: placed 1:1.'
+                    ? ctx.l10n.importSameSize
                     : scaleUp
-                        ? 'Scaled up to fit the ${engine.width}×${engine.height} canvas (aspect kept).'
-                        : 'Placed 1:1 on the ${engine.width}×${engine.height} canvas.',
+                        ? ctx.l10n.importScaledUp(engine.width, engine.height)
+                        : ctx.l10n.importPlaced(engine.width, engine.height),
                 style: caption,
               ),
               if (sizeClass == ImportSizeClass.small)
                 SwitchListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Scale up to fit the canvas'),
+                  title: Text(ctx.l10n.importScaleUp),
                   value: scaleUp,
                   onChanged: (v) => setS(() => scaleUp = v),
                 ),
@@ -324,16 +332,19 @@ extension _EditorFileIo on _EditorPageState {
             SwitchListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
-              title: const Text('Add as new layer in existing frames'),
-              subtitle: const Text('(off = import as new frames)', style: TextStyle(fontSize: 11)),
+              title: Text(ctx.l10n.importAsLayer),
+              subtitle: Text(ctx.l10n.importAsLayerOff, style: const TextStyle(fontSize: 11)),
               value: asLayer,
               onChanged: (v) => setS(() => asLayer = v),
             ),
-            Text('Start at frame ${engine.activeFrame + 1}', style: const TextStyle(fontSize: 12, color: Colors.white60)),
-          ]),
+            Text(ctx.l10n.importStartFrame(engine.activeFrame + 1),
+                style: const TextStyle(fontSize: 12, color: Colors.white60)),
+          ])),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(placeApplies() ? 'Next' : 'Import')),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.commonCancel)),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(placeApplies() ? ctx.l10n.commonNext : ctx.l10n.importAction)),
           ],
         ),
       ),
@@ -426,13 +437,13 @@ extension _EditorFileIo on _EditorPageState {
         await _journalCutAndBaseline('import');
         _refreshState();
         _redraw();
-        _toast('Imported $fileName (${engine.frameCount} frames)');
+        _toast(appL10n.importedFrames(fileName, engine.frameCount));
       case ImportStatus.refused:
-        _toast('Import refused: it would not fit in the memory budget');
+        _toast(appL10n.importRefused);
       case ImportStatus.tooLarge:
-        _toast('Import failed: image is too large (max 4096×4096 pixels, 1024 frames)');
+        _toast(appL10n.importTooLarge);
       case ImportStatus.failed:
-        _toast('Import failed (unsupported or corrupt)');
+        _toast(appL10n.importFailed);
     }
     setState(() {});
   }
@@ -445,13 +456,13 @@ extension _EditorFileIo on _EditorPageState {
     unawaited(showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const PopScope(
+      builder: (ctx) => PopScope(
         canPop: false,
         child: AlertDialog(
           content: Row(children: [
-            CircularProgressIndicator(),
-            SizedBox(width: 20),
-            Expanded(child: Text('Importing…')),
+            const CircularProgressIndicator(),
+            const SizedBox(width: 20),
+            Expanded(child: Text(ctx.l10n.importing)),
           ]),
         ),
       ),
@@ -492,10 +503,11 @@ extension _EditorFileIo on _EditorPageState {
     final mkpxBytes = engine.saveCompactWithMeta(_provenance.toMeta());
     // Encode off the UI thread so a multi-frame WebP doesn't jank/ANR [audit F-12], behind the
     // progress modal so no edit can land mid-assembly.
-    final (bytes, canceled, _) = await _encodeWithProgress('webp', title: 'Rendering WebP…');
+    final (bytes, canceled, _) =
+        await _encodeWithProgress('webp', title: appL10n.exportRendering('WebP')); // l10n-ignore: format name
     if (!mounted || canceled) return;
     if (bytes.isEmpty) {
-      _toast('Export failed');
+      _toast(appL10n.exportFailed);
       return;
     }
     final draft = PublishDraft(
@@ -539,7 +551,7 @@ extension _EditorFileIo on _EditorPageState {
   Future<void> _consumeClubEdit(ClubEditRequest req) async {
     ref.read(pendingClubEditProvider.notifier).state = null; // clear so it doesn't re-fire
     if (!_engineReady) return;
-    if (!await _releaseOutgoingDrawingInteractive('"${req.sourceTitle}"')) return;
+    if (!await _releaseOutgoingDrawingInteractive(req.sourceTitle)) return;
     var ok = true;
     LoadStatus? mkpxStatus;
     if (req.isMkpx) {
@@ -580,8 +592,8 @@ extension _EditorFileIo on _EditorPageState {
     if (!ok) {
       // A layers file from a newer app is the one cause the user can actually fix — name it.
       _toast(mkpxStatus == LoadStatus.unsupportedVersion
-          ? 'This file was made with a newer version of Makapix — update the app to open it.'
-          : 'Could not load this artwork into the editor.');
+          ? appL10n.loadNewerVersion
+          : appL10n.clubLoadFailed);
     }
     setState(() {
       _clubSource = ClubEditSource(
@@ -617,7 +629,7 @@ extension _EditorFileIo on _EditorPageState {
       // A long notice (the GIF flatten heads-up) gets more read time than the plain size toast.
       if (mounted) _toast(done, duration: Duration(seconds: done.length > 60 ? 4 : 2));
     } catch (e) {
-      if (mounted) _toast('Could not save: $e');
+      if (mounted) _toast(appL10n.fileSaveFailed('$e'));
     }
   }
 
@@ -667,11 +679,11 @@ extension _EditorFileIo on _EditorPageState {
     final frame = engine.activeFrame;
     final layer = layerOnly ? _activeLayerIndex() : 0;
     final prefs = _prefs ?? await SharedPreferences.getInstance();
-    final remembered = prefs.getString(_kExportStillFormatPref) ?? 'PNG';
+    final remembered = prefs.getString(_kExportStillFormatPref) ?? 'PNG'; // l10n-ignore: format name
     if (!mounted) return;
     final choice = await _exportScaleDialog(
       frames: 1,
-      formats: const ['PNG', 'WebP'],
+      formats: const ['PNG', 'WebP'], // l10n-ignore: format names
       initialFormat: remembered,
     );
     if (choice == null) return;
@@ -680,29 +692,31 @@ extension _EditorFileIo on _EditorPageState {
     final webp = chosen == 'WebP';
     final format = layerOnly ? (webp ? 'layer-webp' : 'layer-png') : (webp ? 'frame-webp' : 'png');
     final ext = webp ? 'webp' : 'png';
-    final baseName = layerOnly ? 'frame_${frame + 1}_layer_${layer + 1}' : 'frame_${frame + 1}';
-    final done = layerOnly ? 'Exported layer ${layer + 1}' : 'Exported $chosen';
+    final baseName = layerOnly ? 'frame_${frame + 1}_layer_${layer + 1}' : 'frame_${frame + 1}'; // l10n-ignore: file name
+    final l10n = appL10n;
     final Uint8List bytes;
     if (scale == 1) {
       final (b, _) = await Engine.encodeInBackground(engine.save(), format: format, frame: frame, layer: layer); // [F-12]
       bytes = b;
     } else {
       final (b, canceled, _) =
-          await _encodeWithProgress(format, frame: frame, layer: layer, scale: scale, title: 'Rendering $chosen…');
+          await _encodeWithProgress(format,
+              frame: frame, layer: layer, scale: scale, title: l10n.exportRendering(chosen));
       if (canceled) {
-        _toast('Export canceled');
+        _toast(l10n.exportCanceled);
         return;
       }
       bytes = b;
     }
     if (bytes.isEmpty) {
-      _toast('Export failed');
+      _toast(l10n.exportFailed);
       return;
     }
+    final kib = bytes.length ~/ 1024;
     await _saveExport(bytes,
         fileName: scale > 1 ? '${baseName}_${scale}x.$ext' : '$baseName.$ext',
         ext: ext,
-        done: '$done (${bytes.length ~/ 1024} KiB)');
+        done: layerOnly ? l10n.exportedLayer(layer + 1, kib) : l10n.exportedFormat(chosen, kib));
   }
 
   Future<void> _exportFrame() => _exportStill(layerOnly: false);
@@ -713,22 +727,26 @@ extension _EditorFileIo on _EditorPageState {
     final choice = await _exportScaleDialog(frames: fc);
     if (choice == null) return;
     final (scale, _) = choice;
-    final (bytes, canceled, flattened) = await _encodeWithProgress('gif', scale: scale, title: 'Rendering GIF…');
+    final l10n = appL10n;
+    final (bytes, canceled, flattened) =
+        await _encodeWithProgress('gif', scale: scale, title: l10n.exportRendering('GIF')); // l10n-ignore: format name
     if (canceled) {
-      _toast('Export canceled');
+      _toast(l10n.exportCanceled);
       return;
     }
     if (bytes.isEmpty) {
-      _toast('Export failed');
+      _toast(l10n.exportFailed);
       return;
     }
     // GIF holds 1-bit transparency; when the encode actually flattened semi-transparent pixels,
     // the artist is told the look changed (docs/animator/01-features-landscape.md decision).
     await _saveExport(bytes,
-        fileName: scale > 1 ? 'animation_${scale}x.gif' : 'animation.gif',
+        fileName: scale > 1 ? 'animation_${scale}x.gif' : 'animation.gif', // l10n-ignore: file name
         ext: 'gif',
-        done: 'Exported GIF ($fc frames, ${bytes.length ~/ 1024} KiB)'
-            '${flattened ? ' — semi-transparent pixels were flattened' : ''}');
+        done: [
+          l10n.exportedAnimation('GIF', fc, bytes.length ~/ 1024), // l10n-ignore: format name
+          if (flattened) l10n.exportedFlattenedNote,
+        ].join(' '));
   }
 
   // Lossless animated WebP (static WebP for a single-frame document) — same engine export the
@@ -738,19 +756,21 @@ extension _EditorFileIo on _EditorPageState {
     final choice = await _exportScaleDialog(frames: fc);
     if (choice == null) return;
     final (scale, _) = choice;
-    final (bytes, canceled, _) = await _encodeWithProgress('webp', scale: scale, title: 'Rendering WebP…');
+    final l10n = appL10n;
+    final (bytes, canceled, _) =
+        await _encodeWithProgress('webp', scale: scale, title: l10n.exportRendering('WebP')); // l10n-ignore: format name
     if (canceled) {
-      _toast('Export canceled');
+      _toast(l10n.exportCanceled);
       return;
     }
     if (bytes.isEmpty) {
-      _toast('Export failed');
+      _toast(l10n.exportFailed);
       return;
     }
     await _saveExport(bytes,
-        fileName: scale > 1 ? 'animation_${scale}x.webp' : 'animation.webp',
+        fileName: scale > 1 ? 'animation_${scale}x.webp' : 'animation.webp', // l10n-ignore: file name
         ext: 'webp',
-        done: 'Exported WebP ($fc frames, ${bytes.length ~/ 1024} KiB)');
+        done: l10n.exportedAnimation('WebP', fc, bytes.length ~/ 1024)); // l10n-ignore: format name
   }
 
   // Share the artwork with other apps via the system share sheet: animations as GIF (the format
@@ -763,12 +783,13 @@ extension _EditorFileIo on _EditorPageState {
     final fc = engine.frameCount;
     final animated = fc > 1;
     final prefs = _prefs ?? await SharedPreferences.getInstance();
-    final remembered = prefs.getString(_kShareFormatPref) ?? 'GIF';
+    final remembered = prefs.getString(_kShareFormatPref) ?? 'GIF'; // l10n-ignore: format name
     if (!mounted) return;
+    final l10n = context.l10n;
     final choice = await _exportScaleDialog(
       frames: fc,
       share: true,
-      formats: animated ? const ['GIF', 'WebP'] : const [],
+      formats: animated ? const ['GIF', 'WebP'] : const [], // l10n-ignore: format names
       initialFormat: remembered,
     );
     if (choice == null) return;
@@ -787,28 +808,29 @@ extension _EditorFileIo on _EditorPageState {
       bytes = b;
     } else {
       final (b, canceled, f) = await _encodeWithProgress(format,
-          frame: engine.activeFrame, scale: scale, title: 'Rendering ${animated ? chosen : 'PNG'}…');
+          frame: engine.activeFrame,
+          scale: scale,
+          title: l10n.exportRendering(animated ? chosen : 'PNG')); // l10n-ignore: format name
       if (canceled) {
-        _toast('Share canceled');
+        _toast(l10n.shareCanceled);
         return;
       }
       bytes = b;
       flattened = f;
     }
     if (bytes.isEmpty) {
-      _toast('Share failed');
+      _toast(l10n.shareFailedShort);
       return;
     }
     if (flattened) {
       // GIF holds 1-bit transparency; tell the artist the look changed before the sheet opens.
-      _toast('GIF holds no partial transparency — semi-transparent pixels were flattened',
-          duration: const Duration(seconds: 4));
+      _toast(l10n.gifFlattenedNotice, duration: const Duration(seconds: 4));
     }
 
     try {
       await shareImageBytes(bytes: bytes, filenameBase: _drawingTitle, ext: ext, mime: mime);
     } catch (e) {
-      if (mounted) _toast('Could not share: $e');
+      if (mounted) _toast(l10n.shareFailed('$e'));
     }
   }
 
@@ -894,15 +916,18 @@ extension _EditorFileIo on _EditorPageState {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setS) => AlertDialog(
-          title: const Text('Resize canvas'),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            dim(setS, 'W', 'Width', w, (v) => w = v),
-            dim(setS, 'H', 'Height', h, (v) => h = v),
+          title: Text(ctx.l10n.resizeCanvasTitle),
+          // Scrolls: with the Club-size warning showing it is taller than a small phone.
+          content: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+            dim(setS, ctx.l10n.canvasWidthLetter, ctx.l10n.canvasWidth, w, (v) => w = v),
+            dim(setS, ctx.l10n.canvasHeightLetter, ctx.l10n.canvasHeight, h, (v) => h = v),
             // 3×3 anchor grid: which edge/corner the existing content stays pinned to.
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
+              // No indent before the grid: on a 320 px phone the caption beside it has 58 px
+              // with one, and a single long word of a translation no longer fits a line.
               child: Row(children: [
-                const SizedBox(width: 20),
                 Column(mainAxisSize: MainAxisSize.min, children: [
                   for (var y = 0; y < 3; y++)
                     Row(mainAxisSize: MainAxisSize.min, children: [
@@ -926,7 +951,9 @@ extension _EditorFileIo on _EditorPageState {
                     ]),
                 ]),
                 const SizedBox(width: 12),
-                Expanded(child: Text('Anchor: content stays pinned ${_anchorHuman[ay][ax]}.', style: const TextStyle(fontSize: 12, color: Colors.white70))),
+                Expanded(
+                    child: Text(_anchorCaption(ctx.l10n, ax, ay),
+                        style: const TextStyle(fontSize: 12, color: Colors.white70))),
               ]),
             ),
             Wrap(spacing: 6, children: [for (final p in [16, 32, 64, 128, 256, 512]) ActionChip(label: Text('$p²'), onPressed: () => setS(() { w = p.toDouble(); h = p.toDouble(); }))]),
@@ -934,10 +961,10 @@ extension _EditorFileIo on _EditorPageState {
               const SizedBox(height: 10),
               _ClubSizeAlert(w.round(), h.round()),
             ],
-          ]),
+          ])),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(onPressed: () { _act('ResizeCanvas(${w.round()}, ${h.round()}, ${_anchorNames[ay][ax]})'); Navigator.pop(ctx); }, child: const Text('Resize')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(ctx.l10n.commonCancel)),
+            FilledButton(onPressed: () { _act('ResizeCanvas(${w.round()}, ${h.round()}, ${_anchorNames[ay][ax]})'); Navigator.pop(ctx); }, child: Text(ctx.l10n.resizeAction)),
           ],
         ),
       ),
@@ -959,9 +986,9 @@ extension _EditorFileIo on _EditorPageState {
     // keeps its two verbs.
     final r = await showDurationDialog(
       context,
-      title: 'Frame ${fi + 1} duration',
+      title: context.l10n.frameDurationTitle(fi + 1),
       initialMs: curUs / 1000.0,
-      actions: const ['This frame', 'All frames'],
+      actions: [context.l10n.durationThisFrame, context.l10n.optAllFrames],
     );
     if (r == null || !mounted) return;
     if (r.action == 0) {

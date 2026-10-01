@@ -4,6 +4,7 @@
 // instead of a replace.
 
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 
@@ -28,7 +29,7 @@ Future<LayerPick?> showLayersSelectSheet(
         Widget chip(LayerPick p) {
           final n = pickLayers(rows, p).length;
           return ActionChip(
-            label: Text('${layerPickLabel(p)} · $n'),
+            label: Text('${layerPickLabel(ctx.l10n, p)} · $n'),
             onPressed: n == 0 ? null : () => Navigator.pop(ctx, p),
           );
         }
@@ -38,7 +39,7 @@ Future<LayerPick?> showLayersSelectSheet(
             constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * 0.85),
             child: SingleChildScrollView(
               child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            const ListTile(dense: true, title: Text('Select layers by', style: TextStyle(fontWeight: FontWeight.bold))),
+            ListTile(dense: true, title: Text(ctx.l10n.layersSelectByTitle, style: const TextStyle(fontWeight: FontWeight.bold))),
             const Divider(height: 1),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -54,8 +55,8 @@ Future<LayerPick?> showLayersSelectSheet(
             ),
             SwitchListTile(
               dense: true,
-              title: const Text('Add to selection'),
-              subtitle: Text(add ? 'A selector adds its layers to what is selected' : 'A selector replaces the selection', style: const TextStyle(fontSize: 11)),
+              title: Text(ctx.l10n.batchAddToSelection),
+              subtitle: Text(add ? ctx.l10n.layersSelectAdds : ctx.l10n.layersSelectReplaces, style: const TextStyle(fontSize: 11)),
               value: add,
               onChanged: (v) {
                 setS(() => add = v);

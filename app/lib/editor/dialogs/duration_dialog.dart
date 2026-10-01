@@ -4,6 +4,7 @@
 // no engine, no DSL; the caller turns the result into a verb.
 
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 import 'package:flutter/services.dart';
 
 /// The engine's duration range in milliseconds (16.6 ms = 60 fps … 1 s).
@@ -59,7 +60,7 @@ class _DurationEditorState extends State<DurationEditor> {
             autofocus: widget.autofocus,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
-            decoration: const InputDecoration(suffixText: 'ms', isDense: true),
+            decoration: const InputDecoration(suffixText: 'ms', isDense: true), // l10n-ignore: unit
             onChanged: (t) {
               final v = double.tryParse(t.replaceAll(',', '.'));
               if (v != null) _set(v, writeField: false);
@@ -67,11 +68,11 @@ class _DurationEditorState extends State<DurationEditor> {
           ),
         ),
         const Spacer(),
-        Text('${(1000 / _ms).toStringAsFixed(1)} fps'),
+        Text('${(1000 / _ms).toStringAsFixed(1)} fps'), // l10n-ignore: unit
       ]),
       Slider(value: _ms, min: kMinDurationMs, max: kMaxDurationMs, onChanged: _set),
       Wrap(spacing: 6, children: [
-        for (final f in kFpsPresets) ActionChip(label: Text('${f}fps'), onPressed: () => _set(1000 / f)),
+        for (final f in kFpsPresets) ActionChip(label: Text('${f}fps'), onPressed: () => _set(1000 / f)), // l10n-ignore: unit
       ]),
     ]);
   }
@@ -90,10 +91,13 @@ Future<DurationChoice?> showDurationDialog(
   return showDialog<DurationChoice>(
     context: context,
     builder: (ctx) => AlertDialog(
+      // Scrolls instead of overflowing: on a 320 x 568 phone the title, the chips on two
+      // rows, and the buttons are a few pixels taller than the screen allows.
+      scrollable: true,
       title: Text(title),
       content: DurationEditor(initialMs: initialMs, onChanged: (v) => ms = v),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+        TextButton(onPressed: () => Navigator.pop(ctx), child: Text(ctx.l10n.commonCancel)),
         for (var i = 0; i < actions.length; i++)
           if (i == actions.length - 1)
             FilledButton(

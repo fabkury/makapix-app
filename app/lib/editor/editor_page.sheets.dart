@@ -430,7 +430,7 @@ extension _EditorSheets on _EditorPageState {
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Text(blendDisplayName(blend), style: const TextStyle(color: Colors.white70)),
+                  Text(blendName(context.l10n, blend), style: const TextStyle(color: Colors.white70)),
                   const Icon(Icons.chevron_right, size: 18, color: Colors.white54),
                 ]),
               ),
@@ -532,14 +532,14 @@ extension _EditorSheets on _EditorPageState {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setS) => _sheetScaffold(ctx, [
           for (final (label, modes) in kBlendGroups) ...[
-            _sheetSection(label),
+            _sheetSection(blendGroupName(ctx.l10n, label)),
             for (final m in modes)
               ListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
                 selected: m == sel,
                 selectedTileColor: const Color(0x224080C0),
-                title: Text(blendDisplayName(m)),
+                title: Text(blendName(ctx.l10n, m)),
                 trailing:
                     m == sel ? const Icon(Icons.check, color: Color(0xFF4080C0)) : null,
                 onTap: () {

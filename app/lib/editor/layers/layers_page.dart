@@ -15,6 +15,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 
@@ -25,6 +26,7 @@ import '../tap_again.dart';
 import '../thumbnail.dart';
 import 'layer_list.dart';
 import 'layer_model.dart';
+import 'layer_names.dart';
 import 'layer_row.dart';
 import 'layers_action_bar.dart';
 import 'layers_dialogs.dart';
@@ -127,8 +129,6 @@ class _LayersPageState extends State<LayersPage> {
     return c.h > 0 ? c.w / c.h : 1;
   }
 
-  String _plural(int n) => n == 1 ? 'layer' : 'layers';
-
   // ---- thumbnails ----
 
   ui.Image? _thumbFor(int id) => _thumbs.get(id)?.img;
@@ -229,7 +229,7 @@ class _LayersPageState extends State<LayersPage> {
     if (idx.isEmpty) return;
     final all = idx.length >= _rows.length;
     _runBatch(layerSetDsl('RemoveLayers', idx), _BatchKind.structural,
-        report: all ? 'Every layer removed — one blank layer took their place' : null);
+        report: all ? context.l10n.layersAllRemoved : null);
   }
 
   bool get _canMerge => _sel.length >= 2;
@@ -238,16 +238,16 @@ class _LayersPageState extends State<LayersPage> {
     final idx = _indices;
     if (idx.length < 2) return;
     if (!isContiguous(idx)) {
-      setState(() => _status = (warn: true, text: 'Merge needs one contiguous run — the selection has a gap'));
+      setState(() => _status = (warn: true, text: context.l10n.layersMergeGap));
       return;
     }
     final locked = lockedCount(_rows, idx);
     if (locked > 0) {
-      setState(() => _status = (warn: true, text: '$locked selected ${locked == 1 ? 'layer is' : 'layers are'} locked — unlock ${locked == 1 ? 'it' : 'them'} first'));
+      setState(() => _status = (warn: true, text: context.l10n.layersLockedFirst(locked)));
       return;
     }
     final survivor = _rows[idx.first].name;
-    _runBatch(layerSetDsl('MergeLayers', idx), _BatchKind.merge, report: 'Merged ${idx.length} layers into ${survivor.isEmpty ? '(unnamed)' : survivor}');
+    _runBatch(layerSetDsl('MergeLayers', idx), _BatchKind.merge, report: context.l10n.layersMerged(idx.length, shownLayerName(context.l10n, survivor)));
   }
 
   void _shift(int delta) {
@@ -302,13 +302,13 @@ class _LayersPageState extends State<LayersPage> {
         if (m == null || !mounted) return;
         _runBatch(dslForLayerOp(op, idx, blend: m), _BatchKind.property);
       case RenameLayersOp():
-        final pattern = await showLayersRenameDialog(context, selectedCount: idx.length, initialText: idx.length == 1 ? _rows[idx.first].name : '');
+        final pattern = await showLayersRenameDialog(context, selectedCount: idx.length, initialText: idx.length == 1 && _rows[idx.first].name.isNotEmpty ? shownLayerName(context.l10n, _rows[idx.first].name) : '');
         if (pattern == null || !mounted) return;
         _runBatch(dslForLayerOp(op, idx, name: pattern), _BatchKind.property);
       case FlipLayersOp() || RotateLayersOp() || InvertLayersOp() || ClearLayersOp():
         final locked = lockedCount(_rows, idx);
         if (locked > 0) {
-          setState(() => _status = (warn: true, text: '$locked selected ${locked == 1 ? 'layer is' : 'layers are'} locked — unlock ${locked == 1 ? 'it' : 'them'} first'));
+          setState(() => _status = (warn: true, text: context.l10n.layersLockedFirst(locked)));
           return;
         }
         _runBatch(dslForLayerOp(op, idx), _BatchKind.content);
@@ -316,7 +316,7 @@ class _LayersPageState extends State<LayersPage> {
         final frames = await showCopyToFramesDialog(context, frameCount: host.frameCount, activeFrameIndex: host.activeFrameIndex, selectedCount: idx.length);
         if (frames == null || frames.isEmpty || !mounted) return;
         _runBatch(dslForLayerOp(op, idx, frames: frames), _BatchKind.structural,
-            report: 'Copied ${idx.length} ${_plural(idx.length)} to ${frames.length} ${frames.length == 1 ? 'frame' : 'frames'}');
+            report: context.l10n.layersCopiedToFrames(frames.length));
       case UseAsMoveGroupOp():
         Navigator.pop(context, LayersPageResult.moveGroup(idx));
     }
@@ -370,23 +370,23 @@ class _LayersPageState extends State<LayersPage> {
     if (index < 0 || index >= _rows.length) return;
     final id = _ids[index];
     final anchorOk = _sel.anchorId != null && _sel.anchorId != id && _indexOf.containsKey(_sel.anchorId);
-    final name = _rows[index].name.isEmpty ? '(unnamed)' : _rows[index].name;
+    final name = shownLayerName(context.l10n, _rows[index].name);
     final choice = await showAppSheet<String>(
       context: context,
       showDragHandle: true,
       backgroundColor: const Color(0xFF1A1C1F),
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(dense: true, title: Text('Layer ${index + 1} · $name', style: const TextStyle(fontWeight: FontWeight.bold))),
+          ListTile(dense: true, title: Text('${ctx.l10n.layerDefaultName(index + 1)} · $name', style: const TextStyle(fontWeight: FontWeight.bold))),
           const Divider(height: 1),
-          ListTile(leading: const Icon(Icons.login), title: const Text('Make active'), onTap: () => Navigator.pop(ctx, 'activate')),
+          ListTile(leading: const Icon(Icons.login), title: Text(ctx.l10n.layersMakeActive), onTap: () => Navigator.pop(ctx, 'activate')),
           ListTile(
             leading: const Icon(Icons.linear_scale),
-            title: const Text('Select to here'),
+            title: Text(ctx.l10n.batchSelectToHere),
             enabled: anchorOk,
             onTap: anchorOk ? () => Navigator.pop(ctx, 'range') : null,
           ),
-          ListTile(leading: const Icon(Icons.tune), title: const Text('Layer options…'), onTap: () => Navigator.pop(ctx, 'sheet')),
+          ListTile(leading: const Icon(Icons.tune), title: Text(ctx.l10n.layersLayerOptions), onTap: () => Navigator.pop(ctx, 'sheet')),
         ]),
       ),
     );
@@ -431,7 +431,7 @@ class _LayersPageState extends State<LayersPage> {
       if (_deleteArm.tap(_armKey)) {
         _delete();
       } else {
-        setState(() => _status = (warn: false, text: 'Press Delete again to delete ${_sel.length} ${_plural(_sel.length)}'));
+        setState(() => _status = (warn: false, text: context.l10n.layersDeleteAgain(_sel.length)));
       }
       return KeyEventResult.handled;
     }
@@ -466,17 +466,19 @@ class _LayersPageState extends State<LayersPage> {
   Widget _statusLine() {
     final s = _status;
     final n = _sel.length;
-    final idle = n == 0 ? 'Tap or slide to select · hold for options · double-tap to make active' : '$n selected · ${formatLayerSetHuman(_indices)}';
+    final idle = n == 0 ? context.l10n.layersIdleHint : context.l10n.batchSelSummary(n, formatLayerSetHuman(_indices));
     final text = s?.text ?? idle;
     final color = s == null ? Colors.white38 : (s.warn ? Colors.amber : Colors.white70);
     final icon = s == null ? null : (s.warn ? Icons.warning_amber_rounded : Icons.info_outline);
+    // Two lines, fixed height (no reflow when the text changes): on one line the idle hint was
+    // cut off on a 360 px phone, in English too.
     return SizedBox(
-      height: 22,
+      height: 30,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Row(children: [
           if (icon != null) ...[Icon(icon, size: 14, color: color), const SizedBox(width: 6)],
-          Expanded(child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: color))),
+          Expanded(child: Text(text, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, height: 1.25, color: color))),
         ]),
       ),
     );
@@ -489,12 +491,16 @@ class _LayersPageState extends State<LayersPage> {
       backgroundColor: _kPageBg,
       appBar: AppBar(
         backgroundColor: _kPageBg,
-        title: Text('Layers · ${_rows.length}'),
+        title: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: AlignmentDirectional.centerStart,
+          child: Text(context.l10n.layersPageTitle(_rows.length)),
+        ),
         actions: [
-          IconButton(tooltip: 'Undo', icon: const Icon(Icons.undo), onPressed: host.canUndo ? _undo : null),
-          IconButton(tooltip: 'Redo', icon: const Icon(Icons.redo), onPressed: host.canRedo ? _redo : null),
+          IconButton(tooltip: context.l10n.toolUndo, icon: const Icon(Icons.undo), onPressed: host.canUndo ? _undo : null),
+          IconButton(tooltip: context.l10n.toolRedo, icon: const Icon(Icons.redo), onPressed: host.canRedo ? _redo : null),
           PopupMenuButton<String>(
-            tooltip: 'Select',
+            tooltip: context.l10n.optSelect,
             onSelected: (v) {
               switch (v) {
                 case 'all':
@@ -513,15 +519,15 @@ class _LayersPageState extends State<LayersPage> {
                   _setRoomy(false);
               }
             },
-            itemBuilder: (_) => [
-              const PopupMenuItem(value: 'all', child: Text('Select all')),
-              const PopupMenuItem(value: 'none', child: Text('Select none')),
-              const PopupMenuItem(value: 'invert', child: Text('Invert selection')),
-              const PopupMenuItem(value: 'range', child: Text('Select layers…')),
-              const PopupMenuItem(value: 'by', child: Text('Select by…')),
+            itemBuilder: (ctx) => [
+              PopupMenuItem(value: 'all', child: Text(ctx.l10n.selectAll)),
+              PopupMenuItem(value: 'none', child: Text(ctx.l10n.selectNone)),
+              PopupMenuItem(value: 'invert', child: Text(ctx.l10n.selectInvert)),
+              PopupMenuItem(value: 'range', child: Text(ctx.l10n.layersSelectRangeMenu)),
+              PopupMenuItem(value: 'by', child: Text(ctx.l10n.layersSelectByMenu)),
               const PopupMenuDivider(),
-              PopupMenuItem(value: 'roomy', enabled: !_roomy, child: const Text('Bigger rows')),
-              PopupMenuItem(value: 'compact', enabled: _roomy, child: const Text('Smaller rows')),
+              PopupMenuItem(value: 'roomy', enabled: !_roomy, child: Text(ctx.l10n.layersBiggerRows)),
+              PopupMenuItem(value: 'compact', enabled: _roomy, child: Text(ctx.l10n.layersSmallerRows)),
             ],
           ),
         ],

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 /// The longest drawing title the shell accepts, enforced at input time here and in the
 /// New-document dialog's optional title field (2026-09-03). Titles are trimmed on save.
@@ -41,18 +42,19 @@ class _RenameDrawingDialogState extends State<_RenameDrawingDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Rename drawing'),
+      title: Text(context.l10n.drawingRenameTitle),
       content: TextField(
         controller: _ctrl,
         autofocus: true,
         maxLength: kDrawingTitleMaxLength,
-        decoration: const InputDecoration(hintText: 'Title', counterText: ''),
+        decoration: InputDecoration(hintText: context.l10n.postTitleLabel, counterText: ''),
         onSubmitted: (v) => Navigator.pop(context, v.trim()),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(context.l10n.commonCancel)),
         FilledButton(
-            onPressed: () => Navigator.pop(context, _ctrl.text.trim()), child: const Text('Save')),
+            onPressed: () => Navigator.pop(context, _ctrl.text.trim()),
+            child: Text(context.l10n.commonSave)),
       ],
     );
   }

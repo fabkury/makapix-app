@@ -5,6 +5,8 @@
 // shows before a tap. Pure Dart, tested without the engine; every rule here mirrors
 // `crates/engine/src/session/layers.rs`.
 
+import 'package:makapix_club/l10n/l10n.dart';
+
 import '../frames/frame_model.dart' show kMaxLayers, kTileBytes;
 import '../frames/frame_set.dart' show formatFrameSet, formatFrameSetHuman, sanitizeLayerName;
 
@@ -19,7 +21,7 @@ class LayerRow {
     this.visible = true,
     this.locked = false,
     this.opacity = 255,
-    this.blend = 'Normal',
+    this.blend = 'Normal', // l10n-ignore: engine blend mode
     this.presentTiles = 0,
   });
 
@@ -62,7 +64,7 @@ List<LayerRow> parseLayerDetail(List<dynamic>? frameDetail, int activeFrame) {
       visible: (l['visible'] as bool?) ?? true,
       locked: (l['locked'] as bool?) ?? false,
       opacity: ((l['opacity'] as num?) ?? 255).toInt(),
-      blend: (l['blend'] as String?) ?? 'Normal',
+      blend: (l['blend'] as String?) ?? 'Normal', // l10n-ignore: engine blend mode
       presentTiles: ((l['present_tiles'] as num?) ?? 0).toInt(),
     ));
   }
@@ -86,11 +88,11 @@ String layerSetDsl(String verb, Iterable<int> indices, [List<String> args = cons
 /// rejected. Out of range, empty, or unparsable input yields an error instead of indices.
 ({List<int>? indices, String? error}) parseLayerRangeEntry(String text, {required int layerCount}) {
   final tokens = text.replaceAll('–', '-').split(RegExp(r'[,\s]+')).where((t) => t.isNotEmpty).toList();
-  if (tokens.isEmpty) return (indices: null, error: 'Enter layer numbers, like 1-4, 9');
+  if (tokens.isEmpty) return (indices: null, error: appL10n.layersErrEnter);
   final out = <int>{};
   for (final tok in tokens) {
     final m = RegExp(r'^(\d+)(?:-(\d+))?$').firstMatch(tok);
-    if (m == null) return (indices: null, error: 'Use layer numbers and ranges, like 1-4, 9');
+    if (m == null) return (indices: null, error: appL10n.layersErrFormat);
     var lo = int.parse(m.group(1)!);
     var hi = m.group(2) == null ? lo : int.parse(m.group(2)!);
     if (lo > hi) {
@@ -98,8 +100,8 @@ String layerSetDsl(String verb, Iterable<int> indices, [List<String> args = cons
       lo = hi;
       hi = t;
     }
-    if (lo < 1) return (indices: null, error: 'Layers start at 1 (the bottom layer)');
-    if (hi > layerCount) return (indices: null, error: 'Layer $hi is beyond the top layer ($layerCount)');
+    if (lo < 1) return (indices: null, error: appL10n.layersErrStart);
+    if (hi > layerCount) return (indices: null, error: appL10n.layersErrBeyond(hi, layerCount));
     for (var k = lo; k <= hi; k++) {
       out.add(k - 1);
     }
@@ -144,14 +146,14 @@ int retainedLayerPayloadBytes(List<LayerRow> rows, List<int> indices) {
 /// The by-property selectors of the Select sheet (v1).
 enum LayerPick { empty, hidden, visible, locked, unlocked, nonNormal, translucent }
 
-String layerPickLabel(LayerPick p) => switch (p) {
-      LayerPick.empty => 'Empty',
-      LayerPick.hidden => 'Hidden',
-      LayerPick.visible => 'Visible',
-      LayerPick.locked => 'Locked',
-      LayerPick.unlocked => 'Unlocked',
-      LayerPick.nonNormal => 'Non-Normal blend',
-      LayerPick.translucent => 'Translucent',
+String layerPickLabel(AppLocalizations l, LayerPick p) => switch (p) {
+      LayerPick.empty => l.layersPickEmpty,
+      LayerPick.hidden => l.layersPickHidden,
+      LayerPick.visible => l.layersPickVisible,
+      LayerPick.locked => l.layersPickLocked,
+      LayerPick.unlocked => l.layersPickUnlocked,
+      LayerPick.nonNormal => l.layersPickBlend,
+      LayerPick.translucent => l.layersPickTranslucent,
     };
 
 /// The indices (engine order) of the rows a selector matches.

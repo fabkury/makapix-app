@@ -610,7 +610,7 @@ extension _EditorTimeline on _EditorPageState {
                           ]),
                         ),
                       // bottom-right: two-letter blend-mode badge, only when non-Normal
-                      if (blendBadge('${l['blend'] ?? 'Normal'}').isNotEmpty) // l10n-ignore: engine blend mode
+                      if (blendBadgeText(context.l10n, '${l['blend'] ?? 'Normal'}').isNotEmpty) // l10n-ignore: engine blend mode
                         Positioned(
                           right: 1,
                           bottom: 1,
@@ -618,7 +618,7 @@ extension _EditorTimeline on _EditorPageState {
                             padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
                             color: const Color(0xCC000000),
                             child: Text(
-                              blendBadge('${l['blend'] ?? 'Normal'}'), // l10n-ignore: engine blend mode
+                              blendBadgeText(context.l10n, '${l['blend'] ?? 'Normal'}'), // l10n-ignore: engine blend mode
                               style: const TextStyle(
                                   fontSize: 8, color: Colors.white70, fontWeight: FontWeight.w600),
                             ),

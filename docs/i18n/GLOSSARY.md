@@ -133,6 +133,37 @@ label must not be longer than the full name, and no two tools may share one.
 
 Open and Import are different gestures (CONTEXT.md): keep two distinct words in every language.
 
+**Selection** has two meanings. The table row above is the pixel selection (the Select
+tools). The set of frames or layers picked on the Frames and Layers pages uses the same word
+in the Latin-script languages and Russian (выделение), and the plain "chosen" words in
+Japanese and Chinese (選択 / 所选), not 選択範囲 / 选区, which mean an area of pixels.
+
+More editor terms (Frames and Layers pages):
+
+| en | es | pt | fr | de | ru | ja | zh |
+|---|---|---|---|---|---|---|---|
+| stack (the layers of a frame) | pila | pilha | pile | Stapel | стопка | 重ね順 | 堆叠 |
+| Move group | grupo de movimiento | grupo de movimento | groupe de déplacement | Bewegungsgruppe | группа сдвига | 移動グループ | 移动组 |
+| shift (move items one position) | desplazar | deslocar | décaler | verschieben | сдвиг | ずらす | 移位 |
+| merge (layers) | combinar | mesclar | fusionner | vereinen / zusammenführen | объединить | 結合 | 合并 |
+| off-canvas (kept outside the canvas) | fuera del lienzo | fora da tela | hors toile | außerhalb | за холстом | キャンバス外 | 画布外 |
+| active (the layer you draw on) | activa | ativa | actif | aktiv | активный | アクティブ | 当前图层 |
+| duration (of a frame) | duración | duração | durée | Dauer | длительность | 表示時間 | 时长 |
+
+### Blend modes
+
+The eleven names are the `blend*` messages, taken from what image editors call them in each
+language (Photoshop's localized names, where it has one). They differ on purpose from a
+word-for-word translation: French Screen is "Superposition" and Overlay is "Incrustation";
+German Screen is "Negativ multiplizieren" and Overlay is "Ineinanderkopieren"; Russian
+Lighten is «Замена светлым»; Japanese Darken / Lighten are 比較（暗）/ 比較（明）; Chinese
+Multiply is 正片叠底 and Screen is 滤色. The two-letter tile badges are one message
+(`blendBadges`, ten codes in wire order; one character each in Japanese and Chinese), and a
+test keeps them unique per language.
+
+A keyboard key is named as printed on that language's keyboards (Spanish "Supr", French
+"Suppr", German "Entf"; "Delete" elsewhere).
+
 ### Tools
 
 The tool names (full and short) are the `tool*` messages in the ARB files; that is their

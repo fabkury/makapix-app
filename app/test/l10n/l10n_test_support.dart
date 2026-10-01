@@ -119,16 +119,23 @@ const String kShotDir = 'build/l10n_shots';
 /// Saves the screen pumped by [pumpLocalized] as `build/l10n_shots/<name>.png`, at 2× so small
 /// type stays legible. The pictures are for looking at — the review step of T6 — not goldens:
 /// nothing compares them.
-Future<void> screenshot(WidgetTester tester, String name) async {
+/// [inRunAsync] = the caller is already inside `tester.runAsync` (which cannot nest).
+Future<void> screenshot(WidgetTester tester, String name, {bool inRunAsync = false}) async {
   final boundary = _shotKey.currentContext!.findRenderObject()! as RenderRepaintBoundary;
-  await tester.runAsync(() async {
+  Future<void> shoot() async {
     final image = await boundary.toImage(pixelRatio: 2);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
     image.dispose();
     final file = File('$kShotDir/$name.png');
     file.parent.createSync(recursive: true);
     file.writeAsBytesSync(bytes!.buffer.asUint8List());
-  });
+  }
+
+  if (inRunAsync) {
+    await shoot();
+  } else {
+    await tester.runAsync(shoot);
+  }
 }
 
 /// Sets the test surface to [size] logical pixels at 1× (restored when the test ends).
