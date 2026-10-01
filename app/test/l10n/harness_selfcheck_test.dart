@@ -45,6 +45,9 @@ void main() {
           SizedBox(width: 40, child: Text('No wrap at all here', softWrap: false)),
           SizedBox(width: 200, child: Text('Fits', maxLines: 1)),
           SizedBox(width: 60, child: Text('Wraps freely and that is fine')),
+          // A number with its unit, joined by a no-break space: it cannot wrap at the space,
+          // so a narrow box splits it mid-word.
+          SizedBox(width: 40, child: Text('78,9 тыс.', style: TextStyle(fontSize: 20))),
         ]),
       ),
     );
@@ -54,6 +57,7 @@ void main() {
       'Another long label here',
       'Wraps over and over again',
       'No wrap at all here',
+      '78,9 тыс.',
     });
   });
 

@@ -98,6 +98,9 @@ void sweepScreen(
 
           final cut = truncatedTexts(tester)
               .where((t) => !allowTruncated.any((a) => a.allMatches(t.text).isNotEmpty))
+              // Fixture content (an email address, a handle) is user text: one long unbreakable
+              // string of it splitting across lines is not a translation's doing.
+              .where((t) => !(t.brokenWord && kFixtureText.any((f) => t.text.contains(f))))
               .toList();
           expect(cut, isEmpty, reason: 'text cut off');
 

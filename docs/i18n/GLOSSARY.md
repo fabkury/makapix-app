@@ -85,6 +85,10 @@ label must not be longer than the full name, and no two tools may share one.
 | temporary password | contraseña temporal | senha temporária | mot de passe temporaire | temporäres Passwort | временный пароль | 仮パスワード | 临时密码 |
 | linked logins | inicios de sesión vinculados | logins vinculados | connexions associées | verknüpfte Anmeldungen | привязанные способы входа | 連携ログイン | 关联登录 |
 | like (a comment) | me gusta | curtir | j'aime | gefällt mir | нравится | いいね | 赞 |
+| highlights (an artist's picked best works) | mejores obras | melhores artes | sélection | Highlights | лучшее | ハイライト | 代表作 |
+| featured (on the welcome page) | destacados | destaques | à la une | empfohlen | избранное | 注目の作品 | 精选 |
+| reputation | reputación | reputação | réputation | Reputation | репутация | 評価 | 声望 |
+| tagline | lema | frase | devise | Motto | девиз | ひとこと | 个性签名 |
 | monitored hashtags | hashtags supervisados | hashtags monitoradas | hashtags surveillés | überwachte Hashtags | отслеживаемые хештеги | 監視対象のハッシュタグ | 受监控的话题标签 |
 
 ### Editor
@@ -131,4 +135,4 @@ glossary. Notable choices:
 
 - **Draft** (CONTEXT.md: visible but uncommitted editor state) vs. **Eraser** in Spanish: both
   are naturally "borrador". Decide when batch E1/E2 shows where "draft" appears in UI text.
-- **Lineage**, **Highlight** — decide in batches C5 / C4.
+- **Lineage** — decide in batch C5.

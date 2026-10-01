@@ -37,8 +37,10 @@ flutter test test_engine         # the real editor, in every language
   every fit check passes vacuously.
 - **`pumpLocalized(tester, locale, widget, size:)`** — the app's theme and delegates, one
   language, one screen size.
-- **`truncatedTexts(tester)`** — every laid-out text that ran past its last line or is wider
-  than its single-line box.
+- **`truncatedTexts(tester)`** — every laid-out text that ran past its last line, is wider than
+  its single-line box, or wraps with one word wider than the box (a number and its unit split
+  across two lines). The last one is skipped for Chinese and Japanese, where the test engine
+  reports a whole sentence as one unbreakable run.
 - **`leftoverLatin` / `leftoverEnglish`** — untranslated text. On Japanese, Chinese, and Russian
   screens any Latin word outside the never-translated list (brands, formats, units) is a miss.
   On Spanish, Portuguese, French, and German screens a text is a miss when it equals an English

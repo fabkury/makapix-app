@@ -124,6 +124,8 @@ void main() {
     build: () => Opener((context, ref) => showMakapixAboutDialog(context)),
     overrides: (b) => clubOverrides(),
     act: tapOpener,
+    // A repository address is one long unbreakable string; it wraps wherever it must.
+    allowTruncated: const ['github.com'],
     // Repository addresses and the author's name are shown as written.
     allowLatin: const [
       'github.com/fabkury/makapix-app',

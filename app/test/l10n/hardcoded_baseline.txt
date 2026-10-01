@@ -2,7 +2,7 @@
 # file. test/l10n/hardcoded_strings_test.dart fails if a file has MORE than its number (a
 # new hardcoded string) or FEWER (strings were extracted: re-pin with
 # `dart run tool/l10n/scan.dart --write-baseline`). Done when this file is empty.
-# total 2253 in 99 files
+# total 2125 in 92 files
 255 lib/editor/editor_page.controls.dart
 212 lib/editor/replay/visible_index.dart
 113 lib/club/ui/artwork_detail_page.dart
@@ -14,7 +14,6 @@
 61 lib/editor/layers/layers_more_sheet.dart
 51 lib/editor/editor_page.timeline.dart
 49 lib/club/ui/post_management_page.dart
-49 lib/club/ui/profile_page.dart
 46 lib/club/ui/publish_page.dart
 46 lib/editor/editor_page.dart
 44 lib/editor/frames/frames_more_sheet.dart
@@ -28,17 +27,14 @@
 34 lib/editor/layers/layers_page.dart
 30 lib/editor/dialogs/place_dialog.dart
 27 lib/editor/layers/layers_dialogs.dart
-24 lib/club/ui/edit_profile_page.dart
 23 lib/club/models/safety_copy.dart
 23 lib/editor/artwork_colors_page.dart
 23 lib/editor/editor_page.replay.dart
 22 lib/editor/frames/frames_dialogs.dart
 22 lib/editor/patterns/patterns_catalog.dart
-21 lib/club/ui/artist_dashboard_page.dart
 21 lib/share/image_share.dart
 20 lib/editor/editor_page.toolgrid.dart
 19 lib/editor/editor_page.persistence.dart
-18 lib/club/ui/post_stats_page.dart
 18 lib/editor/keyboard/cheat_sheet.dart
 17 lib/club/ui/edit_post_details_page.dart
 17 lib/club/ui/report_page.dart
@@ -55,7 +51,6 @@
 8 lib/editor/replay/replay_page.dart
 7 lib/club/state/pmd_providers.dart
 7 lib/club/ui/mentions_settings_page.dart
-7 lib/club/ui/reactions_page.dart
 7 lib/editor/frames/frames_action_bar.dart
 7 lib/editor/layers/layers_action_bar.dart
 6 lib/club/api/player_api.dart
@@ -63,7 +58,6 @@
 6 lib/club/ui/blocked_users_page.dart
 5 lib/club/models/club_error.dart
 5 lib/club/state/player_providers.dart
-5 lib/club/ui/follows_page.dart
 5 lib/editor/dialogs/color_picker_dialog.dart
 5 lib/editor/editor_page.canvas.dart
 5 lib/editor/palette_io.dart
@@ -71,7 +65,6 @@
 4 lib/club/api/club_user_agent.dart
 4 lib/club/models/mention_candidate.dart
 4 lib/club/ui/moderation_hub_page.dart
-4 lib/club/ui/my_remixes_page.dart
 4 lib/editor/dialogs/duration_dialog.dart
 4 lib/editor/dialogs/rename_drawing_dialog.dart
 4 lib/editor/frames/frame_set.dart
@@ -91,11 +84,11 @@
 2 lib/editor/open_file.dart
 2 lib/editor/replay/action_runner.dart
 2 lib/editor/replay/timelapse_plan.dart
-1 lib/club/edit/profile_edit.dart
 1 lib/club/models/player_device.dart
 1 lib/club/state/paged.dart
 1 lib/club/state/profile_providers.dart
 1 lib/club/ui/hashtag_feed_page.dart
+1 lib/club/ui/profile_page.dart
 1 lib/editor/frames/frame_tile.dart
 1 lib/editor/keyboard/dispatcher.dart
 1 lib/editor/persistence/drawing_meta.dart

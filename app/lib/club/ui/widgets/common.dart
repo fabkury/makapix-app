@@ -28,6 +28,23 @@ String compactCount(int n) {
   return '$txt$suffix';
 }
 
+/// A statistics bucket's name: the known device types are translated; anything else (a view
+/// type, a new device the server starts reporting) is shown capitalized as the server sent it.
+String statsBucketLabel(String key) {
+  final label = appL10n.statsDevice(key);
+  if (label != key || key.isEmpty) return label;
+  return key[0].toUpperCase() + key.substring(1);
+}
+
+/// A compact count for the statistics pages: "12.3K" in English, the language's own compact
+/// notation elsewhere.
+String statsCount(int n) {
+  if (appL10n.localeName != 'en') return compactCount(n);
+  if (n < 1000) return '$n';
+  if (n < 1000000) return '${(n / 1000).toStringAsFixed(n < 10000 ? 1 : 0)}K';
+  return '${(n / 1000000).toStringAsFixed(1)}M';
+}
+
 /// File size in the nearest of bytes/KiB/MiB, e.g. 512 → "512 bytes",
 /// 38214 → "37.3 KiB", 5452595 → "5.2 MiB".
 String formatFileSize(int bytes) {

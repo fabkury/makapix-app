@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -23,16 +24,19 @@ class FollowsPage extends StatelessWidget {
       child: Scaffold(
         appBar: AppBar(
           title: Text('@$handle'),
-          bottom: const TabBar(tabs: [Tab(text: 'Followers'), Tab(text: 'Following')]),
+          bottom: TabBar(tabs: [
+            Tab(text: context.l10n.statFollowers),
+            Tab(text: context.l10n.feedFollowing),
+          ]),
         ),
         body: TabBarView(children: [
           _PeopleList(
             provider: followersProvider(sqid),
-            emptyMessage: 'No followers yet.',
+            emptyMessage: context.l10n.followsEmptyFollowers,
           ),
           _PeopleList(
             provider: followingProvider(sqid),
-            emptyMessage: 'Not following anyone yet.',
+            emptyMessage: context.l10n.followsEmptyFollowing,
           ),
         ]),
       ),
@@ -120,7 +124,7 @@ class _PeopleListState extends ConsumerState<_PeopleList>
                 style: const TextStyle(fontSize: 11))
             : null,
         trailing: u.reputation > 0
-            ? Text('rep ${u.reputation}',
+            ? Text(context.l10n.searchUserReputation(u.reputation),
                 style: const TextStyle(fontSize: 11, color: Colors.white38))
             : null,
         onTap: () => Navigator.push(

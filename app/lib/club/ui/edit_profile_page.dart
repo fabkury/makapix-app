@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -63,6 +64,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   bool get _dirty => _patch.isNotEmpty;
 
   Future<void> _pickAvatar() async {
+    final l10n = context.l10n;
     final res = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: _allowedExtensions,
@@ -71,7 +73,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     final file = res?.files.firstOrNull;
     if (file == null || file.bytes == null) return;
     if (file.bytes!.length > _maxAvatarBytes) {
-      _toast('That image is too large (max 5 MB).');
+      _toast(l10n.avatarTooLarge);
       return;
     }
     setState(() => _avatarBusy = true);
@@ -85,7 +87,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
         _avatarUrl = url ?? ref.read(authControllerProvider).me?.user.avatarUrl;
         _avatarBusy = false;
       });
-      _toast('Avatar updated.');
+      _toast(l10n.avatarUpdated);
     } on ClubError catch (e) {
       if (!mounted) return;
       setState(() => _avatarBusy = false);
@@ -93,7 +95,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _avatarBusy = false);
-      _toast('Could not upload the avatar.');
+      _toast(l10n.avatarUploadFailed);
     }
   }
 
@@ -101,16 +103,17 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Remove photo?'),
-        content: const Text('Your profile will show your initial instead. This applies immediately.'),
+        title: Text(ctx.l10n.avatarRemoveTitle),
+        content: Text(ctx.l10n.avatarRemoveBody),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remove')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.commonCancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(ctx.l10n.commonRemove)),
         ],
       ),
     );
     if (confirmed != true || !mounted) return;
     setState(() => _avatarBusy = true);
+    final l10n = context.l10n;
     try {
       await ref.read(clubApiClientProvider).deleteAvatar(widget.profile.userKey);
       await ref.read(authControllerProvider.notifier).reloadMe();
@@ -119,7 +122,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
         _avatarUrl = null;
         _avatarBusy = false;
       });
-      _toast('Avatar removed.');
+      _toast(l10n.avatarRemoved);
     } on ClubError catch (e) {
       if (!mounted) return;
       setState(() => _avatarBusy = false);
@@ -127,13 +130,15 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _avatarBusy = false);
-      _toast('Could not remove the avatar.');
+      _toast(l10n.avatarRemoveFailed);
     }
   }
 
   Future<void> _save() async {
-    final err = validateCodePointLength(_tagline.text, kTaglineMaxCodePoints, 'Tagline') ??
-        validateCodePointLength(_bio.text, kBioMaxCodePoints, 'Bio');
+    final l10n = context.l10n;
+    final err =
+        validateCodePointLength(_tagline.text, kTaglineMaxCodePoints, l10n.profileTagline) ??
+            validateCodePointLength(_bio.text, kBioMaxCodePoints, l10n.profileBio);
     if (err != null) return _toast(err);
     final patch = _patch;
     if (patch.isEmpty) return;
@@ -147,7 +152,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
         _baseBio = _bio.text.trim();
         _saving = false;
       });
-      _toast('Saved.');
+      _toast(l10n.commonSaved);
     } on ClubError catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -155,7 +160,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);
-      _toast('Could not save your profile.');
+      _toast(l10n.profileSaveFailed);
     }
   }
 
@@ -163,11 +168,13 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     final discard = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Discard changes?'),
-        content: const Text('Your tagline/bio edits have not been saved.'),
+        title: Text(ctx.l10n.commonDiscardTitle),
+        content: Text(ctx.l10n.profileDiscardBody),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep editing')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Discard')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.commonKeepEditing)),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true), child: Text(ctx.l10n.commonDiscard)),
         ],
       ),
     );
@@ -177,13 +184,14 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   @override
   Widget build(BuildContext context) {
     final busy = _saving || _avatarBusy;
+    final l10n = context.l10n;
     return PopScope(
       canPop: !_dirty,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _confirmDiscard();
       },
       child: Scaffold(
-        appBar: AppBar(title: const Text('Edit profile')),
+        appBar: AppBar(title: Text(l10n.profileEdit)),
         body: CenteredContent(
             child: ListView(
           padding: const EdgeInsets.all(20),
@@ -195,17 +203,17 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
               ]),
             ),
             const SizedBox(height: 8),
-            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Wrap(alignment: WrapAlignment.center, children: [
               TextButton.icon(
                 onPressed: busy ? null : _pickAvatar,
                 icon: const Icon(Icons.photo_camera_outlined, size: 18),
-                label: const Text('Change photo'),
+                label: Text(l10n.avatarChange),
               ),
               if (_avatarUrl != null && _avatarUrl!.isNotEmpty)
                 TextButton.icon(
                   onPressed: busy ? null : _removeAvatar,
                   icon: const Icon(Icons.delete_outline, size: 18),
-                  label: const Text('Remove photo'),
+                  label: Text(l10n.avatarRemove),
                 ),
             ]),
             const SizedBox(height: 16),
@@ -213,10 +221,11 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
               controller: _tagline,
               maxLength: kTaglineMaxCodePoints,
               onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(
-                labelText: 'Tagline',
-                hintText: 'A short one-liner shown under your handle',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l10n.profileTagline,
+                hintText: l10n.profileTaglineHint,
+                hintMaxLines: 2,
+                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 12),
@@ -225,9 +234,9 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
               maxLines: 6,
               maxLength: kBioMaxCodePoints,
               onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(
-                labelText: 'Bio',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l10n.profileBio,
+                border: const OutlineInputBorder(),
                 alignLabelWithHint: true,
               ),
             ),
@@ -238,7 +247,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                   ? const SizedBox(
                       width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.check),
-              label: const Text('Save'),
+              label: Text(l10n.commonSave),
             ),
           ],
         )),

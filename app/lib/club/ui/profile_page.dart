@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter/services.dart';
@@ -105,7 +106,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => ClubErrorRetry(
-          message: e is ClubError ? e.message : 'Could not load profile.',
+          message: e is ClubError ? e.message : context.l10n.profileLoadFailed,
           onRetry: () => ref.read(profileProvider(widget.sqid).notifier).load(),
         ),
         data: (p) => _Body(profile: p, scroll: _scroll),
@@ -115,7 +116,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
 
   /// "@handle", gaining a small avatar when the header is scrolled away.
   Widget _title(UserProfile? p) {
-    if (p == null) return const Text('Profile');
+    if (p == null) return Text(context.l10n.profileTitle);
     return ValueListenableBuilder<bool>(
       valueListenable: _collapsed,
       builder: (_, collapsed, _) => AnimatedSwitcher(
@@ -158,21 +159,22 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       onLongPress: () {
         Clipboard.setData(ClipboardData(text: url));
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Link copied')));
+            .showSnackBar(SnackBar(content: Text(context.l10n.linkCopiedShort)));
       },
       child: IconButton(
         icon: const Icon(Icons.share),
-        tooltip: 'Share profile (long-press to copy link)',
-        onPressed: () =>
-            SharePlus.instance.share(ShareParams(text: '@${p.handle} on Makapix Club — $url')),
+        tooltip: context.l10n.profileShareTooltip,
+        onPressed: () => SharePlus.instance
+            .share(ShareParams(text: context.l10n.profileShareText(p.handle, url))),
       ),
     );
   }
 
   Widget _menu(BuildContext context, WidgetRef ref, UserProfile p, bool signedIn,
       ModerationRules? rules, bool canModerate) {
+    final l10n = context.l10n;
     return PopupMenuButton<String>(
-      tooltip: 'More actions',
+      tooltip: l10n.commonMoreActions,
       onSelected: (v) {
         switch (v) {
           case 'report':
@@ -191,23 +193,23 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       },
       itemBuilder: (_) => [
         if (canModerate) ...[
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'manage',
             child: Row(children: [
-              Icon(Icons.shield_outlined, size: 18),
-              SizedBox(width: 10),
-              Text('User Management…'),
+              const Icon(Icons.shield_outlined, size: 18),
+              const SizedBox(width: 10),
+              Text(l10n.profileMenuManage),
             ]),
           ),
           if (rules != null) const PopupMenuDivider(),
         ],
         if (rules != null)
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'report',
             child: Row(children: [
-              Icon(Icons.flag_outlined, size: 18),
-              SizedBox(width: 10),
-              Text('Report user…'),
+              const Icon(Icons.flag_outlined, size: 18),
+              const SizedBox(width: 10),
+              Text(l10n.profileMenuReport),
             ]),
           ),
         if (rules != null && signedIn && !p.isBlockedByViewer)
@@ -216,7 +218,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             child: Row(children: [
               const Icon(Icons.block, size: 18),
               const SizedBox(width: 10),
-              Text('Block @${p.handle}…'),
+              Text(l10n.profileMenuBlock(p.handle)),
             ]),
           ),
         if (rules != null && signedIn && p.isBlockedByViewer)
@@ -225,7 +227,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             child: Row(children: [
               const Icon(Icons.lock_open, size: 18),
               const SizedBox(width: 10),
-              Text('Unblock @${p.handle}'),
+              Text(l10n.profileMenuUnblock(p.handle)),
             ]),
           ),
       ],
@@ -237,13 +239,13 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (dctx) => AlertDialog(
-        title: Text('Block @${p.handle}?'),
-        content: const Text(
-            "They won't be able to comment on your posts, react to them, or follow you — and you "
-            "won't see their content. You can unblock them anytime in Settings → Blocked users."),
+        title: Text(dctx.l10n.blockConfirmTitle(p.handle)),
+        content: Text(dctx.l10n.blockConfirmBody),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(dctx, true), child: const Text('Block')),
+          TextButton(
+              onPressed: () => Navigator.pop(dctx, false), child: Text(dctx.l10n.commonCancel)),
+          FilledButton(
+              onPressed: () => Navigator.pop(dctx, true), child: Text(dctx.l10n.blockAction)),
         ],
       ),
     );
@@ -252,7 +254,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       await blockUser(ref, p.sqid);
       if (context.mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Blocked @${p.handle}')));
+            .showSnackBar(SnackBar(content: Text(context.l10n.blockedToast(p.handle))));
       }
     } on ClubError catch (e) {
       if (context.mounted) {
@@ -262,7 +264,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     } catch (_) {
       if (context.mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Could not update the block — try again.')));
+            .showSnackBar(SnackBar(content: Text(context.l10n.blockUpdateFailed)));
       }
     }
   }
@@ -273,7 +275,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       await unblockUser(ref, p.sqid);
       if (context.mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Unblocked @${p.handle}')));
+            .showSnackBar(SnackBar(content: Text(context.l10n.unblockedToast(p.handle))));
       }
     } on ClubError catch (e) {
       if (context.mounted) {
@@ -283,7 +285,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     } catch (_) {
       if (context.mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Could not update the block — try again.')));
+            .showSnackBar(SnackBar(content: Text(context.l10n.blockUpdateFailed)));
       }
     }
   }
@@ -320,7 +322,8 @@ class _Body extends ConsumerWidget {
       return Column(children: [
         _header(context, ref, signedIn),
         const Divider(height: 1),
-        Expanded(child: _blockedBanner(context, ref)),
+        // Scrollable: on a short phone the header leaves less room than the banner needs.
+        Expanded(child: SingleChildScrollView(child: _blockedBanner(context, ref))),
       ]);
     }
     final tabs = profileTabsFor(signedIn: signedIn, ownProfile: profile.isOwnProfile);
@@ -363,6 +366,9 @@ class _Body extends ConsumerWidget {
                   TabBar(
                     tabs: [for (final t in tabs) _tab(t)],
                     labelStyle: const TextStyle(fontSize: 13),
+                    // Three icon + word tabs: the default 16 px label padding leaves the word
+                    // 52 px on a 320 px phone.
+                    labelPadding: const EdgeInsets.symmetric(horizontal: 2),
                   ),
                   const Divider(height: 1),
                 ],
@@ -385,17 +391,18 @@ class _Body extends ConsumerWidget {
   }
 
   Widget _tab(ProfileTab t) {
+    final l10n = appL10n;
     final (icon, label) = switch (t) {
-      ProfileTab.private => (Icons.lock_outline, 'Private'),
-      ProfileTab.gallery => (Icons.grid_on, 'Gallery'),
-      ProfileTab.reacted => (Icons.bolt, 'Reacted'),
+      ProfileTab.private => (Icons.lock_outline, l10n.profileTabPrivate),
+      ProfileTab.gallery => (Icons.grid_on, l10n.profileTabGallery),
+      ProfileTab.reacted => (Icons.bolt, l10n.profileTabReacted),
     };
     return Tab(
       height: 40,
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon, size: 16),
         const SizedBox(width: 6),
-        Text(label),
+        Flexible(child: Text(label, overflow: TextOverflow.fade, softWrap: false)),
       ]),
     );
   }
@@ -428,8 +435,8 @@ class _Body extends ConsumerWidget {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Icon(Icons.block, size: 40, color: cs.outline),
           const SizedBox(height: 12),
-          Text("You've blocked @${profile.handle}. They can't interact with you, and you won't "
-              'see their content.', textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant)),
+          Text(context.l10n.profileBlockedBanner(profile.handle),
+              textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant)),
           const SizedBox(height: 16),
           FilledButton.icon(
             onPressed: () async {
@@ -437,17 +444,18 @@ class _Body extends ConsumerWidget {
                 await unblockUser(ref, profile.sqid);
                 if (context.mounted) {
                   ScaffoldMessenger.of(context)
-                      .showSnackBar(SnackBar(content: Text('Unblocked @${profile.handle}')));
+                      .showSnackBar(SnackBar(
+                          content: Text(context.l10n.unblockedToast(profile.handle))));
                 }
               } catch (_) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Could not update the block — try again.')));
+                      SnackBar(content: Text(context.l10n.blockUpdateFailed)));
                 }
               }
             },
             icon: const Icon(Icons.lock_open, size: 18),
-            label: const Text('Unblock'),
+            label: Text(context.l10n.unblockAction),
           ),
         ]),
       ),
@@ -568,7 +576,7 @@ class _Body extends ConsumerWidget {
                           ref.read(profileProvider(p.sqid).notifier).reload();
                         },
                         icon: const Icon(Icons.edit_outlined, size: 18),
-                        label: const Text('Edit profile'),
+                        label: Text(context.l10n.profileEdit),
                       )
                     : _FollowButton(sqid: p.sqid, isFollowing: p.isFollowing, signedIn: signedIn),
               ),
@@ -623,19 +631,24 @@ class _Body extends ConsumerWidget {
   /// followers/following lists on any profile; on your own profile the rest
   /// of the row still opens the Artist Dashboard (the inner tap target wins).
   Widget _statsRow(BuildContext context, UserProfile p) {
+    // Each stat may shrink (Flexible + scale-down in _stat): four labels are wider than a
+    // 320 px phone in the longer languages.
     final row = Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-      _stat(context, 'Posts', p.stats.totalPosts),
-      _stat(context, 'Followers', p.stats.followerCount,
-          onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (_) => FollowsPage(sqid: p.sqid, handle: p.handle)))),
-      _stat(context, 'Reactions', p.stats.totalReactionsReceived),
-      _stat(context, 'Views', p.stats.totalViews),
+      Flexible(child: _stat(context, context.l10n.statPosts, p.stats.totalPosts)),
+      Flexible(
+        child: _stat(context, context.l10n.statFollowers, p.stats.followerCount,
+            onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => FollowsPage(sqid: p.sqid, handle: p.handle)))),
+      ),
+      Flexible(
+          child: _stat(context, context.l10n.statReactions, p.stats.totalReactionsReceived)),
+      Flexible(child: _stat(context, context.l10n.statViews, p.stats.totalViews)),
     ]);
     if (!p.isOwnProfile) return row;
     return Tooltip(
-      message: 'View your stats',
+      message: context.l10n.profileViewStats,
       child: InkWell(
         onTap: () => Navigator.push(context,
             MaterialPageRoute(builder: (_) => ArtistDashboardPage(userKey: p.sqid))),
@@ -646,11 +659,15 @@ class _Body extends ConsumerWidget {
   }
 
   Widget _stat(BuildContext context, String label, int n, {VoidCallback? onTap}) {
-    final col = Column(children: [
-      Text(compactCount(n), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-      Text(label,
-          style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-    ]);
+    final col = FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Column(children: [
+        Text(compactCount(n), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        Text(label,
+            style:
+                TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+      ]),
+    );
     if (onTap == null) return col;
     return InkWell(
       onTap: onTap,
@@ -773,7 +790,7 @@ class _RepChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Tooltip(
-      message: 'Reputation: $reputation — earned through activity in the Club',
+      message: context.l10n.profileReputationTooltip(reputation),
       triggerMode: TooltipTriggerMode.tap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -819,7 +836,7 @@ class _AvatarViewer extends StatelessWidget {
                         cacheManager: avatarImageCache),
                     filterQuality: FilterQuality.none,
                     fit: BoxFit.contain,
-                    semanticLabel: "@$handle's avatar",
+                    semanticLabel: context.l10n.profileAvatarLabel(handle),
                     errorBuilder: (_, _, _) =>
                         const Icon(Icons.broken_image, color: Colors.white24, size: 40),
                   ),
@@ -831,7 +848,7 @@ class _AvatarViewer extends StatelessWidget {
               left: 4,
               child: IconButton(
                 icon: const Icon(Icons.close),
-                tooltip: 'Close',
+                tooltip: context.l10n.commonClose,
                 onPressed: () => Navigator.pop(context),
               ),
             ),
@@ -861,14 +878,14 @@ class _PrivateTab extends ConsumerWidget {
           Icon(Icons.lock_outline, size: 15, color: cs.onSurfaceVariant),
           const SizedBox(width: 6),
           Expanded(
-            child: Text('Only you can see this tab.',
+            child: Text(context.l10n.profilePrivateNote,
                 style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
           ),
           TextButton.icon(
             onPressed: () =>
                 ref.read(pendingLocalLibraryProvider.notifier).state = const NewLocalDrawing(),
             icon: const Icon(Icons.add, size: 18),
-            label: const Text('New'),
+            label: Text(context.l10n.commonNew),
           ),
         ]),
       ),
@@ -877,7 +894,8 @@ class _PrivateTab extends ConsumerWidget {
         child: storeAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (_, _) => Center(
-            child: Text("Couldn't open your library.", style: TextStyle(color: cs.onSurfaceVariant)),
+            child: Text(context.l10n.profileLibraryError,
+                style: TextStyle(color: cs.onSurfaceVariant)),
           ),
           data: (store) => DrawingLibraryGrid(
             store: store,
@@ -913,7 +931,7 @@ class _GalleryTab extends ConsumerWidget {
         state: state,
         onLoadMore: n.loadMore,
         onRefresh: () async {}, // the page owns refresh
-        emptyMessage: 'No posts yet.',
+        emptyMessage: context.l10n.profileNoPosts,
         // Your own empty gallery is the best moment to start creating.
         empty: profile.isOwnProfile ? const _CreateFirstArtEmpty() : null,
         onTap: (Post p) => Navigator.push(
@@ -941,12 +959,12 @@ class _CreateFirstArtEmpty extends ConsumerWidget {
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Icon(Icons.brush_outlined, size: 40, color: cs.outline),
         const SizedBox(height: 12),
-        Text('Your gallery is waiting.', style: TextStyle(color: cs.onSurfaceVariant)),
+        Text(context.l10n.profileGalleryWaiting, style: TextStyle(color: cs.onSurfaceVariant)),
         const SizedBox(height: 16),
         FilledButton.icon(
           onPressed: () => ref.read(openEditorProvider.notifier).state++,
           icon: const Icon(Icons.add, size: 18),
-          label: const Text('Create your first pixel art'),
+          label: Text(context.l10n.profileCreateFirst),
         ),
       ]),
     );
@@ -967,7 +985,7 @@ class _ReactedTab extends ConsumerWidget {
       state: state,
       onLoadMore: n.loadMore,
       onRefresh: () async {}, // the page owns refresh
-      emptyMessage: 'No reactions yet.',
+      emptyMessage: context.l10n.profileNoReactions,
       onTap: (Post p) => Navigator.push(
           context,
           MaterialPageRoute(
@@ -975,7 +993,7 @@ class _ReactedTab extends ConsumerWidget {
                     sqid: p.sqid,
                     feed: pagedArtworkSource(reactedFeedProvider(profile.sqid),
                         reactedFeedProvider(profile.sqid).notifier,
-                        name: '@${profile.handle} · Reacted'),
+                        name: context.l10n.profileFeedReacted(profile.handle)),
                   ))),
     );
   }
@@ -1000,7 +1018,7 @@ class _HighlightsStrip extends StatelessWidget {
         child: Row(children: [
           Icon(Icons.diamond_outlined, size: 14, color: cs.primary),
           const SizedBox(width: 6),
-          Text('HIGHLIGHTS',
+          Text(context.l10n.profileHighlights,
               style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
@@ -1024,7 +1042,7 @@ class _HighlightsStrip extends StatelessWidget {
                     builder: (_) => ArtworkDetailPage(
                           sqid: profile.highlights[i].sqid,
                           feed: ArtworkFeedSource.fixed(profile.highlights,
-                              name: '@${profile.handle} · Highlights'),
+                              name: context.l10n.profileFeedHighlights(profile.handle)),
                         ))),
           ),
         ),
@@ -1100,7 +1118,8 @@ class _FollowButton extends ConsumerWidget {
           backgroundColor: isFollowing ? cs.surfaceContainerHighest : null,
           foregroundColor: isFollowing ? cs.onSurface : null,
         ),
-        child: Text(isFollowing ? 'Following' : 'Follow', style: const TextStyle(fontSize: 13)),
+        child: Text(isFollowing ? context.l10n.followingState : context.l10n.followAction,
+            style: const TextStyle(fontSize: 13)),
       );
     }
     return FilledButton.icon(
@@ -1110,7 +1129,7 @@ class _FollowButton extends ConsumerWidget {
               backgroundColor: cs.surfaceContainerHighest, foregroundColor: cs.onSurface)
           : null,
       icon: Icon(isFollowing ? Icons.check : Icons.person_add_alt_1, size: 18),
-      label: Text(isFollowing ? 'Following' : 'Follow'),
+      label: Text(isFollowing ? context.l10n.followingState : context.l10n.followAction),
     );
   }
 }

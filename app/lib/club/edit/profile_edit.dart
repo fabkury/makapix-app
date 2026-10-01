@@ -1,3 +1,5 @@
+import 'package:makapix_club/l10n/l10n.dart';
+
 import '../models/user_profile.dart';
 
 /// Server limits from `schemas.UserUpdate` (pydantic counts **code points**,
@@ -40,5 +42,5 @@ Map<String, String> buildProfilePatchFrom({
 String? validateCodePointLength(String value, int maxCodePoints, String label) {
   final n = value.trim().runes.length;
   if (n <= maxCodePoints) return null;
-  return '$label is too long ($n/$maxCodePoints characters).';
+  return appL10n.fieldTooLong(label, n, maxCodePoints);
 }

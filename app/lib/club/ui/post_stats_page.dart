@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -30,11 +31,11 @@ class _PostStatsPageState extends ConsumerState<PostStatsPage> {
     final ctrl = ref.read(postStatsProvider(widget.post.id).notifier);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Statistics'),
+        title: Text(context.l10n.statsTitle),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            tooltip: 'Recompute now',
+            tooltip: context.l10n.statsRecompute,
             onPressed: () => ctrl.load(refresh: true),
           ),
         ],
@@ -42,7 +43,7 @@ class _PostStatsPageState extends ConsumerState<PostStatsPage> {
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => ClubErrorRetry(
-          message: e is ClubError ? e.message : 'Could not load the statistics.',
+          message: e is ClubError ? e.message : context.l10n.statsLoadError,
           onRetry: ctrl.load,
         ),
         data: (s) => CenteredContent(child: _body(s)),
@@ -52,10 +53,11 @@ class _PostStatsPageState extends ConsumerState<PostStatsPage> {
 
   Widget _body(PostStats s) {
     final daily = s.daily(_authOnly);
+    final l10n = context.l10n;
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
-        Text(widget.post.title.isEmpty ? 'Untitled' : widget.post.title,
+        Text(widget.post.title.isEmpty ? l10n.untitled : widget.post.title,
             style: Theme.of(context).textTheme.titleMedium,
             maxLines: 2,
             overflow: TextOverflow.ellipsis),
@@ -63,27 +65,26 @@ class _PostStatsPageState extends ConsumerState<PostStatsPage> {
         SwitchListTile(
           value: _authOnly,
           onChanged: (v) => setState(() => _authOnly = v),
-          title: const Text('Authenticated users only'),
+          title: Text(l10n.statsAuthOnly),
           contentPadding: EdgeInsets.zero,
           dense: true,
         ),
         const SizedBox(height: 4),
         Wrap(spacing: 8, runSpacing: 8, children: [
-          _stat('Views', s.views(_authOnly)),
-          _stat('Unique (7d)', s.uniques(_authOnly)),
-          _stat('Reactions', s.reactions(_authOnly)),
-          _stat('Comments', s.comments(_authOnly)),
+          _stat(l10n.statViews, s.views(_authOnly)),
+          _stat(l10n.statUnique7d, s.uniques(_authOnly)),
+          _stat(l10n.statReactions, s.reactions(_authOnly)),
+          _stat(l10n.statComments, s.comments(_authOnly)),
         ]),
         if (daily.isNotEmpty) _dailyChart(daily),
-        _breakdown('Views by country', s.countries(_authOnly)),
-        _breakdown('Views by device', s.devices(_authOnly), label: _capitalize),
-        _breakdown('Views by type', s.types(_authOnly), label: _capitalize),
-        _breakdown('Reactions by emoji', s.emoji(_authOnly)),
+        _breakdown(l10n.statsByCountry, s.countries(_authOnly)),
+        _breakdown(l10n.statsByDevice, s.devices(_authOnly), label: statsBucketLabel),
+        _breakdown(l10n.statsByType, s.types(_authOnly), label: statsBucketLabel),
+        _breakdown(l10n.statsByEmoji, s.emoji(_authOnly)),
         const SizedBox(height: 20),
-        if (s.firstViewAt != null)
-          _footerLine('First view', timeAgo(s.firstViewAt)),
-        if (s.lastViewAt != null) _footerLine('Last view', timeAgo(s.lastViewAt)),
-        if (s.computedAt != null) _footerLine('Computed', timeAgo(s.computedAt)),
+        if (s.firstViewAt != null) _footerLine(l10n.statsFirstView, timeAgo(s.firstViewAt)),
+        if (s.lastViewAt != null) _footerLine(l10n.statsLastView, timeAgo(s.lastViewAt)),
+        if (s.computedAt != null) _footerLine(l10n.statsComputed, timeAgo(s.computedAt)),
         const SizedBox(height: 12),
       ],
     );
@@ -99,10 +100,10 @@ class _PostStatsPageState extends ConsumerState<PostStatsPage> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Expanded(
-              child: Text('Daily views — last 30 days',
+              child: Text(context.l10n.statsDailyViews,
                   style: Theme.of(context).textTheme.titleSmall)),
           if (maxViews > 0)
-            Text('max $maxViews',
+            Text(context.l10n.statsMax(maxViews),
                 style: const TextStyle(fontSize: 11, color: Colors.white38)),
         ]),
         const SizedBox(height: 8),
@@ -159,9 +160,16 @@ class _PostStatsPageState extends ConsumerState<PostStatsPage> {
           borderRadius: BorderRadius.circular(8),
         ),
         child: Column(children: [
-          Text(_fmt(value), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+          // Scaled down when the compact number is wider than the card ("78,9 тыс.").
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(statsCount(value),
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+          ),
           const SizedBox(height: 2),
-          Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+          Text(label,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white54, fontSize: 12)),
         ]),
       );
 
@@ -178,7 +186,7 @@ class _PostStatsPageState extends ConsumerState<PostStatsPage> {
             padding: const EdgeInsets.symmetric(vertical: 2),
             child: Row(children: [
               Expanded(child: Text(label?.call(e.key) ?? e.key)),
-              Text(_fmt(e.value), style: const TextStyle(color: Colors.white70)),
+              Text(statsCount(e.value), style: const TextStyle(color: Colors.white70)),
             ]),
           ),
       ]),
@@ -188,19 +196,12 @@ class _PostStatsPageState extends ConsumerState<PostStatsPage> {
   Widget _footerLine(String label, String value) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 1),
         child: Row(children: [
+          // Wide enough for the longest label in any language ("Primeira visualização").
           SizedBox(
-              width: 90,
+              width: 150,
               child: Text(label, style: const TextStyle(fontSize: 12, color: Colors.white38))),
           Text(value, style: const TextStyle(fontSize: 12, color: Colors.white54)),
         ]),
       );
 
-  static String _capitalize(String key) =>
-      key.isEmpty ? key : key[0].toUpperCase() + key.substring(1);
-
-  static String _fmt(int n) {
-    if (n < 1000) return '$n';
-    if (n < 1000000) return '${(n / 1000).toStringAsFixed(n < 10000 ? 1 : 0)}K';
-    return '${(n / 1000000).toStringAsFixed(1)}M';
-  }
 }

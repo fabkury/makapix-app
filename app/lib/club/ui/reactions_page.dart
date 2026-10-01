@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -23,11 +24,14 @@ class ReactionsPage extends ConsumerWidget {
     final async = ref.watch(reactionUsersProvider(post.id));
     final count = async.maybeWhen(data: (r) => r.length, orElse: () => null);
     return Scaffold(
-      appBar: AppBar(title: Text(count == null ? 'Reactions' : 'Reactions ($count)')),
+      appBar: AppBar(
+          title: Text(count == null
+              ? context.l10n.reactionsTitle
+              : context.l10n.reactionsTitleCount(count))),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, _) => ClubErrorRetry(
-          message: 'Could not load reactions.',
+          message: context.l10n.reactionsLoadError,
           onRetry: () async => ref.invalidate(reactionUsersProvider(post.id)),
         ),
         data: (reactors) => CenteredContent(child: _Body(post: post, reactors: reactors)),
@@ -54,9 +58,9 @@ class _Body extends StatelessWidget {
         if (counts.isNotEmpty) _SummaryBar(counts: counts),
         const Divider(height: 24),
         if (reactors.isEmpty)
-          const Padding(
-            padding: EdgeInsets.only(top: 48),
-            child: ClubEmpty(message: 'No reactions yet.', icon: Icons.bolt),
+          Padding(
+            padding: const EdgeInsets.only(top: 48),
+            child: ClubEmpty(message: context.l10n.profileNoReactions, icon: Icons.bolt),
           )
         else
           for (final r in reactors) _ReactionRow(r: r),
@@ -117,7 +121,7 @@ class _ReactionRow extends StatelessWidget {
           child: GestureDetector(
             onTap: open,
             child: Text(
-              r.handle.isEmpty ? 'guest' : r.handle,
+              r.handle.isEmpty ? context.l10n.commentsGuest : r.handle,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
             ),
@@ -140,7 +144,7 @@ class _ArtworkHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title = post.title.trim().isEmpty ? 'Untitled' : post.title.trim();
+    final title = post.title.trim().isEmpty ? context.l10n.untitled : post.title.trim();
     return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       GestureDetector(
         onTap: () =>
@@ -168,7 +172,8 @@ class _ArtworkHeader extends StatelessWidget {
           GestureDetector(
             onTap: () =>
                 Navigator.push(context, MaterialPageRoute(builder: (_) => ProfilePage(sqid: post.owner.sqid))),
-            child: Text('by @${post.owner.handle}', style: const TextStyle(fontSize: 13, color: Colors.white54)),
+            child: Text(context.l10n.byHandle(post.owner.handle),
+                style: const TextStyle(fontSize: 13, color: Colors.white54)),
           ),
         ]),
       ),

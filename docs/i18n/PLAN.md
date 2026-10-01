@@ -18,14 +18,14 @@ are the acceptance test.
 | Phase | What | Status |
 |---|---|---|
 | L0 | Infrastructure, test harness, pilot (Settings, language picker, tool names) | **done 2026-10-01** |
-| L1 | Club pillar: extract + translate + sweep, batch by batch | in progress — C1–C3 of C1–C9 done |
+| L1 | Club pillar: extract + translate + sweep, batch by batch | in progress — C1–C4 of C1–C9 done |
 | L2 | Editor pillar: extract + translate + sweep, batch by batch | not started (tool names done in L0) |
 | L3 | Independent translation review (one agent per language), fixes, layout hardening | not started |
 | L4 | Seams and periphery, then flip `kTranslationsShipped` | not started |
 
 **Progress number:** the total on line 5 of `app/test/l10n/hardcoded_baseline.txt` — the
 hardcoded strings the scanner still finds. 2,683 after L0 (scanner as tightened in C1); 2,516
-after C1; 2,334 after C2; 2,253 after C3. Zero means L1 + L2 are done.
+after C1; 2,334 after C2; 2,253 after C3; 2,125 after C4. Zero means L1 + L2 are done.
 
 **Release safety while this is in progress:** `kTranslationsShipped` is `false`
 (`app/lib/l10n/app_locale.dart`), so a release build offers English only and hides the language
@@ -89,8 +89,9 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   names, offline strip), search, hashtag feed, notifications (one message per notification type),
   Contribute, About, comments page. Sweeps: `sweep_home_test.dart`. Report notifications
   (`newReportText` / `reportResolvedText` in `models/safety_copy`) are batch C7.
-- [ ] **C4 Profile and account** — profile (52), edit_profile (24), follows (5), reactions (7),
-  my_remixes (4), artist_dashboard (21), post_stats (18)
+- [x] **C4 Profile and account** — done 2026-10-01: profile page (header, tabs, block flow,
+  highlights), profile editor, follows, reactions, remixes of my works, artist dashboard, post
+  statistics. Sweeps: `sweep_profile_test.dart`. The Private tab's drawing grid is batch E3.
 - [ ] **C5 Artwork** — artwork_detail (116), lineage (12)
 - [ ] **C6 Publish and manage** — publish (46), edit_post_details (17), post_management (51),
   pending_approval (12), rules_gate (11)
@@ -148,6 +149,8 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   - `GET /config` → `moderation.report_reasons[].label`.
   - `GET /badge` → badge names and descriptions.
   - `quotas.uploads.window` on `/auth/me` (the quota period's name), shown on the account page.
+  - `tag_badges[].label` on profiles.
+  - Statistics bucket names: `views_by_type` keys (shown capitalized) and country codes.
 - [ ] **Default names stored in documents** ("Layer 1", "Untitled"): decide display-time mapping
   vs. localized-at-creation; ADR.
 - [ ] **Android**: `res/xml/locales_config.xml` + `android:localeConfig` (per-app language in
@@ -188,8 +191,17 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   every language, English included (found by the sweep, 2026-10-01). Fixed: under 340 px the
   icons use tighter padding and the menu button drops Material's 48 px minimum.
 
+- **Layout defects that were already in English** (found by the sweeps on 2026-10-01, all fixed):
+  the blocked-profile banner overflowed a 320×568 screen, and the tagline hint in the profile
+  editor was cut off.
+
 ## Session log
 
+- **2026-10-01** — C4 (profiles, statistics): 92 messages. The harness gained a third detector —
+  a word split across lines ("78,9 тыс" / ".") — after a screenshot of the Russian dashboard
+  showed what the truncation check could not see; compact numbers in stat cards and table cells
+  now scale to fit. Also fixed: profile stats row and tabs on small phones, blocked banner.
+  3,469 Dart tests pass.
 - **2026-10-01** — C3 (home, search, notifications, Contribute, About): 72 messages. Sweep
   findings fixed: home top bar overflow at 320 px (pre-existing, all languages), search tab
   labels cut off in Russian and Japanese. 2,869 Dart tests pass.

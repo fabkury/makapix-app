@@ -313,6 +313,46 @@ class FakeBackend implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
+/// A profile as `GET /user/u/{sqid}/profile` returns it.
+Map<String, dynamic> fixtureProfileJson({bool own = false, bool blocked = false}) => {
+      'user_key': own ? 'u-key-1' : 'u-key-b7',
+      'public_sqid': own ? 't5' : 'b7',
+      'handle': own ? 'pixel_ada' : 'pixel_bob',
+      'bio': '8-bit',
+      'tagline': '16-bit',
+      'reputation': 1234,
+      'stats': {
+        'total_posts': 12,
+        'total_reactions_received': 3456,
+        'total_views': 78901,
+        'follower_count': 23,
+      },
+      'is_following': !own,
+      'is_own_profile': own,
+      'is_blocked_by_viewer': blocked,
+      'highlights': const [],
+    };
+
+Map<String, dynamic> _statsJson() => {
+      'post_id': 1,
+      'total_posts': 12,
+      'total_views': 78901,
+      'unique_viewers': 2345,
+      'views_by_country': {'BR': 40, 'JP': 12},
+      'views_by_device': {'desktop': 30, 'mobile': 20, 'tablet': 2, 'player': 1},
+      'views_by_type': {'intentional': 30, 'listing': 22},
+      'daily_views': [
+        for (var d = 1; d <= 30; d++)
+          {'date': '2026-09-${d.toString().padLeft(2, '0')}', 'views': d * 3, 'unique_viewers': d},
+      ],
+      'total_reactions': 3456,
+      'reactions_by_emoji': {'🔥': 20, '👍': 5},
+      'total_comments': 67,
+      'first_view_at': _ago(const Duration(days: 40)),
+      'last_view_at': _ago(const Duration(hours: 2)),
+      'computed_at': _ago(const Duration(minutes: 10)),
+    };
+
 /// A [FakeBackend] with the routes most screens touch. A sweep adds its own with [FakeBackend.on].
 FakeBackend fixtureBackend() => FakeBackend()
   ..on('GET', r'/post/\d+/comments', (_) => {'items': fixtureCommentsJson()})
@@ -341,7 +381,57 @@ FakeBackend fixtureBackend() => FakeBackend()
   ..on('GET', r'/user/browse', (_) => {
         'items': [fixtureOwnerJson(), fixtureOwnerJson(handle: 'pixel_ada', sqid: 't5')],
       })
-  ..on('GET', r'/search', (_) => {'items': const []});
+  ..on('GET', r'/search', (_) => {'items': const []})
+  ..on('GET', r'/user/u/t5/profile', (_) => fixtureProfileJson(own: true))
+  ..on('GET', r'/user/u/b7/profile', (_) => fixtureProfileJson())
+  ..on('GET', r'/user/u/[^/]+/reacted-posts', (_) => {'items': const []})
+  ..on('GET', r'/user/u/[^/]+/(followers|following)', (_) => {
+        'items': [fixtureOwnerJson(), fixtureOwnerJson(handle: 'pixel_ada', sqid: 't5')],
+      })
+  ..on('GET', r'/badge', (_) => {'items': const [], 'badges': const []})
+  ..on('GET', r'/post/\d+/reaction-users', (_) => {
+        'items': [
+          {
+            'emoji': '🔥',
+            'created_at': _ago(const Duration(hours: 1)),
+            'user_handle': 'pixel_bob',
+            'user_public_sqid': 'b7',
+          },
+          {'emoji': '👍', 'created_at': _ago(const Duration(days: 2)), 'user_handle': ''},
+        ],
+      })
+  ..on('GET', r'/me/remixes', (_) => {
+        'items': [
+          {
+            'post': fixturePostJson(7, title: ''),
+            'my_parent_sqids': ['p1'],
+          },
+          {
+            'post': fixturePostJson(8),
+            'my_parent_sqids': ['p1', 'p2', 'p3'],
+          },
+        ],
+      })
+  ..on('GET', r'/post/\d+/stats', (_) => _statsJson())
+  ..on('GET', r'/user/[^/]+/artist-dashboard', (_) => {
+        'artist_stats': _statsJson(),
+        'posts': [
+          {
+            'post_id': 1,
+            'public_sqid': 'p1',
+            'title': 'Sunset Tower',
+            'created_at': _ago(const Duration(days: 3)),
+            'total_views': 12345,
+            'total_reactions': 678,
+            'total_comments': 9,
+          },
+          {'post_id': 2, 'public_sqid': 'p2', 'title': '', 'created_at': _ago(const Duration(days: 9))},
+        ],
+        'total_posts': 2,
+        'page': 2,
+        'page_size': 20,
+        'has_more': true,
+      });
 
 /// Overrides for a signed-in ([signedIn] true) or signed-out Club with the full config and,
 /// when [backend] is given, the fake backend under the real API client.

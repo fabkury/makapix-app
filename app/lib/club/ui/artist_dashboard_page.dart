@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -28,11 +29,11 @@ class _ArtistDashboardPageState extends ConsumerState<ArtistDashboardPage> {
     final async = ref.watch(artistDashboardProvider(widget.userKey));
     final ctrl = ref.read(artistDashboardProvider(widget.userKey).notifier);
     return Scaffold(
-      appBar: AppBar(title: const Text('Artist Dashboard')),
+      appBar: AppBar(title: Text(context.l10n.menuArtistDashboard)),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => ClubErrorRetry(
-          message: e is ClubError ? e.message : 'Could not load your dashboard.',
+          message: e is ClubError ? e.message : context.l10n.dashboardLoadError,
           onRetry: ctrl.load,
         ),
         data: (d) => CenteredContent(child: _body(d, ctrl)),
@@ -42,34 +43,35 @@ class _ArtistDashboardPageState extends ConsumerState<ArtistDashboardPage> {
 
   Widget _body(ArtistDashboard d, ArtistDashboardController ctrl) {
     final s = d.stats;
+    final l10n = context.l10n;
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
         SwitchListTile(
           value: _authOnly,
           onChanged: (v) => setState(() => _authOnly = v),
-          title: const Text('Authenticated users only'),
+          title: Text(l10n.statsAuthOnly),
           contentPadding: EdgeInsets.zero,
           dense: true,
         ),
         const SizedBox(height: 4),
         Wrap(spacing: 8, runSpacing: 8, children: [
-          _stat('Posts', s.totalPosts),
-          _stat('Views', s.views(_authOnly)),
-          _stat('Unique', s.uniques(_authOnly)),
-          _stat('Reactions', s.reactions(_authOnly)),
-          _stat('Comments', s.comments(_authOnly)),
+          _stat(l10n.statPosts, s.totalPosts),
+          _stat(l10n.statViews, s.views(_authOnly)),
+          _stat(l10n.statUnique, s.uniques(_authOnly)),
+          _stat(l10n.statReactions, s.reactions(_authOnly)),
+          _stat(l10n.statComments, s.comments(_authOnly)),
         ]),
-        _breakdown('Views by country', s.countries(_authOnly)),
-        _breakdown('Views by device', s.devices(_authOnly), label: _deviceLabel),
-        _breakdown('Reactions by emoji', s.emoji(_authOnly)),
+        _breakdown(l10n.statsByCountry, s.countries(_authOnly)),
+        _breakdown(l10n.statsByDevice, s.devices(_authOnly), label: statsBucketLabel),
+        _breakdown(l10n.statsByEmoji, s.emoji(_authOnly)),
         const SizedBox(height: 16),
-        Text('Posts', style: Theme.of(context).textTheme.titleMedium),
+        Text(l10n.statPosts, style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 4),
         if (d.posts.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
-            child: ClubEmpty(message: 'No posts yet.'),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: ClubEmpty(message: l10n.profileNoPosts),
           )
         else ...[
           _postHeader(),
@@ -89,10 +91,16 @@ class _ArtistDashboardPageState extends ConsumerState<ArtistDashboardPage> {
           borderRadius: BorderRadius.circular(8),
         ),
         child: Column(children: [
-          Text(_fmt(value),
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+          // Scaled down when the compact number is wider than the card ("78,9 тыс.").
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(statsCount(value),
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+          ),
           const SizedBox(height: 2),
-          Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+          Text(label,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white54, fontSize: 12)),
         ]),
       );
 
@@ -109,20 +117,22 @@ class _ArtistDashboardPageState extends ConsumerState<ArtistDashboardPage> {
             padding: const EdgeInsets.symmetric(vertical: 2),
             child: Row(children: [
               Expanded(child: Text(label?.call(e.key) ?? e.key)),
-              Text(_fmt(e.value), style: const TextStyle(color: Colors.white70)),
+              Text(statsCount(e.value), style: const TextStyle(color: Colors.white70)),
             ]),
           ),
       ]),
     );
   }
 
-  Widget _postHeader() => const Padding(
-        padding: EdgeInsets.symmetric(vertical: 6),
+  Widget _postHeader() => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
         child: Row(children: [
-          Expanded(child: Text('Title', style: TextStyle(color: Colors.white54, fontSize: 12))),
-          _MetricHead('Views'),
-          _MetricHead('React'),
-          _MetricHead('Comm'),
+          Expanded(
+              child: Text(context.l10n.statsColTitle,
+                  style: const TextStyle(color: Colors.white54, fontSize: 12))),
+          _MetricHead(context.l10n.statsColViews),
+          _MetricHead(context.l10n.statsColReactions),
+          _MetricHead(context.l10n.statsColComments),
         ]),
       );
 
@@ -136,7 +146,7 @@ class _ArtistDashboardPageState extends ConsumerState<ArtistDashboardPage> {
           child: Row(children: [
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(p.title.isEmpty ? '(untitled)' : p.title,
+                Text(p.title.isEmpty ? context.l10n.untitledParens : p.title,
                     maxLines: 1, overflow: TextOverflow.ellipsis),
                 Text(timeAgo(p.createdAt),
                     style: const TextStyle(color: Colors.white38, fontSize: 11)),
@@ -150,34 +160,31 @@ class _ArtistDashboardPageState extends ConsumerState<ArtistDashboardPage> {
       );
 
   Widget _metric(int v) =>
-      SizedBox(width: 56, child: Text(_fmt(v), textAlign: TextAlign.end));
+      SizedBox(
+          width: 56,
+          child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerRight,
+              child: Text(statsCount(v))));
 
   Widget _pager(ArtistDashboard d, ArtistDashboardController ctrl) {
     if (d.page <= 1 && !d.hasMore) return const SizedBox.shrink();
     return Row(mainAxisAlignment: MainAxisAlignment.center, children: [
       TextButton(
         onPressed: d.page > 1 ? () => ctrl.goToPage(d.page - 1) : null,
-        child: const Text('Previous'),
+        child: Text(context.l10n.pagerPrevious),
       ),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: Text('Page ${d.page}', style: const TextStyle(color: Colors.white60)),
+        child: Text(context.l10n.pagerPage(d.page), style: const TextStyle(color: Colors.white60)),
       ),
       TextButton(
         onPressed: d.hasMore ? () => ctrl.goToPage(d.page + 1) : null,
-        child: const Text('Next'),
+        child: Text(context.l10n.pagerNext),
       ),
     ]);
   }
 
-  static String _deviceLabel(String key) =>
-      key.isEmpty ? key : key[0].toUpperCase() + key.substring(1);
-
-  static String _fmt(int n) {
-    if (n < 1000) return '$n';
-    if (n < 1000000) return '${(n / 1000).toStringAsFixed(n < 10000 ? 1 : 0)}K';
-    return '${(n / 1000000).toStringAsFixed(1)}M';
-  }
 }
 
 class _MetricHead extends StatelessWidget {

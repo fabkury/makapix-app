@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/lineage.dart';
@@ -45,13 +46,10 @@ class _MyRemixesPageState extends ConsumerState<MyRemixesPage> {
     } else if (s.error != null && s.items.isEmpty) {
       body = ClubErrorRetry(message: s.error!, onRetry: notifier.refresh);
     } else if (s.items.isEmpty) {
-      body = ListView(children: const [
+      body = ListView(children: [
         SizedBox(
             height: 320,
-            child: ClubEmpty(
-                message: 'No remixes of your works yet.\n'
-                    'Keep "Allow remixes" on and they may appear!',
-                icon: Icons.alt_route)),
+            child: ClubEmpty(message: context.l10n.remixesEmpty, icon: Icons.alt_route)),
       ]);
     } else {
       body = ListView.builder(
@@ -70,7 +68,7 @@ class _MyRemixesPageState extends ConsumerState<MyRemixesPage> {
       );
     }
     return Scaffold(
-      appBar: AppBar(title: const Text('Remixes of my works')),
+      appBar: AppBar(title: Text(context.l10n.remixesOfMyWorks)),
       body: RefreshIndicator(onRefresh: notifier.refresh, child: body),
     );
   }
@@ -95,11 +93,12 @@ class _RemixRow extends StatelessWidget {
           child: PixelArtImage(url: p.artUrl, width: p.width, height: p.height),
         ),
       ),
-      title: Text(p.title.isEmpty ? 'Untitled' : p.title,
+      title: Text(p.title.isEmpty ? context.l10n.untitled : p.title,
           maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Text(
-        'by @${p.owner.handle} · '
-        '${n > 1 ? 'remixes $n of your artworks' : 'remixes your artwork'}',
+        n > 1
+            ? context.l10n.remixRowMany(p.owner.handle, n)
+            : context.l10n.remixRowOne(p.owner.handle),
         style: const TextStyle(fontSize: 12, color: Colors.white54),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,

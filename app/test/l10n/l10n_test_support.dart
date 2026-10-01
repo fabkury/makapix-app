@@ -157,14 +157,20 @@ AppLocalizations l10nFor(Locale locale) => lookupAppLocalizations(locale);
 
 /// A laid-out text that does not fit its box.
 class Truncated {
-  Truncated(this.text, this.box, this.needed);
+  Truncated(this.text, this.box, this.needed, {this.brokenWord = false});
   final String text;
   final Size box;
   final double needed;
+
+  /// The text wraps, but one word of it is wider than the box and was split across lines.
+  final bool brokenWord;
   @override
-  String toString() =>
-      '"$text" needs ${needed.toStringAsFixed(1)} px, has ${box.width.toStringAsFixed(1)} px';
+  String toString() => brokenWord
+      ? '"$text" has a word ${needed.toStringAsFixed(1)} px wide in a ${box.width.toStringAsFixed(1)} px box'
+      : '"$text" needs ${needed.toStringAsFixed(1)} px, has ${box.width.toStringAsFixed(1)} px';
 }
+
+final RegExp _cjk = RegExp(r'[぀-ヿ㐀-鿿]');
 
 /// Each laid-out paragraph once (`allRenderObjects` repeats a render object for every element
 /// that resolves to it).
@@ -174,7 +180,8 @@ Iterable<RenderParagraph> paragraphs(WidgetTester tester) => {
     };
 
 /// Every text on screen that is cut off: it ran past its last allowed line, or (single-line)
-/// it is wider than its box. A translated label must never be here.
+/// it is wider than its box, or (wrapping) one of its words is wider than the box and was
+/// split across lines. A translated label must never be here.
 List<Truncated> truncatedTexts(WidgetTester tester) {
   final out = <Truncated>[];
   for (final ro in paragraphs(tester)) {
@@ -184,8 +191,17 @@ List<Truncated> truncatedTexts(WidgetTester tester) {
     final natural = ro.getMaxIntrinsicWidth(double.infinity);
     final singleLine = ro.maxLines == 1 || !ro.softWrap;
     final tooWide = singleLine && natural > ro.size.width + 0.5;
+    // A wrapping text whose widest unbreakable piece — a word, or a number with its unit — is
+    // wider than the box: the line broke in the middle of it ("78,9 тыс" / ".").
+    final widestWord = ro.getMinIntrinsicWidth(double.infinity);
+    // (Not for Chinese or Japanese: they break between any two characters, but the test
+    // engine reports a whole sentence as one unbreakable run.)
+    final brokenWord =
+        !singleLine && !_cjk.hasMatch(text) && widestWord > ro.size.width + 0.5;
     if (ro.didExceedMaxLines || tooWide) {
       out.add(Truncated(text, ro.size, natural));
+    } else if (brokenWord) {
+      out.add(Truncated(text, ro.size, widestWord, brokenWord: true));
     }
   }
   return out;
