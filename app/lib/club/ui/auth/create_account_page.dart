@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import '../../state/auth_controller.dart';
 import '../../state/registration_controller.dart';
@@ -48,7 +49,7 @@ class _CreateAccountPageState extends ConsumerState<CreateAccountPage> {
     final githubBusy = ref.watch(authControllerProvider).isBusy;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Create account')),
+      appBar: AppBar(title: Text(context.l10n.authCreateAccount)),
       body: AuthFormShell(
         children: switch (reg.step) {
           RegStep.details => _detailsStep(reg, ctrl, githubBusy),
@@ -78,16 +79,16 @@ class _CreateAccountPageState extends ConsumerState<CreateAccountPage> {
     final busy = reg.busy || githubBusy;
     final banner = authBanner(error: reg.error, notice: reg.notice);
     void submit() => ctrl.submitDetails(_email.text, _password.text);
+    final l10n = context.l10n;
     return [
-      ..._header('Create your account',
-          'Sign up with your email and choose a password — we\'ll email a 6-digit code to verify it.'),
+      ..._header(l10n.createAccountHeading, l10n.createAccountIntro),
       ?banner,
       TextField(
         controller: _email,
         enabled: !busy,
         keyboardType: TextInputType.emailAddress,
         autocorrect: false,
-        decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder()),
+        decoration: InputDecoration(labelText: l10n.authEmail, border: const OutlineInputBorder()),
       ),
       const SizedBox(height: 12),
       TextField(
@@ -95,9 +96,9 @@ class _CreateAccountPageState extends ConsumerState<CreateAccountPage> {
         enabled: !busy,
         obscureText: _obscure,
         decoration: InputDecoration(
-          labelText: 'Password',
+          labelText: l10n.authPassword,
           border: const OutlineInputBorder(),
-          helperText: 'At least 8 characters, with a letter and a number.',
+          helperText: l10n.authPasswordHelper,
           helperMaxLines: 2,
           suffixIcon: IconButton(
             icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
@@ -109,26 +110,26 @@ class _CreateAccountPageState extends ConsumerState<CreateAccountPage> {
       const SizedBox(height: 16),
       FilledButton(
         onPressed: busy ? null : submit,
-        child: _spinnerOr('Create account', reg.busy),
+        child: _spinnerOr(l10n.authCreateAccount, reg.busy),
       ),
       const SizedBox(height: 12),
-      const Row(children: [
-        Expanded(child: Divider()),
+      Row(children: [
+        const Expanded(child: Divider()),
         Padding(
-            padding: EdgeInsets.symmetric(horizontal: 8),
-            child: Text('or', style: TextStyle(color: Colors.white38))),
-        Expanded(child: Divider()),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text(l10n.authOr, style: const TextStyle(color: Colors.white38))),
+        const Expanded(child: Divider()),
       ]),
       const SizedBox(height: 12),
       OutlinedButton.icon(
         onPressed: busy ? null : () => ref.read(authControllerProvider.notifier).loginGithub(),
         icon: const Icon(Icons.code),
-        label: const Text('Sign up with GitHub'),
+        label: Text(l10n.createAccountGithub),
       ),
       const SizedBox(height: 16),
       TextButton(
         onPressed: busy ? null : () => Navigator.pop(context),
-        child: const Text('Already have an account? Sign in'),
+        child: Text(l10n.createAccountHaveAccount),
       ),
     ];
   }
@@ -136,27 +137,29 @@ class _CreateAccountPageState extends ConsumerState<CreateAccountPage> {
   // ---- step 2: verification code ----
   List<Widget> _codeStep(RegistrationState reg, RegistrationController ctrl) {
     final banner = authBanner(error: reg.error, notice: reg.notice);
+    final l10n = context.l10n;
     return [
-      ..._header('Verify your email', 'Enter the 6-digit code we emailed to ${reg.email}.'),
+      ..._header(l10n.authVerifyEmailTitle, l10n.authVerifyEmailBody(reg.email)),
       ?banner,
       TextField(
         controller: _code,
         enabled: !reg.busy,
         keyboardType: TextInputType.number,
         maxLength: 6,
-        decoration: const InputDecoration(
-            labelText: '6-digit code', border: OutlineInputBorder(), counterText: ''),
+        decoration: InputDecoration(
+            labelText: l10n.authCode6, border: const OutlineInputBorder(), counterText: ''),
         onSubmitted: (_) => reg.busy ? null : ctrl.submitCode(_code.text),
       ),
       const SizedBox(height: 12),
       FilledButton(
         onPressed: reg.busy ? null : () => ctrl.submitCode(_code.text),
-        child: _spinnerOr('Verify', reg.busy),
+        child: _spinnerOr(l10n.authVerify, reg.busy),
       ),
       const SizedBox(height: 8),
-      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        TextButton(onPressed: reg.busy ? null : ctrl.resendCode, child: const Text('Resend code')),
-        TextButton(onPressed: reg.busy ? null : ctrl.editEmail, child: const Text('Change email')),
+      Wrap(alignment: WrapAlignment.spaceBetween, children: [
+        TextButton(onPressed: reg.busy ? null : ctrl.resendCode, child: Text(l10n.authResendCode)),
+        TextButton(
+            onPressed: reg.busy ? null : ctrl.editEmail, child: Text(l10n.createAccountChangeEmail)),
       ]),
     ];
   }
@@ -164,23 +167,22 @@ class _CreateAccountPageState extends ConsumerState<CreateAccountPage> {
   // ---- step 3 (legacy/non-A2 only): sign in with the emailed temp password ----
   List<Widget> _signInStep(RegistrationState reg, RegistrationController ctrl) {
     final banner = authBanner(error: reg.error, notice: reg.notice);
+    final l10n = context.l10n;
     return [
-      ..._header('Almost there',
-          'Enter the temporary password from your email to finish. You can choose your own '
-              'password in the next step.'),
+      ..._header(l10n.createAccountAlmostThere, l10n.createAccountTempIntro),
       ?banner,
       TextField(
         controller: _temp,
         enabled: !reg.busy,
         obscureText: true,
-        decoration:
-            const InputDecoration(labelText: 'Temporary password', border: OutlineInputBorder()),
+        decoration: InputDecoration(
+            labelText: l10n.createAccountTempPassword, border: const OutlineInputBorder()),
         onSubmitted: (_) => reg.busy ? null : ctrl.firstSignIn(_temp.text),
       ),
       const SizedBox(height: 16),
       FilledButton(
         onPressed: reg.busy ? null : () => ctrl.firstSignIn(_temp.text),
-        child: _spinnerOr('Finish & sign in', reg.busy),
+        child: _spinnerOr(l10n.createAccountFinish, reg.busy),
       ),
       const SizedBox(height: 8),
       TextButton(
@@ -188,7 +190,7 @@ class _CreateAccountPageState extends ConsumerState<CreateAccountPage> {
             ? null
             : () => Navigator.push(
                 context, MaterialPageRoute(builder: (_) => const ForgotPasswordPage())),
-        child: const Text('Lost the temporary password? Reset it'),
+        child: Text(l10n.createAccountLostTemp),
       ),
     ];
   }

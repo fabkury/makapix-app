@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import '../models/club_error.dart';
 import 'api_providers.dart' show authApiProvider;
@@ -40,13 +41,11 @@ class VerifyEmailController extends StateNotifier<VerifyEmailState> {
     state = state.copyWith(busy: true, clearError: true, clearNotice: true);
     try {
       await _ref.read(authApiProvider).requestEmailOtp(email);
-      state = state.copyWith(busy: false, notice: 'New code sent.');
+      state = state.copyWith(busy: false, notice: appL10n.authNewCodeSent);
     } on ClubError catch (e) {
       state = state.copyWith(
           busy: false,
-          error: e.isRateLimited
-              ? 'Too many requests. Please wait a moment and try again.'
-              : e.message);
+          error: e.isRateLimited ? appL10n.authTooManyRequests : e.message);
     }
   }
 
@@ -56,14 +55,14 @@ class VerifyEmailController extends StateNotifier<VerifyEmailState> {
   Future<void> submitCode(String email, String rawCode, {String? password}) async {
     final code = rawCode.trim();
     if (code.length != 6 || int.tryParse(code) == null) {
-      state = state.copyWith(error: 'Enter the 6-digit code from your email.', clearNotice: true);
+      state = state.copyWith(error: appL10n.authEnterCode, clearNotice: true);
       return;
     }
     state = state.copyWith(busy: true, clearError: true, clearNotice: true);
     try {
       final res = await _ref.read(authApiProvider).verifyEmailOtp(email, code);
       if (!res.verified) {
-        state = state.copyWith(busy: false, error: 'Invalid or expired code.');
+        state = state.copyWith(busy: false, error: appL10n.authInvalidCode);
         return;
       }
       if (password != null && password.isNotEmpty) {
@@ -77,12 +76,12 @@ class VerifyEmailController extends StateNotifier<VerifyEmailState> {
           state = state.copyWith(
               busy: false,
               verified: true,
-              notice: 'Email verified. Please sign in with your password.');
+              notice: appL10n.authVerifiedSignInPassword);
           return;
         }
       }
       state = state.copyWith(
-          busy: false, verified: true, notice: 'Email verified. You can now sign in.');
+          busy: false, verified: true, notice: appL10n.authVerifiedCanSignIn);
     } on ClubError catch (e) {
       state = state.copyWith(busy: false, error: e.message);
     }

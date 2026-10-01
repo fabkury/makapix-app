@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import '../api/club_api_client.dart';
 import '../auth/apple_oauth.dart';
@@ -227,8 +228,8 @@ class AuthController extends StateNotifier<AuthState> {
         _keepStaleOr(AuthState.failure(e.message), e.message);
       }
     } catch (_) {
-      const msg = 'Unexpected error loading your account.';
-      _keepStaleOr(const AuthState.failure(msg), msg);
+      final msg = appL10n.authAccountLoadError;
+      _keepStaleOr(AuthState.failure(msg), msg);
     }
   }
 
@@ -253,7 +254,7 @@ class AuthController extends StateNotifier<AuthState> {
     } on ClubError catch (e) {
       state = AuthState.failure(e.message, code: e.code);
     } catch (_) {
-      state = const AuthState.failure('Unexpected error. Please try again.');
+      state = AuthState.failure(appL10n.commonUnexpectedError);
     }
   }
 
@@ -266,7 +267,7 @@ class AuthController extends StateNotifier<AuthState> {
     } on ClubError catch (e) {
       state = AuthState.failure(e.message);
     } catch (_) {
-      state = const AuthState.failure('Unexpected error. Please try again.');
+      state = AuthState.failure(appL10n.commonUnexpectedError);
     }
   }
 
@@ -294,7 +295,7 @@ class AuthController extends StateNotifier<AuthState> {
         state = AuthState.failure(e.message, code: e.code);
       }
     } catch (_) {
-      state = const AuthState.failure('Unexpected error. Please try again.');
+      state = AuthState.failure(appL10n.commonUnexpectedError);
     }
   }
 

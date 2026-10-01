@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import '../../models/club_error.dart';
 import '../../state/auth_controller.dart';
@@ -21,10 +22,9 @@ class _DeleteAccountPageState extends ConsumerState<DeleteAccountPage> {
   final _confirm = TextEditingController();
   bool _busy = false;
 
-  /// The exact word that arms the delete button.
-  static const kConfirmWord = 'DELETE';
-
-  bool get _armed => _confirm.text.trim() == kConfirmWord;
+  /// The delete button arms when the field holds the confirmation word — "DELETE" in English,
+  /// each language's own word otherwise, so it can be typed on that language's keyboard.
+  bool get _armed => _confirm.text.trim() == context.l10n.deleteAccountConfirmWord;
 
   @override
   void dispose() {
@@ -41,13 +41,10 @@ class _DeleteAccountPageState extends ConsumerState<DeleteAccountPage> {
         context: context,
         barrierDismissible: false,
         builder: (ctx) => AlertDialog(
-          title: const Text('Account deleted'),
-          content: const Text(
-              'Your account has been deactivated and your data is being '
-              'permanently deleted. Thank you for having been part of '
-              'Makapix Club.'),
+          title: Text(ctx.l10n.deleteAccountDoneTitle),
+          content: Text(ctx.l10n.deleteAccountDoneBody),
           actions: [
-            FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+            FilledButton(onPressed: () => Navigator.pop(ctx), child: Text(ctx.l10n.commonOk)),
           ],
         ),
       );
@@ -67,8 +64,10 @@ class _DeleteAccountPageState extends ConsumerState<DeleteAccountPage> {
   @override
   Widget build(BuildContext context) {
     final handle = ref.watch(authControllerProvider).me?.user.handle;
+    final l10n = context.l10n;
+    final word = l10n.deleteAccountConfirmWord;
     return Scaffold(
-      appBar: AppBar(title: const Text('Delete account')),
+      appBar: AppBar(title: Text(l10n.accountDelete)),
       body: CenteredContent(
           child: ListView(
         padding: const EdgeInsets.all(16),
@@ -83,30 +82,27 @@ class _DeleteAccountPageState extends ConsumerState<DeleteAccountPage> {
                   Row(children: [
                     const Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
                     const SizedBox(width: 8),
-                    Text('This is permanent',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleMedium
-                            ?.copyWith(color: Colors.redAccent)),
+                    Flexible(
+                      child: Text(l10n.deleteAccountPermanent,
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(color: Colors.redAccent)),
+                    ),
                   ]),
                   const SizedBox(height: 12),
-                  _bullet('Your profile${handle != null ? ' (@$handle)' : ''}, posts, '
-                      'comments, reactions, followers, and settings will be '
-                      'permanently deleted.'),
-                  _bullet('Comments that other users have replied to are '
-                      'replaced with an anonymous "[deleted comment]" '
-                      'placeholder so their replies stay readable.'),
-                  _bullet('Deletion cannot be undone. Deleted content is not '
-                      'recoverable.'),
-                  _bullet('You will be signed out immediately and your account '
-                      'deactivated. Data removal completes on our servers '
-                      'shortly afterwards.'),
+                  _bullet(handle != null
+                      ? l10n.deleteAccountBullet1(handle)
+                      : l10n.deleteAccountBullet1NoHandle),
+                  _bullet(l10n.deleteAccountBullet2),
+                  _bullet(l10n.deleteAccountBullet3),
+                  _bullet(l10n.deleteAccountBullet4),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 16),
-          Text('To confirm, type $kConfirmWord below.',
+          Text(l10n.deleteAccountTypePrompt(word),
               style: const TextStyle(color: Colors.white70)),
           const SizedBox(height: 10),
           TextField(
@@ -115,9 +111,9 @@ class _DeleteAccountPageState extends ConsumerState<DeleteAccountPage> {
             autocorrect: false,
             enableSuggestions: false,
             textCapitalization: TextCapitalization.characters,
-            decoration: const InputDecoration(
-              labelText: 'Type $kConfirmWord to confirm',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: l10n.deleteAccountTypeLabel(word),
+              border: const OutlineInputBorder(),
             ),
             onChanged: (_) => setState(() {}),
           ),
@@ -134,13 +130,13 @@ class _DeleteAccountPageState extends ConsumerState<DeleteAccountPage> {
                 ? const SizedBox(
                     height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.delete_forever),
-            label: const Text('Delete my account'),
+            label: Text(l10n.deleteAccountButton),
           ),
           const SizedBox(height: 12),
           Center(
             child: TextButton(
               onPressed: _busy ? null : () => Navigator.pop(context),
-              child: const Text('Cancel'),
+              child: Text(l10n.commonCancel),
             ),
           ),
         ],

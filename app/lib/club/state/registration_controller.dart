@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import '../auth/account_validators.dart';
 import '../models/club_error.dart';
@@ -78,7 +79,7 @@ class RegistrationController extends StateNotifier<RegistrationState> {
       {void Function()? onAlreadyExists}) async {
     final email = rawEmail.trim().toLowerCase();
     if (!isValidEmail(email)) {
-      state = state.copyWith(error: 'Enter a valid email address.', clearNotice: true);
+      state = state.copyWith(error: appL10n.authInvalidEmail, clearNotice: true);
       return;
     }
     final pwErr = validatePasswordError(password);
@@ -106,7 +107,7 @@ class RegistrationController extends StateNotifier<RegistrationState> {
       if (e.status == 409) {
         state = state.copyWith(
           busy: false,
-          error: 'An account with this email already exists. Try signing in instead.',
+          error: appL10n.authEmailExists,
         );
         onAlreadyExists?.call();
         return;
@@ -115,9 +116,8 @@ class RegistrationController extends StateNotifier<RegistrationState> {
     }
   }
 
-  String _codeNotice() => _legacy
-      ? 'We emailed a 6-digit code and a temporary password. Enter the code below.'
-      : 'We emailed a 6-digit code to ${state.email}. Enter it below.';
+  String _codeNotice() =>
+      _legacy ? appL10n.authCodeSentLegacy : appL10n.authCodeSent(state.email);
 
   Future<void> _safeRequestOtp(String email) async {
     try {
@@ -137,7 +137,7 @@ class RegistrationController extends StateNotifier<RegistrationState> {
     state = state.copyWith(busy: true, clearError: true, clearNotice: true);
     try {
       await _ref.read(authApiProvider).requestEmailOtp(state.email);
-      state = state.copyWith(busy: false, notice: 'New code sent.');
+      state = state.copyWith(busy: false, notice: appL10n.authNewCodeSent);
     } on ClubError catch (e) {
       state = state.copyWith(busy: false, error: _friendly(e));
     }
@@ -149,14 +149,14 @@ class RegistrationController extends StateNotifier<RegistrationState> {
   Future<void> submitCode(String rawCode) async {
     final code = rawCode.trim();
     if (code.length != 6 || int.tryParse(code) == null) {
-      state = state.copyWith(error: 'Enter the 6-digit code from your email.', clearNotice: true);
+      state = state.copyWith(error: appL10n.authEnterCode, clearNotice: true);
       return;
     }
     state = state.copyWith(busy: true, clearError: true, clearNotice: true);
     try {
       final res = await _ref.read(authApiProvider).verifyEmailOtp(state.email, code);
       if (!res.verified) {
-        state = state.copyWith(busy: false, error: 'Invalid or expired code.');
+        state = state.copyWith(busy: false, error: appL10n.authInvalidCode);
         return;
       }
       if (!_legacy && _chosenPassword != null) {
@@ -167,7 +167,7 @@ class RegistrationController extends StateNotifier<RegistrationState> {
         state = state.copyWith(
           step: RegStep.signIn,
           busy: false,
-          notice: 'Email verified. Enter the temporary password from your email to finish.',
+          notice: appL10n.authVerifiedEnterTemp,
         );
       }
     } on ClubError catch (e) {
@@ -180,7 +180,7 @@ class RegistrationController extends StateNotifier<RegistrationState> {
   Future<void> firstSignIn(String tempPassword) async {
     final pw = tempPassword.trim();
     if (pw.isEmpty) {
-      state = state.copyWith(error: 'Enter the temporary password from your email.');
+      state = state.copyWith(error: appL10n.authEnterTemp);
       return;
     }
     await _completeSignIn(pw, stash: true);
@@ -204,7 +204,7 @@ class RegistrationController extends StateNotifier<RegistrationState> {
 
   String _friendly(ClubError e) {
     if (e.isRateLimited) {
-      return 'Too many attempts. Please wait a moment and try again.';
+      return appL10n.authTooManyAttempts;
     }
     return e.message;
   }

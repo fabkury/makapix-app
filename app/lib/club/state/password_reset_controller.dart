@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import '../auth/account_validators.dart';
 import '../models/club_error.dart';
@@ -49,7 +50,7 @@ class PasswordResetController extends StateNotifier<PasswordResetState> {
   Future<void> requestCode(String rawEmail) async {
     final email = rawEmail.trim().toLowerCase();
     if (!isValidEmail(email)) {
-      state = state.copyWith(error: 'Enter a valid email address.', clearNotice: true);
+      state = state.copyWith(error: appL10n.authInvalidEmail, clearNotice: true);
       return;
     }
     state = state.copyWith(email: email, busy: true, clearError: true, clearNotice: true);
@@ -58,14 +59,12 @@ class PasswordResetController extends StateNotifier<PasswordResetState> {
       state = state.copyWith(
         step: ResetStep.confirm,
         busy: false,
-        notice: 'If an account exists for this email, we sent a 6-digit reset code.',
+        notice: appL10n.resetCodeSentNotice,
       );
     } on ClubError catch (e) {
       state = state.copyWith(
           busy: false,
-          error: e.isRateLimited
-              ? 'Too many requests. Please wait a moment and try again.'
-              : e.message);
+          error: e.isRateLimited ? appL10n.authTooManyRequests : e.message);
     }
   }
 
@@ -74,7 +73,7 @@ class PasswordResetController extends StateNotifier<PasswordResetState> {
     state = state.copyWith(busy: true, clearError: true, clearNotice: true);
     try {
       await _ref.read(authApiProvider).requestPasswordOtp(state.email);
-      state = state.copyWith(busy: false, notice: 'New code sent.');
+      state = state.copyWith(busy: false, notice: appL10n.authNewCodeSent);
     } on ClubError catch (e) {
       state = state.copyWith(busy: false, error: e.message);
     }
@@ -83,7 +82,7 @@ class PasswordResetController extends StateNotifier<PasswordResetState> {
   Future<void> confirm(String rawCode, String newPassword) async {
     final code = rawCode.trim();
     if (code.length != 6 || int.tryParse(code) == null) {
-      state = state.copyWith(error: 'Enter the 6-digit code from your email.', clearNotice: true);
+      state = state.copyWith(error: appL10n.authEnterCode, clearNotice: true);
       return;
     }
     final pwError = validatePasswordError(newPassword);
@@ -97,7 +96,7 @@ class PasswordResetController extends StateNotifier<PasswordResetState> {
       state = state.copyWith(
           step: ResetStep.done,
           busy: false,
-          notice: 'Password updated. You can now sign in with your new password.');
+          notice: appL10n.resetDoneNotice);
     } on ClubError catch (e) {
       state = state.copyWith(busy: false, error: e.message);
     }

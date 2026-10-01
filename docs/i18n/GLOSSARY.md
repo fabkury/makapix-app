@@ -34,6 +34,14 @@ All languages: sentence case, as in English. Short and plain, like the English. 
 marks the English does not have. The ellipsis is the single character `…`. A button names its
 action with the same verb the menu item uses.
 
+## Field labels, titles, and buttons
+
+A text-field label and a top-bar title are one line and are cut off when too long; the screen
+sweeps fail on that at a 320 px phone. When a natural translation does not fit, shorten the
+wording (drop an article or a preposition, pick a shorter synonym) — as French "Confirmer le mot
+de passe" for "Confirm new password". Confirmation words the user must type (delete account)
+are each language's own word, typable on that language's keyboard.
+
 ## Short labels
 
 Messages whose key ends in `Short` are toolbar tile labels: one line, 54 px wide, 8.5 px type.
@@ -70,6 +78,13 @@ label must not be longer than the full name, and no two tools may share one.
 | block | bloquear | bloquear | bloquer | blockieren | заблокировать | ブロックする | 屏蔽 |
 | moderator | moderador | moderador | modérateur | Moderator | модератор | モデレーター | 管理员 |
 | community rules | normas de la comunidad | regras da comunidade | règles de la communauté | Community-Regeln | правила сообщества | コミュニティルール | 社区规则 |
+| Contribute (open the editor from the Club) | contribuir | contribuir | contribuer | beitragen | создать | 作品を描く | 创作 |
+| player (a Makapix display device) | reproductor | player | lecteur | Player | плеер | プレーヤー | 播放器 |
+| badge | insignia | insígnia | badge | Abzeichen | значок | バッジ | 徽章 |
+| 6-digit code | código de 6 dígitos | código de 6 dígitos | code à 6 chiffres | 6-stelliger Code | 6-значный код | 6桁のコード | 6 位验证码 |
+| temporary password | contraseña temporal | senha temporária | mot de passe temporaire | temporäres Passwort | временный пароль | 仮パスワード | 临时密码 |
+| linked logins | inicios de sesión vinculados | logins vinculados | connexions associées | verknüpfte Anmeldungen | привязанные способы входа | 連携ログイン | 关联登录 |
+| like (a comment) | me gusta | curtir | j'aime | gefällt mir | нравится | いいね | 赞 |
 | monitored hashtags | hashtags supervisados | hashtags monitoradas | hashtags surveillés | überwachte Hashtags | отслеживаемые хештеги | 監視対象のハッシュタグ | 受监控的话题标签 |
 
 ### Editor
@@ -116,5 +131,4 @@ glossary. Notable choices:
 
 - **Draft** (CONTEXT.md: visible but uncommitted editor state) vs. **Eraser** in Spanish: both
   are naturally "borrador". Decide when batch E1/E2 shows where "draft" appears in UI text.
-- **Player** (the physical pixel-art display devices) — decide in batch C8.
-- **Contribute**, **Lineage**, **Highlight** — decide in batches C3 / C5 / C4.
+- **Lineage**, **Highlight** — decide in batches C5 / C4.

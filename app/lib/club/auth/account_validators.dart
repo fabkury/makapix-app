@@ -12,6 +12,8 @@
 ///   `/auth/check-handle-availability` (which is the authoritative verdict).
 library;
 
+import 'package:makapix_club/l10n/l10n.dart';
+
 /// A permissive email shape check (the server does full validation + normalization).
 bool isValidEmail(String email) {
   final e = email.trim();
@@ -20,9 +22,9 @@ bool isValidEmail(String email) {
 
 /// Returns a user-facing error, or null when the password satisfies the rules.
 String? validatePasswordError(String password) {
-  if (password.length < 8) return 'Use at least 8 characters.';
-  if (!password.contains(RegExp(r'[A-Za-z]'))) return 'Include at least one letter.';
-  if (!password.contains(RegExp(r'[0-9]'))) return 'Include at least one number.';
+  if (password.length < 8) return appL10n.passwordTooShort;
+  if (!password.contains(RegExp(r'[A-Za-z]'))) return appL10n.passwordNeedsLetter;
+  if (!password.contains(RegExp(r'[0-9]'))) return appL10n.passwordNeedsNumber;
   return null;
 }
 
@@ -41,18 +43,19 @@ final _handleAlnum = RegExp(r'[\p{L}\p{Nd}]', unicode: true);
 /// are server-side; see the library doc.)
 String? validateHandleError(String handle) {
   final h = handle.trim();
-  if (h.isEmpty) return 'Handle cannot be empty.';
+  final l10n = appL10n;
+  if (h.isEmpty) return l10n.handleEmpty;
   final length = h.runes.length;
-  if (length < 3) return 'Handle must be at least 3 characters.';
-  if (length > 32) return 'Handle must be at most 32 characters.';
+  if (length < 3) return l10n.handleTooShort;
+  if (length > 32) return l10n.handleTooLong;
   if (h.startsWith('-') || h.startsWith('_') || h.endsWith('-') || h.endsWith('_')) {
-    return 'Handle cannot start or end with a hyphen or underscore.';
+    return l10n.handleEdgeChars;
   }
   if (!_handleAllowed.hasMatch(h)) {
-    return 'Use letters, digits, hyphen, or underscore.';
+    return l10n.handleBadChars;
   }
   if (!_handleAlnum.hasMatch(h)) {
-    return 'Handle must contain at least one letter or digit.';
+    return l10n.handleNeedsAlnum;
   }
   return null;
 }

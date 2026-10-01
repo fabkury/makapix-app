@@ -55,7 +55,7 @@ class AppleOAuth {
 
   /// A cryptographically-random nonce (unreserved URL chars only).
   String _randomNonce([int length = 32]) {
-    const charset = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-._';
+    const charset = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-._'; // l10n-ignore: nonce alphabet
     final rng = Random.secure();
     return List.generate(length, (_) => charset[rng.nextInt(charset.length)]).join();
   }

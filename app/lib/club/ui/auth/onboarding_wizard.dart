@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import '../../state/account_providers.dart';
 import '../../state/auth_controller.dart';
@@ -67,6 +68,7 @@ class _OnboardingWizardState extends ConsumerState<OnboardingWizard> {
     final tempPw = ref.watch(pendingWelcomePasswordProvider);
     final st = ref.watch(onboardingControllerProvider);
     final ctrl = ref.read(onboardingControllerProvider.notifier);
+    final l10n = context.l10n;
     final hasPasswordStep = tempPw != null && tempPw.isNotEmpty;
     final steps = _steps(hasPasswordStep);
     final i = _index.clamp(0, steps.length - 1);
@@ -82,13 +84,13 @@ class _OnboardingWizardState extends ConsumerState<OnboardingWizard> {
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: const Text('Welcome to Makapix Club'),
+        title: Text(l10n.onboardingTitle),
         actions: [
           TextButton(
             onPressed: st.busy
                 ? null
                 : () => ref.read(welcomeDismissedProvider.notifier).state = true,
-            child: const Text('Skip for now'),
+            child: Text(l10n.onboardingSkipForNow),
           ),
         ],
       ),
@@ -116,12 +118,12 @@ class _OnboardingWizardState extends ConsumerState<OnboardingWizard> {
                   if (i > 0 && steps[i - 1] != _Step.password)
                     TextButton(
                       onPressed: st.busy ? null : () => setState(() => _index = i - 1),
-                      child: const Text('Back'),
+                      child: Text(l10n.commonBack),
                     ),
                   if (!_isPasswordStep(step))
                     TextButton(
                       onPressed: st.busy ? null : () => _advance(isLast, ctrl),
-                      child: const Text('Skip'),
+                      child: Text(l10n.commonSkip),
                     ),
                   const Spacer(),
                   FilledButton(
@@ -129,7 +131,7 @@ class _OnboardingWizardState extends ConsumerState<OnboardingWizard> {
                     child: st.busy
                         ? const SizedBox(
                             height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                        : Text(isLast ? 'Finish' : 'Continue'),
+                        : Text(isLast ? l10n.commonFinish : l10n.commonContinue),
                   ),
                 ]),
               ],
@@ -158,7 +160,7 @@ class _OnboardingWizardState extends ConsumerState<OnboardingWizard> {
     switch (step) {
       case _Step.password:
         if (_newPassword.text != _confirm.text) {
-          _toast('Passwords don\'t match.');
+          _toast(context.l10n.authPasswordsDontMatch);
           return;
         }
         error = await ctrl.setPassword(tempPw ?? '', _newPassword.text);
@@ -200,15 +202,14 @@ class _OnboardingWizardState extends ConsumerState<OnboardingWizard> {
   // ---- steps ----
 
   List<Widget> _passwordStep() => [
-        _title('Set your password',
-            'You signed in with a temporary password. Choose your own to finish.'),
+        _title(context.l10n.onboardingPasswordTitle, context.l10n.onboardingPasswordBody),
         TextField(
           controller: _newPassword,
           obscureText: _obscure,
           decoration: InputDecoration(
-            labelText: 'New password',
+            labelText: context.l10n.authNewPassword,
             border: const OutlineInputBorder(),
-            helperText: 'At least 8 characters, with a letter and a number.',
+            helperText: context.l10n.authPasswordHelper,
             helperMaxLines: 2,
             suffixIcon: IconButton(
               icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
@@ -220,8 +221,8 @@ class _OnboardingWizardState extends ConsumerState<OnboardingWizard> {
         TextField(
           controller: _confirm,
           obscureText: _obscure,
-          decoration: const InputDecoration(
-              labelText: 'Confirm password', border: OutlineInputBorder()),
+          decoration: InputDecoration(
+              labelText: context.l10n.onboardingConfirmPassword, border: const OutlineInputBorder()),
         ),
       ];
 
@@ -234,13 +235,14 @@ class _OnboardingWizardState extends ConsumerState<OnboardingWizard> {
       HandleCheck.idle => (Colors.white54, ''),
     };
     return [
-      _title('Pick a handle',
-          'This is your @name across Makapix Club. You can change it later in Settings.'),
+      _title(context.l10n.onboardingHandleTitle, context.l10n.onboardingHandleBody),
       TextField(
         controller: _handle,
         autocorrect: false,
-        decoration: const InputDecoration(
-            labelText: 'Handle', prefixText: '@', border: OutlineInputBorder()),
+        decoration: InputDecoration(
+            labelText: context.l10n.accountHandle,
+            prefixText: '@',
+            border: const OutlineInputBorder()),
         onChanged: (v) {
           _handleDebounce?.cancel();
           _handleDebounce = Timer(const Duration(milliseconds: 400),
@@ -256,8 +258,7 @@ class _OnboardingWizardState extends ConsumerState<OnboardingWizard> {
   }
 
   List<Widget> _profileStep() => [
-        _title('Add a touch (optional)',
-            'A photo and a short bio help people recognize you. You can skip and do this later.'),
+        _title(context.l10n.onboardingProfileTitle, context.l10n.onboardingProfileBody),
         Center(
           child: GestureDetector(
             onTap: _pickAvatar,
@@ -276,8 +277,10 @@ class _OnboardingWizardState extends ConsumerState<OnboardingWizard> {
           controller: _bio,
           maxLines: 3,
           maxLength: 280,
-          decoration: const InputDecoration(
-              labelText: 'Bio', border: OutlineInputBorder(), alignLabelWithHint: true),
+          decoration: InputDecoration(
+              labelText: context.l10n.profileBio,
+              border: const OutlineInputBorder(),
+              alignLabelWithHint: true),
         ),
       ];
 

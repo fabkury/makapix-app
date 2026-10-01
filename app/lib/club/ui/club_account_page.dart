@@ -1,8 +1,10 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 import '../cache/artwork_cache.dart';
@@ -43,7 +45,7 @@ class ClubAccountPage extends ConsumerWidget {
     });
     final auth = ref.watch(authControllerProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Makapix Club')),
+      appBar: AppBar(title: const Text('Makapix Club')), // l10n-ignore: brand name
       body: switch (auth.status) {
         AuthStatus.loading => const Center(child: CircularProgressIndicator()),
         AuthStatus.signedIn => CenteredContent(child: _AccountView(me: auth.me!)),
@@ -76,6 +78,7 @@ class _SignInFormState extends ConsumerState<_SignInForm> {
     final auth = ref.watch(authControllerProvider);
     final ctrl = ref.read(authControllerProvider.notifier);
     final busy = auth.isBusy;
+    final l10n = context.l10n;
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -85,11 +88,12 @@ class _SignInFormState extends ConsumerState<_SignInForm> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Sign in to Makapix Club',
+              Text(l10n.signInHeading,
                   style: Theme.of(context).textTheme.titleLarge, textAlign: TextAlign.center),
               const SizedBox(height: 4),
-              const Text('Discover art, react, comment, follow, and publish your own.',
-                  style: TextStyle(color: Colors.white60, fontSize: 12), textAlign: TextAlign.center),
+              Text(l10n.signInTagline,
+                  style: const TextStyle(color: Colors.white60, fontSize: 12),
+                  textAlign: TextAlign.center),
               const SizedBox(height: 24),
               if (auth.status == AuthStatus.error && auth.error != null)
                 Container(
@@ -121,7 +125,7 @@ class _SignInFormState extends ConsumerState<_SignInForm> {
                                 builder: (_) => VerifyEmailPage(
                                     email: _email.text.trim(), password: _password.text))),
                     icon: const Icon(Icons.mark_email_read_outlined),
-                    label: const Text('Verify your email'),
+                    label: Text(l10n.authVerifyEmailTitle),
                   ),
                 ),
               TextField(
@@ -129,7 +133,8 @@ class _SignInFormState extends ConsumerState<_SignInForm> {
                 enabled: !busy,
                 keyboardType: TextInputType.emailAddress,
                 autocorrect: false,
-                decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder()),
+                decoration:
+                    InputDecoration(labelText: l10n.authEmail, border: const OutlineInputBorder()),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -140,7 +145,7 @@ class _SignInFormState extends ConsumerState<_SignInForm> {
                   if (!busy) ctrl.loginPassword(_email.text, _password.text);
                 },
                 decoration: InputDecoration(
-                  labelText: 'Password',
+                  labelText: l10n.authPassword,
                   border: const OutlineInputBorder(),
                   suffixIcon: IconButton(
                     icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
@@ -154,21 +159,21 @@ class _SignInFormState extends ConsumerState<_SignInForm> {
                 child: busy
                     ? const SizedBox(
                         height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Text('Sign in'),
+                    : Text(l10n.commonSignIn),
               ),
               const SizedBox(height: 12),
-              const Row(children: [
-                Expanded(child: Divider()),
+              Row(children: [
+                const Expanded(child: Divider()),
                 Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 8),
-                    child: Text('or', style: TextStyle(color: Colors.white38))),
-                Expanded(child: Divider()),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Text(l10n.authOr, style: const TextStyle(color: Colors.white38))),
+                const Expanded(child: Divider()),
               ]),
               const SizedBox(height: 12),
               OutlinedButton.icon(
                 onPressed: busy ? null : () => ctrl.loginGithub(),
                 icon: const Icon(Icons.code),
-                label: const Text('Continue with GitHub'),
+                label: Text(l10n.signInGithub),
               ),
               // Sign in with Apple (iOS, guideline 4.8). Renders only when the feature
               // flag is on AND the native flow is available (iOS 13+); a no-op otherwise.
@@ -182,10 +187,10 @@ class _SignInFormState extends ConsumerState<_SignInForm> {
                     ? null
                     : () => Navigator.push(context,
                         MaterialPageRoute(builder: (_) => const ForgotPasswordPage())),
-                child: const Text('Forgot password?'),
+                child: Text(l10n.signInForgot),
               ),
               const Divider(height: 24),
-              Text('New to Makapix Club?',
+              Text(l10n.signInNewHere,
                   style: const TextStyle(color: Colors.white54, fontSize: 12),
                   textAlign: TextAlign.center),
               const SizedBox(height: 8),
@@ -195,7 +200,7 @@ class _SignInFormState extends ConsumerState<_SignInForm> {
                     : () => Navigator.push(context,
                         MaterialPageRoute(builder: (_) => const CreateAccountPage())),
                 icon: const Icon(Icons.person_add_alt),
-                label: const Text('Create account'),
+                label: Text(l10n.authCreateAccount),
               ),
             ],
           ),
@@ -240,6 +245,8 @@ class _AccountView extends ConsumerWidget {
     final hasAvatar = u.avatarUrl != null && u.avatarUrl!.isNotEmpty;
     final storage = me.quotas['storage'];
     final uploads = me.quotas['uploads'];
+    final l10n = context.l10n;
+    final roles = [for (final r in me.roles.isEmpty ? const ['user'] : me.roles) l10n.accountRole(r)];
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
@@ -263,15 +270,15 @@ class _AccountView extends ConsumerWidget {
           Center(child: Text(u.email!, style: const TextStyle(color: Colors.white54, fontSize: 12))),
         const SizedBox(height: 4),
         Center(
-          child: Text('Signed in • ${me.roles.isEmpty ? 'user' : me.roles.join(', ')}',
+          child: Text(l10n.accountSignedInAs(roles.join(', ')),
               style: const TextStyle(color: Colors.white38, fontSize: 11)),
         ),
         const SizedBox(height: 24),
-        _kv('Public ID', u.sub),
-        if (storage is Map) _kv('Storage', _storageLine(storage)),
-        if (uploads is Map) _kv('Uploads', _uploadsLine(uploads)),
-        _kv('Can post publicly',
-            me.capabilities['can_post_public'] == true ? 'Yes' : 'Pending approval'),
+        _kv(l10n.accountPublicId, u.sub),
+        if (storage is Map) _kv(l10n.accountStorage, _storageLine(storage)),
+        if (uploads is Map) _kv(l10n.accountUploads, _uploadsLine(l10n, uploads)),
+        _kv(l10n.accountCanPostPublicly,
+            me.capabilities['can_post_public'] == true ? l10n.commonYes : l10n.accountPendingApproval),
         const SizedBox(height: 24),
         _EditProfileButton(sqid: u.sub),
         const SizedBox(height: 12),
@@ -279,27 +286,27 @@ class _AccountView extends ConsumerWidget {
           onPressed: () => Navigator.push(
               context, MaterialPageRoute(builder: (_) => const AccountManagementPage())),
           icon: const Icon(Icons.manage_accounts_outlined),
-          label: const Text('Manage account'),
+          label: Text(l10n.accountManage),
         ),
         const SizedBox(height: 12),
         OutlinedButton.icon(
           onPressed: () => Navigator.push(
               context, MaterialPageRoute(builder: (_) => const MyPlayersPage())),
           icon: const Icon(Icons.cast_outlined),
-          label: const Text('My Players'),
+          label: Text(l10n.myPlayers),
         ),
         const SizedBox(height: 12),
         OutlinedButton.icon(
           onPressed: () => Navigator.push(
               context, MaterialPageRoute(builder: (_) => const MyRemixesPage())),
           icon: const Icon(Icons.alt_route),
-          label: const Text('Remixes of my works'),
+          label: Text(l10n.remixesOfMyWorks),
         ),
         const SizedBox(height: 12),
         OutlinedButton.icon(
           onPressed: () => ctrl.logout(),
           icon: const Icon(Icons.logout),
-          label: const Text('Sign out'),
+          label: Text(l10n.commonSignOut),
         ),
       ],
     );
@@ -318,14 +325,17 @@ class _AccountView extends ConsumerWidget {
   String _storageLine(Map s) {
     final used = (s['used_bytes'] as num?)?.toDouble() ?? 0;
     final limit = (s['limit_bytes'] as num?)?.toDouble() ?? 0;
-    String mib(double b) => '${(b / (1024 * 1024)).toStringAsFixed(1)} MiB';
+    // l10n-ignore: MiB is a unit symbol
+    String mib(double b) => '${NumberFormat('0.0', appL10n.localeName).format(b / (1024 * 1024))} MiB';
     return limit > 0 ? '${mib(used)} / ${mib(limit)}' : mib(used);
   }
 
-  String _uploadsLine(Map u) {
+  String _uploadsLine(AppLocalizations l10n, Map u) {
     final remaining = u['remaining'], limit = u['limit'], window = u['window'];
     if (remaining != null && limit != null) {
-      return '$remaining of $limit left${window != null ? ' / $window' : ''}';
+      // `window` is the server's own name for the quota period, shown as sent.
+      final left = l10n.accountUploadsLeft('$remaining', '$limit');
+      return window != null ? '$left / $window' : left;
     }
     return '—';
   }
@@ -359,7 +369,7 @@ class _EditProfileButtonState extends ConsumerState<_EditProfileButton> {
       if (!mounted) return;
       setState(() => _busy = false);
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Could not load your profile.')));
+          .showSnackBar(SnackBar(content: Text(context.l10n.profileLoadError)));
     }
   }
 
@@ -369,6 +379,6 @@ class _EditProfileButtonState extends ConsumerState<_EditProfileButton> {
         icon: _busy
             ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
             : const Icon(Icons.edit_outlined),
-        label: const Text('Edit profile'),
+        label: Text(context.l10n.profileEdit),
       );
 }

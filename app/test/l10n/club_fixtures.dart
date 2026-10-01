@@ -56,8 +56,11 @@ ClubMe fixtureMe({
   List<String> roles = const [],
   List<String> approvedHashtags = const ['nsfw', 'politics'],
   String mentionPolicy = 'following',
+  Map<String, dynamic> quotas = const {},
 }) =>
     ClubMe.fromJson({
+      'quotas': quotas,
+      'capabilities': const {'can_post_public': false},
       'user': {
         'public_sqid': 't5',
         'user_key': 'u-key-1',

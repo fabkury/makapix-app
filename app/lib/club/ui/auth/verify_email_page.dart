@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import '../../state/auth_controller.dart';
 import '../../state/verify_email_controller.dart';
@@ -42,15 +43,16 @@ class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
     final banner = authBanner(error: st.error, notice: st.notice);
     // Verified but not signed in (no/!wrong password) → offer a way back to sign-in.
     final verifiedNoSession = st.verified && !ref.watch(authControllerProvider).isSignedIn;
+    final l10n = context.l10n;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Verify your email')),
+      appBar: AppBar(title: Text(l10n.authVerifyEmailTitle)),
       body: AuthFormShell(
         children: [
-          Text('Verify your email',
+          Text(l10n.authVerifyEmailTitle,
               style: Theme.of(context).textTheme.titleLarge, textAlign: TextAlign.center),
           const SizedBox(height: 4),
-          Text('Enter the 6-digit code we emailed to ${widget.email}.',
+          Text(l10n.authVerifyEmailBody(widget.email),
               style: const TextStyle(color: Colors.white60, fontSize: 12),
               textAlign: TextAlign.center),
           const SizedBox(height: 20),
@@ -61,8 +63,8 @@ class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
               enabled: !st.busy,
               keyboardType: TextInputType.number,
               maxLength: 6,
-              decoration: const InputDecoration(
-                  labelText: '6-digit code', border: OutlineInputBorder(), counterText: ''),
+              decoration: InputDecoration(
+                  labelText: l10n.authCode6, border: const OutlineInputBorder(), counterText: ''),
               onSubmitted: (_) => st.busy
                   ? null
                   : ctrl.submitCode(widget.email, _code.text, password: widget.password),
@@ -75,17 +77,17 @@ class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
               child: st.busy
                   ? const SizedBox(
                       height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Verify'),
+                  : Text(l10n.authVerify),
             ),
             const SizedBox(height: 8),
             TextButton(
               onPressed: st.busy ? null : () => ctrl.resend(widget.email),
-              child: const Text('Resend code'),
+              child: Text(l10n.authResendCode),
             ),
           ] else
             FilledButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Back to sign in'),
+              child: Text(l10n.authBackToSignIn),
             ),
         ],
       ),

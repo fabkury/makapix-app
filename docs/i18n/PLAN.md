@@ -18,14 +18,14 @@ are the acceptance test.
 | Phase | What | Status |
 |---|---|---|
 | L0 | Infrastructure, test harness, pilot (Settings, language picker, tool names) | **done 2026-10-01** |
-| L1 | Club pillar: extract + translate + sweep, batch by batch | in progress — C1 of C1–C9 done |
+| L1 | Club pillar: extract + translate + sweep, batch by batch | in progress — C1–C2 of C1–C9 done |
 | L2 | Editor pillar: extract + translate + sweep, batch by batch | not started (tool names done in L0) |
 | L3 | Independent translation review (one agent per language), fixes, layout hardening | not started |
 | L4 | Seams and periphery, then flip `kTranslationsShipped` | not started |
 
 **Progress number:** the total on line 5 of `app/test/l10n/hardcoded_baseline.txt` — the
 hardcoded strings the scanner still finds. 2,683 after L0 (scanner as tightened in C1); 2,516
-after C1. Zero means L1 + L2 are done.
+after C1; 2,334 after C2. Zero means L1 + L2 are done.
 
 **Release safety while this is in progress:** `kTranslationsShipped` is `false`
 (`app/lib/l10n/app_locale.dart`), so a release build offers English only and hides the language
@@ -80,14 +80,15 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   picker, mention field, badges, download sheet, moderator hashtags sheet (+ `edit/mod_hashtag_edit`,
   `config/monitored_hashtags`), external links, and the shared `timeAgo` / `formatFileSize` /
   `compactCount` helpers. Sweeps: `sweep_widgets_test.dart`; formats: `formatting_test.dart`.
-- [ ] **C2 Sign-in and onboarding** — `club/ui/auth/` (create_account 21, account_management 25,
-  forgot_password 15, delete_account 14, verify_email 7, onboarding_wizard 18), club_welcome (7),
-  club_resolving (5), `club/state/` registration (10), password_reset (6), verify_email (6),
-  auth_controller (4), onboarding (2), `club/auth/account_validators` (9)
+- [x] **C2 Sign-in and onboarding** — done 2026-10-01: sign-in form and account page
+  (`club_account_page`), create account, forgot password, verify email, account management, delete
+  account, onboarding wizard, welcome and resolving pages, the auth controllers and validators.
+  Sweeps: `sweep_auth_test.dart`; `behavior_test.dart` (the delete-account confirmation word is each
+  language's own).
 - [ ] **C3 Home, feeds, search, notifications** — club_home (23), search (15), hashtag_feed (1),
   notifications (20), contribute (8), about_dialog (15)
 - [ ] **C4 Profile and account** — profile (52), edit_profile (24), follows (5), reactions (7),
-  club_account (28), my_remixes (4), artist_dashboard (21), post_stats (18)
+  my_remixes (4), artist_dashboard (21), post_stats (18)
 - [ ] **C5 Artwork** — artwork_detail (116), lineage (12)
 - [ ] **C6 Publish and manage** — publish (46), edit_post_details (17), post_management (51),
   pending_approval (12), rules_gate (11)
@@ -138,6 +139,13 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 - [ ] **Server text**: open `messages/0005-localized-text/` proposing codes + params for API error
   `detail`, moderation report-reason labels (`report_reasons[].label`), and any notification text
   the server composes. The app ships without waiting; until the server answers, those stay English.
+  Server prose found so far (add to this list as batches meet more):
+  - `ClubError.message` — the API error `detail`, shown in toasts and banners across the app.
+  - `POST /auth/check-handle-availability` → `message` ("Handle is available"), shown under the
+    handle field in account management and onboarding.
+  - `GET /config` → `moderation.report_reasons[].label`.
+  - `GET /badge` → badge names and descriptions.
+  - `quotas.uploads.window` on `/auth/me` (the quota period's name), shown on the account page.
 - [ ] **Default names stored in documents** ("Layer 1", "Untitled"): decide display-time mapping
   vs. localized-at-creation; ADR.
 - [ ] **Android**: `res/xml/locales_config.xml` + `android:localeConfig` (per-app language in
@@ -176,6 +184,10 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 
 ## Session log
 
+- **2026-10-01** — C2 (sign-in, account creation, onboarding, account management): 136 messages.
+  Sweep findings fixed: the onboarding and resolving top-bar titles were truncating on phones
+  (in English too); several field labels shortened per language. patch.py path bug fixed (it
+  dropped new messages from an ARB edited in the same run — T1 would have caught it).
 - **2026-10-01** — C1 (Club shared widgets): 123 messages × 8 languages; fake Club backend for
   sweeps; the sweeps found and fixed real overflows (comment action row, filter sheet buttons)
   and over-long field labels. 1,620 Dart tests pass.

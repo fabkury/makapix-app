@@ -6,14 +6,14 @@ import 'package:flutter/services.dart';
 class RestoreCredentialsException implements Exception {
   final String code;
   final String? message;
-  const RestoreCredentialsException(this.code, [this.message]);
+  const RestoreCredentialsException(this.code, [this.message]); // l10n-ignore: debug text
 
   /// The device can't hold a cloud-backed restore key (no screen lock, or backup disabled).
   /// The documented remedy is to retry with cloud backup off — see [RestoreCredentialsChannel.create].
   bool get isE2eeUnavailable => code == 'e2ee_unavailable';
 
   @override
-  String toString() => 'RestoreCredentialsException($code): ${message ?? ''}';
+  String toString() => 'RestoreCredentialsException($code): ${message ?? ''}'; // l10n-ignore: debug text
 }
 
 /// Thin Dart side of the `club.makapix.app/restore_credentials` channel.
@@ -45,7 +45,7 @@ class RestoreCredentialsChannel {
     } on MissingPluginException {
       return null; // not Android — nothing to register
     } on PlatformException catch (e) {
-      throw RestoreCredentialsException(e.code, e.message);
+      throw RestoreCredentialsException(e.code, e.message); // l10n-ignore: debug text
     }
   }
 
@@ -57,7 +57,7 @@ class RestoreCredentialsChannel {
     } on MissingPluginException {
       return null;
     } on PlatformException catch (e) {
-      throw RestoreCredentialsException(e.code, e.message);
+      throw RestoreCredentialsException(e.code, e.message); // l10n-ignore: debug text
     }
   }
 

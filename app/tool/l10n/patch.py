@@ -30,7 +30,7 @@ _msgs = []      # (key, meta, {locale: text})
 
 
 def _load(path):
-    full = os.path.join(APP, path)
+    full = os.path.normpath(os.path.join(APP, path))
     if full not in _pending:
         b = open(full, 'rb').read()
         _pending[full] = (b'\r\n' in b, b.decode('utf-8').replace('\r\n', '\n'))
@@ -81,7 +81,7 @@ def m(key, description, en, es, pt, fr, de, ru, ja, zh, **placeholders):
 
 def _append(locale, entries):
     """entries: list of (key, text, meta-or-None)."""
-    path = os.path.join(APP, 'lib', 'l10n', 'app_%s.arb' % locale)
+    path = os.path.normpath(os.path.join(APP, 'lib', 'l10n', 'app_%s.arb' % locale))
     # An ARB also edited with patch() in this run: build on that text, not the file on disk.
     if path in _pending:
         src = _pending.pop(path)[1]
@@ -117,7 +117,7 @@ def _flush():
             sys.exit('key %s added twice in this patch' % key)
         seen.add(key)
     for locale in LOCALES:
-        path = os.path.join(APP, 'lib', 'l10n', 'app_%s.arb' % locale)
+        path = os.path.normpath(os.path.join(APP, 'lib', 'l10n', 'app_%s.arb' % locale))
         patched = _pending.get(path)
         w = _append(locale, [(k, t[locale], meta if locale == 'en' else None) for k, meta, t in _msgs])
         if w:

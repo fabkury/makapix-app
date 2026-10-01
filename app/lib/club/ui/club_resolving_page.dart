@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import '../state/edit_bridge.dart';
 
@@ -18,9 +19,12 @@ class ClubResolvingPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
+    // As on the welcome page: the caption beside the Contribute button takes its own width, so
+    // on a narrow phone the title would be the part that ellipsizes. Drop it there.
+    final showTitle = MediaQuery.sizeOf(context).width >= 380;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Makapix Club'),
+        title: showTitle ? const Text('Makapix Club') : null, // l10n-ignore: brand name
         actions: const [NoLoginDrawActions()],
       ),
       body: Center(
@@ -29,7 +33,7 @@ class ClubResolvingPage extends ConsumerWidget {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 2.5)),
             const SizedBox(height: 16),
-            Text('Connecting to Makapix Club…',
+            Text(context.l10n.resolvingConnecting,
                 style: TextStyle(color: cs.onSurfaceVariant), textAlign: TextAlign.center),
             const SizedBox(height: 20),
             const LocalLibraryButton(),
@@ -51,18 +55,18 @@ class NoLoginDrawActions extends ConsumerWidget {
     return Row(mainAxisSize: MainAxisSize.min, children: [
       // The brush icon alone doesn't say that drawing needs no account, so spell it out.
       // Caption only; the icon beside it is the button.
-      const Flexible(
+      Flexible(
         child: Text(
-          'No login needed to draw →',
+          context.l10n.noLoginToDraw,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.end,
-          style: TextStyle(color: Colors.white70, fontSize: 13),
+          style: const TextStyle(color: Colors.white70, fontSize: 13),
         ),
       ),
       // The editor stays reachable without signing in (mirrors the design's no-login Create).
       IconButton(
-        tooltip: 'Contribute (open the editor)',
+        tooltip: context.l10n.contributeTooltip,
         icon: const Icon(Icons.brush_outlined),
         onPressed: () => ref.read(openEditorProvider.notifier).state++,
       ),
@@ -82,7 +86,7 @@ class LocalLibraryButton extends ConsumerWidget {
       onPressed: () =>
           ref.read(pendingLocalLibraryProvider.notifier).state = const BrowseLocalLibrary(),
       icon: const Icon(Icons.collections_outlined, size: 18),
-      label: const Text('My Drawings'),
+      label: Text(context.l10n.myDrawings),
     );
   }
 }

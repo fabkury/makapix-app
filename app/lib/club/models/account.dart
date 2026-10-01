@@ -3,6 +3,8 @@
 /// signed-in [ClubMe]/[ClubUser] (which come from `/auth/me`).
 library;
 
+import 'package:makapix_club/l10n/l10n.dart';
+
 /// `POST /auth/register`. With a chosen `password` (A2) the server creates the
 /// account with it and emails a single 6-digit OTP (`verification_method: "otp"`);
 /// without one it generates + emails a random password and a link
@@ -100,10 +102,10 @@ class AuthIdentity {
   bool get isGithub => provider == 'github';
   bool get isPassword => provider == 'password';
 
-  /// A short human label, e.g. "GitHub (octocat)" or "Email & password".
+  /// A short human label, e.g. "GitHub (octocat)" or "Email & password" (in the app's language).
   String get label => switch (provider) {
-        'github' => username != null ? 'GitHub ($username)' : 'GitHub',
-        'password' => 'Email & password',
+        'github' => username != null ? 'GitHub ($username)' : 'GitHub', // l10n-ignore: provider name
+        'password' => appL10n.accountLoginPassword,
         _ => provider,
       };
 }

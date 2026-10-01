@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import '../auth/account_validators.dart';
 import '../models/club_error.dart';
@@ -51,7 +52,8 @@ class OnboardingController extends StateNotifier<OnboardingState> {
       return;
     }
     _inflight = handle;
-    state = state.copyWith(handleCheck: HandleCheck.checking, handleMessage: 'Checking…');
+    state = state.copyWith(
+        handleCheck: HandleCheck.checking, handleMessage: appL10n.handleChecking);
     try {
       final res = await _ref.read(clubApiClientProvider).checkHandle(handle);
       if (_inflight != handle) return; // a newer keystroke superseded this one
@@ -127,7 +129,7 @@ class OnboardingController extends StateNotifier<OnboardingState> {
       return e.message;
     } catch (_) {
       if (mounted) state = state.copyWith(busy: false);
-      return 'Something went wrong. Please try again.';
+      return appL10n.commonSomethingWrong;
     }
   }
 }

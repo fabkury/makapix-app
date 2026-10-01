@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,9 +25,10 @@ class ClubWelcomePage extends ConsumerWidget {
     // The hint below takes its intrinsic width, so on a narrow phone the title is what would
     // ellipsize. Drop it instead — the body heading two lines down already names the app.
     final showTitle = MediaQuery.sizeOf(context).width >= 380;
+    final l10n = context.l10n;
     return Scaffold(
       appBar: AppBar(
-        title: showTitle ? const Text('Makapix Club') : null,
+        title: showTitle ? const Text('Makapix Club') : null, // l10n-ignore: brand name
         // "No login needed to draw →" + the Contribute button (shared with the resolving page).
         actions: const [NoLoginDrawActions()],
       ),
@@ -36,12 +38,13 @@ class ClubWelcomePage extends ConsumerWidget {
               child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
             child: Column(children: [
-              const Text('Welcome to Makapix Club',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+              Text(l10n.welcomeTitle,
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center),
               const SizedBox(height: 4),
-              const Text(
-                'A pixel-art social network — discover art, react, comment, follow, and publish your own.',
-                style: TextStyle(color: Colors.white60, fontSize: 13),
+              Text(
+                l10n.welcomeTagline,
+                style: const TextStyle(color: Colors.white60, fontSize: 13),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
@@ -51,7 +54,7 @@ class ClubWelcomePage extends ConsumerWidget {
                   onPressed: () => Navigator.push(
                       context, MaterialPageRoute(builder: (_) => const ClubAccountPage())),
                   icon: const Icon(Icons.login),
-                  label: const Text('Sign in / Create account'),
+                  label: Text(l10n.welcomeSignInOrCreate),
                 ),
               ),
               const SizedBox(height: 6),
@@ -60,11 +63,12 @@ class ClubWelcomePage extends ConsumerWidget {
               const SizedBox(width: 280, child: LocalLibraryButton()),
             ]),
           )),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(20, 4, 20, 4),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text('Featured', style: TextStyle(color: Colors.white54, fontWeight: FontWeight.w600)),
+              child: Text(l10n.welcomeFeatured,
+                  style: const TextStyle(color: Colors.white54, fontWeight: FontWeight.w600)),
             ),
           ),
           Expanded(
@@ -72,7 +76,7 @@ class ClubWelcomePage extends ConsumerWidget {
               state: promoted,
               onLoadMore: n.loadMore,
               onRefresh: n.refresh,
-              emptyMessage: 'Sign in to explore the community.',
+              emptyMessage: l10n.welcomeEmptyFeed,
               onTap: (Post p) => Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -80,7 +84,7 @@ class ClubWelcomePage extends ConsumerWidget {
                             sqid: p.sqid,
                             feed: pagedArtworkSource(feedProvider(FeedKind.promoted),
                                 feedProvider(FeedKind.promoted).notifier,
-                                name: 'Recommended', icon: Icons.diamond),
+                                name: l10n.feedRecommended, icon: Icons.diamond),
                           ))),
             ),
           ),

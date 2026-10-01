@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import '../../auth/account_validators.dart';
 import '../../models/account.dart';
@@ -61,14 +62,15 @@ class _AccountManagementPageState extends ConsumerState<AccountManagementPage> {
   Future<void> _changePassword() async {
     final err = validatePasswordError(_newPw.text);
     if (err != null) return _toast(err);
-    if (_newPw.text != _confirmPw.text) return _toast('Passwords don\'t match.');
+    if (_newPw.text != _confirmPw.text) return _toast(context.l10n.authPasswordsDontMatch);
+    final changed = context.l10n.accountPasswordChanged;
     setState(() => _pwBusy = true);
     try {
       await ref.read(clubApiClientProvider).changePassword(_current.text, _newPw.text);
       _current.clear();
       _newPw.clear();
       _confirmPw.clear();
-      _toast('Password changed.');
+      _toast(changed);
     } on ClubError catch (e) {
       _toast(e.message);
     } finally {
@@ -91,7 +93,7 @@ class _AccountManagementPageState extends ConsumerState<AccountManagementPage> {
       return;
     }
     setState(() {
-      _handleMsg = 'Checking…';
+      _handleMsg = context.l10n.handleChecking;
       _handleColor = Colors.white54;
     });
     _handleDebounce = Timer(const Duration(milliseconds: 400), () async {
@@ -114,11 +116,12 @@ class _AccountManagementPageState extends ConsumerState<AccountManagementPage> {
     final err = validateHandleError(handle);
     if (err != null) return _toast(err);
     setState(() => _handleBusy = true);
+    final updated = context.l10n.accountHandleUpdated;
     try {
       await ref.read(clubApiClientProvider).changeHandle(handle);
       await ref.read(authControllerProvider.notifier).reloadMe();
       setState(() => _handleMsg = '');
-      _toast('Handle updated.');
+      _toast(updated);
     } on ClubError catch (e) {
       _toast(e.message);
     } finally {
@@ -127,10 +130,11 @@ class _AccountManagementPageState extends ConsumerState<AccountManagementPage> {
   }
 
   Future<void> _unlink(AuthIdentity id) async {
+    final unlinked = context.l10n.accountUnlinked(_loginLabel(context.l10n, id));
     try {
       await ref.read(clubApiClientProvider).unlinkProvider(id.provider, id.id);
       setState(() => _providers = ref.read(clubApiClientProvider).listProviders());
-      _toast('Unlinked ${id.label}.');
+      _toast(unlinked);
     } on ClubError catch (e) {
       _toast(e.message);
     }
@@ -139,11 +143,12 @@ class _AccountManagementPageState extends ConsumerState<AccountManagementPage> {
   @override
   Widget build(BuildContext context) {
     final me = ref.watch(authControllerProvider).me;
+    final l10n = context.l10n;
     if (me == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Account')),
+        appBar: AppBar(title: Text(l10n.accountTitle)),
         body: SignInPrompt(
-            message: 'Sign in to manage your account.', onSignIn: () => Navigator.pop(context)),
+            message: l10n.accountSignInPrompt, onSignIn: () => Navigator.pop(context)),
       );
     }
     if (!_handleInit) {
@@ -151,18 +156,18 @@ class _AccountManagementPageState extends ConsumerState<AccountManagementPage> {
       _handleInit = true;
     }
     return Scaffold(
-      appBar: AppBar(title: const Text('Account')),
+      appBar: AppBar(title: Text(l10n.accountTitle)),
       body: CenteredContent(
           child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _section('Change password', [
+          _section(l10n.accountChangePassword, [
             TextField(
               controller: _current,
               obscureText: _obscure,
               enabled: !_pwBusy,
               decoration: InputDecoration(
-                labelText: 'Current password',
+                labelText: l10n.accountCurrentPassword,
                 border: const OutlineInputBorder(),
                 suffixIcon: IconButton(
                   icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
@@ -175,10 +180,10 @@ class _AccountManagementPageState extends ConsumerState<AccountManagementPage> {
               controller: _newPw,
               obscureText: _obscure,
               enabled: !_pwBusy,
-              decoration: const InputDecoration(
-                labelText: 'New password',
-                border: OutlineInputBorder(),
-                helperText: 'At least 8 characters, with a letter and a number.',
+              decoration: InputDecoration(
+                labelText: l10n.authNewPassword,
+                border: const OutlineInputBorder(),
+                helperText: l10n.authPasswordHelper,
                 helperMaxLines: 2,
               ),
             ),
@@ -187,8 +192,8 @@ class _AccountManagementPageState extends ConsumerState<AccountManagementPage> {
               controller: _confirmPw,
               obscureText: _obscure,
               enabled: !_pwBusy,
-              decoration:
-                  const InputDecoration(labelText: 'Confirm new password', border: OutlineInputBorder()),
+              decoration: InputDecoration(
+                  labelText: l10n.accountConfirmNewPassword, border: const OutlineInputBorder()),
             ),
             const SizedBox(height: 12),
             Align(
@@ -198,18 +203,18 @@ class _AccountManagementPageState extends ConsumerState<AccountManagementPage> {
                 child: _pwBusy
                     ? const SizedBox(
                         height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Text('Change password'),
+                    : Text(l10n.accountChangePassword),
               ),
             ),
           ]),
           const SizedBox(height: 8),
-          _section('Change handle', [
+          _section(l10n.accountChangeHandle, [
             TextField(
               controller: _handle,
               enabled: !_handleBusy,
               autocorrect: false,
-              decoration: const InputDecoration(
-                  labelText: 'Handle', prefixText: '@', border: OutlineInputBorder()),
+              decoration: InputDecoration(
+                  labelText: l10n.accountHandle, prefixText: '@', border: const OutlineInputBorder()),
               onChanged: (v) => _onHandleChanged(v, me.user.handle),
             ),
             if (_handleMsg.isNotEmpty)
@@ -225,18 +230,17 @@ class _AccountManagementPageState extends ConsumerState<AccountManagementPage> {
                 child: _handleBusy
                     ? const SizedBox(
                         height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Text('Update handle'),
+                    : Text(l10n.accountUpdateHandle),
               ),
             ),
           ]),
           const SizedBox(height: 8),
-          _section('Linked logins', [_providersList()]),
+          _section(l10n.accountLinkedLogins, [_providersList()]),
           const SizedBox(height: 8),
-          _section('Danger zone', [
-            const Text(
-              'Permanently delete your account, including all your posts, '
-              'comments, reactions, and profile data.',
-              style: TextStyle(color: Colors.white54, fontSize: 13),
+          _section(l10n.accountDangerZone, [
+            Text(
+              l10n.accountDeleteIntro,
+              style: const TextStyle(color: Colors.white54, fontSize: 13),
             ),
             const SizedBox(height: 12),
             Align(
@@ -249,7 +253,7 @@ class _AccountManagementPageState extends ConsumerState<AccountManagementPage> {
                 onPressed: () => Navigator.push(context,
                     MaterialPageRoute(builder: (_) => const DeleteAccountPage())),
                 icon: const Icon(Icons.delete_forever_outlined, size: 20),
-                label: const Text('Delete account'),
+                label: Text(l10n.accountDelete),
               ),
             ),
           ]),
@@ -267,13 +271,13 @@ class _AccountManagementPageState extends ConsumerState<AccountManagementPage> {
               child: Center(child: SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))),
             );
           }
+          final l10n = context.l10n;
           if (snap.hasError) {
-            return const Text('Could not load linked logins.',
-                style: TextStyle(color: Colors.white54));
+            return Text(l10n.accountLinkedLoadError, style: const TextStyle(color: Colors.white54));
           }
           final items = snap.data ?? const <AuthIdentity>[];
           if (items.isEmpty) {
-            return const Text('No linked logins.', style: TextStyle(color: Colors.white54));
+            return Text(l10n.accountLinkedEmpty, style: const TextStyle(color: Colors.white54));
           }
           final canUnlink = items.length > 1;
           return Column(
@@ -282,25 +286,29 @@ class _AccountManagementPageState extends ConsumerState<AccountManagementPage> {
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(id.isGithub ? Icons.code : Icons.alternate_email, size: 20),
-                  title: Text(id.label),
+                  title: Text(_loginLabel(l10n, id)),
                   subtitle: id.email != null
                       ? Text(id.email!, style: const TextStyle(color: Colors.white54, fontSize: 12))
                       : null,
                   trailing: TextButton(
                     onPressed: canUnlink ? () => _unlink(id) : null,
-                    child: const Text('Unlink'),
+                    child: Text(l10n.accountUnlink),
                   ),
                 ),
               if (!canUnlink)
-                const Padding(
-                  padding: EdgeInsets.only(top: 4),
-                  child: Text("You can't unlink your only login method.",
-                      style: TextStyle(color: Colors.white38, fontSize: 12)),
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(l10n.accountCantUnlinkOnly,
+                      style: const TextStyle(color: Colors.white38, fontSize: 12)),
                 ),
             ],
           );
         },
       );
+
+  /// A linked login's name: "GitHub (octocat)", "Email & password", or the raw provider id.
+  String _loginLabel(AppLocalizations l10n, AuthIdentity id) =>
+      id.isPassword ? l10n.accountLoginPassword : id.label;
 
   Widget _section(String title, List<Widget> children) => Card(
         color: const Color(0xFF15171A),
