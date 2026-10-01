@@ -179,7 +179,7 @@ void main() {
         t, const PatternsPage.gradient(dither: DitherKind.bayer4, onColor: Colors.red, offColor: Colors.blue));
     expect(find.text('Dither'), findsOneWidget);
     expect(find.textContaining('Tap a dither'), findsOneWidget);
-    expect(find.text(DitherKind.familyBayer), findsOneWidget);
+    expect(find.text(DitherFamily.bayer.label), findsOneWidget);
     expect(find.text('Bayer 2×2'), findsOneWidget);
     expect(find.text('Bayer 4×4'), findsOneWidget);
     expect(find.text('Bayer 8×8'), findsOneWidget);
@@ -204,7 +204,7 @@ void main() {
         expect(find.widgetWithText(DitherStripTile, k.name), findsOneWidget);
         // The section header sits right above the family's first kind — built, possibly just
         // scrolled out of view.
-        if (first) expect(find.text(family, skipOffstage: false), findsOneWidget, reason: family);
+        if (first) expect(find.text(family.label, skipOffstage: false), findsOneWidget, reason: family.label);
         first = false;
       }
     }

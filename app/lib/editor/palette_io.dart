@@ -5,6 +5,8 @@
 import 'dart:convert';
 import 'dart:ui' show Color;
 
+import 'package:makapix_club/l10n/l10n.dart';
+
 /// One palette as shown on the palette page: a name plus its swatch colors, with optional
 /// per-entry display names ([names] is aligned with [colors] when non-empty; null = unnamed).
 class PaletteInfo {
@@ -13,9 +15,17 @@ class PaletteInfo {
   final List<Color> colors;
   final List<String?> names;
 
+  /// The name to show. Every new drawing starts with a palette the engine names "Default",
+  /// in English, inside the document; that one reads in the current language. A name the
+  /// artist typed is shown as typed.
+  String get shownName => name == kEnginePaletteName ? appL10n.paletteBuiltinName : name;
+
   /// The display name of entry [i], or null when it has none.
   String? nameOf(int i) => (i >= 0 && i < names.length) ? names[i] : null;
 }
+
+/// What the engine names the palette a new drawing starts with (`document.rs`).
+const String kEnginePaletteName = 'Default'; // l10n-ignore: stored in the document
 
 /// '#RRGGBBAA' — the hex form the DSL and the engine state JSON use.
 String hexRgba(Color c) {
@@ -27,7 +37,7 @@ String hexRgba(Color c) {
 /// Parses '#RRGGBB' or '#RRGGBBAA' (leading '#' optional).
 Color parseHexColor(String h) {
   h = h.replaceAll('#', '');
-  if (h.length == 6) h = '${h}FF';
+  if (h.length == 6) h = '${h}FF'; // l10n-ignore: hex digits
   final v = int.parse(h, radix: 16);
   return Color.fromARGB(v & 0xFF, (v >> 24) & 0xFF, (v >> 16) & 0xFF, (v >> 8) & 0xFF);
 }
@@ -35,7 +45,7 @@ Color parseHexColor(String h) {
 /// Makes a free-text palette name safe to embed in a DSL statement and in the engine's
 /// hand-built state JSON: the engine splits scripts on newlines and ';', maps '"' to "'"
 /// when emitting JSON, and does not escape backslashes at all.
-String sanitizePaletteName(String raw, {String fallback = 'Palette'}) {
+String sanitizePaletteName(String raw, {String? fallback}) {
   var s = raw
       .replaceAll(RegExp(r'[;\r\n]'), ' ')
       .replaceAll('"', "'")
@@ -43,7 +53,7 @@ String sanitizePaletteName(String raw, {String fallback = 'Palette'}) {
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
   if (s.length > 64) s = s.substring(0, 64).trim();
-  return s.isEmpty ? fallback : s;
+  return s.isEmpty ? (fallback ?? appL10n.paletteDefaultName) : s;
 }
 
 /// Parses a palette file: a JSON array of hex strings, or a GIMP/Lospec .gpl. The name comes
@@ -64,7 +74,7 @@ PaletteInfo parsePaletteFile(String text, {required String fallbackName}) {
     final l = line.trim();
     if (l.isEmpty) continue;
     if (l.startsWith('Name:')) {
-      final n = l.substring('Name:'.length).trim();
+      final n = l.substring('Name:'.length).trim(); // l10n-ignore: .gpl file format
       if (n.isNotEmpty) name = n;
       continue;
     }
@@ -88,7 +98,7 @@ PaletteInfo parsePaletteFile(String text, {required String fallbackName}) {
 
 /// GIMP .gpl text for [colors] (alpha is kept in a 4th hex column, ignored on re-import).
 String encodeGpl(String name, List<Color> colors) {
-  final sb = StringBuffer('GIMP Palette\nName: $name\nColumns: 0\n#\n');
+  final sb = StringBuffer('GIMP Palette\nName: $name\nColumns: 0\n#\n'); // l10n-ignore: .gpl file format
   for (final c in colors) {
     sb.writeln('${(c.r * 255).round()}\t${(c.g * 255).round()}\t${(c.b * 255).round()}\t${hexRgba(c)}');
   }
@@ -103,7 +113,7 @@ List<PaletteInfo> palettesFromState(Map<String, dynamic> state) {
     for (final p in raw)
       if (p is Map)
         PaletteInfo(
-          (p['name'] ?? 'Palette').toString(),
+          (p['name'] ?? appL10n.paletteDefaultName).toString(),
           [for (final h in (p['colors'] as List? ?? const [])) parseHexColor(h.toString())],
           names: [
             for (final n in (p['names'] as List? ?? const [])) n.toString().isEmpty ? null : n.toString(),

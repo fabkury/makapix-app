@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:makapix_club/editor/gallery/gallery_page.dart';
+import 'package:makapix_club/editor/widgets/tool_tile.dart';
 
 import 'editor_harness.dart';
 
@@ -197,6 +198,26 @@ void main() {
           await settleReal(tester, rounds: 9);
         } else {
           problems.add('the keep-or-discard dialog did not open');
+        }
+
+        // The Play tool's options row: Go to… and its dialog. (Last: it changes the tool.)
+        final playTile = find.byWidgetPredicate((w) => w is ToolTile && w.tool.dsl == 'PlayPause');
+        if (playTile.evaluate().isNotEmpty) {
+          await tester.ensureVisible(playTile.first);
+          await tester.pump();
+          await tester.tap(playTile.first);
+          await settleReal(tester, rounds: 2);
+          final goTo = find.text(l.optGoTo);
+          await tester.ensureVisible(goTo);
+          await tester.pump();
+          await tester.tap(goTo);
+          await settleReal(tester, rounds: 9);
+          await check('go to frame');
+          await tester.tap(find.descendant(
+              of: find.byType(AlertDialog), matching: find.text(l.commonCancel)));
+          await settleReal(tester, rounds: 9);
+        } else {
+          problems.add('the Play tool is not in the grid');
         }
 
         await closeEditor(tester);

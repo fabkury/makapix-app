@@ -1492,8 +1492,8 @@ extension _EditorControls on _EditorPageState {
     }
     final tool = _tool;
     final pick = await Navigator.of(context).push<PatternPick>(MaterialPageRoute(
-      builder: (_) => PatternsPage(
-        toolName: tool,
+      builder: (ctx) => PatternsPage(
+        toolName: toolName(ctx.l10n, tool),
         current: _pattern,
         on: _patternOn[tool] ?? false,
         recents: List.of(_patternRecents),

@@ -11,6 +11,8 @@
 // drive it without the engine.
 import 'package:flutter/material.dart';
 
+import 'package:makapix_club/l10n/l10n.dart';
+
 import '../widgets/painters.dart' show AlphaSwatch;
 import 'gradient_dither.dart';
 import 'pattern_tile.dart';
@@ -125,11 +127,12 @@ class PatternsPage extends StatefulWidget {
     this.pickColor,
     this.onDisplayColorsChanged,
   })  : gradient = true,
-        toolName = 'Gradient',
+        toolName = '',
         current = null,
         on = false,
         recents = const [];
 
+  /// The tool's name as the artist reads it (already in the current language).
   final String toolName;
   final PatternTile? current;
   final bool on;
@@ -167,7 +170,7 @@ class _PatternsPageState extends State<PatternsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.gradient ? 'Dither' : 'Patterns')),
+      appBar: AppBar(title: Text(widget.gradient ? context.l10n.optDither : context.l10n.patternsTitle)),
       body: widget.gradient ? _gradientBody(context) : _patternBody(context),
     );
   }
@@ -179,15 +182,14 @@ class _PatternsPageState extends State<PatternsPage> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
       children: [
-        _hint('Tap a pattern to use it with the ${widget.toolName}. Cells shown in the ON color get painted with the '
-            'primary color; OFF cells leave the pixel as it is.'),
+        _hint(context.l10n.patternsHint(widget.toolName)),
         _colorsRow(),
         _offTile(context,
             selected: !widget.on,
-            subtitle: '${widget.toolName} paints every pixel',
+            subtitle: context.l10n.patternsOffSub,
             onTap: () => Navigator.pop(context, const PatternOff())),
         if (widget.recents.isNotEmpty) ...[
-          _header('Recent'),
+          _header(context.l10n.patternsRecent),
           SizedBox(
             height: 60,
             child: ListView(
@@ -196,7 +198,7 @@ class _PatternsPageState extends State<PatternsPage> {
                 for (final t in widget.recents)
                   Padding(
                     padding: const EdgeInsets.only(right: 8, top: 4, bottom: 4),
-                    child: _tileButton(context, t, selected: t == selected, name: patternName(t) ?? 'Custom'),
+                    child: _tileButton(context, t, selected: t == selected, name: patternName(t) ?? context.l10n.patternCustom),
                   ),
               ],
             ),
@@ -218,7 +220,7 @@ class _PatternsPageState extends State<PatternsPage> {
 
   Widget _tileButton(BuildContext context, PatternTile t, {required bool selected, required String name}) {
     return Tooltip(
-      message: '$name, ${t.w}×${t.h}',
+      message: '$name, ${t.w}×${t.h}', // l10n-ignore: a name and a size
       triggerMode: TooltipTriggerMode.longPress,
       child: InkWell(
         borderRadius: BorderRadius.circular(4),
@@ -234,9 +236,7 @@ class _PatternsPageState extends State<PatternsPage> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
       children: [
-        _hint('Tap a dither to use it on the gradient. Each pixel takes one of the two nearest gradient colors, '
-            'never a blended shade; the pattern decides which pixels flip first as the ramp advances. '
-            'Each preview ramps from the OFF color to the ON color, every density step left to right.'),
+        _hint(context.l10n.ditherPageHint),
         _colorsRow(),
         DitherStripTile(
             kind: DitherKind.off,
@@ -245,7 +245,7 @@ class _PatternsPageState extends State<PatternsPage> {
             selected: widget.dither.isOff,
             onTap: () => Navigator.pop(context, DitherKind.off)),
         for (final family in DitherKind.families) ...[
-          _header(family),
+          _header(family.label),
           for (final k in DitherKind.inFamily(family))
             DitherStripTile(
                 kind: k,
@@ -265,7 +265,7 @@ class _PatternsPageState extends State<PatternsPage> {
   Widget _colorsRow() {
     Widget swatch(String label, Color c, bool on) => Semantics(
           button: true,
-          label: '$label preview color',
+          label: context.l10n.patternsSwatchLabel(label),
           child: InkWell(
             borderRadius: BorderRadius.circular(6),
             onTap: widget.pickColor == null ? null : () => _pick(on: on),
@@ -282,15 +282,18 @@ class _PatternsPageState extends State<PatternsPage> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
       child: Row(children: [
-        const Text('Preview colors', style: TextStyle(fontSize: 12, color: Colors.white54)),
+        // The label gives way (two lines) before the swatches run off a narrow phone.
+        Flexible(
+          child: Text(context.l10n.patternsPreviewColors, style: const TextStyle(fontSize: 12, color: Colors.white54)),
+        ),
         const SizedBox(width: 10),
-        swatch('ON', _on, true),
+        swatch(context.l10n.patternOnLabel, _on, true),
         IconButton(
-          tooltip: 'Swap the preview colors',
+          tooltip: context.l10n.patternsSwap,
           icon: const Icon(Icons.swap_horiz, size: 20),
           onPressed: () => _setColors(_off, _on),
         ),
-        swatch('OFF', _off, false),
+        swatch(context.l10n.patternOffLabel, _off, false),
       ]),
     );
   }
@@ -306,7 +309,7 @@ class _PatternsPageState extends State<PatternsPage> {
       color: selected ? const Color(0xFF2A4A6A) : null,
       child: ListTile(
         leading: const Icon(Icons.block),
-        title: const Text('Off'),
+        title: Text(context.l10n.optOff),
         subtitle: Text(subtitle),
         trailing: selected ? const Icon(Icons.check, color: PatternTileBox.accent) : null,
         onTap: onTap,
@@ -367,12 +370,15 @@ class DitherStripTile extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          Row(children: [
+          // The note may take two lines: on one, the longer translations ended in an ellipsis.
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(kind.name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
             const SizedBox(width: 6),
             Expanded(
               child: Text('· ${kind.hint}',
-                  style: const TextStyle(fontSize: 12, color: Colors.white70), overflow: TextOverflow.ellipsis),
+                  maxLines: 2,
+                  style: const TextStyle(fontSize: 12, color: Colors.white70),
+                  overflow: TextOverflow.ellipsis),
             ),
             if (selected) const Icon(Icons.check, size: 18, color: PatternTileBox.accent),
           ]),

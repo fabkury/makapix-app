@@ -13,6 +13,8 @@
 // A literal is exempt when it sits in a structurally non-UI position (see [_Visitor]), when the
 // line (or the line above) carries a `// l10n-ignore: <why>` comment, or when the file carries
 // `// l10n-ignore-file: <why>` (files that hold only engine DSL verbs, wire names, and the like).
+// A run of lines between `// l10n-ignore-start: <why>` and `// l10n-ignore-end` is exempt too
+// (a list of engine verb names).
 import 'dart:io';
 
 import 'package:analyzer/dart/analysis/utilities.dart';
@@ -279,8 +281,16 @@ List<Finding> scan(String root, {bool includeLower = false}) {
     final unit = parseString(content: src, path: path, throwIfDiagnostics: false).unit;
     final ignored = <int>{};
     final srcLines = src.split('\n');
+    var inBlock = false;
     for (var i = 0; i < srcLines.length; i++) {
-      if (srcLines[i].contains('l10n-ignore')) {
+      if (srcLines[i].contains('l10n-ignore-start')) inBlock = true;
+      if (srcLines[i].contains('l10n-ignore-end')) {
+        inBlock = false;
+        continue;
+      }
+      if (inBlock) {
+        ignored.add(i + 1);
+      } else if (srcLines[i].contains('l10n-ignore')) {
         ignored.add(i + 1);
         // A comment on its own line exempts the next line too.
         if (srcLines[i].trimLeft().startsWith('//')) ignored.add(i + 2);

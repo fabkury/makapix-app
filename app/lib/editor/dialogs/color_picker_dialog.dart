@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../ui/layout.dart';
@@ -391,9 +392,9 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
   Widget _buildSourcesStrip() {
     final fixed = <Widget>[
       if (widget.primary != null)
-        _sourceSwatch(widget.primary!, label: 'Primary', key: const Key('pickerSourcePrimary')),
+        _sourceSwatch(widget.primary!, label: context.l10n.pickSourcePrimary, key: const Key('pickerSourcePrimary')),
       if (widget.previous != null)
-        _sourceSwatch(widget.previous!, label: 'Prev', key: const Key('pickerSourcePrevious')),
+        _sourceSwatch(widget.previous!, label: context.l10n.pickSourcePrev, key: const Key('pickerSourcePrevious')),
     ];
     final pal = widget.palette;
     return SizedBox(
@@ -428,7 +429,7 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
 
   Widget _buildAlphaRow() => Row(
     children: [
-      const SizedBox(width: 16, child: Text('A')),
+      SizedBox(width: 16, child: Text(context.l10n.colorLetterA)),
       Expanded(
         child: Slider(
           value: a.clamp(0, 255),
@@ -481,7 +482,7 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
   List<Widget> _dialogActions() => [
     TextButton(
       onPressed: () => Navigator.pop(context),
-      child: const Text('Cancel'),
+      child: Text(context.l10n.commonCancel),
     ),
     FilledButton(
       // [G-46] Apply whatever is typed in the hex field before returning: pressing OK without
@@ -490,7 +491,7 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
         _applyHex(_hexCtrl.text);
         Navigator.pop(context, _color);
       },
-      child: const Text('OK'),
+      child: Text(context.l10n.commonOk),
     ),
   ];
 
@@ -499,7 +500,15 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
     children: [
       // Flexible, not Spacer-separated: on narrow phones the dialog can be tighter
       // than the title's natural width, and the text must yield rather than overflow.
-      const Expanded(child: Text('Pick color', overflow: TextOverflow.ellipsis)),
+      // Scales down before it is cut: beside the swatch a 320 px phone leaves the title
+      // less than the longer translations need.
+      Expanded(
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: AlignmentDirectional.centerStart,
+          child: Text(context.l10n.pickColorTitle),
+        ),
+      ),
       // Same dual indicator as the row-2 swatches: a translucent pick splits along the
       // anti-diagonal (opaque top-left / real alpha over the transparency checker
       // bottom-right), showing both its hue and how it will actually composite.
@@ -512,7 +521,7 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
     children: [
       for (final m in _ColorFieldMode.values)
         ChoiceChip(
-          label: Text(m.name.toUpperCase()),
+          label: Text(m == _ColorFieldMode.rgb ? context.l10n.colorModelRgb : context.l10n.toolHsvShort),
           selected: _mode == m,
           selectedColor: const Color(0xFF30A050),
           visualDensity: VisualDensity.compact,
@@ -526,16 +535,16 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
   Widget _buildFieldsRow() => _mode == _ColorFieldMode.rgb
       ? Row(
           children: [
-            _numField('R', _rCtrl, _applyRgb),
-            _numField('G', _gCtrl, _applyRgb),
-            _numField('B', _bCtrl, _applyRgb),
+            _numField(context.l10n.colorLetterR, _rCtrl, _applyRgb),
+            _numField(context.l10n.colorLetterG, _gCtrl, _applyRgb),
+            _numField(context.l10n.colorLetterB, _bCtrl, _applyRgb),
           ],
         )
       : Row(
           children: [
-            _numField('H', _hCtrl, _applyHsv),
-            _numField('S', _sCtrl, _applyHsv),
-            _numField('V', _vCtrl, _applyHsv),
+            _numField(context.l10n.colorLetterH, _hCtrl, _applyHsv),
+            _numField(context.l10n.colorLetterS, _sCtrl, _applyHsv),
+            _numField(context.l10n.colorLetterV, _vCtrl, _applyHsv),
           ],
         );
 

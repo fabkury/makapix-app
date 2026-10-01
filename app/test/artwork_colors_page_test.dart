@@ -85,7 +85,7 @@ void main() {
     final host = FakePaletteHost([const PaletteInfo('Mine', [_red])], extract: () => Completer<String>().future);
     await _open(t, host, settle: false);
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    expect(find.text('Extracting artwork colors...'), findsOneWidget);
+    expect(find.text('Extracting artwork colors…'), findsOneWidget);
     expect(_primaryButton(t).onPressed, isNull);
     expect(find.widgetWithText(FilledButton, 'Accept'), findsOneWidget);
     expect(_rejectButton(t).onPressed, isNull);

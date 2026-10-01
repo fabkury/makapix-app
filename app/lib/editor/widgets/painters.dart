@@ -612,13 +612,13 @@ class RulerPainter extends CustomPainter {
       final hMid = Offset((pa.dx + corner.dx) / 2, pa.dy + (pb.dy > pa.dy ? -18 : 8));
       final legRight = pb.dx >= pa.dx; // triangle interior is left of the vertical leg
       final vMid = Offset(corner.dx + (legRight ? 6 : -6), (corner.dy + pb.dy) / 2 - 7);
-      _label(canvas, '${dxPx.round()} px', hMid, faint: true, centerX: true);
-      _label(canvas, '${dyPx.round()} px', vMid, faint: true, alignRight: !legRight);
+      _label(canvas, '${dxPx.round()} px', hMid, faint: true, centerX: true); // l10n-ignore: unit
+      _label(canvas, '${dyPx.round()} px', vMid, faint: true, alignRight: !legRight); // l10n-ignore: unit
     }
     canvas.drawLine(pa, pb, Paint()..color = Colors.black..strokeWidth = 3..isAntiAlias = true);
     canvas.drawLine(pa, pb, Paint()..color = const Color(0xFFFFC400)..strokeWidth = 1.5..isAntiAlias = true);
     final len = (cb - ca).distance;
-    _label(canvas, '${len.toStringAsFixed(1)} px', Offset((pa.dx + pb.dx) / 2, (pa.dy + pb.dy) / 2));
+    _label(canvas, '${len.toStringAsFixed(1)} px', Offset((pa.dx + pb.dx) / 2, (pa.dy + pb.dy) / 2)); // l10n-ignore: unit
   }
 
   /// The Angle-mode arc at the vertex, spanning exactly the measured interior angle. Skipped

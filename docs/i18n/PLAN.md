@@ -19,13 +19,13 @@ are the acceptance test.
 |---|---|---|
 | L0 | Infrastructure, test harness, pilot (Settings, language picker, tool names) | **done 2026-10-01** |
 | L1 | Club pillar: extract + translate + sweep, batch by batch | **done 2026-10-01** (C1–C9) |
-| L2 | Editor pillar: extract + translate + sweep, batch by batch | in progress: E0–E4 and E8 done; E5, E6, E7 left |
+| L2 | Editor pillar: extract + translate + sweep, batch by batch | in progress: E0–E5 and E8 done; E6, E7 left |
 | L3 | Independent translation review (one agent per language), fixes, layout hardening | not started |
 | L4 | Seams and periphery, then flip `kTranslationsShipped` | not started |
 
 **Progress number:** the total on line 5 of `app/test/l10n/hardcoded_baseline.txt` — the
 hardcoded strings the scanner still finds. 2,683 after L0 (scanner as tightened in C1); 2,516
-after C1; 2,334 after C2; 2,253 after C3; 2,125 after C4; 2,000 after C5; 1,856 after C6; 1,709 after C7; 1,654 after C8; 1,598 after C9 (all in `lib/editor`); 1,048 after E1 + E8; 877 after E2; 363 after E3 + E4. Zero means L1 + L2 are done.
+after C1; 2,334 after C2; 2,253 after C3; 2,125 after C4; 2,000 after C5; 1,856 after C6; 1,709 after C7; 1,654 after C8; 1,598 after C9 (all in `lib/editor`); 1,048 after E1 + E8; 877 after E2; 363 after E3 + E4; 141 after E5. Zero means L1 + L2 are done.
 
 **Release safety while this is in progress:** `kTranslationsShipped` is `false`
 (`app/lib/l10n/app_locale.dart`), so a release build offers English only and hides the language
@@ -131,7 +131,7 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   Labels are separate from the engine values they control (the Select-by-alpha buttons used
   their label as the DSL argument). `AA` and `cleanEdge` stay as they are in every language.
   Tests: `test/l10n/tool_tip_fit_test.dart` (T5b), `test_engine/editor_tool_options_test.dart`.
-  Still English inside this row until E5: pattern and dither names in the swatch tooltip.
+  (Pattern and dither names in the swatch tooltip followed in E5.)
 - [x] **E2 Editor chrome** — done 2026-10-01: the ☰ menu and its five submenus, the timeline
   tooltips, the layer and frame sheets, the pinned-tool and Show/hide tools sheets, the
   New document dialog, the floating selection and commit menus. **Language…** is in the ☰
@@ -169,10 +169,25 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   - The scanner treats `frameSetDsl(` / `layerSetDsl(` arguments as engine verbs.
   Tests: `test/l10n/sweep_frames_layers_test.dart` (24 states, on the scripted hosts of the
   page tests), `test/blend_modes_test.dart` (names and badges unique in every language).
-- [ ] **E5 Color** — palette_page (44), palette_io (5), artwork_colors_page (23),
-  color_picker_dialog (5), patterns/ (gradient_dither 38, catalog 22, page 14);
-  `editor_page.engine` (68: check what of it is user-facing) and `widgets/painters` (3) are
-  not assigned to a batch yet: take them here. Pattern and dither names in the swatch tooltip.
+- [x] **E5 Color** — done 2026-10-01: the Palettes page, the Artwork colors page, the color
+  dialog, the Patterns and Dither pages, the memory banner and refusal toasts, and the
+  go-to-frame dialog (`editor_page.engine`).
+  - Pattern, pattern-family, and dither names are computed in the current language, not
+    stored as English text: `PatternEntry` holds what the tile depicts (`PatternShape` and two
+    numbers) and `DitherKind` its shape; `name` / `hint` are getters over `appL10n`. The
+    swatch tooltip in the options row follows.
+  - The engine names a new drawing's palette "Default" inside the document;
+    `PaletteInfo.shownName` shows it in the current language (as with layer names). A palette
+    the app creates ("Artwork colors", "Palette") is named in the current language at
+    creation: from then on it is the artist's name.
+  - The color dialog's model and channel letters are messages (French: RVB / TSV, R V B,
+    T S V; everyone else keeps RGB / HSV).
+  - The preview-color labels ON / OFF are messages (de AN / AUS, ru ВКЛ / ВЫКЛ, ja オン / オフ,
+    zh 开 / 关).
+  - The scanner has a block form for lists of engine verbs: `// l10n-ignore-start: why` …
+    `// l10n-ignore-end`.
+  Tests: `test/l10n/sweep_color_test.dart` (20 states); the go-to-frame dialog is in the
+  `test_engine/editor_chrome_test.dart` walk.
 - [ ] **E6 Keyboard** — keyboard/commands (67; make `CommandDef.label` a per-build lookup —
   the L0 bridge `t.name(appL10n)` in commands.dart is marked TODO), cheat_sheet (18), chords (13)
 - [ ] **E7 Replay and timelapse** — editor_page.replay (28), replay/ (page 9, host 4,
@@ -239,6 +254,13 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 - `use-escaping` is off, so a message cannot contain a literal `{` or `}`.
 
 ## Findings outside i18n
+
+- **Dither page: the note beside a dither name** was one line with an ellipsis; it is two
+  lines now (2026-10-01). English wording changed in the Palettes page confirmations, which
+  no longer repeat the color count ("Reorders the colors into ramps: …", "Removes every
+  color from this palette. …", "Deletes this palette and its colors. …"), and under the
+  Patterns page's Off choice ("The tool paints every pixel", was "Pencil paints every
+  pixel"). Say so if any of the old wordings should come back.
 
 - **Crop and place pages on a phone** (found by `sweep_import_test`, 2026-10-01, in English
   too, all fixed):
@@ -311,6 +333,9 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   editor was cut off.
 
 ## Session log
+
+- **2026-10-01** — E5 (color, palettes, patterns, dither, memory warnings): 113 messages.
+  Baseline 363 → 141; what is left is E6 (keyboard) and E7 (replay and timelapse).
 
 - **2026-10-01** — E3 + E4 (files; Frames and Layers pages; blend modes): 158 messages in E4,
   about 190 in E3. Baseline 877 → 363. Two new sweep files (`sweep_import_test.dart`, 240

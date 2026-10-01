@@ -126,9 +126,9 @@ void main() {
     final listed = [for (final f in DitherKind.families) ...DitherKind.inFamily(f)];
     expect(listed.toSet(), DitherKind.all.where((k) => !k.isOff).toSet());
     expect(listed.length, 16);
-    expect(DitherKind.families, [DitherKind.familyBayer, DitherKind.familyHalftone, DitherKind.familyLines, DitherKind.familyNoise]);
-    expect(DitherKind.inFamily(DitherKind.familyLines).length, 8);
-    expect(DitherKind.inFamily(DitherKind.familyNoise), [DitherKind.blueNoise, DitherKind.whiteNoise, DitherKind.ign]);
+    expect(DitherKind.families, [DitherFamily.bayer, DitherFamily.halftone, DitherFamily.lines, DitherFamily.noise]);
+    expect(DitherKind.inFamily(DitherFamily.lines).length, 8);
+    expect(DitherKind.inFamily(DitherFamily.noise), [DitherKind.blueNoise, DitherKind.whiteNoise, DitherKind.ign]);
   });
 
   test('DitherTilePainter repaints only when the kind, a color, or the scale changes', () {

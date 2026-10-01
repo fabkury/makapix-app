@@ -10,15 +10,34 @@
 // test suites — so what the page shows is what the fill does.
 import 'package:flutter/material.dart';
 
+import 'package:makapix_club/l10n/l10n.dart';
+
 import 'dither_tables.g.dart';
 import 'patterns_catalog.dart' show bayerMatrix;
 
 enum _Family { off, bayer, blue, halftone, hlines, vlines, diag, noise, ign }
 
+/// The Dither page's sections, in page order. Blue noise lists under Noise (user decision
+/// 2026-09-06), so the page order differs from [DitherKind.all] there.
+enum DitherFamily {
+  bayer,
+  halftone,
+  lines,
+  noise;
+
+  /// The section heading, in the current language.
+  String get label => switch (this) {
+        DitherFamily.bayer => appL10n.ditherFamilyBayer,
+        DitherFamily.halftone => appL10n.ditherFamilyHalftone,
+        DitherFamily.lines => appL10n.patFamilyLines,
+        DitherFamily.noise => appL10n.ditherFamilyNoise,
+      };
+}
+
 /// One dither family/size the Gradient can use. Compare by identity or `==` (value semantics
 /// over the DSL token).
 class DitherKind {
-  const DitherKind._(this._fam, this.n, this.dsl, this.name, this.family, this.levels, this.hint);
+  const DitherKind._(this._fam, this.n, this.dsl, this.family, this.levels);
 
   final _Family _fam;
 
@@ -28,49 +47,61 @@ class DitherKind {
   /// The token `SetGradientDither(...)` carries: the Bayer sizes stay the bare numbers they have
   /// been since ADR 0025 (`0` = off), the other families are words.
   final String dsl;
-  final String name;
 
-  /// The Dither page section this kind is listed under (empty for Off).
-  final String family;
+  /// The Dither page section this kind is listed under (`null` for Off).
+  final DitherFamily? family;
 
   /// The number of density steps: thresholds run `0..levels`.
   final int levels;
 
-  /// The page's one-line subtitle.
-  final String hint;
-
   bool get isOff => _fam == _Family.off;
 
-  static const String familyBayer = 'Bayer ordered dither';
-  static const String familyHalftone = 'Halftone';
-  static const String familyLines = 'Lines';
-  static const String familyNoise = 'Noise';
+  /// The display name, in the current language.
+  String get name => switch (_fam) {
+        _Family.off => appL10n.optOff,
+        _Family.bayer => appL10n.bayerSize(n),
+        _Family.blue => appL10n.ditherBlueNoise,
+        _Family.halftone => appL10n.ditherHalftone(n),
+        _Family.hlines => appL10n.ditherHorizontal(n),
+        _Family.vlines => appL10n.ditherVertical(n),
+        _Family.diag => appL10n.ditherDiagonal(n),
+        _Family.noise => appL10n.ditherWhiteNoise,
+        _Family.ign => appL10n.ditherGradientNoise,
+      };
 
-  /// The page's section order. Blue noise lists under Noise (user decision 2026-09-06), so the
-  /// page order differs from [all] there.
-  static const List<String> families = [familyBayer, familyHalftone, familyLines, familyNoise];
+  /// The page's note beside the name, in the current language.
+  String get hint => switch (_fam) {
+        _Family.off => appL10n.ditherHintOff,
+        _Family.bayer => appL10n.ditherHintSteps(levels),
+        _Family.blue => appL10n.ditherHintBlue(levels),
+        _Family.halftone => n == 4 ? appL10n.ditherHintHalftone : appL10n.ditherHintBigDots(levels),
+        _Family.hlines => n == 2 ? appL10n.ditherHintRowsHalf : appL10n.ditherHintRows(levels),
+        _Family.vlines => n == 2 ? appL10n.ditherHintColsHalf : appL10n.ditherHintCols(levels),
+        _Family.diag => appL10n.ditherHintHatch(levels),
+        _Family.noise => appL10n.ditherHintWhite(levels),
+        _Family.ign => appL10n.ditherHintIgn(levels),
+      };
 
-  static const off = DitherKind._(_Family.off, 0, '0', 'Off', '', 1, 'A smooth ramp between the colors');
-  static const bayer2 = DitherKind._(_Family.bayer, 2, '2', 'Bayer 2×2', familyBayer, 4, '4 density steps');
-  static const bayer4 = DitherKind._(_Family.bayer, 4, '4', 'Bayer 4×4', familyBayer, 16, '16 density steps');
-  static const bayer8 = DitherKind._(_Family.bayer, 8, '8', 'Bayer 8×8', familyBayer, 64, '64 density steps');
-  static const blueNoise =
-      DitherKind._(_Family.blue, 64, 'blue', 'Blue noise', familyNoise, 4096, '4096 steps, no visible pattern');
-  static const halftone4 =
-      DitherKind._(_Family.halftone, 4, 'halftone4', 'Halftone 4×4', familyHalftone, 16, 'Dots growing from the cell center');
-  static const halftone8 =
-      DitherKind._(_Family.halftone, 8, 'halftone8', 'Halftone 8×8', familyHalftone, 64, 'Bigger dots, 64 steps');
-  static const hlines2 = DitherKind._(_Family.hlines, 2, 'hlines2', 'Horizontal 2 px', familyLines, 4, 'Every other row at 50 %');
-  static const hlines4 = DitherKind._(_Family.hlines, 4, 'hlines4', 'Horizontal 4 px', familyLines, 16, 'Rows fill in, 16 steps');
-  static const hlines8 = DitherKind._(_Family.hlines, 8, 'hlines8', 'Horizontal 8 px', familyLines, 64, 'Rows fill in, 64 steps');
-  static const vlines2 = DitherKind._(_Family.vlines, 2, 'vlines2', 'Vertical 2 px', familyLines, 4, 'Every other column at 50 %');
-  static const vlines4 = DitherKind._(_Family.vlines, 4, 'vlines4', 'Vertical 4 px', familyLines, 16, 'Columns fill in, 16 steps');
-  static const vlines8 = DitherKind._(_Family.vlines, 8, 'vlines8', 'Vertical 8 px', familyLines, 64, 'Columns fill in, 64 steps');
-  static const diag4 = DitherKind._(_Family.diag, 4, 'diag4', 'Diagonal 4 px', familyLines, 16, 'Hatching, 16 steps');
-  static const diag8 = DitherKind._(_Family.diag, 8, 'diag8', 'Diagonal 8 px', familyLines, 64, 'Hatching, 64 steps');
-  static const whiteNoise = DitherKind._(_Family.noise, 0, 'noise', 'White noise', familyNoise, 256, 'Random grain, 256 steps');
-  static const ign =
-      DitherKind._(_Family.ign, 0, 'ign', 'Gradient noise', familyNoise, 256, 'Interleaved gradient noise, 256 steps');
+  /// The page's section order.
+  static const List<DitherFamily> families = DitherFamily.values;
+
+  static const off = DitherKind._(_Family.off, 0, '0', null, 1);
+  static const bayer2 = DitherKind._(_Family.bayer, 2, '2', DitherFamily.bayer, 4);
+  static const bayer4 = DitherKind._(_Family.bayer, 4, '4', DitherFamily.bayer, 16);
+  static const bayer8 = DitherKind._(_Family.bayer, 8, '8', DitherFamily.bayer, 64);
+  static const blueNoise = DitherKind._(_Family.blue, 64, 'blue', DitherFamily.noise, 4096);
+  static const halftone4 = DitherKind._(_Family.halftone, 4, 'halftone4', DitherFamily.halftone, 16);
+  static const halftone8 = DitherKind._(_Family.halftone, 8, 'halftone8', DitherFamily.halftone, 64);
+  static const hlines2 = DitherKind._(_Family.hlines, 2, 'hlines2', DitherFamily.lines, 4);
+  static const hlines4 = DitherKind._(_Family.hlines, 4, 'hlines4', DitherFamily.lines, 16);
+  static const hlines8 = DitherKind._(_Family.hlines, 8, 'hlines8', DitherFamily.lines, 64);
+  static const vlines2 = DitherKind._(_Family.vlines, 2, 'vlines2', DitherFamily.lines, 4);
+  static const vlines4 = DitherKind._(_Family.vlines, 4, 'vlines4', DitherFamily.lines, 16);
+  static const vlines8 = DitherKind._(_Family.vlines, 8, 'vlines8', DitherFamily.lines, 64);
+  static const diag4 = DitherKind._(_Family.diag, 4, 'diag4', DitherFamily.lines, 16);
+  static const diag8 = DitherKind._(_Family.diag, 8, 'diag8', DitherFamily.lines, 64);
+  static const whiteNoise = DitherKind._(_Family.noise, 0, 'noise', DitherFamily.noise, 256);
+  static const ign = DitherKind._(_Family.ign, 0, 'ign', DitherFamily.noise, 256);
 
   /// Every kind, Off first, in the page's order (the engine's `DitherKind::ALL`).
   static const List<DitherKind> all = [
@@ -94,7 +125,7 @@ class DitherKind {
   ];
 
   /// The kinds listed under [family], in page order.
-  static Iterable<DitherKind> inFamily(String family) => all.where((k) => k.family == family);
+  static Iterable<DitherKind> inFamily(DitherFamily family) => all.where((k) => k.family == family);
 
   /// Parse a DSL/preference token (case-insensitive; `off` and `bayerN` are accepted spellings,
   /// like the engine). `null` for anything else.
@@ -174,7 +205,7 @@ class DitherKind {
   int get hashCode => dsl.hashCode;
 
   @override
-  String toString() => 'DitherKind($dsl)';
+  String toString() => 'DitherKind($dsl)'; // l10n-ignore: debug
 }
 
 /// Paints [kind] at its 50 % density over the whole box at [scale] logical px per cell (the row-1

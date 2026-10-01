@@ -11,6 +11,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 
@@ -46,7 +47,9 @@ String artworkColorClipboardText(Color c) {
 /// "R 58 · G 123 · B 213 · A 255" — the exact 8-bit channels.
 String artworkColorChannels(Color c) {
   final v = c.toARGB32();
-  return 'R ${(v >> 16) & 0xFF} · G ${(v >> 8) & 0xFF} · B ${v & 0xFF} · A ${(v >> 24) & 0xFF}';
+  final l = appL10n;
+  return '${l.colorLetterR} ${(v >> 16) & 0xFF} · ${l.colorLetterG} ${(v >> 8) & 0xFF} · '
+      '${l.colorLetterB} ${v & 0xFF} · ${l.colorLetterA} ${(v >> 24) & 0xFF}';
 }
 
 class ArtworkColorsPage extends StatefulWidget {
@@ -87,7 +90,8 @@ class _ArtworkColorsPageState extends State<ArtworkColorsPage> {
   // query), so no SortPalette follow-up — the grid the user inspected IS the palette. Pops with
   // the count so the palette page can toast it.
   void _accept() {
-    final err = widget.host.run(buildImportScript('Artwork colors', _colors));
+    // The palette is named in the current language: the name is the artist's from here on.
+    final err = widget.host.run(buildImportScript(context.l10n.artworkColorsTitle, _colors));
     if (err != null) debugPrint('palette DSL error: $err');
     Navigator.of(context).pop(_colors.length);
   }
@@ -97,7 +101,8 @@ class _ArtworkColorsPageState extends State<ArtworkColorsPage> {
     final hex = hexRgba(c);
     final clip = artworkColorClipboardText(c);
     final pals = widget.host.readPalettes();
-    final activeName = pals.active < pals.palettes.length ? pals.palettes[pals.active].name : null;
+    final activeName = pals.active < pals.palettes.length ? pals.palettes[pals.active].shownName : null;
+    final l10n = context.l10n;
     showAppSheet<void>(
       context: context,
       builder: (ctx) => SafeArea(
@@ -110,16 +115,16 @@ class _ArtworkColorsPageState extends State<ArtworkColorsPage> {
           const Divider(height: 1),
           ListTile(
             leading: const Icon(Icons.copy),
-            title: Text('Copy $clip'),
+            title: Text(l10n.acCopy(clip)),
             onTap: () {
               Navigator.pop(ctx);
               Clipboard.setData(ClipboardData(text: clip));
-              _toast('Copied $clip');
+              _toast(l10n.acCopied(clip));
             },
           ),
           ListTile(
             leading: const Icon(Icons.add),
-            title: Text(activeName == null ? 'Add to active palette' : 'Add to "$activeName"'),
+            title: Text(activeName == null ? l10n.acAddToActive : l10n.acAddTo(activeName)),
             enabled: activeName != null,
             onTap: () {
               Navigator.pop(ctx);
@@ -128,11 +133,11 @@ class _ArtworkColorsPageState extends State<ArtworkColorsPage> {
           ),
           ListTile(
             leading: const Icon(Icons.colorize),
-            title: const Text('Set as primary color'),
+            title: Text(l10n.acSetPrimary),
             onTap: () {
               Navigator.pop(ctx);
               widget.host.setPrimary(c);
-              _toast('Primary color set to $clip');
+              _toast(l10n.acPrimarySet(clip));
             },
           ),
         ]),
@@ -147,22 +152,22 @@ class _ArtworkColorsPageState extends State<ArtworkColorsPage> {
     if (pals.active >= pals.palettes.length) return;
     final p = pals.palettes[pals.active];
     if (p.colors.contains(c)) {
-      _toast('Already in "${p.name}"');
+      _toast(context.l10n.acAlreadyIn(p.shownName));
       return;
     }
     if (p.colors.length >= kMaxPaletteColors) {
-      _toast('"${p.name}" is full ($kMaxPaletteColors colors)');
+      _toast(context.l10n.acFull(p.shownName, kMaxPaletteColors));
       return;
     }
     final err = widget.host.run('AddPaletteColor(${hexRgba(c)})');
     if (err != null) debugPrint('palette DSL error: $err');
-    _toast('Added to "${p.name}"');
+    _toast(context.l10n.acAdded(p.shownName));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Artwork colors')),
+      appBar: AppBar(title: Text(context.l10n.artworkColorsTitle)),
       body: Column(children: [
         Expanded(child: _body()),
         _buttons(),
@@ -171,21 +176,19 @@ class _ArtworkColorsPageState extends State<ArtworkColorsPage> {
   }
 
   Widget _body() => switch (_status) {
-        ArtworkColorsStatus.extracting => const Center(
+        ArtworkColorsStatus.extracting => Center(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Extracting artwork colors...'),
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              Text(context.l10n.acExtracting),
             ]),
           ),
         ArtworkColorsStatus.overLimit => _message(Icons.palette_outlined,
-            'The artwork uses more than $kMaxPaletteColors colors.',
-            'A palette holds at most $kMaxPaletteColors colors, so nothing was extracted. Gradients and '
-                'imported photos are the usual cause.'),
-        ArtworkColorsStatus.empty => _message(Icons.brush_outlined, 'The artwork has no colors yet.',
-            'Paint something first, then extract its colors.'),
+            context.l10n.acOverTitle(kMaxPaletteColors), context.l10n.acOverBody(kMaxPaletteColors)),
+        ArtworkColorsStatus.empty =>
+          _message(Icons.brush_outlined, context.l10n.acEmptyTitle, context.l10n.acEmptyBody),
         ArtworkColorsStatus.failed =>
-          _message(Icons.error_outline, 'Could not read the artwork.', 'Try again in a moment.'),
+          _message(Icons.error_outline, context.l10n.acFailedTitle, context.l10n.acFailedBody),
         ArtworkColorsStatus.ready => _grid(),
       };
 
@@ -206,18 +209,16 @@ class _ArtworkColorsPageState extends State<ArtworkColorsPage> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
           child: Text(
-            '${_colors.length} colors, in palette order (grays first, then hue ramps). '
-            'Tap a color for its exact value.',
+            context.l10n.acSummary(_colors.length),
             style: const TextStyle(color: Colors.white54, fontSize: 13),
           ),
         ),
         // [G-19] Extraction reads the committed document; a pending Draft is a display-only
         // preview and is not part of what was read. Said here, where the result is.
         if (widget.host.hasPendingDraft)
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 0, 16, 4),
-            child: Text('Colors come from the saved artwork. Your pending edit is not included.',
-                style: TextStyle(color: Colors.amber, fontSize: 13)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            child: Text(context.l10n.acPendingNote, style: const TextStyle(color: Colors.amber, fontSize: 13)),
           ),
         Expanded(
           child: GridView.builder(
@@ -253,7 +254,7 @@ class _ArtworkColorsPageState extends State<ArtworkColorsPage> {
           Expanded(
             child: OutlinedButton(
               onPressed: _ready ? () => Navigator.of(context).pop() : null,
-              child: const Text('Reject'),
+              child: Text(context.l10n.acReject),
             ),
           ),
           const SizedBox(width: 12),
@@ -261,7 +262,7 @@ class _ArtworkColorsPageState extends State<ArtworkColorsPage> {
             child: FilledButton(
               style: FilledButton.styleFrom(backgroundColor: _accent),
               onPressed: _ready ? _accept : (terminalMessage ? () => Navigator.of(context).pop() : null),
-              child: Text(terminalMessage ? 'Close' : 'Accept'),
+              child: Text(terminalMessage ? context.l10n.commonClose : context.l10n.acAccept),
             ),
           ),
         ]),

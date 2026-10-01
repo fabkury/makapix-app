@@ -150,6 +150,21 @@ More editor terms (Frames and Layers pages):
 | active (the layer you draw on) | activa | ativa | actif | aktiv | активный | アクティブ | 当前图层 |
 | duration (of a frame) | duración | duração | durée | Dauer | длительность | 表示時間 | 时长 |
 
+### Palettes, patterns, and dither
+
+- **Bayer** is a person's name: Latin in the Latin-script languages, transliterated in
+  Russian (Байер), Japanese (ベイヤー), and Chinese (拜耳).
+- **Ramp** (a run of one hue from dark to light): rampa (es, pt), rampe (fr), Verlauf (de),
+  ряд (ru), described rather than named in Japanese and Chinese.
+- **Preset** palettes: predefinidas (es, pt), préréglages (fr), Vorlagen (de), готовые
+  палитры (ru), プリセット, 预设.
+- **Halftone**: semitono, meio-tom, demi-teintes, Halbton, полутон, ハーフトーン, 半色调.
+- **ON / OFF** (the two preview colors of a pattern) are the words of a switch: ON / OFF in
+  Spanish, Portuguese, and French; AN / AUS; ВКЛ / ВЫКЛ; オン / オフ; 开 / 关. The page hints
+  use the same words.
+- **Color models**: RGB and HSV everywhere except French (RVB, TSV; channel letters R V B and
+  T S V).
+
 ### Blend modes
 
 The eleven names are the `blend*` messages, taken from what image editors call them in each

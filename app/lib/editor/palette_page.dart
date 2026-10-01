@@ -12,6 +12,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter/services.dart' show AssetBundle, HapticFeedback, rootBundle;
@@ -164,7 +165,7 @@ class _PalettePageState extends State<PalettePage> {
 
   bool _belowCap() {
     if (_palettes.length < kMaxPalettes) return true;
-    _toast('Palette limit reached ($kMaxPalettes)');
+    _toast(context.l10n.paletteLimit(kMaxPalettes));
     return false;
   }
 
@@ -177,7 +178,7 @@ class _PalettePageState extends State<PalettePage> {
         title: Text(title),
         content: Text(message),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.commonCancel)),
           FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(action)),
         ],
       ),
@@ -194,10 +195,10 @@ class _PalettePageState extends State<PalettePage> {
         content: TextField(
           controller: ctrl,
           autofocus: true,
-          decoration: const InputDecoration(labelText: 'Name'),
+          decoration: InputDecoration(labelText: ctx.l10n.commonNameLabel),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(ctx.l10n.commonCancel)),
           FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: Text(action)),
         ],
       ),
@@ -216,12 +217,12 @@ class _PalettePageState extends State<PalettePage> {
         child: SingleChildScrollView(
             child: Wrap(children: [
           ListTile(
-            title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text('${p.colors.length} colors'),
+            title: Text(p.shownName, style: const TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: Text(ctx.l10n.paletteColorCount(p.colors.length)),
           ),
           ListTile(
             leading: const Icon(Icons.edit),
-            title: const Text('Rename'),
+            title: Text(ctx.l10n.commonRename),
             onTap: () {
               Navigator.pop(ctx);
               _renamePalette(i);
@@ -229,7 +230,7 @@ class _PalettePageState extends State<PalettePage> {
           ),
           ListTile(
             leading: const Icon(Icons.copy),
-            title: const Text('Duplicate'),
+            title: Text(ctx.l10n.commonDuplicate),
             onTap: () {
               Navigator.pop(ctx);
               _duplicatePalette(i);
@@ -237,7 +238,7 @@ class _PalettePageState extends State<PalettePage> {
           ),
           ListTile(
             leading: const Icon(Icons.save_alt),
-            title: const Text('Export .gpl'),
+            title: Text(ctx.l10n.paletteExportGpl),
             onTap: () {
               Navigator.pop(ctx);
               _exportPalette(i);
@@ -245,7 +246,7 @@ class _PalettePageState extends State<PalettePage> {
           ),
           ListTile(
             leading: const Icon(Icons.sort),
-            title: const Text('Sort'),
+            title: Text(ctx.l10n.paletteSort),
             enabled: p.colors.length > 1,
             onTap: () {
               Navigator.pop(ctx);
@@ -254,7 +255,7 @@ class _PalettePageState extends State<PalettePage> {
           ),
           ListTile(
             leading: const Icon(Icons.format_color_reset),
-            title: const Text('Clear'),
+            title: Text(ctx.l10n.paletteClear),
             enabled: p.colors.isNotEmpty,
             onTap: () {
               Navigator.pop(ctx);
@@ -263,7 +264,7 @@ class _PalettePageState extends State<PalettePage> {
           ),
           ListTile(
             leading: const Icon(Icons.delete),
-            title: const Text('Delete'),
+            title: Text(ctx.l10n.commonDelete),
             enabled: _palettes.length > 1,
             onTap: () {
               Navigator.pop(ctx);
@@ -276,7 +277,8 @@ class _PalettePageState extends State<PalettePage> {
   }
 
   Future<void> _renamePalette(int i) async {
-    final name = await _nameDialog('Rename palette', _palettes[i].name, 'Rename');
+    final l10n = context.l10n;
+    final name = await _nameDialog(l10n.paletteRenameTitle, _palettes[i].shownName, l10n.commonRename);
     if (name == null || !mounted) return;
     _mutate('RenamePaletteAt($i, ${sanitizePaletteName(name)})');
   }
@@ -293,11 +295,12 @@ class _PalettePageState extends State<PalettePage> {
   // path, so the write happens here. A failure is reported, never swallowed.
   Future<void> _exportPalette(int i) async {
     final p = _palettes[i];
-    final safe = p.name.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
-    final bytes = utf8.encode(encodeGpl(p.name, p.colors));
+    final l10n = context.l10n;
+    final safe = p.shownName.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
+    final bytes = utf8.encode(encodeGpl(p.shownName, p.colors));
     try {
       final path = await FilePicker.saveFile(
-        dialogTitle: 'Export .gpl',
+        dialogTitle: l10n.paletteExportGpl,
         fileName: '$safe.gpl',
         type: FileType.custom,
         allowedExtensions: ['gpl'],
@@ -307,9 +310,9 @@ class _PalettePageState extends State<PalettePage> {
       if (!Platform.isAndroid && !Platform.isIOS) {
         await File(path).writeAsBytes(bytes);
       }
-      if (mounted) _toast('Saved palette (${p.colors.length} colors)');
+      if (mounted) _toast(l10n.paletteSaved(p.colors.length));
     } catch (e) {
-      if (mounted) _toast('Could not save: $e');
+      if (mounted) _toast(l10n.fileSaveFailed('$e'));
     }
   }
 
@@ -318,8 +321,8 @@ class _PalettePageState extends State<PalettePage> {
     if (p.colors.length < 2) return;
     // Reconfirm like Clear/Delete: palette state sits outside undo, and sorting
     // discards any hand-arranged swatch order for good.
-    final ok = await _confirm('Sort "${p.name}"?',
-        'Reorders all ${p.colors.length} colors into ramps: grays first, then by hue, dark to light. This cannot be undone.', 'Sort');
+    final l10n = context.l10n;
+    final ok = await _confirm(l10n.paletteSortTitle(p.shownName), l10n.paletteSortBody, l10n.paletteSort);
     if (!ok) return;
     _mutate('SortPaletteAt($i)');
   }
@@ -327,8 +330,8 @@ class _PalettePageState extends State<PalettePage> {
   Future<void> _clearPalette(int i) async {
     final p = _palettes[i];
     if (p.colors.isEmpty) return;
-    final ok = await _confirm('Clear "${p.name}"?',
-        'Removes all ${p.colors.length} colors from this palette. This cannot be undone.', 'Clear');
+    final l10n = context.l10n;
+    final ok = await _confirm(l10n.paletteClearTitle(p.shownName), l10n.paletteClearBody, l10n.paletteClear);
     if (!ok) return;
     _mutate('ClearPaletteAt($i)');
   }
@@ -336,8 +339,8 @@ class _PalettePageState extends State<PalettePage> {
   Future<void> _deletePalette(int i) async {
     if (_palettes.length <= 1) return;
     final p = _palettes[i];
-    final ok = await _confirm('Delete "${p.name}"?',
-        'Deletes this palette and its ${p.colors.length} colors. This cannot be undone.', 'Delete');
+    final l10n = context.l10n;
+    final ok = await _confirm(l10n.paletteDeleteTitle(p.shownName), l10n.paletteDeleteBody, l10n.commonDelete);
     if (!ok) return;
     _mutate('DeletePalette($i)');
   }
@@ -351,7 +354,7 @@ class _PalettePageState extends State<PalettePage> {
         child: Wrap(children: [
           ListTile(
             leading: const Icon(Icons.add_box_outlined),
-            title: const Text('New palette'),
+            title: Text(ctx.l10n.paletteNew),
             onTap: () {
               Navigator.pop(ctx);
               _newPalette();
@@ -359,7 +362,7 @@ class _PalettePageState extends State<PalettePage> {
           ),
           ListTile(
             leading: const Icon(Icons.copy),
-            title: const Text('Duplicate current'),
+            title: Text(ctx.l10n.paletteDuplicateCurrent),
             onTap: () {
               Navigator.pop(ctx);
               _duplicatePalette(_active);
@@ -367,7 +370,7 @@ class _PalettePageState extends State<PalettePage> {
           ),
           ListTile(
             leading: const Icon(Icons.file_download_outlined),
-            title: const Text('Import palette (.gpl/.json)'),
+            title: Text(ctx.l10n.paletteImport),
             onTap: () {
               Navigator.pop(ctx);
               _importFile();
@@ -375,7 +378,7 @@ class _PalettePageState extends State<PalettePage> {
           ),
           ListTile(
             leading: const Icon(Icons.auto_awesome),
-            title: const Text('From artwork colors'),
+            title: Text(ctx.l10n.paletteFromArtwork),
             onTap: () {
               Navigator.pop(ctx);
               _fromArtwork();
@@ -388,24 +391,26 @@ class _PalettePageState extends State<PalettePage> {
 
   Future<void> _newPalette() async {
     if (!_belowCap()) return;
-    final name = await _nameDialog('New palette', 'Palette', 'Create');
+    final l10n = context.l10n;
+    final name = await _nameDialog(l10n.paletteNew, l10n.paletteDefaultName, l10n.commonCreate);
     if (name == null || !mounted) return;
     _mutate('NewPalette(${sanitizePaletteName(name)})');
   }
 
   Future<void> _importFile() async {
     if (!_belowCap()) return;
+    final l10n = context.l10n;
     final res = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['gpl', 'json', 'txt']);
     if (res == null || res.files.single.path == null || !mounted) return;
     final text = await File(res.files.single.path!).readAsString();
     if (!mounted) return;
     final p = parsePaletteFile(text, fallbackName: res.files.single.name.split('.').first);
     if (p.colors.isEmpty) {
-      _toast('No colors found');
+      _toast(l10n.paletteNoColors);
       return;
     }
     _mutate(buildImportScript(p.name, p.colors));
-    _toast('Imported "${p.name}" (${p.colors.length} colors)');
+    _toast(l10n.paletteImported(p.name, p.colors.length));
   }
 
   // Inspect-before-commit (2026-09-01): the Artwork colors page extracts (spinner), shows the
@@ -419,7 +424,7 @@ class _PalettePageState extends State<PalettePage> {
     );
     if (!mounted) return;
     setState(_reload);
-    if (n != null) _toast('Created "Artwork colors" ($n colors)');
+    if (n != null) _toast(context.l10n.paletteCreated(context.l10n.artworkColorsTitle, n));
   }
 
   void _importPreset(PaletteInfo p) {
@@ -435,16 +440,15 @@ class _PalettePageState extends State<PalettePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Palettes'),
-        actions: [IconButton(tooltip: 'Add palette', icon: const Icon(Icons.add), onPressed: _addMenu)],
+        title: Text(context.l10n.optPalettes),
+        actions: [IconButton(tooltip: context.l10n.paletteAdd, icon: const Icon(Icons.add), onPressed: _addMenu)],
       ),
       body: ReorderableListView(
         padding: const EdgeInsets.all(8),
         buildDefaultDragHandles: false, // long-press opens the actions sheet; drag via the handle
-        header: const Padding(
-          padding: EdgeInsets.fromLTRB(8, 4, 8, 8),
-          child: Text('Tap a palette to load it. Drag the handle to reorder.',
-              style: TextStyle(color: Colors.white54, fontSize: 13)),
+        header: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+          child: Text(context.l10n.palettesHint, style: const TextStyle(color: Colors.white54, fontSize: 13)),
         ),
         footer: _presetsFooter(),
         // Handle-started drags skip the framework's long-press haptic, so give pick-up its own
@@ -485,12 +489,12 @@ class _PalettePageState extends State<PalettePage> {
               if (active) const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  p.name,
+                  p.shownName,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontWeight: FontWeight.bold, color: active ? _green : null),
                 ),
               ),
-              Text('${p.colors.length} colors',
+              Text(context.l10n.paletteColorCount(p.colors.length),
                   style: const TextStyle(color: Colors.white54, fontSize: 12)),
               ReorderableDragStartListener(
                 index: i,
@@ -500,7 +504,7 @@ class _PalettePageState extends State<PalettePage> {
                 ),
               ),
               IconButton(
-                tooltip: 'Palette actions',
+                tooltip: context.l10n.paletteActions,
                 icon: const Icon(Icons.more_vert, size: 20, color: Colors.white70),
                 onPressed: () => _paletteActions(i),
               ),
@@ -528,7 +532,7 @@ class _PalettePageState extends State<PalettePage> {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontWeight: FontWeight.bold)),
               ),
-              Text('${p.colors.length} colors',
+              Text(context.l10n.paletteColorCount(p.colors.length),
                   style: const TextStyle(color: Colors.white54, fontSize: 12)),
             ]),
             const SizedBox(height: 8),
@@ -541,9 +545,10 @@ class _PalettePageState extends State<PalettePage> {
 
   Widget _swatchGrid(PaletteInfo p) {
     if (p.colors.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.only(top: 4),
-        child: Text('empty', style: TextStyle(fontStyle: FontStyle.italic, color: Colors.white38)),
+      return Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Text(context.l10n.paletteEmptyTag,
+            style: const TextStyle(fontStyle: FontStyle.italic, color: Colors.white38)),
       );
     }
     return LayoutBuilder(builder: (ctx, cons) {
@@ -586,9 +591,10 @@ class _PalettePageState extends State<PalettePage> {
 
   Widget _presetsFooter() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Padding(
-        padding: EdgeInsets.fromLTRB(8, 20, 8, 4),
-        child: Text('Presets', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(8, 20, 8, 4),
+        child: Text(context.l10n.palettePresets,
+            style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
       ),
       FutureBuilder<List<PaletteInfo>>(
         future: _presets,
@@ -596,9 +602,9 @@ class _PalettePageState extends State<PalettePage> {
           final ps = snap.data ?? const <PaletteInfo>[];
           if (snap.connectionState != ConnectionState.done) return const SizedBox(height: 48);
           if (ps.isEmpty) {
-            return const Padding(
-              padding: EdgeInsets.all(8),
-              child: Text('No presets bundled', style: TextStyle(color: Colors.white38)),
+            return Padding(
+              padding: const EdgeInsets.all(8),
+              child: Text(ctx.l10n.paletteNoPresets, style: const TextStyle(color: Colors.white38)),
             );
           }
           return Column(children: [for (final p in ps) _presetCard(p)]);

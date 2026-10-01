@@ -374,7 +374,7 @@ extension _EditorEngine on _EditorPageState {
 
   Color _parseHex(String h) {
     h = h.replaceAll('#', '');
-    if (h.length == 6) h = '${h}FF';
+    if (h.length == 6) h = '${h}FF'; // l10n-ignore: hex digits
     final v = int.parse(h, radix: 16);
     return Color.fromARGB(v & 0xFF, (v >> 24) & 0xFF, (v >> 16) & 0xFF, (v >> 8) & 0xFF);
   }
@@ -513,14 +513,12 @@ extension _EditorEngine on _EditorPageState {
         final used = ((_state['mem_unique_bytes'] as num?) ?? 0) / (1024 * 1024);
         final hard = ((_state['mem_hard_budget'] as num?) ?? 1) / (1024 * 1024);
         messenger.showMaterialBanner(MaterialBanner(
-          content: Text(
-              'This drawing is very large (${used.toStringAsFixed(0)} of ${hard.toStringAsFixed(0)} MB). '
-              'Near the limit, changes that grow it further will be blocked.'),
+          content: Text(context.l10n.memLargeBanner(used.toStringAsFixed(0), hard.toStringAsFixed(0))),
           leading: const Icon(Icons.data_usage),
           actions: [
             TextButton(
               onPressed: () => messenger.hideCurrentMaterialBanner(),
-              child: const Text('Dismiss'),
+              child: Text(context.l10n.commonDismiss),
             ),
           ],
         ));
@@ -528,17 +526,15 @@ extension _EditorEngine on _EditorPageState {
     }
     final memRefused = _memRefusalsSeen >= 0 && refusals > _memRefusalsSeen;
     if (memRefused) {
-      messenger.showSnackBar(const SnackBar(
-        content: Text('Blocked: that change would push the drawing over the memory limit. '
-            'Reduce frames, layers or canvas size to continue growing it.'),
-      ));
+      messenger.showSnackBar(SnackBar(content: Text(context.l10n.memBlocked)));
     }
     _memRefusalsSeen = refusals;
     // Every other refusal shows the engine's own reason (a memory refusal advances this channel
     // too, and has just been narrated above).
     final seq = (_state['refusal_seq'] as num?)?.toInt() ?? 0;
     if (_refusalSeqSeen >= 0 && seq > _refusalSeqSeen && !memRefused && !_suppressRefusalToast) {
-      final reason = (_state['last_refusal'] as String?) ?? 'The engine refused this change';
+      // The engine's own sentence, in English (L4: stable codes at the FFI).
+      final reason = (_state['last_refusal'] as String?) ?? context.l10n.engineRefusedFallback;
       messenger.showSnackBar(SnackBar(content: Text(reason)));
     }
     _refusalSeqSeen = seq;
@@ -695,6 +691,7 @@ extension _EditorEngine on _EditorPageState {
   static bool _isFrameStructureVerb(String dsl) {
     for (final part in dsl.split(';')) {
       final name = part.trim().split('(').first.trim();
+      // l10n-ignore-start: engine verbs
       if (const {
         'AddFrame',
         'AddFrameAt',
@@ -709,6 +706,7 @@ extension _EditorEngine on _EditorPageState {
         'ShiftFrames',
         'ReverseFrames',
       }.contains(name)) {
+        // l10n-ignore-end
         return true;
       }
     }
@@ -718,6 +716,7 @@ extension _EditorEngine on _EditorPageState {
   /// The sixteen frame-set batch verbs (ADR 0031) and the eighteen layer-set batch verbs
   /// (ADR 0033). Every one is a context change: a batch may remove, reorder, or rewrite the
   /// frame or layer a Draft was made on, so the Draft dies first.
+  // l10n-ignore-start: engine verbs
   static const Set<String> _kBatchVerbs = {
     'RemoveLayers',
     'DuplicateLayers',
@@ -754,13 +753,14 @@ extension _EditorEngine on _EditorPageState {
     'SetLayersVisibleNamed',
     'SetLayersLockedNamed',
   };
+  // l10n-ignore-end
 
   /// Verbs that may run while playback is running (ADR 0012): transport, plus pure-view verbs
   /// that change nothing in the document (SetOverscanView only resizes the editing display).
   /// Everything else is editing intent and pauses first; the default direction is deliberately
   /// "pauses", so a new verb is safe.
   static bool _isTransportOrViewVerb(String dsl) {
-    const exempt = {'Play', 'Pause', 'AdvanceClock', 'Stop', 'SetOverscanView'};
+    const exempt = {'Play', 'Pause', 'AdvanceClock', 'Stop', 'SetOverscanView'}; // l10n-ignore: engine verbs
     for (final part in dsl.split(';')) {
       final t = part.trim();
       if (t.isEmpty) continue;
@@ -782,6 +782,7 @@ extension _EditorEngine on _EditorPageState {
   static bool _isContextChangeVerb(String dsl) {
     for (final part in dsl.split(';')) {
       final name = part.trim().split('(').first.trim();
+      // l10n-ignore-start: engine verbs
       if (const {
             'SetActiveFrame',
             'SetActiveLayer',
@@ -793,6 +794,7 @@ extension _EditorEngine on _EditorPageState {
             'RemoveLayer',
             'MergeDown',
           }.contains(name) ||
+          // l10n-ignore-end
           _kBatchVerbs.contains(name)) {
         return true;
       }
@@ -1471,17 +1473,17 @@ extension _EditorEngine on _EditorPageState {
     final entered = await showDialog<int>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Go to frame'),
+        title: Text(ctx.l10n.gotoFrameTitle),
         content: TextField(
           controller: ctrl,
           autofocus: true,
           keyboardType: TextInputType.number,
-          decoration: InputDecoration(labelText: 'Frame (1 – $n)'),
+          decoration: InputDecoration(labelText: ctx.l10n.gotoFrameLabel(n)),
           onSubmitted: (s) => Navigator.pop(ctx, int.tryParse(s.trim())),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, int.tryParse(ctrl.text.trim())), child: const Text('Go')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(ctx.l10n.commonCancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, int.tryParse(ctrl.text.trim())), child: Text(ctx.l10n.gotoFrameGo)),
         ],
       ),
     );
