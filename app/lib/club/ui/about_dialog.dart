@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -38,6 +39,7 @@ class MakapixAboutDialog extends ConsumerWidget {
     final platform = defaultTargetPlatform;
     final showPlay = platform != TargetPlatform.iOS;
     final showAppStore = platform != TargetPlatform.android;
+    final l10n = context.l10n;
     return AlertDialog(
       content: SizedBox(
         width: 380,
@@ -57,59 +59,53 @@ class MakapixAboutDialog extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Makapix Club', style: theme.textTheme.titleLarge),
+                      Text('Makapix Club', style: theme.textTheme.titleLarge), // l10n-ignore: brand name
                       const _VersionLine(),
                     ],
                   ),
                 ),
               ]),
               const SizedBox(height: 14),
-              Text(
-                'Makapix Club is a social network for pixel art: publish your '
-                'work, follow artists, react and comment, and send art to '
-                'Makapix player devices. This app includes the Makapix Editor, '
-                'a built-in animated pixel-art editor — no account needed to draw.',
-                style: theme.textTheme.bodyMedium,
-              ),
+              Text(l10n.aboutBody, style: theme.textTheme.bodyMedium),
               const Divider(height: 24),
               _LinkTile(
                 icon: Icons.language,
-                title: 'Website',
+                title: l10n.aboutWebsite,
                 subtitle: website.replaceFirst('https://', ''),
                 onTap: () => openExternalUrl(context, website),
               ),
               _LinkTile(
                 icon: Icons.code,
-                title: 'App source code',
-                subtitle: 'github.com/fabkury/makapix-app',
+                title: l10n.aboutAppSource,
+                subtitle: 'github.com/fabkury/makapix-app', // l10n-ignore: URL
                 onTap: () => openExternalUrl(context, _kAppRepoUrl),
               ),
               _LinkTile(
                 icon: Icons.dns_outlined,
-                title: 'Server source code',
-                subtitle: 'github.com/fabkury/makapix',
+                title: l10n.aboutServerSource,
+                subtitle: 'github.com/fabkury/makapix', // l10n-ignore: URL
                 onTap: () => openExternalUrl(context, _kServerRepoUrl),
               ),
               if (showPlay)
                 _LinkTile(
                   icon: Icons.shop_outlined,
-                  title: 'Makapix Club on Google Play',
+                  title: l10n.aboutOnGooglePlay,
                   onTap: () => openExternalUrl(context, _kPlayStoreUrl),
                 ),
               if (showAppStore)
                 _LinkTile(
                   icon: Icons.apple,
-                  title: 'Makapix Club on the App Store',
+                  title: l10n.aboutOnAppStore,
                   onTap: () => openExternalUrl(context, _kAppStoreUrl),
                 ),
               _LinkTile(
                 icon: Icons.mail_outline,
-                title: 'Contact',
+                title: l10n.aboutContact,
                 subtitle: contactEmail,
                 onTap: () => openEmail(context, contactEmail),
               ),
               const SizedBox(height: 10),
-              Text('Made by Fabrício Kury.',
+              Text(l10n.aboutMadeBy,
                   style: theme.textTheme.bodySmall
                       ?.copyWith(color: theme.colorScheme.outline)),
             ],
@@ -119,11 +115,11 @@ class MakapixAboutDialog extends ConsumerWidget {
       actions: [
         TextButton(
           onPressed: () => _showLicenses(context),
-          child: const Text('Licenses'),
+          child: Text(l10n.aboutLicenses),
         ),
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Close'),
+          child: Text(l10n.commonClose),
         ),
       ],
     );
@@ -134,7 +130,7 @@ class MakapixAboutDialog extends ConsumerWidget {
     if (!context.mounted) return;
     showLicensePage(
       context: context,
-      applicationName: 'Makapix Club',
+      applicationName: 'Makapix Club', // l10n-ignore: brand name
       applicationVersion: '${info.version} (${info.buildNumber})',
       applicationIcon: Padding(
         padding: const EdgeInsets.only(top: 12),
@@ -160,7 +156,7 @@ class _VersionLine extends StatelessWidget {
       builder: (_, snap) {
         final info = snap.data;
         if (info == null) return const SizedBox(height: 16);
-        return Text('Version ${info.version} (${info.buildNumber})', style: style);
+        return Text(context.l10n.aboutVersion(info.version, info.buildNumber), style: style);
       },
     );
   }

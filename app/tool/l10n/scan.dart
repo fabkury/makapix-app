@@ -162,10 +162,10 @@ class _Visitor extends RecursiveAstVisitor<void> {
     } else if (words >= 2) {
       tier = Tier.prose;
     } else {
-      // 'now' alone is ambiguous; '{} frames' or '{}mo' (a word glued to a value, with
-      // nothing but letters and spaces around it) is display text.
+      // 'now' alone is ambiguous; '{} frames', '{}mo', or '{} commented: {}' (words glued to
+      // values, with nothing but letters, spaces, and sentence punctuation) is display text.
       final gluedToValue = text.contains('{}') &&
-          RegExp(r'^[\p{L} ]+$', unicode: true).hasMatch(text.replaceAll('{}', ''));
+          RegExp(r'''^[\p{L} :,!?"'()…·]+$''', unicode: true).hasMatch(text.replaceAll('{}', ''));
       if (gluedToValue) {
         tier = Tier.word;
       } else if (_lowerWord.hasMatch(probe)) {

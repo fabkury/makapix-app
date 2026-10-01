@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -90,7 +91,7 @@ class _SearchViewState extends ConsumerState<SearchView>
             textInputAction: TextInputAction.search,
             onSubmitted: (_) => _run(),
             decoration: InputDecoration(
-              hintText: 'Search Makapix Club…',
+              hintText: context.l10n.searchHint,
               border: InputBorder.none,
               suffixIcon: IconButton(icon: const Icon(Icons.search), onPressed: _run),
             ),
@@ -99,7 +100,14 @@ class _SearchViewState extends ConsumerState<SearchView>
       ),
       TabBar(
         controller: _tab,
-        tabs: const [Tab(text: 'Artworks'), Tab(text: 'Users'), Tab(text: 'Hashtags')],
+        // Three equal tabs: the default 16 px label padding leaves 75 px on a 320 px phone,
+        // too little for "Пользователи" or "ハッシュタグ".
+        labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+        tabs: [
+          Tab(text: context.l10n.searchTabArtworks),
+          Tab(text: context.l10n.searchTabUsers),
+          Tab(text: context.l10n.searchTabHashtags),
+        ],
       ),
       Expanded(
         child: TabBarView(
@@ -218,8 +226,9 @@ class _ArtworksTabState extends ConsumerState<_ArtworksTab>
   Widget build(BuildContext context) {
     super.build(context);
     if (widget.query.isEmpty) {
-      return const Center(
-          child: Text('Type to search.', style: TextStyle(color: Colors.white38)));
+      return Center(
+          child: Text(context.l10n.searchTypeToSearch,
+              style: const TextStyle(color: Colors.white38)));
     }
     final s = ref.watch(_artworkSearchProvider(widget.query));
     final n = ref.read(_artworkSearchProvider(widget.query).notifier);
@@ -229,7 +238,7 @@ class _ArtworksTabState extends ConsumerState<_ArtworksTab>
     if (!s.initialized && s.loading) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (s.items.isEmpty) return const ClubEmpty(message: 'No artworks found.');
+    if (s.items.isEmpty) return ClubEmpty(message: context.l10n.searchNoArtworks);
     final posts = s.items;
     return GridView.builder(
       controller: _sc,
@@ -263,7 +272,7 @@ class _ArtworksTabState extends ConsumerState<_ArtworksTab>
                         feed: pagedArtworkSource(
                           _artworkSearchProvider(widget.query),
                           _artworkSearchProvider(widget.query).notifier,
-                          name: 'Search',
+                          name: context.l10n.search,
                         ),
                       ))),
           child: ClipRRect(
@@ -323,10 +332,10 @@ class _UsersTabState extends ConsumerState<_UsersTab> with AutomaticKeepAliveCli
     final n = ref.read(_userSearchProvider(_key).notifier);
     return Column(children: [
       _SortChips(
-        options: const [
-          ('alphabetical', 'A–Z'),
-          ('recent', 'Newest'),
-          ('reputation', 'Reputation'),
+        options: [
+          ('alphabetical', context.l10n.sortAlphabetical),
+          ('recent', context.l10n.sortNewest),
+          ('reputation', context.l10n.sortReputation),
         ],
         value: widget.sort,
         onChanged: widget.onSortChanged,
@@ -336,12 +345,12 @@ class _UsersTabState extends ConsumerState<_UsersTab> with AutomaticKeepAliveCli
           s: s,
           n: n,
           controller: _sc,
-          emptyMessage: 'No users found.',
+          emptyMessage: context.l10n.searchNoUsers,
           row: (ctx, u) => ListTile(
             leading: HandleAvatar(url: u.avatarUrl, handle: u.handle, radius: 18),
             title: Text(u.handle),
             subtitle: (u.tagline != null && u.tagline!.isNotEmpty) ? Text(u.tagline!) : null,
-            trailing: Text('rep ${u.reputation}',
+            trailing: Text(ctx.l10n.searchUserReputation(u.reputation),
                 style: const TextStyle(fontSize: 11, color: Colors.white38)),
             onTap: () => Navigator.push(
                 ctx, MaterialPageRoute(builder: (_) => ProfilePage(sqid: u.sqid))),
@@ -393,10 +402,10 @@ class _HashtagsTabState extends ConsumerState<_HashtagsTab>
     final n = ref.read(_hashtagSearchProvider(_key).notifier);
     return Column(children: [
       _SortChips(
-        options: const [
-          ('popularity', 'Popular'),
-          ('alphabetical', 'A–Z'),
-          ('recent', 'Recent'),
+        options: [
+          ('popularity', context.l10n.sortPopular),
+          ('alphabetical', context.l10n.sortAlphabetical),
+          ('recent', context.l10n.sortRecent),
         ],
         value: widget.sort,
         onChanged: widget.onSortChanged,
@@ -406,11 +415,11 @@ class _HashtagsTabState extends ConsumerState<_HashtagsTab>
           s: s,
           n: n,
           controller: _sc,
-          emptyMessage: 'No hashtags found.',
+          emptyMessage: context.l10n.searchNoHashtags,
           row: (ctx, t) => ListTile(
             leading: const Icon(Icons.tag),
             title: Text('#${t.tag}'),
-            subtitle: Text('${t.artworkCount} artworks · ${t.reactionCount} reactions'),
+            subtitle: Text(ctx.l10n.searchHashtagStats(t.artworkCount, t.reactionCount)),
             onTap: () => Navigator.push(
                 ctx, MaterialPageRoute(builder: (_) => HashtagFeedPage(tag: t.tag))),
           ),

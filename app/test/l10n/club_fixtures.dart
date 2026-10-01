@@ -237,6 +237,45 @@ List<Map<String, dynamic>> fixturePlayersJson() => [
 
 typedef FakeHandler = Object? Function(RequestOptions request);
 
+/// A non-200 answer from a [FakeBackend] route.
+class FakeStatus {
+  const FakeStatus(this.status, [this.detail = 'unavailable']);
+  final int status;
+  final String detail;
+}
+
+/// One notification of each type the app composes text for.
+List<Map<String, dynamic>> fixtureNotificationsJson() {
+  Map<String, dynamic> n(String type, [Map<String, dynamic> extra = const {}]) => {
+        'id': 'n-$type-${extra.length}',
+        'notification_type': type,
+        'is_read': false,
+        'created_at': _ago(const Duration(hours: 5)),
+        'actor_handle': 'pixel_bob',
+        'actor_public_sqid': 'b7',
+        ...extra,
+      };
+  const titled = {'content_title': 'Sunset Tower', 'content_sqid': 'p1'};
+  return [
+    n('reaction', {...titled, 'emoji': '🔥'}),
+    n('reaction', {'emoji': '🔥'}),
+    n('comment', {...titled, 'comment_id': 'c1', 'comment_preview': '8-bit'}),
+    n('comment_reply', {...titled, 'comment_id': 'c2', 'comment_preview': '16-bit'}),
+    n('comment_like', titled),
+    n('mention', titled),
+    n('mention', {...titled, 'comment_id': 'c3', 'comment_preview': '32-bit'}),
+    n('follow'),
+    n('remix', titled),
+    n('post_promoted', titled),
+    n('post_approved', titled),
+    n('trust_granted'),
+    n('mod_hashtags_updated', {...titled, 'comment_preview': '+nsfw −wip'}),
+    n('reputation_change'),
+    n('moderator_granted'),
+    n('moderator_revoked'),
+  ];
+}
+
 /// Canned JSON for the real [ClubApiClient]: the first route whose method and path pattern
 /// match answers with HTTP 200; anything else gets a 404 and is recorded in [unhandled], so a
 /// sweep that forgot a route says which one.
@@ -245,7 +284,8 @@ class FakeBackend implements HttpClientAdapter {
   final List<String> unhandled = [];
 
   /// Answers [method] requests whose path matches [path] (a regular expression, matched
-  /// against the path after `/api` or `/api/v1`) with the JSON [body] returns.
+  /// against the path after `/api` or `/api/v1`) with the JSON [body] returns. A handler that
+  /// returns a [FakeStatus] answers with that HTTP status instead of 200.
   void on(String method, String path, FakeHandler body) =>
       _routes.insert(0, (method, RegExp('^$path\$'), body));
 
@@ -255,7 +295,10 @@ class FakeBackend implements HttpClientAdapter {
     final path = options.uri.path.replaceFirst(RegExp(r'^/api(/v1)?'), '');
     for (final (method, pattern, body) in _routes) {
       if (method == options.method && pattern.hasMatch(path)) {
-        return ResponseBody.fromString(jsonEncode(body(options)), 200, headers: {
+        final answer = body(options);
+        final status = answer is FakeStatus ? answer.status : 200;
+        final json = answer is FakeStatus ? {'detail': answer.detail} : answer;
+        return ResponseBody.fromString(jsonEncode(json), status, headers: {
           Headers.contentTypeHeader: ['application/json'],
         });
       }
@@ -274,13 +317,43 @@ class FakeBackend implements HttpClientAdapter {
 FakeBackend fixtureBackend() => FakeBackend()
   ..on('GET', r'/post/\d+/comments', (_) => {'items': fixtureCommentsJson()})
   ..on('GET', r'/post/comments/[^/]+/like-users', (_) => {'items': const []})
-  ..on('GET', r'/u/[^/]+/player', (_) => {'items': fixturePlayersJson()});
+  ..on('GET', r'/u/[^/]+/player', (_) => {'items': fixturePlayersJson()})
+  // The live notification stream: unavailable, so the app stays on its poll fallback.
+  ..on('GET', r'/realtime/notifications', (_) => const FakeStatus(503))
+  ..on('GET', r'/social-notifications/unread-count', (_) => {'unread_count': 3, 'count': 3})
+  ..on('GET', r'/social-notifications/', (_) => {'items': fixtureNotificationsJson()})
+  ..on('POST', r'/social-notifications/mark-(all-)?read', (_) => const <String, dynamic>{})
+  ..on('GET', r'/feed/promoted', (_) => {'items': const []})
+  ..on('GET', r'/feed/following', (_) => {'items': const []})
+  ..on('GET', r'/post/recent', (_) => {'items': const []})
+  ..on('GET', r'/post', (_) => {'items': const []})
+  ..on('GET', r'/hashtags/top', (_) => {
+        'hashtags': ['wip', 'nsfw'],
+        'items': ['wip', 'nsfw'],
+      })
+  ..on('GET', r'/hashtags/stats', (_) => {
+        'items': [
+          {'tag': 'wip', 'artwork_count': 1, 'reaction_count': 5},
+          {'tag': 'nsfw', 'artwork_count': 42, 'reaction_count': 1},
+        ],
+      })
+  ..on('GET', r'/hashtags/[^/]+/posts', (_) => {'items': const []})
+  ..on('GET', r'/user/browse', (_) => {
+        'items': [fixtureOwnerJson(), fixtureOwnerJson(handle: 'pixel_ada', sqid: 't5')],
+      })
+  ..on('GET', r'/search', (_) => {'items': const []});
 
 /// Overrides for a signed-in ([signedIn] true) or signed-out Club with the full config and,
 /// when [backend] is given, the fake backend under the real API client.
-List<Override> clubOverrides({bool signedIn = true, ClubMe? me, FakeBackend? backend}) => [
-      authControllerProvider.overrideWith((ref) => FakeAuth(
-          signedIn ? AuthState.signedIn(me ?? fixtureMe()) : const AuthState.signedOut())),
+///
+/// [offline] is the "signed in from the cached identity, server unreachable" state.
+List<Override> clubOverrides(
+        {bool signedIn = true, ClubMe? me, FakeBackend? backend, bool offline = false}) =>
+    [
+      authControllerProvider.overrideWith((ref) => FakeAuth(signedIn
+          ? AuthState.signedIn(me ?? fixtureMe(),
+              stale: offline, error: offline ? 'offline' : null)
+          : const AuthState.signedOut())),
       serverConfigProvider.overrideWith((ref) async => fixtureServerConfig()),
       if (backend != null)
         clubApiClientProvider.overrideWith((ref) {

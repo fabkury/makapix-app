@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../anim/animation_timeline.dart';
@@ -44,7 +45,7 @@ class _ContributePageState extends ConsumerState<ContributePage> {
       final f = res.files.single;
       final bytes = f.bytes;
       if (bytes == null) {
-        if (mounted) _snack('Could not read that file.');
+        if (mounted) _snack(context.l10n.contributeReadError);
         return;
       }
       // Decode just enough to size the artwork for the conformance check. `instantiateImageCodec`
@@ -53,7 +54,7 @@ class _ContributePageState extends ConsumerState<ContributePage> {
       try {
         codec = await ui.instantiateImageCodec(bytes);
       } catch (_) {
-        if (mounted) _snack("That file isn't a supported image.");
+        if (mounted) _snack(context.l10n.contributeNotImage);
         return;
       }
       final frame = await codec.getNextFrame();
@@ -109,6 +110,7 @@ class _ContributePageState extends ConsumerState<ContributePage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = context.l10n;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
       children: [
@@ -118,26 +120,27 @@ class _ContributePageState extends ConsumerState<ContributePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text('Contribute',
+                Text(l10n.contribute,
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
+                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 6),
-                const Text('Share your pixel art with the Club.',
-                    textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: Colors.white54)),
+                Text(l10n.contributeTagline,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 14, color: Colors.white54)),
                 const SizedBox(height: 28),
                 _OptionCard(
                   icon: Icons.brush_outlined,
                   accent: cs.primary,
-                  title: 'Makapix Editor',
-                  description: 'Create animated pixel art with the built-in Makapix Editor.',
+                  title: 'Makapix Editor', // l10n-ignore: product name
+                  description: l10n.contributeEditorBody,
                   onTap: _openEditor,
                 ),
                 const SizedBox(height: 16),
                 _OptionCard(
                   icon: Icons.upload_file_outlined,
                   accent: cs.primary,
-                  title: 'Upload a file',
-                  description: 'Post a PNG, GIF, WebP, or BMP straight from your device — no editing needed.',
+                  title: l10n.contributeUploadTitle,
+                  description: l10n.contributeUploadBody,
                   onTap: _uploadFile,
                   busy: _picking,
                 ),

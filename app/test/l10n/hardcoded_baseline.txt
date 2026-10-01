@@ -2,7 +2,7 @@
 # file. test/l10n/hardcoded_strings_test.dart fails if a file has MORE than its number (a
 # new hardcoded string) or FEWER (strings were extracted: re-pin with
 # `dart run tool/l10n/scan.dart --write-baseline`). Done when this file is empty.
-# total 2334 in 104 files
+# total 2253 in 99 files
 255 lib/editor/editor_page.controls.dart
 212 lib/editor/replay/visible_index.dart
 113 lib/club/ui/artwork_detail_page.dart
@@ -14,7 +14,7 @@
 61 lib/editor/layers/layers_more_sheet.dart
 51 lib/editor/editor_page.timeline.dart
 49 lib/club/ui/post_management_page.dart
-48 lib/club/ui/profile_page.dart
+49 lib/club/ui/profile_page.dart
 46 lib/club/ui/publish_page.dart
 46 lib/editor/editor_page.dart
 44 lib/editor/frames/frames_more_sheet.dart
@@ -30,22 +30,18 @@
 27 lib/editor/layers/layers_dialogs.dart
 24 lib/club/ui/edit_profile_page.dart
 23 lib/club/models/safety_copy.dart
-23 lib/club/ui/club_home_page.dart
 23 lib/editor/artwork_colors_page.dart
 23 lib/editor/editor_page.replay.dart
 22 lib/editor/frames/frames_dialogs.dart
 22 lib/editor/patterns/patterns_catalog.dart
 21 lib/club/ui/artist_dashboard_page.dart
 21 lib/share/image_share.dart
-20 lib/club/ui/notifications_page.dart
 20 lib/editor/editor_page.toolgrid.dart
 19 lib/editor/editor_page.persistence.dart
 18 lib/club/ui/post_stats_page.dart
 18 lib/editor/keyboard/cheat_sheet.dart
 17 lib/club/ui/edit_post_details_page.dart
 17 lib/club/ui/report_page.dart
-15 lib/club/ui/about_dialog.dart
-15 lib/club/ui/search_page.dart
 14 lib/editor/patterns/patterns_page.dart
 13 lib/editor/gallery/drawing_library_grid.dart
 13 lib/editor/layers/layer_model.dart
@@ -54,7 +50,6 @@
 12 lib/editor/keyboard/chords.dart
 11 lib/club/ui/rules_gate_page.dart
 8 lib/club/state/post_providers.dart
-8 lib/club/ui/contribute_page.dart
 8 lib/club/ui/monitored_hashtags_page.dart
 8 lib/editor/editor_page.keyboard.dart
 8 lib/editor/replay/replay_page.dart
@@ -84,12 +79,12 @@
 4 lib/editor/layers/layers_select_sheet.dart
 4 lib/editor/replay/replay_host.dart
 3 lib/club/models/report.dart
-3 lib/club/ui/comments_page.dart
 3 lib/editor/editor_page.frames.dart
 3 lib/editor/editor_page.layers.dart
 3 lib/editor/widgets/painters.dart
 2 lib/club/api/club_api_client.dart
 2 lib/club/models/auth_tokens.dart
+2 lib/club/state/feed_providers.dart
 2 lib/club/state/publish_providers.dart
 2 lib/editor/gallery/gallery_page.dart
 2 lib/editor/layers/layer_row.dart

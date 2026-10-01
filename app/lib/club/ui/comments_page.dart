@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 
@@ -18,7 +19,7 @@ class CommentsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Comments')),
+      appBar: AppBar(title: Text(context.l10n.commentsTitle)),
       body: CenteredContent(
           child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
@@ -40,7 +41,7 @@ class _ArtworkHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title = post.title.trim().isEmpty ? 'Untitled' : post.title.trim();
+    final title = post.title.trim().isEmpty ? context.l10n.untitled : post.title.trim();
     return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       GestureDetector(
         onTap: () =>
@@ -68,7 +69,8 @@ class _ArtworkHeader extends StatelessWidget {
           GestureDetector(
             onTap: () =>
                 Navigator.push(context, MaterialPageRoute(builder: (_) => ProfilePage(sqid: post.owner.sqid))),
-            child: Text('by @${post.owner.handle}', style: const TextStyle(fontSize: 13, color: Colors.white54)),
+            child: Text(context.l10n.byHandle(post.owner.handle),
+                style: const TextStyle(fontSize: 13, color: Colors.white54)),
           ),
         ]),
       ),

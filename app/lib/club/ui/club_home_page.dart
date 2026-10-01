@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/post.dart';
@@ -33,6 +34,11 @@ import 'widgets/send_target_binder.dart';
 /// The social hub. Top bar (left → right): the Makapix Club menu · my profile · notifications,
 /// then Contribute · Recommended · Recent · Following · Search. The selected page (Contribute, a
 /// feed, or Search) fills the body, and horizontal swipes move between them.
+/// Horizontal padding of the top bar's icon buttons. Eight of them sit side by side, which is
+/// 20 px too many for a 320 px phone at the regular padding — tighten there.
+EdgeInsets _navIconPadding(BuildContext context) => EdgeInsets.symmetric(
+    horizontal: MediaQuery.sizeOf(context).width < 340 ? 3 : 6);
+
 class ClubHomePage extends ConsumerStatefulWidget {
   const ClubHomePage({super.key});
   @override
@@ -105,9 +111,9 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
               feedProvider(kind),
               feedProvider(kind).notifier,
               name: switch (kind) {
-                FeedKind.promoted => 'Recommended',
-                FeedKind.recent => 'Recent',
-                FeedKind.following => 'Following',
+                FeedKind.promoted => context.l10n.feedRecommended,
+                FeedKind.recent => context.l10n.feedRecent,
+                FeedKind.following => context.l10n.feedFollowing,
               },
               icon: switch (kind) {
                 FeedKind.promoted => Icons.diamond,
@@ -124,9 +130,10 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
   // What "Send to Player" targets per feed. Recent/Recommended map to player channels; the
   // Following feed has no server channel, so sending is disabled there (until an artwork is opened).
   PlayerSendTarget? _channelFor(FeedKind kind) => switch (kind) {
-        FeedKind.recent => const ChannelTarget(displayName: 'Recent', channelName: 'all'),
+        FeedKind.recent =>
+          ChannelTarget(displayName: context.l10n.feedRecent, channelName: 'all'),
         FeedKind.promoted =>
-          const ChannelTarget(displayName: 'Recommended', channelName: 'promoted'),
+          ChannelTarget(displayName: context.l10n.feedRecommended, channelName: 'promoted'),
         FeedKind.following => null,
       };
 
@@ -157,7 +164,7 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
       color: color,
       tooltip: tip,
       visualDensity: VisualDensity.compact,
-      padding: const EdgeInsets.symmetric(horizontal: 6),
+      padding: _navIconPadding(context),
       constraints: const BoxConstraints(),
       onPressed: onTap,
     );
@@ -173,7 +180,7 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
   // The Contribute selector: like a feed icon, but its "feed" is the Contribute page (page 0).
   Widget _contributeIcon(ColorScheme cs) {
     final selected = _page == 0;
-    return _navIcon(selected ? Icons.brush : Icons.brush_outlined, 'Contribute',
+    return _navIcon(selected ? Icons.brush : Icons.brush_outlined, context.l10n.contribute,
         () => _goToPage(0),
         color: selected ? cs.primary : null);
   }
@@ -181,7 +188,8 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
   // The Search selector: highlighted while the Search page (the last page) is active.
   Widget _searchIcon(ColorScheme cs) {
     final selected = _page == _searchPage;
-    return _navIcon(Icons.search, 'Search', _openSearch, color: selected ? cs.primary : null);
+    return _navIcon(Icons.search, context.l10n.search, _openSearch,
+        color: selected ? cs.primary : null);
   }
 
   PopupMenuItem<String> _menuItem(String value, IconData icon, String label) => PopupMenuItem<String>(
@@ -256,6 +264,7 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
     // Contribute, `_feed == null`), and only once tags have loaded.
     final tags = ref.watch(topHashtagsProvider).valueOrNull ?? const <String>[];
     final showHashtags = _feed != null && tags.isNotEmpty;
+    final l10n = context.l10n;
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
@@ -264,32 +273,42 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
         // Left group: Makapix Club menu · my profile · notifications.
         title: Row(mainAxisSize: MainAxisSize.min, children: [
           PopupMenuButton<String>(
-            tooltip: 'Makapix Club',
+            tooltip: 'Makapix Club', // l10n-ignore: brand name
             icon: const Icon(Icons.menu, size: 22),
-            padding: const EdgeInsets.symmetric(horizontal: 6),
+            padding: _navIconPadding(context),
+            // The menu button keeps Material's 48 px minimum; on a 320 px phone that is what
+            // pushes the row past the bar, so it goes compact there like its neighbors.
+            style: MediaQuery.sizeOf(context).width < 340
+                ? IconButton.styleFrom(
+                    minimumSize: Size.zero,
+                    padding: _navIconPadding(context),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  )
+                : null,
             onSelected: _onMenu,
             itemBuilder: (_) => [
-              _menuItem('account', Icons.account_circle_outlined, 'Account'),
-              _menuItem('my-posts', Icons.grid_view_outlined, 'My Posts'),
-              _menuItem('players', Icons.cast_outlined, 'My Players'),
-              _menuItem('dashboard', Icons.insights_outlined, 'Artist Dashboard'),
-              if (canModerate) _menuItem('moderation', Icons.shield_outlined, 'Moderation'),
-              _menuItem('settings', Icons.settings_outlined, 'Settings'),
-              _menuItem('about', Icons.info_outline, 'About Makapix Club'),
+              _menuItem('account', Icons.account_circle_outlined, l10n.accountTitle),
+              _menuItem('my-posts', Icons.grid_view_outlined, l10n.menuMyPosts),
+              _menuItem('players', Icons.cast_outlined, l10n.myPlayers),
+              _menuItem('dashboard', Icons.insights_outlined, l10n.menuArtistDashboard),
+              if (canModerate)
+                _menuItem('moderation', Icons.shield_outlined, l10n.menuModeration),
+              _menuItem('settings', Icons.settings_outlined, l10n.settingsTitle),
+              _menuItem('about', Icons.info_outline, l10n.menuAbout),
               const PopupMenuDivider(),
-              _menuItem('signout', Icons.logout, 'Sign out'),
+              _menuItem('signout', Icons.logout, l10n.commonSignOut),
             ],
           ),
-          _navIcon(Icons.person_outline, 'My profile',
+          _navIcon(Icons.person_outline, l10n.myProfile,
               mySqid == null ? () {} : () => _push(ProfilePage(sqid: mySqid))),
           _NotifAction(unread: unread, onTap: () => _push(const NotificationsPage())),
         ]),
         // Right group: Contribute · Recommended · Recent · Following · Search.
         actions: [
           _contributeIcon(cs),
-          _feedIcon(Icons.diamond_outlined, Icons.diamond, 'Recommended', FeedKind.promoted, cs),
-          _feedIcon(Icons.visibility_outlined, Icons.visibility, 'Recent', FeedKind.recent, cs),
-          _feedIcon(Icons.people_outline, Icons.people, 'Following', FeedKind.following, cs),
+          _feedIcon(Icons.diamond_outlined, Icons.diamond, l10n.feedRecommended, FeedKind.promoted, cs),
+          _feedIcon(Icons.visibility_outlined, Icons.visibility, l10n.feedRecent, FeedKind.recent, cs),
+          _feedIcon(Icons.people_outline, Icons.people, l10n.feedFollowing, FeedKind.following, cs),
           _searchIcon(cs),
           const SizedBox(width: 4),
         ],
@@ -363,7 +382,7 @@ class _OfflineStripState extends State<_OfflineStrip> {
           Icon(Icons.cloud_off, size: 18, color: cs.onSurfaceVariant),
           const SizedBox(width: 10),
           Expanded(
-            child: Text("Can't reach Makapix Club. Showing your saved sign-in.",
+            child: Text(context.l10n.homeOffline,
                 style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
           ),
           if (_busy)
@@ -372,7 +391,7 @@ class _OfflineStripState extends State<_OfflineStrip> {
               child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
             )
           else
-            TextButton(onPressed: _retry, child: const Text('Retry')),
+            TextButton(onPressed: _retry, child: Text(context.l10n.commonRetry)),
         ]),
       ),
     );
@@ -390,9 +409,9 @@ class _NotifAction extends StatelessWidget {
       IconButton(
         icon: const Icon(Icons.notifications_none),
         iconSize: 22,
-        tooltip: 'Notifications',
+        tooltip: context.l10n.notifications,
         visualDensity: VisualDensity.compact,
-        padding: const EdgeInsets.symmetric(horizontal: 6),
+        padding: _navIconPadding(context),
         constraints: const BoxConstraints(),
         onPressed: onTap,
       ),

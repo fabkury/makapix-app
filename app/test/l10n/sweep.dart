@@ -80,7 +80,8 @@ void sweepScreen(
           }
           if (act != null) {
             await act(tester);
-            for (var i = 0; i < 4; i++) {
+            // Long enough for a menu, sheet, or dialog to finish opening (300 ms).
+            for (var i = 0; i < 8; i++) {
               await tester.pump(const Duration(milliseconds: 50));
             }
           }

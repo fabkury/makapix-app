@@ -18,14 +18,14 @@ are the acceptance test.
 | Phase | What | Status |
 |---|---|---|
 | L0 | Infrastructure, test harness, pilot (Settings, language picker, tool names) | **done 2026-10-01** |
-| L1 | Club pillar: extract + translate + sweep, batch by batch | in progress — C1–C2 of C1–C9 done |
+| L1 | Club pillar: extract + translate + sweep, batch by batch | in progress — C1–C3 of C1–C9 done |
 | L2 | Editor pillar: extract + translate + sweep, batch by batch | not started (tool names done in L0) |
 | L3 | Independent translation review (one agent per language), fixes, layout hardening | not started |
 | L4 | Seams and periphery, then flip `kTranslationsShipped` | not started |
 
 **Progress number:** the total on line 5 of `app/test/l10n/hardcoded_baseline.txt` — the
 hardcoded strings the scanner still finds. 2,683 after L0 (scanner as tightened in C1); 2,516
-after C1; 2,334 after C2. Zero means L1 + L2 are done.
+after C1; 2,334 after C2; 2,253 after C3. Zero means L1 + L2 are done.
 
 **Release safety while this is in progress:** `kTranslationsShipped` is `false`
 (`app/lib/l10n/app_locale.dart`), so a release build offers English only and hides the language
@@ -85,8 +85,10 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   account, onboarding wizard, welcome and resolving pages, the auth controllers and validators.
   Sweeps: `sweep_auth_test.dart`; `behavior_test.dart` (the delete-account confirmation word is each
   language's own).
-- [ ] **C3 Home, feeds, search, notifications** — club_home (23), search (15), hashtag_feed (1),
-  notifications (20), contribute (8), about_dialog (15)
+- [x] **C3 Home, feeds, search, notifications** — done 2026-10-01: Club home (top bar, menu, feed
+  names, offline strip), search, hashtag feed, notifications (one message per notification type),
+  Contribute, About, comments page. Sweeps: `sweep_home_test.dart`. Report notifications
+  (`newReportText` / `reportResolvedText` in `models/safety_copy`) are batch C7.
 - [ ] **C4 Profile and account** — profile (52), edit_profile (24), follows (5), reactions (7),
   my_remixes (4), artist_dashboard (21), post_stats (18)
 - [ ] **C5 Artwork** — artwork_detail (116), lineage (12)
@@ -182,8 +184,15 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   `engine.dispose()`; in the harness that was a native crash. Not fixed (outside this workstream);
   the harness waits for the first drawing to reach disk before it unmounts.
 
+- **Club home top bar on a 320 px phone.** The eight icon buttons overflowed the bar by 20 px in
+  every language, English included (found by the sweep, 2026-10-01). Fixed: under 340 px the
+  icons use tighter padding and the menu button drops Material's 48 px minimum.
+
 ## Session log
 
+- **2026-10-01** — C3 (home, search, notifications, Contribute, About): 72 messages. Sweep
+  findings fixed: home top bar overflow at 320 px (pre-existing, all languages), search tab
+  labels cut off in Russian and Japanese. 2,869 Dart tests pass.
 - **2026-10-01** — C2 (sign-in, account creation, onboarding, account management): 136 messages.
   Sweep findings fixed: the onboarding and resolving top-bar titles were truncating on phones
   (in English too); several field labels shortened per language. patch.py path bug fixed (it

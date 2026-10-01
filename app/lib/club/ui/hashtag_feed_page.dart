@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/post.dart';
@@ -28,7 +29,7 @@ class HashtagFeedPage extends ConsumerWidget {
             state: state,
             onLoadMore: n.loadMore,
             onRefresh: n.refresh,
-            emptyMessage: 'No artworks tagged #$tag.',
+            emptyMessage: context.l10n.hashtagFeedEmpty(tag),
             onTap: (Post p) => Navigator.push(
                 context,
                 MaterialPageRoute(

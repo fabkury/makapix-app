@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -60,7 +61,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
     } else if (!s.initialized && s.loading) {
       body = const Center(child: CircularProgressIndicator());
     } else if (s.items.isEmpty) {
-      body = const ClubEmpty(message: 'No notifications yet.', icon: Icons.notifications_none);
+      body = ClubEmpty(message: context.l10n.notifEmpty, icon: Icons.notifications_none);
     } else {
       body = RefreshIndicator(
         onRefresh: n.refresh,
@@ -84,7 +85,8 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
       );
     }
     return Scaffold(
-        appBar: AppBar(title: const Text('Notifications')), body: CenteredContent(child: body));
+        appBar: AppBar(title: Text(context.l10n.notifications)),
+        body: CenteredContent(child: body));
   }
 
   // Moderation/report types are presented impersonally (a shield avatar), never
@@ -149,59 +151,60 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
   }
 
   String _text(ClubNotification x, List<ReportReason>? reasons) {
-    final who = x.actorHandle ?? 'Someone';
+    final l10n = context.l10n;
+    final who = x.actorHandle ?? l10n.notifSomeone;
+    final title = x.contentTitle;
+    // A sentence, then (when there is one) the quoted excerpt after a colon.
+    String withPreview(String text, String? preview) =>
+        preview != null && preview.isNotEmpty ? l10n.notifWithPreview(text, preview) : text;
     switch (x.type) {
       case 'reaction':
-        return '$who reacted ${x.emoji ?? ''} to ${x.contentTitle ?? 'your post'}';
+        final emoji = x.emoji ?? '';
+        return title != null
+            ? l10n.notifReaction(who, emoji, title)
+            : l10n.notifReactionYourPost(who, emoji);
       case 'comment':
-        return '$who commented: ${x.commentPreview ?? ''}';
+        return withPreview(l10n.notifComment(who), x.commentPreview);
       case 'comment_reply':
-        return '$who replied: ${x.commentPreview ?? ''}';
+        return withPreview(l10n.notifReply(who), x.commentPreview);
       case 'comment_like':
-        return '$who liked your comment';
+        return l10n.notifCommentLike(who);
       case 'mention':
         // `comment_id` null means the mention was in the post's description
         // (server message 0004/0002 §4). Both variants deep-link to the post.
-        final where = x.contentTitle != null ? ' on "${x.contentTitle}"' : '';
         if (x.commentId == null || x.commentId!.isEmpty) {
-          return '$who mentioned you in the description'
-              '${x.contentTitle != null ? ' of "${x.contentTitle}"' : ''}';
+          return title != null
+              ? l10n.notifMentionDescriptionOf(who, title)
+              : l10n.notifMentionDescription(who);
         }
-        final preview = x.commentPreview;
-        return '$who mentioned you in a comment$where'
-            '${preview != null && preview.isNotEmpty ? ': $preview' : ''}';
+        return withPreview(
+            title != null ? l10n.notifMentionCommentOn(who, title) : l10n.notifMentionComment(who),
+            x.commentPreview);
       case 'follow':
-        return '$who started following you';
+        return l10n.notifFollow(who);
       case 'remix':
         // Content fields are denormalized from the CHILD post (the remix), so
         // contentTitle names the remix and the tile deep-links to it.
-        return '$who published a remix of your artwork'
-            '${x.contentTitle != null ? ': "${x.contentTitle}"' : ''}';
+        return title != null ? l10n.notifRemixTitled(who, title) : l10n.notifRemix(who);
       case 'post_promoted':
-        return 'Your post was promoted${x.contentTitle != null ? ': ${x.contentTitle}' : ''}';
+        return withPreview(l10n.notifPromoted, title);
       case 'post_approved':
-        return 'Your artwork${x.contentTitle != null ? ' "${x.contentTitle}"' : ''} '
-            'was approved by a moderator and is now publicly released';
+        return title != null ? l10n.notifApprovedTitled(title) : l10n.notifApproved;
       case 'trust_granted':
         // No tap target by contract (post_id and content_* are null); the
         // avatar still links to the granting moderator's profile.
-        return x.actorHandle != null
-            ? '${x.actorHandle} granted you Trust — your posts are now '
-                'auto-approved for public release'
-            : 'You were granted Trust — your posts are now auto-approved '
-                'for public release';
+        return x.actorHandle != null ? l10n.notifTrustBy(x.actorHandle!) : l10n.notifTrust;
       case 'mod_hashtags_updated':
         // The +tag −tag diff arrives pre-formatted in comment_preview (contract §7).
-        return 'A moderator changed the hashtags on ${x.contentTitle ?? 'your artwork'}'
-            '${x.commentPreview != null ? ': ${x.commentPreview}' : ''}';
+        return withPreview(
+            title != null ? l10n.notifModTags(title) : l10n.notifModTagsYourArtwork,
+            x.commentPreview);
       case 'reputation_change':
-        return 'Your reputation changed';
+        return l10n.notifReputation;
       case 'moderator_granted':
-        return x.actorHandle != null
-            ? '${x.actorHandle} made you a moderator'
-            : 'You are now a moderator';
+        return x.actorHandle != null ? l10n.notifModeratorBy(x.actorHandle!) : l10n.notifModerator;
       case 'moderator_revoked':
-        return 'Your moderator role was removed';
+        return l10n.notifModeratorRevoked;
       case 'new_report':
         // Composed from reason_code + the reported post/comment/user
         // (report-artwork message 0001); legacy rows keep their pre-formatted
