@@ -48,7 +48,8 @@ Future<void> tapOpener(WidgetTester tester) => tester.tap(find.byKey(Opener.butt
 /// test created (a fresh fake per test), to hand to `clubOverrides`. [act] runs after the first
 /// pump (open a menu, scroll, tap a tab) so the state under test is on screen. [allowLatin]
 /// lists fixture text; [allowTruncated] lists texts that are cut off by design in every
-/// language (user content shown with an ellipsis). [sizes] narrows the screen sizes.
+/// language (user content shown with an ellipsis). [sizes] narrows the screen sizes. [drain]
+/// unmounts the screen at the end and lets that much time pass, for screens that keep a timer.
 void sweepScreen(
   String name, {
   required Widget Function() build,
@@ -59,6 +60,7 @@ void sweepScreen(
   Map<String, Size>? sizes,
   Map<String, Object> prefs = const {},
   FakeBackend Function()? backend,
+  Duration? drain,
 }) {
   group('sweep: $name', () {
     for (final locale in allLocales) {
@@ -111,6 +113,12 @@ void sweepScreen(
           } else if (lang != 'en') {
             expect(leftoverEnglish(tester, lang), isEmpty,
                 reason: 'English wording on a $lang screen');
+          }
+
+          // A screen that polls leaves its next tick scheduled; unmount and let it run out.
+          if (drain != null) {
+            await tester.pumpWidget(const SizedBox());
+            await tester.pump(drain);
           }
         });
       }

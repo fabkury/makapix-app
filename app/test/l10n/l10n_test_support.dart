@@ -231,7 +231,7 @@ List<String> visibleTexts(WidgetTester tester) {
 /// units, and color-model abbreviations (docs/i18n/GLOSSARY.md "Never translated").
 const Set<String> kNeverTranslated = {
   'makapix', 'club', 'editor', 'github', 'apple', 'google', 'android', 'ios', 'windows',
-  'mkpx', 'png', 'gif', 'webp', 'apng', 'jpeg', 'jpg', 'bmp', 'mp4', 'gpl', 'aseprite',
+  'mkpx', 'zip', 'png', 'gif', 'webp', 'apng', 'jpeg', 'jpg', 'bmp', 'mp4', 'gpl', 'aseprite',
   'hsv', 'rgb', 'rgba', 'hex', 'aa', 'px', 'ms', 'fps', 'kib', 'mib', 'gib', 'ok', 'url',
   'nsfw', 'id', 'cc', 'by', 'sa', 'nc', 'nd',
 };

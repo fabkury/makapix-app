@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -114,7 +115,8 @@ class _EditPostDetailsPageState extends ConsumerState<EditPostDetailsPage> {
 
   Future<void> _save() async {
     final title = _title.text.trim();
-    if (title.isEmpty) return _toast('The title cannot be empty.');
+    if (title.isEmpty) return _toast(context.l10n.editDetailsEmptyTitle);
+    final saveFailed = context.l10n.commonSaveChangesFailed;
     setState(() => _saving = true);
     try {
       await ref.read(postApiProvider).update(
@@ -139,7 +141,7 @@ class _EditPostDetailsPageState extends ConsumerState<EditPostDetailsPage> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);
-      _toast('Could not save the changes.');
+      _toast(saveFailed);
     }
   }
 
@@ -147,11 +149,13 @@ class _EditPostDetailsPageState extends ConsumerState<EditPostDetailsPage> {
     final discard = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Discard changes?'),
-        content: const Text('Your edits to this post have not been saved.'),
+        title: Text(ctx.l10n.commonDiscardTitle),
+        content: Text(ctx.l10n.editDetailsDiscardBody),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep editing')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Discard')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.commonKeepEditing)),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true), child: Text(ctx.l10n.commonDiscard)),
         ],
       ),
     );
@@ -161,13 +165,14 @@ class _EditPostDetailsPageState extends ConsumerState<EditPostDetailsPage> {
   @override
   Widget build(BuildContext context) {
     final modTags = widget.post.modHashtags;
+    final l10n = context.l10n;
     return PopScope(
       canPop: !_dirty,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _confirmDiscard();
       },
       child: Scaffold(
-        appBar: AppBar(title: const Text('Edit details')),
+        appBar: AppBar(title: Text(l10n.editDetailsTitle)),
         body: CenteredContent(
             child: ListView(
           padding: const EdgeInsets.all(20),
@@ -176,9 +181,9 @@ class _EditPostDetailsPageState extends ConsumerState<EditPostDetailsPage> {
               controller: _title,
               maxLength: 128,
               onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(
-                labelText: 'Title',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l10n.postTitleLabel,
+                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 12),
@@ -194,9 +199,9 @@ class _EditPostDetailsPageState extends ConsumerState<EditPostDetailsPage> {
                 maxLines: 6,
                 maxLength: 5000,
                 onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
-                  labelText: 'Description',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: l10n.postDescriptionLabel,
+                  border: const OutlineInputBorder(),
                   alignLabelWithHint: true,
                 ),
               ),
@@ -205,11 +210,11 @@ class _EditPostDetailsPageState extends ConsumerState<EditPostDetailsPage> {
             TextField(
               controller: _hashtags,
               onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(
-                labelText: 'Hashtags',
-                hintText: 'pixelart, animation, fantasy',
-                helperText: 'Separate with commas.',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l10n.postHashtagsLabel,
+                hintText: l10n.postHashtagsHint,
+                helperText: l10n.postHashtagsHelper,
+                border: const OutlineInputBorder(),
               ),
             ),
             if (modTags.isNotEmpty) ...[
@@ -223,19 +228,15 @@ class _EditPostDetailsPageState extends ConsumerState<EditPostDetailsPage> {
                   ),
               ]),
               const SizedBox(height: 4),
-              const Text('Tagged by a moderator — these tags cannot be edited.',
-                  style: TextStyle(fontSize: 12, color: Colors.white54)),
+              Text(l10n.editDetailsModTags,
+                  style: const TextStyle(fontSize: 12, color: Colors.white54)),
             ],
             const SizedBox(height: 4),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Allow remixes'),
+              title: Text(l10n.publishAllowRemixes),
               subtitle: Text(
-                _ndLicense
-                    ? 'NoDerivatives licenses don\'t allow remixes.'
-                    : 'Others can open this artwork in the editor and publish remixes, '
-                        'credited to you in its public lineage. Existing remixes always '
-                        'keep their link.',
+                _ndLicense ? l10n.publishNdNoRemixes : l10n.editDetailsAllowRemixesBody,
                 style: const TextStyle(fontSize: 12),
               ),
               value: !_ndLicense && _remixable,
@@ -249,7 +250,7 @@ class _EditPostDetailsPageState extends ConsumerState<EditPostDetailsPage> {
                   ? const SizedBox(
                       width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.check),
-              label: const Text('Save'),
+              label: Text(l10n.commonSave),
             ),
           ],
         )),

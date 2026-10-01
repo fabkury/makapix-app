@@ -1,9 +1,11 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../models/license_option.dart';
@@ -65,7 +67,7 @@ class _PublishPageState extends ConsumerState<PublishPage> {
     final src = widget.draft.source;
     if (src != null) {
       _title.text = src.title;
-      _desc.text = 'Remix of "${src.title}" by @${src.ownerHandle}.';
+      _desc.text = appL10n.publishRemixDescription(src.title, src.ownerHandle);
     }
     // Clear any prior success/error from a previous publish.
     WidgetsBinding.instance.addPostFrameCallback((_) => ref.read(publishControllerProvider.notifier).reset());
@@ -95,9 +97,9 @@ class _PublishPageState extends ConsumerState<PublishPage> {
     final auth = ref.watch(authControllerProvider);
     if (!auth.isSignedIn) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Post to Club')),
+        appBar: AppBar(title: Text(context.l10n.publishTitle)),
         body: SignInPrompt(
-          message: 'Sign in to publish to Makapix Club.',
+          message: context.l10n.publishSignIn,
           onSignIn: () =>
               Navigator.push(context, MaterialPageRoute(builder: (_) => const ClubAccountPage())),
         ),
@@ -109,7 +111,7 @@ class _PublishPageState extends ConsumerState<PublishPage> {
     }
     final cfg = ref.watch(serverConfigProvider).valueOrNull ?? ClubServerConfig.fallback;
     return Scaffold(
-      appBar: AppBar(title: const Text('Post to Club')),
+      appBar: AppBar(title: Text(context.l10n.publishTitle)),
       body: CenteredContent(child: _form(cfg, pub)),
     );
   }
@@ -126,6 +128,7 @@ class _PublishPageState extends ConsumerState<PublishPage> {
     final canPostPublic = ref.watch(authControllerProvider).me?.capabilities['can_post_public'] == true;
     final uploading = pub.status == PublishStatus.uploading;
     final kib = (d.byteLength / 1024).toStringAsFixed(0);
+    final l10n = context.l10n;
     // An explicit ListView padding replaces the safe-area inset, so the bottom must add the
     // system inset back (gesture bar / home indicator) plus breathing room: the Publish button
     // used to sit flush against the very bottom of the screen (2026-09-01).
@@ -145,9 +148,15 @@ class _PublishPageState extends ConsumerState<PublishPage> {
         const SizedBox(height: 8),
         Center(
           child: Text(
-            '${d.width}×${d.height}  ·  ${d.isAnimated ? '${d.frameCount} frames' : 'static'}'
-            '${d.isAnimated && d.totalDurationMs != null ? '  ·  ${(d.totalDurationMs! / 1000).toStringAsFixed(1)} s loop' : ''}'
-            '  ·  ${d.format.toUpperCase()}  ·  $kib KiB',
+            [
+              '${d.width}×${d.height}',
+              d.isAnimated ? l10n.artworkFrames(d.frameCount) : l10n.artworkStatic,
+              if (d.isAnimated && d.totalDurationMs != null)
+                l10n.publishLoopSeconds(
+                    NumberFormat('0.0', l10n.localeName).format(d.totalDurationMs! / 1000)),
+              d.format.toUpperCase(),
+              '$kib KiB', // l10n-ignore: unit symbol
+            ].join('  ·  '),
             style: const TextStyle(fontSize: 12, color: Colors.white54),
           ),
         ),
@@ -166,15 +175,15 @@ class _PublishPageState extends ConsumerState<PublishPage> {
                   ? const SizedBox(
                       height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.photo_size_select_small),
-              label: Text(
-                  'Scale to ${result.nearestSize![0]}×${result.nearestSize![1]} (nearest neighbor)'),
+              label: Text(l10n.publishScaleTo(result.nearestSize![0], result.nearestSize![1])),
             ),
           ),
         const SizedBox(height: 12),
         TextField(
           controller: _title,
           maxLength: 128,
-          decoration: const InputDecoration(labelText: 'Title', border: OutlineInputBorder()),
+          decoration:
+              InputDecoration(labelText: l10n.postTitleLabel, border: const OutlineInputBorder()),
         ),
         const SizedBox(height: 8),
         MentionField(
@@ -190,32 +199,36 @@ class _PublishPageState extends ConsumerState<PublishPage> {
             maxLength: 5000,
             minLines: 2,
             maxLines: 5,
-            decoration: const InputDecoration(
-                labelText: 'Description (optional)', border: OutlineInputBorder(), counterText: ''),
+            decoration: InputDecoration(
+                labelText: l10n.publishDescriptionOptional,
+                border: const OutlineInputBorder(),
+                counterText: ''),
           ),
         ),
         const SizedBox(height: 8),
         TextField(
           controller: _tags,
-          decoration: const InputDecoration(
-              labelText: 'Hashtags (comma-separated)', border: OutlineInputBorder()),
+          decoration: InputDecoration(
+              labelText: l10n.postHashtagsLabel,
+              helperText: l10n.postHashtagsHelper,
+              border: const OutlineInputBorder()),
         ),
         const SizedBox(height: 12),
         _licenseDropdown(),
         _remixableTile(uploading),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Post as hidden'),
-          subtitle: const Text('Only you can see it until you unhide.', style: TextStyle(fontSize: 12)),
+          title: Text(l10n.publishHidden),
+          subtitle: Text(l10n.publishHiddenSubtitle, style: const TextStyle(fontSize: 12)),
           value: _hidden,
           onChanged: uploading ? null : (v) => setState(() => _hidden = v),
         ),
         ..._shareLayersTile(cfg, uploading),
         if (!canPostPublic && !_hidden)
-          const Padding(
-            padding: EdgeInsets.only(bottom: 8),
-            child: Text('Your post will await moderator approval before appearing publicly.',
-                style: TextStyle(fontSize: 12, color: Colors.amberAccent)),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(l10n.publishAwaitsApproval,
+                style: const TextStyle(fontSize: 12, color: Colors.amberAccent)),
           ),
         ..._remixDeclarationNote(),
         if (pub.status == PublishStatus.error && pub.error != null)
@@ -229,15 +242,15 @@ class _PublishPageState extends ConsumerState<PublishPage> {
             style: FilledButton.styleFrom(backgroundColor: const Color(0xFF4080C0)),
             onPressed: (result.ok && !uploading) ? _replace : null,
             icon: const Icon(Icons.published_with_changes),
-            label: const Text('Replace original'),
+            label: Text(l10n.publishReplace),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
             child: Text(
-                'Updates the existing post in place — keeps its reactions, comments, and stats. '
-                'The metadata above applies only when posting as new.'
                 // Server-side rule: replacing a post's artwork drops its layers file.
-                '${d.source!.hasMkpx && cfg.upload.mkpx.enabled ? '\nReplacing also removes the layers (.mkpx) file attached to the post — you can attach a new one from the post page afterwards.' : ''}',
+                d.source!.hasMkpx && cfg.upload.mkpx.enabled
+                    ? '${l10n.publishReplaceNote}\n${l10n.publishReplaceDropsLayers}'
+                    : l10n.publishReplaceNote,
                 style: const TextStyle(fontSize: 11, color: Colors.white54)),
           ),
         ],
@@ -246,7 +259,9 @@ class _PublishPageState extends ConsumerState<PublishPage> {
           icon: uploading
               ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
               : const Icon(Icons.cloud_upload),
-          label: Text(uploading ? 'Uploading…' : (d.source != null ? 'Post as new' : 'Publish')),
+          label: Text(uploading
+              ? l10n.publishUploading
+              : (d.source != null ? l10n.publishAsNew : l10n.publishAction)),
         ),
       ],
     );
@@ -276,12 +291,9 @@ class _PublishPageState extends ConsumerState<PublishPage> {
     final effective = !nd && _remixable;
     return SwitchListTile(
       contentPadding: EdgeInsets.zero,
-      title: const Text('Allow remixes'),
+      title: Text(context.l10n.publishAllowRemixes),
       subtitle: Text(
-        nd
-            ? 'NoDerivatives licenses don\'t allow remixes.'
-            : 'Others can open this artwork in the editor and publish remixes, '
-                'credited to you in its public lineage. You can change this later.',
+        nd ? context.l10n.publishNdNoRemixes : context.l10n.publishAllowRemixesBody,
         style: const TextStyle(fontSize: 12),
       ),
       value: effective,
@@ -299,8 +311,8 @@ class _PublishPageState extends ConsumerState<PublishPage> {
         padding: const EdgeInsets.only(bottom: 8),
         child: Text(
           src != null
-              ? 'Will be published as a remix of "${src.title}" by @${src.ownerHandle} — the link is public and permanent.'
-              : 'Will be published as a remix (${parents.length} parent${parents.length == 1 ? '' : 's'}) — the link is public and permanent.',
+              ? context.l10n.publishRemixNote(src.title, src.ownerHandle)
+              : context.l10n.publishRemixNoteCount(parents.length),
           style: const TextStyle(fontSize: 12, color: Colors.white54),
         ),
       ),
@@ -328,16 +340,16 @@ class _PublishPageState extends ConsumerState<PublishPage> {
     final proceed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(gone ? 'Original post not found' : 'Remixing was turned off'),
+        title: Text(gone ? ctx.l10n.publishParentGoneTitle : ctx.l10n.publishRemixOffTitle),
         content: Text(
-          '${gone ? 'The post this remix declares as its original no longer exists.' : 'The artist has since disabled remixes of the original post.'}\n\n'
-          'You can publish without the remix declaration — your post won\'t be linked to the original.',
+          '${gone ? ctx.l10n.publishParentGoneBody : ctx.l10n.publishRemixOffBody}\n\n'
+          '${ctx.l10n.publishStripClaimBody}',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(ctx.l10n.commonCancel)),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Publish without remix claim'),
+            child: Text(ctx.l10n.publishStripClaimAction),
           ),
         ],
       ),
@@ -372,6 +384,7 @@ class _PublishPageState extends ConsumerState<PublishPage> {
   /// re-quantize and BMP has no encoder.
   Future<void> _scaleToNearest(List<int> size) async {
     final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
     setState(() => _scaling = true);
     final d = _draft;
     final format = d.isAnimated ? 'webp' : 'png';
@@ -380,7 +393,7 @@ class _PublishPageState extends ConsumerState<PublishPage> {
     if (!mounted) return;
     if (bytes == null) {
       setState(() => _scaling = false);
-      messenger.showSnackBar(const SnackBar(content: Text('Could not scale this image.')));
+      messenger.showSnackBar(SnackBar(content: Text(l10n.publishScaleFailed)));
       return;
     }
     setState(() {
@@ -397,7 +410,7 @@ class _PublishPageState extends ConsumerState<PublishPage> {
         totalDurationMs: d.totalDurationMs,
       );
     });
-    messenger.showSnackBar(SnackBar(content: Text('Scaled to ${size[0]}×${size[1]}.')));
+    messenger.showSnackBar(SnackBar(content: Text(l10n.publishScaled(size[0], size[1]))));
   }
 
   static String _scaledFilename(String name, String ext) {
@@ -420,13 +433,12 @@ class _PublishPageState extends ConsumerState<PublishPage> {
     return [
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
-        title: const Text('Share the layers (.mkpx) file'),
+        title: Text(context.l10n.publishShareLayers),
         subtitle: Text(
           tooLarge
-              ? 'Too large to share — $kib KiB exceeds the '
-                  '${(rules.maxFileBytes / (1024 * 1024)).toStringAsFixed(0)} MiB limit.'
-              : 'Signed-in members can open this artwork in the editor with all '
-                  'layers and frames ($kib KiB).',
+              ? context.l10n.publishLayersTooLarge(
+                  kib, (rules.maxFileBytes / (1024 * 1024)).toStringAsFixed(0))
+              : context.l10n.publishShareLayersBody(kib),
           style: TextStyle(fontSize: 12, color: tooLarge ? Colors.amberAccent : null),
         ),
         value: _shareLayers,
@@ -436,30 +448,30 @@ class _PublishPageState extends ConsumerState<PublishPage> {
   }
 
   Widget _conformanceBanner(ConformanceResult r) {
+    final l10n = context.l10n;
     if (r.ok) {
       return _banner(const Color(0x2200C853), const Color(0xFF00C853), Icons.check_circle_outline,
-          'Ready to publish — this artwork meets Makapix Club\'s requirements.');
+          l10n.publishReady);
     }
     final msgs = <String>[];
     for (final i in r.issues) {
       switch (i) {
         case ConformanceIssue.overMax:
-          msgs.add('Too large — the maximum is 256×256.');
+          msgs.add(l10n.publishTooLarge);
         case ConformanceIssue.underMinNotWhitelisted:
-          msgs.add('This size isn\'t allowed. Use 128–256 on both sides, or a standard small size.');
+          msgs.add(l10n.publishSizeNotAllowed);
         case ConformanceIssue.fileTooLarge:
-          msgs.add('File exceeds the size limit.');
+          msgs.add(l10n.publishFileTooLarge);
         case ConformanceIssue.unsupportedFormat:
-          msgs.add('Unsupported format.');
+          msgs.add(l10n.publishUnsupportedFormat);
       }
     }
     if (r.nearestSize != null) {
       // The one-tap scale button renders right below when there's no layers
       // file; editor drafts with one keep the resize-in-the-editor guidance.
       msgs.add(_draft.mkpxBytes == null
-          ? 'Nearest allowed size: ${r.nearestSize![0]}×${r.nearestSize![1]}.'
-          : 'Nearest allowed size: ${r.nearestSize![0]}×${r.nearestSize![1]} '
-              '(resize in the editor, then try again).');
+          ? l10n.publishNearestSize(r.nearestSize![0], r.nearestSize![1])
+          : l10n.publishNearestSizeEditor(r.nearestSize![0], r.nearestSize![1]));
     }
     return _banner(const Color(0x22FF5252), const Color(0xFFFF5252), Icons.error_outline, msgs.join('\n'));
   }
@@ -479,9 +491,12 @@ class _PublishPageState extends ConsumerState<PublishPage> {
     return DropdownButtonFormField<int?>(
       initialValue: _licenseId,
       isExpanded: true,
-      decoration: const InputDecoration(labelText: 'License', border: OutlineInputBorder()),
+      decoration: InputDecoration(
+          labelText: context.l10n.publishLicense, border: const OutlineInputBorder()),
       items: [
-        const DropdownMenuItem<int?>(value: null, child: Text('No license (all rights reserved)')),
+        DropdownMenuItem<int?>(
+            value: null,
+            child: Text(context.l10n.publishNoLicense, overflow: TextOverflow.ellipsis)),
         for (final l in licenses)
           DropdownMenuItem<int?>(value: l.id, child: Text(l.identifier, overflow: TextOverflow.ellipsis)),
       ],
@@ -499,7 +514,7 @@ class _PublishPageState extends ConsumerState<PublishPage> {
     await ref.read(publishControllerProvider.notifier).submit(
           bytes: d.bytes,
           filename: d.filename,
-          title: _title.text.trim().isEmpty ? 'Untitled' : _title.text.trim(),
+          title: _title.text.trim().isEmpty ? context.l10n.untitled : _title.text.trim(),
           description: _mentions.serialized(maxMentions: _maxMentions).trim(),
           hashtags: _tags.text.trim(),
           hidden: _hidden,
@@ -522,14 +537,15 @@ class _Success extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final sqid = post?.sqid ?? '';
     return Scaffold(
-      appBar: AppBar(title: const Text('Posted')),
+      appBar: AppBar(title: Text(context.l10n.publishedTitle)),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const Icon(Icons.check_circle, color: Color(0xFF00C853), size: 56),
             const SizedBox(height: 12),
-            const Text('Published to Makapix Club!', style: TextStyle(fontSize: 18)),
+            Text(context.l10n.publishedBody,
+                textAlign: TextAlign.center, style: const TextStyle(fontSize: 18)),
             const SizedBox(height: 24),
             if (sqid.isNotEmpty)
               FilledButton.icon(
@@ -539,7 +555,7 @@ class _Success extends ConsumerWidget {
                       context, MaterialPageRoute(builder: (_) => ArtworkDetailPage(sqid: sqid)));
                 },
                 icon: const Icon(Icons.open_in_new),
-                label: const Text('View post'),
+                label: Text(context.l10n.publishedView),
               ),
             const SizedBox(height: 8),
             TextButton(
@@ -547,7 +563,7 @@ class _Success extends ConsumerWidget {
                 ref.read(publishControllerProvider.notifier).reset();
                 Navigator.of(context).pop();
               },
-              child: const Text('Back to editor'),
+              child: Text(context.l10n.publishedBack),
             ),
           ]),
         ),

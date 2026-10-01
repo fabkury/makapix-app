@@ -93,6 +93,9 @@ label must not be longer than the full name, and no two tools may share one.
 | layers file (.mkpx) | archivo con capas | arquivo com camadas | fichier avec calques | Ebenendatei | файл со слоями | レイヤーファイル | 图层文件 |
 | promote / demote (moderator) | destacar / quitar de destacados | promover / remover promoção | mettre en avant / retirer | empfehlen / Empfehlung aufheben | продвинуть / снять продвижение | おすすめに追加 / 外す | 推荐 / 取消推荐 |
 | hide / unhide (a post) | ocultar / mostrar | ocultar / reexibir | masquer / réafficher | ausblenden / einblenden | скрыть / показать | 非表示 / 再表示 | 隐藏 / 取消隐藏 |
+| download (a ZIP export of your artworks) | descarga | download | téléchargement | Download | загрузка | ダウンロード | 下载 |
+| community rules | normas de la comunidad | regras da comunidade | règles de la communauté | Community-Regeln | правила сообщества | コミュニティルール | 社区规则 |
+| Terms of Service | Términos del servicio | Termos de Serviço | Conditions d'utilisation | Nutzungsbedingungen | Условия использования | 利用規約 | 服务条款 |
 | monitored hashtags | hashtags supervisados | hashtags monitoradas | hashtags surveillés | überwachte Hashtags | отслеживаемые хештеги | 監視対象のハッシュタグ | 受监控的话题标签 |
 
 ### Editor

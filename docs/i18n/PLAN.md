@@ -18,14 +18,14 @@ are the acceptance test.
 | Phase | What | Status |
 |---|---|---|
 | L0 | Infrastructure, test harness, pilot (Settings, language picker, tool names) | **done 2026-10-01** |
-| L1 | Club pillar: extract + translate + sweep, batch by batch | in progress — C1–C5 of C1–C9 done |
+| L1 | Club pillar: extract + translate + sweep, batch by batch | in progress — C1–C6 of C1–C9 done |
 | L2 | Editor pillar: extract + translate + sweep, batch by batch | not started (tool names done in L0) |
 | L3 | Independent translation review (one agent per language), fixes, layout hardening | not started |
 | L4 | Seams and periphery, then flip `kTranslationsShipped` | not started |
 
 **Progress number:** the total on line 5 of `app/test/l10n/hardcoded_baseline.txt` — the
 hardcoded strings the scanner still finds. 2,683 after L0 (scanner as tightened in C1); 2,516
-after C1; 2,334 after C2; 2,253 after C3; 2,125 after C4; 2,000 after C5. Zero means L1 + L2 are done.
+after C1; 2,334 after C2; 2,253 after C3; 2,125 after C4; 2,000 after C5; 1,856 after C6. Zero means L1 + L2 are done.
 
 **Release safety while this is in progress:** `kTranslationsShipped` is `false`
 (`app/lib/l10n/app_locale.dart`), so a release build offers English only and hides the language
@@ -95,8 +95,12 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 - [x] **C5 Artwork** — done 2026-10-01: the artwork page (meta line, remix line, hashtags, the
   full ⋮ menu for visitor / owner / moderator, every confirmation dialog and toast, layers-file
   flows) and the lineage page. Sweeps: `sweep_artwork_test.dart`.
-- [ ] **C6 Publish and manage** — publish (46), edit_post_details (17), post_management (51),
-  pending_approval (12), rules_gate (11)
+- [x] **C6 Publish and manage** — done 2026-10-01: the publish page (conformance banner, remix
+  notes, layers sharing, license), edit post details, My Posts (bulk bar, delete / license /
+  request-download dialogs, downloads sheet), the approval queue, the community-rules gate.
+  New `lib/l10n/rich.dart` (`boldSpans`): a bold phrase inside one message, marked `<b>…</b>`.
+  Sweeps: `sweep_publish_test.dart`. Not swept (plain dialogs, low risk): the "publish
+  without remix claim" dialog and the "Posted" success page.
 - [ ] **C7 Moderation and safety** — user_management (72), moderation_hub (4), report (17),
   blocked_users (6), monitored_hashtags_page (8), mentions_settings (7), `models/safety_copy` (22),
   `models/report` (3)
@@ -152,6 +156,8 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   - `GET /badge` → badge names and descriptions.
   - `quotas.uploads.window` on `/auth/me` (the quota period's name), shown on the account page.
   - `tag_badges[].label` on profiles.
+  - `error_message` on a failed download request (`GET /pmd/bdr`), shown in the downloads sheet.
+  - License `title` on `GET /license` (license names; proper names, probably stay as they are).
   - Statistics bucket names: `views_by_type` keys (shown capitalized) and country codes.
 - [ ] **Default names stored in documents** ("Layer 1", "Untitled"): decide display-time mapping
   vs. localized-at-creation; ADR.
@@ -193,12 +199,27 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   every language, English included (found by the sweep, 2026-10-01). Fixed: under 340 px the
   icons use tighter padding and the menu button drops Material's 48 px minimum.
 
+- **My Posts: the bulk action bar covered the whole page.** Selecting a post replaced the list
+  with a full-screen bar, in English too: the bar sat in a `CenteredContent`, whose `Align`
+  takes all the height a bottom bar is offered (since the tablet width policy commit
+  `9393ad7a`). Found in a sweep screenshot on 2026-10-01; fixed with `Center(heightFactor: 1)`.
+
+- **My Posts downloads: "Expires now".** A ready download showed its expiry through `timeAgo`,
+  which reads any future time as "now". It now says "Expires in 5 days" (hours on the last
+  day). The request line read "Requested now ago" for a fresh request; now "Requested: now".
+
 - **Layout defects that were already in English** (found by the sweeps on 2026-10-01, all fixed):
   the blocked-profile banner overflowed a 320×568 screen, and the tagline hint in the profile
   editor was cut off.
 
 ## Session log
 
+- **2026-10-01** — C6 (publish, post details, My Posts, approval queue, rules gate): 121
+  messages. Sweep findings fixed: the "no license" dropdown option and the hashtags label were
+  cut off on phones in six languages (shorter wording; the comma hint moved to helper text);
+  the request-download dialog overflowed a small phone (now scrolls). Lesson for ja / zh: a
+  plural message whose text does not print `{count}` must still be written
+  `{count, plural, other{…}}`, or the placeholder check fails. 4,550 Dart tests pass.
 - **2026-10-01** — C5 (artwork page, lineage): 104 messages. Sweep finding fixed: the ⋮ menu
   rows overflowed the menu in French and Japanese (labels now wrap). 3,989 Dart tests pass.
 - **2026-10-01** — C4 (profiles, statistics): 92 messages. The harness gained a third detector —

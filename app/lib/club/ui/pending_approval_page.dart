@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/club_error.dart';
@@ -36,8 +37,7 @@ class _PendingApprovalPageState extends ConsumerState<PendingApprovalPage> {
     } else if (state.error != null && items.isEmpty) {
       body = ClubErrorRetry(message: state.error!, onRetry: notifier.refresh);
     } else if (items.isEmpty && state.atEnd) {
-      body = const ClubEmpty(
-          message: 'No pending approvals', icon: Icons.fact_check_outlined);
+      body = ClubEmpty(message: context.l10n.pendingEmpty, icon: Icons.fact_check_outlined);
     } else {
       body = RefreshIndicator(
         onRefresh: () async {
@@ -55,7 +55,8 @@ class _PendingApprovalPageState extends ConsumerState<PendingApprovalPage> {
                 padding: const EdgeInsets.all(12),
                 child: OutlinedButton(
                   onPressed: state.loading ? null : notifier.loadMore,
-                  child: Text(state.loading ? 'Loading…' : 'Load more'),
+                  child: Text(
+                      state.loading ? context.l10n.commonLoading : context.l10n.commonLoadMore),
                 ),
               );
             }
@@ -66,7 +67,7 @@ class _PendingApprovalPageState extends ConsumerState<PendingApprovalPage> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Pending approval')),
+      appBar: AppBar(title: Text(context.l10n.pendingTitle)),
       body: body,
     );
   }
@@ -83,7 +84,7 @@ class _PendingApprovalPageState extends ConsumerState<PendingApprovalPage> {
               url: p.artUrl, frameCount: p.frameCount, width: p.width, height: p.height),
         ),
       ),
-      title: Text(p.title.isEmpty ? 'Untitled' : p.title,
+      title: Text(p.title.isEmpty ? context.l10n.untitled : p.title,
           maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Text('@${p.owner.handle}  ·  ${timeAgo(p.createdAt)}',
           maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
@@ -92,12 +93,12 @@ class _PendingApprovalPageState extends ConsumerState<PendingApprovalPage> {
       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
         IconButton(
           icon: const Icon(Icons.check_circle_outline, color: Colors.greenAccent),
-          tooltip: 'Approve',
+          tooltip: context.l10n.pendingApprove,
           onPressed: () => _decide(p, approve: true),
         ),
         IconButton(
           icon: const Icon(Icons.cancel_outlined, color: Colors.redAccent),
-          tooltip: 'Reject',
+          tooltip: context.l10n.pendingReject,
           onPressed: () => _decide(p, approve: false),
         ),
       ]),
@@ -106,18 +107,19 @@ class _PendingApprovalPageState extends ConsumerState<PendingApprovalPage> {
 
   Future<void> _decide(Post p, {required bool approve}) async {
     final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
     try {
       await ref.read(moderationApiProvider).setPublicVisibility(p.id, approve);
       setState(() => _handled.add(p.id));
       messenger.showSnackBar(SnackBar(
           content: Text(approve
-              ? 'Approved "${p.title.isEmpty ? 'Untitled' : p.title}".'
-              : 'Rejected — the post stays visible only on the artist\'s profile.')));
+              ? l10n.pendingApproved(p.title.isEmpty ? l10n.untitled : p.title)
+              : l10n.pendingRejected)));
     } on ClubError catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     } catch (_) {
       messenger.showSnackBar(SnackBar(
-          content: Text(approve ? 'Could not approve the post.' : 'Could not reject the post.')));
+          content: Text(approve ? l10n.modApproveFailed : l10n.pendingRejectFailed)));
     }
   }
 }

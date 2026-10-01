@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import '../api/config_api.dart';
 import '../api/upload_api.dart';
@@ -81,7 +82,7 @@ class PublishController extends StateNotifier<PublishState> {
     } on ClubError catch (e) {
       state = PublishState(PublishStatus.error, error: e.message, errorCode: e.code);
     } catch (_) {
-      state = const PublishState(PublishStatus.error, error: 'Upload failed. Please try again.');
+      state = PublishState(PublishStatus.error, error: appL10n.publishUploadFailed);
     }
   }
 
@@ -101,7 +102,7 @@ class PublishController extends StateNotifier<PublishState> {
     } on ClubError catch (e) {
       state = PublishState(PublishStatus.error, error: e.message, errorCode: e.code);
     } catch (_) {
-      state = const PublishState(PublishStatus.error, error: 'Replace failed. Please try again.');
+      state = PublishState(PublishStatus.error, error: appL10n.publishReplaceFailed);
     }
   }
 

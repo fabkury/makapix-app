@@ -2,7 +2,7 @@
 # file. test/l10n/hardcoded_strings_test.dart fails if a file has MORE than its number (a
 # new hardcoded string) or FEWER (strings were extracted: re-pin with
 # `dart run tool/l10n/scan.dart --write-baseline`). Done when this file is empty.
-# total 2000 in 90 files
+# total 1856 in 83 files
 255 lib/editor/editor_page.controls.dart
 212 lib/editor/replay/visible_index.dart
 103 lib/editor/editor_page.fileio.dart
@@ -12,8 +12,6 @@
 64 lib/editor/tools.dart
 61 lib/editor/layers/layers_more_sheet.dart
 51 lib/editor/editor_page.timeline.dart
-49 lib/club/ui/post_management_page.dart
-46 lib/club/ui/publish_page.dart
 46 lib/editor/editor_page.dart
 44 lib/editor/frames/frames_more_sheet.dart
 44 lib/editor/palette_page.dart
@@ -35,19 +33,15 @@
 20 lib/editor/editor_page.toolgrid.dart
 19 lib/editor/editor_page.persistence.dart
 18 lib/editor/keyboard/cheat_sheet.dart
-17 lib/club/ui/edit_post_details_page.dart
 17 lib/club/ui/report_page.dart
 14 lib/editor/patterns/patterns_page.dart
 13 lib/editor/gallery/drawing_library_grid.dart
 13 lib/editor/layers/layer_model.dart
-12 lib/club/ui/pending_approval_page.dart
 12 lib/editor/keyboard/chords.dart
-11 lib/club/ui/rules_gate_page.dart
 8 lib/club/state/post_providers.dart
 8 lib/club/ui/monitored_hashtags_page.dart
 8 lib/editor/editor_page.keyboard.dart
 8 lib/editor/replay/replay_page.dart
-7 lib/club/state/pmd_providers.dart
 7 lib/club/ui/mentions_settings_page.dart
 7 lib/editor/frames/frames_action_bar.dart
 7 lib/editor/layers/layers_action_bar.dart
@@ -76,7 +70,6 @@
 2 lib/club/api/club_api_client.dart
 2 lib/club/models/auth_tokens.dart
 2 lib/club/state/feed_providers.dart
-2 lib/club/state/publish_providers.dart
 2 lib/editor/gallery/gallery_page.dart
 2 lib/editor/layers/layer_row.dart
 2 lib/editor/open_file.dart

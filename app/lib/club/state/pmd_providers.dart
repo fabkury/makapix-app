@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import '../models/club_error.dart';
 import '../models/pmd.dart';
@@ -101,7 +102,7 @@ class PmdController extends StateNotifier<PmdState> {
       );
     } catch (e) {
       state = state.copyWith(
-          loading: false, initialized: true, keepCursor: true, error: _msg(e, 'load your posts'));
+          loading: false, initialized: true, keepCursor: true, error: _msg(e, appL10n.pmdLoadFailed));
     }
   }
 
@@ -146,7 +147,7 @@ class PmdController extends StateNotifier<PmdState> {
     } catch (e) {
       state = state.copyWith(busy: false);
       await refresh(); // resync on partial failure
-      return _msg(e, 'complete that action');
+      return _msg(e, appL10n.pmdActionFailed);
     }
   }
 
@@ -169,7 +170,7 @@ class PmdController extends StateNotifier<PmdState> {
     } catch (e) {
       state = state.copyWith(busy: false);
       await refresh();
-      return _msg(e, 'change the license');
+      return _msg(e, appL10n.pmdLicenseFailed);
     }
   }
 
@@ -181,8 +182,8 @@ class PmdController extends StateNotifier<PmdState> {
     required bool sendEmail,
   }) async {
     final ids = state.selected.toList();
-    if (ids.isEmpty) return 'Select at least one post.';
-    if (ids.length > kPmdBatchMax) return 'Select at most $kPmdBatchMax posts per download.';
+    if (ids.isEmpty) return appL10n.pmdSelectOne;
+    if (ids.length > kPmdBatchMax) return appL10n.pmdSelectMax(kPmdBatchMax);
     state = state.copyWith(busy: true);
     try {
       await ref.read(pmdApiProvider).createBdr(
@@ -195,12 +196,11 @@ class PmdController extends StateNotifier<PmdState> {
       return null;
     } catch (e) {
       state = state.copyWith(busy: false);
-      return _msg(e, 'request the download');
+      return _msg(e, appL10n.pmdRequestFailed);
     }
   }
 
-  String _msg(Object e, String what) =>
-      e is ClubError ? e.message : 'Could not $what.';
+  String _msg(Object e, String fallback) => e is ClubError ? e.message : fallback;
 }
 
 final pmdListProvider = StateNotifierProvider.autoDispose<PmdController, PmdState>(

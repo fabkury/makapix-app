@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:makapix_club/l10n/l10n.dart';
+import 'package:makapix_club/l10n/rich.dart';
 
 import '../state/publish_providers.dart';
 import '../state/rules_gate.dart';
@@ -7,14 +9,10 @@ import 'widgets/external_links.dart';
 
 /// The explicit "what you're agreeing to" line above the accept button. Names only
 /// the documents the server advertised so it never points at a missing link.
-String _agreementLine({required bool hasRules, required bool hasTerms}) {
-  if (hasRules && hasTerms) {
-    return 'By tapping Agree and continue, you agree to the Community Rules and the Terms of Service.';
-  }
-  if (hasTerms) {
-    return 'By tapping Agree and continue, you agree to the Terms of Service.';
-  }
-  return 'By tapping Agree and continue, you agree to the Community Rules.';
+String _agreementLine(AppLocalizations l10n, {required bool hasRules, required bool hasTerms}) {
+  if (hasRules && hasTerms) return l10n.rulesGateAgreeBoth;
+  if (hasTerms) return l10n.rulesGateAgreeTerms;
+  return l10n.rulesGateAgreeRules;
 }
 
 /// The one-time, full-screen community-rules gate. Shown before the Club pillar
@@ -27,6 +25,7 @@ class RulesGatePage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final moderation = ref.watch(serverConfigProvider).valueOrNull?.moderation;
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -38,19 +37,12 @@ class RulesGatePage extends ConsumerWidget {
               children: [
                 Icon(Icons.verified_user_outlined, size: 56, color: theme.colorScheme.primary),
                 const SizedBox(height: 16),
-                Text('Community rules',
+                Text(l10n.rulesGateTitle,
                     textAlign: TextAlign.center, style: theme.textTheme.headlineSmall),
                 const SizedBox(height: 16),
+                // One message; the bold phrase is marked inside it (lib/l10n/rich.dart).
                 Text.rich(
-                  TextSpan(children: const [
-                    TextSpan(text: 'Makapix Club is a shared space. We have '),
-                    TextSpan(
-                        text: 'zero tolerance',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    TextSpan(
-                        text: ' for objectionable content or abusive behavior — content that '
-                            'breaks the rules is removed and repeat offenders are banned.'),
-                  ]),
+                  TextSpan(children: boldSpans(l10n.rulesGateBody)),
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodyMedium,
                 ),
@@ -58,24 +50,25 @@ class RulesGatePage extends ConsumerWidget {
                 if ((moderation?.guidelinesUrl ?? '').isNotEmpty)
                   TextButton(
                     onPressed: () => openExternalUrl(context, moderation!.guidelinesUrl),
-                    child: const Text('Read the community rules'),
+                    child: Text(l10n.rulesGateReadRules),
                   ),
                 if ((moderation?.termsUrl ?? '').isNotEmpty)
                   TextButton(
                     onPressed: () => openExternalUrl(context, moderation!.termsUrl),
-                    child: const Text('Terms of Service'),
+                    child: Text(l10n.termsOfService),
                   ),
                 const SizedBox(height: 8),
-                const Text(
-                  'You can report any content or user, and block anyone, from inside the app.',
+                Text(
+                  l10n.rulesGateReportNote,
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white54, fontSize: 12),
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
                 ),
                 const SizedBox(height: 20),
                 // Explicit, adaptive agreement line: name only the documents the server
                 // actually advertised, so the copy never references a missing link.
                 Text(
                   _agreementLine(
+                    l10n,
                     hasRules: (moderation?.guidelinesUrl ?? '').isNotEmpty,
                     hasTerms: (moderation?.termsUrl ?? '').isNotEmpty,
                   ),
@@ -85,9 +78,9 @@ class RulesGatePage extends ConsumerWidget {
                 const SizedBox(height: 12),
                 FilledButton(
                   onPressed: () => ref.read(rulesGateProvider.notifier).accept(),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 4),
-                    child: Text('Agree and continue'),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Text(l10n.rulesGateAgree),
                   ),
                 ),
               ],
