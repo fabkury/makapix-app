@@ -410,11 +410,12 @@ extension _EditorToolgrid on _EditorPageState {
           autofocus: true,
           keyboardType: TextInputType.numberWithOptions(decimal: !integer, signed: min < 0),
           decoration: InputDecoration(labelText: ctx.l10n.sliderValueRange(fmt(min), fmt(max))),
-          onSubmitted: (s) => Navigator.pop(ctx, double.tryParse(s.trim())),
+          // A decimal comma too (the decimal keyboard of many languages has no point).
+          onSubmitted: (s) => Navigator.pop(ctx, double.tryParse(s.trim().replaceAll(',', '.'))),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: Text(ctx.l10n.commonCancel)),
-          TextButton(onPressed: () => Navigator.pop(ctx, double.tryParse(ctrl.text.trim())), child: Text(ctx.l10n.commonOk)),
+          TextButton(onPressed: () => Navigator.pop(ctx, double.tryParse(ctrl.text.trim().replaceAll(',', '.'))), child: Text(ctx.l10n.commonOk)),
         ],
       ),
     );

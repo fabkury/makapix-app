@@ -155,13 +155,19 @@ extension _EditorReplay on _EditorPageState {
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(ctx.l10n.timelapseShape, style: const TextStyle(fontSize: 12, color: Colors.white60)),
             const SizedBox(height: 4),
-            ToggleButtons(
-              isSelected: [shape == TimelapseShape.square, shape == TimelapseShape.portrait],
-              onPressed: (i) => setS(() => shape = TimelapseShape.values[i]),
-              children: [
-                Padding(padding: const EdgeInsets.symmetric(horizontal: 10), child: Text(ctx.l10n.timelapseSquare)),
-                Padding(padding: const EdgeInsets.symmetric(horizontal: 10), child: Text(ctx.l10n.timelapsePortrait)),
-              ],
+            // Scales down rather than overflowing: in French the pair was 7 px wider than the
+            // dialog on a 320 px phone.
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: AlignmentDirectional.centerStart,
+              child: ToggleButtons(
+                isSelected: [shape == TimelapseShape.square, shape == TimelapseShape.portrait],
+                onPressed: (i) => setS(() => shape = TimelapseShape.values[i]),
+                children: [
+                  Padding(padding: const EdgeInsets.symmetric(horizontal: 10), child: Text(ctx.l10n.timelapseSquare)),
+                  Padding(padding: const EdgeInsets.symmetric(horizontal: 10), child: Text(ctx.l10n.timelapsePortrait)),
+                ],
+              ),
             ),
             const SizedBox(height: 12),
             Text(ctx.l10n.timelapseDrawingTime, style: const TextStyle(fontSize: 12, color: Colors.white60)),

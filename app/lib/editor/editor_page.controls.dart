@@ -1390,7 +1390,9 @@ extension _EditorControls on _EditorPageState {
     );
     if (ok != true) return;
     int? parse(String s, int extent) {
-      final v = double.tryParse(s.trim());
+      // A decimal comma too: the labels say ",5" in languages that write one, and their
+      // decimal keyboards may offer no point.
+      final v = double.tryParse(s.trim().replaceAll(',', '.'));
       if (v == null || !v.isFinite) return null;
       return (v * 2).round().clamp(0, 2 * (extent - 1));
     }

@@ -3302,5 +3302,7 @@
   "timelapseFailed": "Timelapse export failed: {error}",
   "@timelapseFailed": {"description": "Timelapse (a short video of how a drawing was made, to share). Toast: making the video failed. {error} is a technical detail.", "placeholders": {"error": {"type": "String"}}},
   "timelapseExported": "Timelapse exported",
-  "@timelapseExported": {"description": "Timelapse (a short video of how a drawing was made, to share). Toast after the video file was saved."}
+  "@timelapseExported": {"description": "Timelapse (a short video of how a drawing was made, to share). Toast after the video file was saved."},
+  "notifActor": "{handle}",
+  "@notifActor": {"description": "Notifications: how the sender is named, inside every notification line ({who}). Japanese adds the honorific さん here; the other languages keep the bare handle. The fallback for an unknown sender (notifSomeone) does not go through this message.", "placeholders": {"handle": {"type": "String"}}}
 }

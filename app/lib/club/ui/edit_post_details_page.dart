@@ -28,7 +28,9 @@ class EditPostDetailsPage extends ConsumerStatefulWidget {
   static List<String> parseHashtags(String raw) {
     final seen = <String>{};
     final out = <String>[];
-    for (var t in raw.split(',')) {
+    // Chinese and Japanese keyboards type the full-width comma "，" or the list mark "、";
+    // both separate tags as the ASCII comma does.
+    for (var t in raw.split(RegExp('[,，、]'))) {
       t = t.trim().toLowerCase();
       if (t.startsWith('#')) t = t.substring(1);
       if (t.isEmpty || !seen.add(t)) continue;

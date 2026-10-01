@@ -516,7 +516,8 @@ class _PublishPageState extends ConsumerState<PublishPage> {
           filename: d.filename,
           title: _title.text.trim().isEmpty ? context.l10n.untitled : _title.text.trim(),
           description: _mentions.serialized(maxMentions: _maxMentions).trim(),
-          hashtags: _tags.text.trim(),
+          // The server splits on the ASCII comma; Chinese and Japanese keyboards type "，" or "、".
+          hashtags: _tags.text.replaceAll(RegExp('[，、]'), ',').trim(),
           hidden: _hidden,
           licenseId: _licenseId,
           mkpxBytes: sendMkpx ? mkpx : null,

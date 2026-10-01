@@ -402,7 +402,9 @@ class _Body extends ConsumerWidget {
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon, size: 16),
         const SizedBox(width: 6),
-        Flexible(child: Text(label, overflow: TextOverflow.fade, softWrap: false)),
+        // Scales down a little before it would be cut ("Понравилось", "リアクション済み" on a
+        // 320 px phone).
+        Flexible(child: FittedBox(fit: BoxFit.scaleDown, child: Text(label, softWrap: false))),
       ]),
     );
   }

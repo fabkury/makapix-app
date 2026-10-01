@@ -84,6 +84,8 @@ void main() {
 
     test('empty input → empty list', () {
       expect(EditPostDetailsPage.parseHashtags('   '), isEmpty);
+      // Full-width comma and the Japanese list mark separate tags too.
+      expect(EditPostDetailsPage.parseHashtags('像素画，动画、#奇幻'), ['像素画', '动画', '奇幻']);
       expect(EditPostDetailsPage.parseHashtags(''), isEmpty);
     });
 

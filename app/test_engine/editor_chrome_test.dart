@@ -12,6 +12,8 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:makapix_club/editor/gallery/gallery_page.dart';
 import 'package:makapix_club/editor/replay/replay_page.dart';
 import 'package:makapix_club/editor/tap_again.dart';
+import 'package:makapix_club/editor/tool_l10n.dart';
+import 'package:makapix_club/editor/tools.dart';
 import 'package:makapix_club/editor/widgets/tool_tile.dart';
 
 import 'editor_harness.dart';
@@ -33,6 +35,7 @@ void main() {
         final l = l10nFor(locale);
         final lang = locale.languageCode;
         final problems = <String>[];
+        final tips = {for (final t in tools) toolTip(l, t.dsl)};
 
         Future<void> check(String where) async {
           await settleReal(tester, rounds: 2);
@@ -41,7 +44,7 @@ void main() {
           for (final t in truncatedTexts(tester)) {
             // The help band's tip is two lines from 360 px up (tool_tip_fit_test); on a 320 px
             // phone the longest tips end in an ellipsis in every language.
-            if (size.value.width < 360 && t.text == l.tipPencil) continue;
+            if (size.value.width < 360 && tips.contains(t.text)) continue;
             problems.add('$where: cut off: $t');
           }
           final left = switch (lang) {

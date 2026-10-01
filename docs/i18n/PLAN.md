@@ -23,31 +23,13 @@ are the acceptance test.
 | L3 | Independent translation review (one agent per language), fixes, layout hardening | next |
 | L4 | Seams and periphery, then flip `kTranslationsShipped` | not started |
 
-**Paused here (2026-10-01, end of the session). Resume in this order:**
+**Next steps (2026-10-02):** the rest of L3 (text scale 1.3 sweep, full screenshot review),
+then L4. Gates on the current text: analyzer clean, `flutter test` 7,774 passed,
+`flutter test test_engine` 72 of 72 (the one Russian failure fixed and rerun).
 
-1. Run `flutter test test_engine` (about 35 min, run it in the background). It has not run
-   since E5 and E6 + E7 were committed; the analyzer and the whole `flutter test` suite
-   (7,766 tests) were green on that code. The walk in `editor_chrome_test.dart` gained the
-   Replay page, the timelapse options dialog, the armed Delete, and the go-to-frame dialog:
-   expect to tune the walk itself, not the app.
-2. Run `dart run tool/l10n/scan.dart --list --lower` once and read the list (lowercase
-   single words, which the scanner does not count by default).
-3. **L3 review is under way.** Reviewers (independent agents that see only the English text,
-   its context note, the translation, and the glossary) write their findings to
-   `docs/i18n/review/<lang>-<part>.md` (three parts of about 550 messages per language).
-   State at the pause, per part:
-   - finished: es-1, es-2, es-3, pt-1, pt-3, fr-1;
-   - stopped while finishing (the file ends with its "Systemic notes"; read it, and run the
-     part again if it looks cut short): fr-3, ru-3;
-   - stopped part-way (run again; delete the partial file first): fr-2, ru-2;
-   - stopped before writing anything (run again): pt-2, de-1, de-2, de-3, ru-1;
-   - **not launched yet: ja-1..3, zh-1..3.**
-   A reviewer takes about three minutes per part. The
-   review packs are rebuilt from the ARB files by the snippet in the session log below.
-   Then: triage the findings (high and medium first; a glossary term changes in
-   `GLOSSARY.md` first, then in every message), apply with `setv` patches, rerun the sweeps
-   (longer wording can break a fit), and second-pass only the changed messages.
-4. The rest of L3 (glossary check tool, text scale 1.3 sweep, full screenshot review), then L4.
+The lowercase pass (`scan.dart --list --lower`, 239 words) is done: every one is a wire
+value, a menu or tool id, a file format, a font name, or the fallback handle "unknown"
+(shown as "@unknown" only if the server omits a handle). None is prose on screen.
 
 **Progress number:** the total on line 5 of `app/test/l10n/hardcoded_baseline.txt` — the
 hardcoded strings the scanner still finds. 2,683 after L0 (scanner as tightened in C1); 2,516
@@ -239,11 +221,37 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 
 ## L3 — Review and hardening
 
-- [ ] One independent review agent per language (7), each given only the English ARB (with
-  descriptions), the glossary, and the translation: back-translate, flag meaning drift, wrong
-  register, inconsistent terms, unnatural phrasing, plural errors. It never sees my reasoning.
-- [ ] Apply the fixes; second pass on the changed messages only.
-- [ ] Glossary conformance check as a tool (`tool/l10n/glossary_check.dart`).
+- [x] Independent review, done 2026-10-02: 21 reviewers (seven languages, three parts of about
+  550 messages each), each given only the English text with its context note, the
+  translation, and the glossary; never my reasoning. Brief: `docs/i18n/review/BRIEF.md`;
+  findings: `docs/i18n/review/<lang>-<part>.md`. About 560 findings in all; 6 high, all
+  the same bug (below).
+- [x] Fixes applied, 2026-10-02: about 620 messages reworded (es 97, pt 77, fr 76, de 78,
+  ru 123, ja 92, zh 77). Not taken: style-only rewrites, gender-neutral rewording where the
+  language's generic masculine is standard, and the Japanese spacing sweep (settled in the
+  glossary instead). The term decisions are in GLOSSARY.md ("Decided in the L3 review").
+  Code fixes the review found, outside translation:
+  - **Decimal comma rejected** (the 6 high findings): the mirror-axis field and the slider's
+    exact-value dialog parsed only a point, while German, French, Portuguese, and Russian
+    labels say ",5", and those languages' decimal keyboards often offer only a comma. Both
+    fields accept either now.
+  - **Hashtags split only on the ASCII comma**: Chinese and Japanese keyboards type "，" or
+    "、", so all tags merged into one. The edit page's parser and the publish request accept
+    both now (test in `club_parity_test.dart`).
+- [x] Second pass, done 2026-10-02 (its fixes then broke a few fits; the sweeps caught them
+  and the texts were shortened: crop and place slots in es, de, fr, pt, ru, ja; the Russian
+  New document title label, which lost "(optional)"): one fresh reviewer per language, given only the changed
+  messages with their old text (`docs/i18n/review/<lang>-pass2.md`, brief in
+  `BRIEF2.md`): 45 findings, 1 high (a German rewrite had dropped a line and two
+  placeholders), all applied. One led to a code change: the Japanese notification
+  honorific moved into its own message (`notifActor`), because the unknown-sender fallback
+  read "誰か さん".
+- [x] Glossary check, as a test rather than a tool: `test/l10n/glossary_test.dart` holds the
+  pairs that must read differently (Flip / Invert, Redo / Repeat, Open / Import, Discard /
+  Delete, the two place-page losses, …) and the pairs that must match. Writing it found two
+  more collapses (below). A mechanical scan for "same English, different translation" was
+  tried and dropped: 189 hits, nearly all legitimate (a tool's name is a noun, its option a
+  verb, a tile label abbreviated).
 - [ ] Full screenshot gallery (T6) reviewed per language: every sweep screen.
 - [ ] Layout hardening for whatever the sweeps flag in German and Russian.
 - [ ] Text scale 1.3× sweep on the phone sizes (accessibility font size).
@@ -296,6 +304,16 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 - `use-escaping` is off, so a message cannot contain a literal `{` or `}`.
 
 ## Findings outside i18n
+
+- **Decimal comma and full-width comma** (found by the L3 review, 2026-10-02, fixed; see L3).
+- **"Invert selection" meant two things** (found by the glossary test, 2026-10-02): the Invert
+  tool's option inverts the colors inside the selection; the floating menu's item selects
+  everything else. English spells both the same, and so did es, pt, fr, de. The option now
+  says "invert the selection's colors" in those languages. The English label is unchanged:
+  say so if it should become "Invert selection colors" too.
+- **Layout, after the review's longer wording** (2026-10-02, fixed): the profile tab label and
+  the "Trusted" switch title scale down instead of being cut on a 320 px phone; the timelapse
+  shape choice scales down (it overflowed by 7 px in French).
 
 - **Keyboard shortcuts page** (2026-10-01): the key column no longer uses the `monospace`
   family. Key names are words in the current language now, and a monospace face showed the
@@ -384,6 +402,12 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   editor was cut off.
 
 ## Session log
+
+- **2026-10-02** — L3 review: 21 reviewer parts, about 560 findings, about 620 messages
+  reworded, two input bugs fixed. The engine-backed suite, run on the pre-review text, passed
+  68 of 72: the four failures (320 px) were the walk's help-band allowance, too narrow once
+  the walk selects the Play tool, and the timelapse shape choice overflowing by 7 px in
+  French. Both fixed.
 
 - **Review packs for L3** (one JSON line per message: `n`, `key`, `context`, `en`, the
   translation, `placeholders`): for each language, read `app/lib/l10n/app_en.arb` and

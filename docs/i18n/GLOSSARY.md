@@ -27,7 +27,7 @@ and legal pages stay in English.
 | fr | vous | A no-break space (U+00A0) before `:` `;` `!` `?`. |
 | de | du | Nouns capitalized; prefer the short native word to the compound when both exist. |
 | ru | вы (lowercase) | Tool names are nouns (Карандаш, Заливка); actions are infinitives. |
-| ja | です／ます, no pronouns | No space between Japanese and Latin or digits. Full-width punctuation. |
+| ja | です／ます, no pronouns (あなた only in notifications) | A space around Latin words and name-like placeholders; none between a number and its counter (see "Decided in the L3 review"). Full-width punctuation. |
 | zh | 你 | Simplified. A half-width space between Chinese and Latin or digits. Full-width punctuation. |
 
 All languages: sentence case, as in English. Short and plain, like the English. No exclamation
@@ -86,18 +86,18 @@ label must not be longer than the full name, and no two tools may share one.
 | linked logins | inicios de sesión vinculados | logins vinculados | connexions associées | verknüpfte Anmeldungen | привязанные способы входа | 連携ログイン | 关联登录 |
 | like (a comment) | me gusta | curtir | j'aime | gefällt mir | нравится | いいね | 赞 |
 | highlights (an artist's picked best works) | mejores obras | melhores artes | sélection | Highlights | лучшее | ハイライト | 代表作 |
-| featured (on the welcome page) | destacados | destaques | à la une | empfohlen | избранное | 注目の作品 | 精选 |
+| featured (on the welcome page) | destacados | destaques | à la une | empfohlen | подборка | 注目の作品 | 精选 |
 | reputation | reputación | reputação | réputation | Reputation | репутация | 評価 | 声望 |
 | tagline | lema | frase | devise | Motto | девиз | ひとこと | 个性签名 |
 | lineage (originals and remixes of an artwork) | linaje | linhagem | filiation | Abstammung | происхождение | 系譜 | 创作脉络 |
 | layers file (.mkpx) | archivo con capas | arquivo com camadas | fichier avec calques | Ebenendatei | файл со слоями | レイヤーファイル | 图层文件 |
-| promote / demote (moderator) | destacar / quitar de destacados | promover / remover promoção | mettre en avant / retirer | empfehlen / Empfehlung aufheben | продвинуть / снять продвижение | おすすめに追加 / 外す | 推荐 / 取消推荐 |
+| promote / demote (moderator; adds to / removes from the Recommended feed) | recomendar / quitar de Recomendados | promover / remover promoção | mettre en avant / retirer | empfehlen / Empfehlung aufheben | добавить в рекомендуемое / убрать из рекомендуемого | おすすめに追加 / 外す | 推荐 / 取消推荐 |
 | hide / unhide (a post) | ocultar / mostrar | ocultar / reexibir | masquer / réafficher | ausblenden / einblenden | скрыть / показать | 非表示 / 再表示 | 隐藏 / 取消隐藏 |
-| download (a ZIP export of your artworks) | descarga | download | téléchargement | Download | загрузка | ダウンロード | 下载 |
+| download (a ZIP export of your artworks) | descarga | download | téléchargement | Download | скачивание (загрузка = upload, loading) | ダウンロード | 下载 |
 | community rules | normas de la comunidad | regras da comunidade | règles de la communauté | Community-Regeln | правила сообщества | コミュニティルール | 社区规则 |
 | Terms of Service | Términos del servicio | Termos de Serviço | Conditions d'utilisation | Nutzungsbedingungen | Условия использования | 利用規約 | 服务条款 |
 | ban / unban (moderator; distinct from a user's block) | expulsar / readmitir | banir / remover banimento | bannir / lever le bannissement | sperren / entsperren | забанить / разбанить | 利用停止 / 利用停止を解除 | 封禁 / 解除封禁 |
-| trusted (user) | de confianza | confiável | de confiance | vertraut | доверенный | 信頼済み | 受信任 |
+| trusted (user) | de confianza | confiável | de confiance | vertrauenswürdig | доверенный | 信頼済み | 受信任 |
 | reputation | reputación | reputação | réputation | Reputation | репутация | 評価 | 声望 |
 | report (noun) | denuncia | denúncia | signalement | Meldung | жалоба | 通報 | 举报 |
 | blocked users (the list) | usuarios bloqueados | usuários bloqueados | utilisateurs bloqués | blockierte Nutzer | чёрный список | ブロックしたユーザー | 已屏蔽的用户 |
@@ -133,6 +133,39 @@ label must not be longer than the full name, and no two tools may share one.
 
 Open and Import are different gestures (CONTEXT.md): keep two distinct words in every language.
 
+**Decided in the L3 review (2026-10-02).** Where a word did two jobs, one job moved:
+- **Discard** is never the word for Delete or Cancel: fr *abandonner*, ru *не сохранять*,
+  de *verwerfen*.
+- **Upload** to the Club is fr *envoyer / envoi* (*importer* stays the editor's Import);
+  ru *отправка*.
+- **Download** is ru *скачать / скачивание*; *загрузка* is upload and loading.
+- **"Verlauf"** (de) is the gradient: write *Farbverlauf* in running text, and never use it for
+  history.
+- **"tela"** (pt) is the canvas only; the screen is *janela* ("Ajustar à janela").
+- **Export / Import** in Japanese are エクスポート / インポート everywhere; 読み込む means load.
+- **Invert** in Chinese is 反相 everywhere (反转 is too close to Flip, 翻转); noise dithers are
+  噪声 (噪点 is photographic grain).
+- **The Move tool vs. shift** in German: the tool is *Verschieben* (its tile says *Bewegen*:
+  "Verschieben" is 49 px against the 48 px tile budget), moving items one position is
+  *versetzen*.
+- **Notification sender**: the honorific lives in `notifActor` (Japanese "{handle} さん");
+  the templates use the bare {who}, so the unknown-sender fallback never gets さん.
+- **"artwork" in the editor** is the local drawing: ru *рисунок*, de *Zeichnung* (*работа* /
+  *Werk* stay for published Club artworks).
+- **Tool tips** use the imperative (es, pt, fr), and name every option exactly as its chip
+  says, capitalized as on screen.
+- **Bare "Club"** inside a Russian sentence is written *Makapix Club* (it cannot decline).
+- **"Reacted"** (the profile tab of artworks the user reacted to) must differ from
+  "Reactions" (received): es *Reaccionó*, pt *Reagiu*, ru *Понравилось*, ja リアクション済み.
+- **Japanese spacing**, settled: a half-width space between Japanese and a Latin word or a
+  placeholder that stands for a name, title, or handle (GitHub で登録, {name} を開きました);
+  no space between a number or numeric placeholder and its Japanese counter ({count}フレーム,
+  3件), and none in 50%. The pre-review messages that space a counter are tolerated, not a
+  pattern to follow.
+- **Japanese pronouns**: あなた only in notifications; elsewhere drop it or say 自分.
+- **Decimal input**: numeric fields accept a comma or a point, so labels may show each
+  language's own decimal mark (",5", "0,1").
+
 **Selection** has two meanings. The table row above is the pixel selection (the Select
 tools). The set of frames or layers picked on the Frames and Layers pages uses the same word
 in the Latin-script languages and Russian (выделение), and the plain "chosen" words in
@@ -144,8 +177,8 @@ More editor terms (Frames and Layers pages):
 |---|---|---|---|---|---|---|---|
 | stack (the layers of a frame) | pila | pilha | pile | Stapel | стопка | 重ね順 | 堆叠 |
 | Move group | grupo de movimiento | grupo de movimento | groupe de déplacement | Bewegungsgruppe | группа сдвига | 移動グループ | 移动组 |
-| shift (move items one position) | desplazar | deslocar | décaler | verschieben | сдвиг | ずらす | 移位 |
-| merge (layers) | combinar | mesclar | fusionner | vereinen / zusammenführen | объединить | 結合 | 合并 |
+| shift (move items one position) | desplazar | deslocar | décaler | versetzen | сдвиг | ずらす | 移位 |
+| merge (layers) | combinar | mesclar | fusionner | vereinen | объединить | 結合 | 合并 |
 | off-canvas (kept outside the canvas) | fuera del lienzo | fora da tela | hors toile | außerhalb | за холстом | キャンバス外 | 画布外 |
 | active (the layer you draw on) | activa | ativa | actif | aktiv | активный | アクティブ | 当前图层 |
 | duration (of a frame) | duración | duração | durée | Dauer | длительность | 表示時間 | 时长 |
@@ -177,8 +210,8 @@ Multiply is 正片叠底 and Screen is 滤色. The two-letter tile badges are on
 test keeps them unique per language.
 
 A keyboard key is named as printed on that language's keyboards (the `key*` messages):
-Ctrl is "Strg" in German; Shift is "Mayús", "Maj", "Umschalt"; Enter is "Intro", "Entrée",
-"Eingabe"; Delete is "Supr", "Suppr", "Entf"; the space bar is "Espacio", "Espaço", "Espace",
+Ctrl is "Strg" in German; Shift is "Mayús", "Maj", "Umschalt"; Enter is "Entrée", "Eingabe"
+(Spanish keeps "Enter", which Latin American keyboards print and every reader knows); Delete is "Supr", "Suppr", "Entf"; the space bar is "Espacio", "Espaço", "Espace",
 "Leertaste", «Пробел», スペース, 空格. Russian, Japanese, Chinese, and Brazilian keyboards keep
 the English legends for the rest.
 

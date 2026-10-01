@@ -152,7 +152,10 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
 
   String _text(ClubNotification x, List<ReportReason>? reasons) {
     final l10n = context.l10n;
-    final who = x.actorHandle ?? l10n.notifSomeone;
+    // notifActor adds the honorific where the language wants one (Japanese さん); the
+    // unknown-sender fallback must not get it.
+    final actor = x.actorHandle;
+    final who = actor != null ? l10n.notifActor(actor) : l10n.notifSomeone;
     final title = x.contentTitle;
     // A sentence, then (when there is one) the quoted excerpt after a colon.
     String withPreview(String text, String? preview) =>

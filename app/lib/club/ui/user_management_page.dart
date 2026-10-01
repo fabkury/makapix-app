@@ -73,7 +73,12 @@ class _UmdBody extends ConsumerWidget {
         _sectionCard(context, l10n.umdActions, [
           SwitchListTile(
             value: user.autoPublicApproval,
-            title: Text(l10n.umdTrusted),
+            // One long German word ("Vertrauenswürdig") is wider than a 320 px phone leaves.
+            title: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: AlignmentDirectional.centerStart,
+              child: Text(l10n.umdTrusted),
+            ),
             subtitle: Text(l10n.umdTrustedBody),
             secondary: const Icon(Icons.verified_outlined),
             onChanged: (v) => _run(context, ref,
