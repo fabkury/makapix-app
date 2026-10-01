@@ -7,6 +7,7 @@ import '../models/post.dart';
 import '../models/reactions.dart';
 import 'api_providers.dart';
 import 'auth_controller.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 /// Full post by sqid; also fires a (debounced, server-side) view registration.
 // autoDispose: one entry per opened post; released when the detail page closes. [audit F-19]
@@ -46,7 +47,7 @@ class ReactionsController extends StateNotifier<AsyncValue<ReactionTotals>> {
     final cur = state.value;
     if (cur == null) return null;
     final add = !cur.hasMine(emoji);
-    if (add && cur.mineCount >= 5) return 'You can add up to 5 reactions per post.';
+    if (add && cur.mineCount >= 5) return appL10n.reactionsLimit;
     state = AsyncValue.data(cur.withLocal(emoji: emoji, add: add));
     try {
       final api = ref.read(postApiProvider);
@@ -59,10 +60,10 @@ class ReactionsController extends StateNotifier<AsyncValue<ReactionTotals>> {
       return null;
     } on ClubError catch (e) {
       state = AsyncValue.data(cur); // rollback
-      return e.isBlocked ? kBlockedInteractionMessage : e.message;
+      return e.isBlocked ? blockedInteractionMessage : e.message;
     } catch (_) {
       state = AsyncValue.data(cur);
-      return 'Could not update reaction.';
+      return appL10n.reactionUpdateFailed;
     }
   }
 
@@ -130,10 +131,10 @@ class GridLikesController extends StateNotifier<Map<int, GridLikeState>> {
       return null;
     } on ClubError catch (e) {
       state = {...state, post.id: cur}; // rollback
-      return e.isBlocked ? kBlockedInteractionMessage : e.message;
+      return e.isBlocked ? blockedInteractionMessage : e.message;
     } catch (_) {
       state = {...state, post.id: cur};
-      return 'Could not update reaction.';
+      return appL10n.reactionUpdateFailed;
     }
   }
 }
@@ -215,10 +216,10 @@ class CommentsController extends StateNotifier<AsyncValue<List<Comment>>> {
       return null;
     } on ClubError catch (e) {
       await load(); // drop the optimistic comment
-      return e.isBlocked ? kBlockedInteractionMessage : e.message;
+      return e.isBlocked ? blockedInteractionMessage : e.message;
     } catch (_) {
       await load();
-      return 'Could not post comment.';
+      return appL10n.commentPostFailed;
     }
   }
 
@@ -241,17 +242,17 @@ class CommentsController extends StateNotifier<AsyncValue<List<Comment>>> {
   /// Restore a deleted comment. Returns a user-facing message on failure.
   Future<String?> undelete(String commentId) => _modAction(
       () => ref.read(moderationApiProvider).undeleteComment(commentId),
-      'Could not restore the comment.');
+      appL10n.commentRestoreFailed);
 
   /// Hide/unhide a comment (visible to moderators only while hidden).
   Future<String?> setHiddenByMod(String commentId, bool hidden) => _modAction(
       () => ref.read(moderationApiProvider).setCommentHidden(commentId, hidden),
-      hidden ? 'Could not hide the comment.' : 'Could not unhide the comment.');
+      hidden ? appL10n.commentHideFailed : appL10n.commentUnhideFailed);
 
   /// Permanently purge a deleted comment's preserved original text.
   Future<String?> purgeOriginal(String commentId) => _modAction(
       () => ref.read(moderationApiProvider).purgeCommentOriginal(commentId),
-      'Could not purge the comment text.');
+      appL10n.commentPurgeFailed);
 
   Future<String?> _modAction(Future<void> Function() call, String fallback) async {
     try {
@@ -275,7 +276,7 @@ class CommentsController extends StateNotifier<AsyncValue<List<Comment>>> {
   static List<Comment> _withDeleted(List<Comment> tree, String id) =>
       [for (final c in tree) c.id == id ? c.markDeleted() : c.withReplies(_withDeleted(c.replies, id))];
 
-  /// Returns [kBlockedInteractionMessage] when refused by a block, else null.
+  /// Returns [blockedInteractionMessage] when refused by a block, else null.
   /// Other errors stay silent (fire-and-forget, as before).
   Future<String?> toggleLike(Comment c) async {
     try {
@@ -288,7 +289,7 @@ class CommentsController extends StateNotifier<AsyncValue<List<Comment>>> {
       await load();
       return null;
     } on ClubError catch (e) {
-      return e.isBlocked ? kBlockedInteractionMessage : null;
+      return e.isBlocked ? blockedInteractionMessage : null;
     } catch (_) {
       return null;
     }

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/club_error.dart';
 import '../models/page.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 /// Immutable state for an infinite, cursor-paginated list.
 class PagedState<T> {
@@ -107,7 +108,7 @@ class PagedNotifier<T> extends StateNotifier<PagedState<T>> {
     } on ClubError catch (e) {
       state = state.copyWith(loading: false, error: e.message, initialized: true);
     } catch (_) {
-      state = state.copyWith(loading: false, error: 'Failed to load.', initialized: true);
+      state = state.copyWith(loading: false, error: appL10n.errLoadFailed, initialized: true);
     }
   }
 }

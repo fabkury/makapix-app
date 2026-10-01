@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 import '../models/club_error.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 /// A successful "Sign in with Apple" grab.
 ///
@@ -75,7 +76,7 @@ class AppleOAuth {
       if (idToken == null || idToken.isEmpty) {
         throw ClubError(
           code: 'apple_no_token',
-          message: 'Apple did not return an identity token. Please try again.',
+          message: appL10n.appleNoToken,
         );
       }
       return AppleAuthResult(
@@ -88,18 +89,18 @@ class AppleOAuth {
       );
     } on SignInWithAppleAuthorizationException catch (e) {
       if (e.code == AuthorizationErrorCode.canceled) {
-        throw ClubError(code: 'apple_canceled', message: 'Apple sign-in was canceled.');
+        throw ClubError(code: 'apple_canceled', message: appL10n.appleCanceled);
       }
       throw ClubError(
         code: 'apple_failed',
-        message: "Couldn't complete Apple sign-in. Please try again.",
+        message: appL10n.appleFailed,
       );
     } on ClubError {
       rethrow;
     } catch (_) {
       throw ClubError(
         code: 'apple_failed',
-        message: "Couldn't complete Apple sign-in. Please try again.",
+        message: appL10n.appleFailed,
       );
     }
   }

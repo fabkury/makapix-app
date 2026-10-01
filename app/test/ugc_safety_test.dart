@@ -225,8 +225,8 @@ void main() {
     });
 
     test('blocked-interaction constant is direction-neutral (no handle)', () {
-      expect(kBlockedInteractionMessage, isNot(contains('@')));
-      expect(kBlockedInteractionMessage.toLowerCase(), contains("can't interact"));
+      expect(blockedInteractionMessage, isNot(contains('@')));
+      expect(blockedInteractionMessage.toLowerCase(), contains("can't interact"));
     });
   });
 

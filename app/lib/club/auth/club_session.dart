@@ -7,6 +7,7 @@ import '../config/club_config.dart';
 import '../models/auth_tokens.dart';
 import '../models/club_error.dart';
 import 'token_store.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 /// Owns the token lifecycle: in-memory [AuthTokens] + secure persistence, and the
 /// `/auth/token` grant calls (password / authorization_code / refresh_token).
@@ -93,7 +94,7 @@ class ClubSession {
     } on DioException catch (e) {
       throw ClubError.fromDio(e);
     } catch (_) {
-      throw ClubError(code: 'parse_error', message: 'Unexpected token response from the server.');
+      throw ClubError(code: 'parse_error', message: appL10n.tokenResponseUnexpected);
     }
   }
 

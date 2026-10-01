@@ -18,14 +18,14 @@ are the acceptance test.
 | Phase | What | Status |
 |---|---|---|
 | L0 | Infrastructure, test harness, pilot (Settings, language picker, tool names) | **done 2026-10-01** |
-| L1 | Club pillar: extract + translate + sweep, batch by batch | in progress — C1–C8 of C1–C9 done |
+| L1 | Club pillar: extract + translate + sweep, batch by batch | Club done (C1–C9); editor (L2) next |
 | L2 | Editor pillar: extract + translate + sweep, batch by batch | not started (tool names done in L0) |
 | L3 | Independent translation review (one agent per language), fixes, layout hardening | not started |
 | L4 | Seams and periphery, then flip `kTranslationsShipped` | not started |
 
 **Progress number:** the total on line 5 of `app/test/l10n/hardcoded_baseline.txt` — the
 hardcoded strings the scanner still finds. 2,683 after L0 (scanner as tightened in C1); 2,516
-after C1; 2,334 after C2; 2,253 after C3; 2,125 after C4; 2,000 after C5; 1,856 after C6; 1,709 after C7; 1,654 after C8. Zero means L1 + L2 are done.
+after C1; 2,334 after C2; 2,253 after C3; 2,125 after C4; 2,000 after C5; 1,856 after C6; 1,709 after C7; 1,654 after C8; 1,598 after C9 (all in `lib/editor`). Zero means L1 + L2 are done.
 
 **Release safety while this is in progress:** `kTranslationsShipped` is `false`
 (`app/lib/l10n/app_locale.dart`), so a release build offers English only and hides the language
@@ -112,9 +112,14 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   menu, rename and delete dialogs, register sheet and its errors), the generic "Player" and
   "Artwork" fallback names, "Not signed in." `api/player_api.dart` holds only URL paths
   (`l10n-ignore-file`). Sweeps: `sweep_players_test.dart`.
-- [ ] **C9 Errors and context-free text** — `models/club_error` (5), `api/*` (post 13, moderation
-  12, profile 5, the rest ≈15), `state/*` (post_providers 8, pmd_providers 7, the rest ≈6),
-  `models/` (club_user 6, mention_candidate 5, account 3, mention_markup 4), `share/image_share` (22)
+- [x] **C9 Errors and context-free text** — done 2026-10-01: network / timeout / fallback
+  errors (`ClubError`), sign-in errors thrown by the GitHub and Apple flows, mention-picker
+  reason labels, reaction / comment / follow failures, and the size dialog shared by Export
+  and Share (`lib/share/image_share.dart`; `share: true` replaces the title / action strings
+  so "… anyway" is a whole message). Wire values are marked `l10n-ignore`. The lower-case
+  tier (`scan.dart --lower`) was read through for everything outside `lib/editor`: wire
+  values and menu ids only. **Nothing outside `lib/editor` is left in the baseline.**
+  Sweeps: `sweep_share_test.dart`; behavior tests in `behavior_test.dart`.
 
 ## L2 — Editor pillar (≈1,600 findings, many of them engine names to mark, not translate)
 
@@ -223,6 +228,11 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 
 ## Session log
 
+- **2026-10-01** — C9 (errors, context-free text, image share): 41 messages. Scanner fix: a
+  message inside `throw ClubError(...)` was skipped as developer text, but screens print it;
+  the scanner now reads it (found 10 sign-in errors). Sweep finding fixed: the Export / Share
+  size dialog overflowed a small phone when its warning showed, in English too (it scrolls
+  now). 5,476 Dart tests pass. **L1 (Club) is complete.**
 - **2026-10-01** — C8 (players): 30 messages. **Test-harness defect found and fixed:** a tap
   that lands on nothing was only a warning, so eight "dialog" sweeps (three artwork dialogs,
   the profile block dialog, the comment moderator-delete dialog, and three new player ones)

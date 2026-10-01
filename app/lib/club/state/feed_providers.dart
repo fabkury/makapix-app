@@ -52,7 +52,7 @@ final hashtagFeedProvider =
     StateNotifierProvider.autoDispose.family<PagedNotifier<Post>, PagedState<Post>, String>((ref, tag) {
   ref.watch(currentUserSubProvider);
   final api = ref.watch(feedApiProvider);
-  final filters = ref.watch(feedFiltersProvider('tag:$tag'));
+  final filters = ref.watch(feedFiltersProvider('tag:$tag')); // l10n-ignore: provider key
   final n = PagedNotifier<Post>((cursor) => api.hashtag(tag, cursor: cursor, filters: filters),
       onPage: precacheArtworks);
   n.loadInitial();
@@ -64,7 +64,7 @@ final ownerFeedProvider =
     StateNotifierProvider.autoDispose.family<PagedNotifier<Post>, PagedState<Post>, String>((ref, userKey) {
   ref.watch(currentUserSubProvider);
   final api = ref.watch(feedApiProvider);
-  final filters = ref.watch(feedFiltersProvider('owner:$userKey'));
+  final filters = ref.watch(feedFiltersProvider('owner:$userKey')); // l10n-ignore: provider key
   final n = PagedNotifier<Post>((cursor) => api.byOwner(userKey, cursor: cursor, filters: filters),
       onPage: precacheArtworks);
   n.loadInitial();

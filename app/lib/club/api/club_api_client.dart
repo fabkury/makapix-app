@@ -57,7 +57,7 @@ class ClubApiClient {
     client.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) {
         final tok = session.accessToken;
-        if (tok != null) options.headers['Authorization'] = 'Bearer $tok';
+        if (tok != null) options.headers['Authorization'] = 'Bearer $tok'; // l10n-ignore: HTTP header
         handler.next(options);
       },
       onError: (e, handler) async {
@@ -70,7 +70,7 @@ class ClubApiClient {
           if (ok) {
             final opts = e.requestOptions;
             opts.extra['__retried'] = true;
-            opts.headers['Authorization'] = 'Bearer ${session.accessToken}';
+            opts.headers['Authorization'] = 'Bearer ${session.accessToken}'; // l10n-ignore: HTTP header
             try {
               return handler.resolve(await client.fetch(opts));
             } on DioException catch (e2) {

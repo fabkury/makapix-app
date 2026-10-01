@@ -924,7 +924,7 @@ class _GalleryTab extends ConsumerWidget {
     final state = ref.watch(ownerFeedProvider(profile.userKey));
     final n = ref.read(ownerFeedProvider(profile.userKey).notifier);
     return FilterFabOverlay(
-      filterKey: 'owner:${profile.userKey}',
+      filterKey: 'owner:${profile.userKey}', // l10n-ignore: provider key
       child: FeedGrid(
         key: const PageStorageKey('profile-gallery'),
         nested: true,

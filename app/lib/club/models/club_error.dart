@@ -1,9 +1,10 @@
 import 'package:dio/dio.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 /// Shown wherever an interaction is refused with `403 blocked` (ugc-safety §5 /
 /// A8). Direction-neutral by design: a block refuses interactions in **either**
 /// direction (D11), so the copy must never disclose who blocked whom.
-const String kBlockedInteractionMessage = "You can't interact with this user.";
+String get blockedInteractionMessage => appL10n.errBlockedInteraction;
 
 /// A normalized Club API error.
 ///
@@ -24,7 +25,7 @@ class ClubError implements Exception {
 
   factory ClubError.fromBody(int? status, Object? body, {Duration? retryAfter}) {
     var code = 'unknown';
-    var message = 'Something went wrong.';
+    var message = appL10n.commonSomethingWrong;
     if (body is Map) {
       final err = body['error'];
       if (err is Map) {
@@ -56,9 +57,7 @@ class ClubError implements Exception {
         e.type == DioExceptionType.sendTimeout;
     return ClubError(
       code: isTimeout ? 'timeout' : 'network',
-      message: isTimeout
-          ? 'The request timed out. Please try again.'
-          : 'Network error — check your connection.',
+      message: isTimeout ? appL10n.errTimeout : appL10n.errNetwork,
     );
   }
 
@@ -73,5 +72,5 @@ class ClubError implements Exception {
   bool get isBlocked => status == 403 && code == 'blocked';
 
   @override
-  String toString() => 'ClubError(${status ?? '-'}, $code): $message';
+  String toString() => 'ClubError(${status ?? '-'}, $code): $message'; // l10n-ignore: debug text
 }

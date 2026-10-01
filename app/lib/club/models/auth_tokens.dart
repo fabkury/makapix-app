@@ -18,7 +18,7 @@ class AuthTokens {
     final expiresIn = (j['expires_in'] as num?)?.toInt() ?? 3600;
     return AuthTokens(
       accessToken: j['access_token'] as String,
-      tokenType: (j['token_type'] as String?) ?? 'Bearer',
+      tokenType: (j['token_type'] as String?) ?? 'Bearer', // l10n-ignore: HTTP auth scheme
       refreshToken: j['refresh_token'] as String,
       expiresAt: (now ?? DateTime.now()).add(Duration(seconds: expiresIn)),
     );
@@ -42,7 +42,7 @@ class AuthTokens {
     if (exp == null) return null;
     return AuthTokens(
       accessToken: a,
-      tokenType: m['token_type'] ?? 'Bearer',
+      tokenType: m['token_type'] ?? 'Bearer', // l10n-ignore: HTTP auth scheme
       refreshToken: r,
       expiresAt: exp,
     );

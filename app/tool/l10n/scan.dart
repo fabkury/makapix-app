@@ -216,10 +216,10 @@ class _Visitor extends RecursiveAstVisitor<void> {
     // Arguments of known non-UI calls.
     final call = _enclosingCallName(c);
     if (call != null && _nonUiCalls.contains(call)) return true;
-    // throw X('...') — developer-facing unless caught and shown; ClubError-style user errors
-    // are built by named constructors and audited separately.
+    // throw X('...') — developer-facing unless caught and shown. A thrown ClubError is the
+    // exception: its message is what the screens print (`e.message`).
     for (AstNode? a = c; a != null; a = a.parent) {
-      if (a is ThrowExpression) return true;
+      if (a is ThrowExpression) return call != 'ClubError';
       if (a is FunctionBody) break;
     }
     return false;

@@ -1,3 +1,5 @@
+import 'package:makapix_club/l10n/l10n.dart';
+
 /// Why a candidate is being offered (`GET /user/mention-candidates` → `reason`).
 ///
 /// The server ranks in this order, then by handle. The composer shows the
@@ -26,10 +28,10 @@ enum MentionReason {
   /// Short label for the candidate row. Empty means "show nothing", which is
   /// right for a plain search hit and for a tier we do not recognize.
   String get label => switch (this) {
-        MentionReason.owner => 'Artist',
-        MentionReason.thread => 'In this thread',
-        MentionReason.following => 'You follow',
-        MentionReason.follower => 'Follows you',
+        MentionReason.owner => appL10n.mentionReasonArtist,
+        MentionReason.thread => appL10n.mentionReasonThread,
+        MentionReason.following => appL10n.mentionReasonFollowing,
+        MentionReason.follower => appL10n.mentionReasonFollower,
         MentionReason.search => '',
         MentionReason.unknown => '',
       };

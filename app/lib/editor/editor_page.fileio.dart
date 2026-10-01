@@ -630,8 +630,7 @@ extension _EditorFileIo on _EditorPageState {
   // exports that can take minutes and a lot of memory.
   Future<(int, String)?> _exportScaleDialog({
     required int frames,
-    String title = 'Export size',
-    String action = 'Export',
+    bool share = false,
     List<String> formats = const [],
     String initialFormat = '',
   }) =>
@@ -640,8 +639,7 @@ extension _EditorFileIo on _EditorPageState {
         width: engine.width,
         height: engine.height,
         frames: frames,
-        title: title,
-        action: action,
+        share: share,
         formats: formats,
         initialFormat: initialFormat,
       );
@@ -769,8 +767,7 @@ extension _EditorFileIo on _EditorPageState {
     if (!mounted) return;
     final choice = await _exportScaleDialog(
       frames: fc,
-      title: 'Share',
-      action: 'Share',
+      share: true,
       formats: animated ? const ['GIF', 'WebP'] : const [],
       initialFormat: remembered,
     );

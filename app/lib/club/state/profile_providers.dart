@@ -7,6 +7,7 @@ import '../models/user_profile.dart';
 import 'api_providers.dart';
 import 'auth_controller.dart' show currentUserSubProvider;
 import 'paged.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 class ProfileController extends StateNotifier<AsyncValue<UserProfile>> {
   final Ref ref;
@@ -55,10 +56,10 @@ class ProfileController extends StateNotifier<AsyncValue<UserProfile>> {
       return null;
     } on ClubError catch (e) {
       state = AsyncValue.data(cur); // rollback
-      return e.isBlocked ? kBlockedInteractionMessage : e.message;
+      return e.isBlocked ? blockedInteractionMessage : e.message;
     } catch (_) {
       state = AsyncValue.data(cur);
-      return 'Could not update follow.';
+      return appL10n.followUpdateFailed;
     }
   }
 }

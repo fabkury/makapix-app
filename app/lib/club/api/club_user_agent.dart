@@ -1,3 +1,4 @@
+// l10n-ignore-file: the User-Agent header's product and platform words; nothing is shown.
 import 'dart:io' show Platform;
 
 import 'package:device_info_plus/device_info_plus.dart';

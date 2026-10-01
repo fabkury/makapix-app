@@ -4,6 +4,7 @@ import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import '../config/club_config.dart';
 import '../models/club_error.dart';
 import 'pkce.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 /// A successful authorize: the single-use Makapix code + the PKCE verifier to
 /// exchange it with.
@@ -54,11 +55,11 @@ class GithubOAuth {
       final canceled = e is PlatformException &&
           (e.code.toUpperCase() == 'CANCELED' || e.code.toUpperCase() == 'CANCELLED');
       if (canceled) {
-        throw ClubError(code: 'oauth_canceled', message: 'GitHub sign-in was canceled.');
+        throw ClubError(code: 'oauth_canceled', message: appL10n.githubCanceled);
       }
       throw ClubError(
         code: 'oauth_failed',
-        message: "Couldn't complete GitHub sign-in. Please try again.",
+        message: appL10n.githubFailedRetry,
       );
     }
 
@@ -67,18 +68,18 @@ class GithubOAuth {
     if (error != null) {
       throw ClubError(
         code: error,
-        message: cb.queryParameters['error_description'] ?? 'GitHub sign-in failed.',
+        message: cb.queryParameters['error_description'] ?? appL10n.githubFailed,
       );
     }
     if (cb.queryParameters['state'] != pkce.state) {
       throw ClubError(
         code: 'state_mismatch',
-        message: 'Sign-in could not be verified (state mismatch). Please try again.',
+        message: appL10n.signInStateMismatch,
       );
     }
     final code = cb.queryParameters['code'];
     if (code == null || code.isEmpty) {
-      throw ClubError(code: 'no_code', message: 'No authorization code was returned.');
+      throw ClubError(code: 'no_code', message: appL10n.signInNoCode);
     }
     return GithubAuthResult(code, pkce.verifier);
   }

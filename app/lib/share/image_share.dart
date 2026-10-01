@@ -16,6 +16,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:makapix_club/engine_ffi.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 // Warn (red alert + explicit re-confirmation) when an export's total output — width × height ×
 // scale² × frames — exceeds this. ~64 million pixels ≈ 256 MB of RGBA work per pass, about where a
@@ -87,8 +88,8 @@ Future<(int, String)?> showExportScaleDialog({
   required int width,
   required int height,
   required int frames,
-  String title = 'Export size',
-  String action = 'Export',
+  // A share ("Share" / "Share anyway") rather than an export to a file.
+  bool share = false,
   List<String> formats = const [],
   String initialFormat = '',
 }) {
@@ -101,9 +102,13 @@ Future<(int, String)?> showExportScaleDialog({
       final ow = width * scale, oh = height * scale;
       final totalPx = ow * oh * frames;
       final big = totalPx > kExportWarnPixels;
+      final l10n = ctx.l10n;
+      final millions = (totalPx / 1e6).toStringAsFixed(0);
       return AlertDialog(
-        title: Text(title),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        title: Text(share ? l10n.commonShare : l10n.exportSizeTitle),
+        // Scrolls: with the warning showing, the content is taller than a small phone allows.
+        content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           if (formats.isNotEmpty) ...[
             Wrap(spacing: 6, children: [
               for (final f in formats)
@@ -130,7 +135,7 @@ Future<(int, String)?> showExportScaleDialog({
           ]),
           const SizedBox(height: 10),
           Text(
-            frames > 1 ? 'Output: $ow × $oh px, $frames frames' : 'Output: $ow × $oh px',
+            frames > 1 ? l10n.exportOutputFrames(ow, oh, frames) : l10n.exportOutput(ow, oh),
             style: const TextStyle(fontSize: 12, color: Colors.white60),
           ),
           if (warned)
@@ -148,17 +153,16 @@ Future<(int, String)?> showExportScaleDialog({
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Very large export: ${(totalPx / 1e6).toStringAsFixed(0)} million pixels. '
-                      'This can take a long time and a lot of memory. $action anyway?',
+                      share ? l10n.shareLargeWarning(millions) : l10n.exportLargeWarning(millions),
                       style: const TextStyle(fontSize: 12, color: Color(0xFFE05050)),
                     ),
                   ),
                 ]),
               ),
             ),
-        ]),
+        ])),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l10n.commonCancel)),
           FilledButton(
             style: warned ? FilledButton.styleFrom(backgroundColor: const Color(0xFFE05050)) : null,
             onPressed: () {
@@ -168,7 +172,9 @@ Future<(int, String)?> showExportScaleDialog({
               }
               Navigator.pop(ctx, (scale, format));
             },
-            child: Text(warned ? '$action anyway' : action),
+            child: Text(share
+                ? (warned ? l10n.shareAnyway : l10n.commonShare)
+                : (warned ? l10n.exportAnyway : l10n.exportAction)),
           ),
         ],
       );
@@ -207,7 +213,7 @@ Future<(Uint8List, bool, bool)> encodeWithProgress({
             LinearProgressIndicator(value: total > 0 ? done / total : null),
             const SizedBox(height: 10),
             Text(
-              total > 0 ? '${(100 * done / total).floor()}%' : 'Preparing…',
+              total > 0 ? '${(100 * done / total).floor()}%' : ctx.l10n.exportPreparing,
               style: const TextStyle(fontSize: 12, color: Colors.white60),
             ),
           ]),
@@ -220,7 +226,7 @@ Future<(Uint8List, bool, bool)> encodeWithProgress({
                         canceled = true;
                         Engine.cancelExportStatic(); // honored at the next frame boundary
                       }),
-              child: Text(canceling ? 'Canceling…' : 'Cancel'),
+              child: Text(canceling ? ctx.l10n.exportCanceling : ctx.l10n.commonCancel),
             ),
           ],
         );
@@ -314,13 +320,14 @@ Future<bool> shareRasterArtwork({
   void Function(String message)? onNotice,
 }) async {
   void fail(String m) => onError?.call(m);
+  final l10n = context.l10n;
   if (width < Engine.minDim || height < Engine.minDim || width > Engine.maxDim || height > Engine.maxDim) {
-    fail('This artwork can’t be shared as an image.');
+    fail(l10n.shareNotImage);
     return false;
   }
   final animated = frameCount > 1;
   final prefs = await SharedPreferences.getInstance();
-  final remembered = prefs.getString(kShareFormatPref) ?? 'GIF';
+  final remembered = prefs.getString(kShareFormatPref) ?? 'GIF'; // l10n-ignore: format name
   if (!context.mounted) return false;
 
   final choice = await showExportScaleDialog(
@@ -328,9 +335,8 @@ Future<bool> shareRasterArtwork({
     width: width,
     height: height,
     frames: frameCount,
-    title: 'Share',
-    action: 'Share',
-    formats: animated ? const ['GIF', 'WebP'] : const [],
+    share: true,
+    formats: animated ? const ['GIF', 'WebP'] : const [], // l10n-ignore: format names
     initialFormat: remembered,
   );
   if (choice == null) return false;
@@ -348,7 +354,7 @@ Future<bool> shareRasterArtwork({
   if (!context.mounted) return false;
   final (bytes, canceled, flattened) = await encodeWithProgress(
     context: context,
-    title: 'Rendering ${animated ? chosen : 'PNG'}…',
+    title: l10n.exportRendering(animated ? chosen : 'PNG'), // l10n-ignore: format name
     encode: () async {
       try {
         final raster = await fetchRaster();
@@ -362,16 +368,16 @@ Future<bool> shareRasterArtwork({
   );
   if (canceled) return false;
   if (bytes.isEmpty) {
-    fail('Could not render the image to share.');
+    fail(l10n.shareRenderFailed);
     return false;
   }
-  if (flattened) onNotice?.call('GIF holds no partial transparency — semi-transparent pixels were flattened');
+  if (flattened) onNotice?.call(l10n.gifFlattenedNotice);
 
   try {
     await shareImageBytes(bytes: bytes, filenameBase: title, ext: ext, mime: mime, text: shareCaption(title, linkUrl));
     return true;
   } catch (e) {
-    fail('Could not share: $e');
+    fail(l10n.shareFailed('$e'));
     return false;
   }
 }

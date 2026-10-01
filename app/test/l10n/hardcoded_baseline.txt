@@ -2,10 +2,10 @@
 # file. test/l10n/hardcoded_strings_test.dart fails if a file has MORE than its number (a
 # new hardcoded string) or FEWER (strings were extracted: re-pin with
 # `dart run tool/l10n/scan.dart --write-baseline`). Done when this file is empty.
-# total 1654 in 70 files
+# total 1598 in 58 files
 255 lib/editor/editor_page.controls.dart
 212 lib/editor/replay/visible_index.dart
-103 lib/editor/editor_page.fileio.dart
+99 lib/editor/editor_page.fileio.dart
 78 lib/editor/editor_page.engine.dart
 67 lib/editor/keyboard/commands.dart
 64 lib/editor/tools.dart
@@ -26,7 +26,6 @@
 23 lib/editor/editor_page.replay.dart
 22 lib/editor/frames/frames_dialogs.dart
 22 lib/editor/patterns/patterns_catalog.dart
-21 lib/share/image_share.dart
 20 lib/editor/editor_page.toolgrid.dart
 19 lib/editor/editor_page.persistence.dart
 18 lib/editor/keyboard/cheat_sheet.dart
@@ -34,18 +33,14 @@
 13 lib/editor/gallery/drawing_library_grid.dart
 13 lib/editor/layers/layer_model.dart
 12 lib/editor/keyboard/chords.dart
-8 lib/club/state/post_providers.dart
 8 lib/editor/editor_page.keyboard.dart
 8 lib/editor/replay/replay_page.dart
 7 lib/editor/frames/frames_action_bar.dart
 7 lib/editor/layers/layers_action_bar.dart
-5 lib/club/models/club_error.dart
 5 lib/editor/dialogs/color_picker_dialog.dart
 5 lib/editor/editor_page.canvas.dart
 5 lib/editor/palette_io.dart
 5 lib/editor/replay/journal_format.dart
-4 lib/club/api/club_user_agent.dart
-4 lib/club/models/mention_candidate.dart
 4 lib/editor/dialogs/duration_dialog.dart
 4 lib/editor/dialogs/rename_drawing_dialog.dart
 4 lib/editor/frames/frame_set.dart
@@ -55,18 +50,11 @@
 3 lib/editor/editor_page.frames.dart
 3 lib/editor/editor_page.layers.dart
 3 lib/editor/widgets/painters.dart
-2 lib/club/api/club_api_client.dart
-2 lib/club/models/auth_tokens.dart
-2 lib/club/state/feed_providers.dart
 2 lib/editor/gallery/gallery_page.dart
 2 lib/editor/layers/layer_row.dart
 2 lib/editor/open_file.dart
 2 lib/editor/replay/action_runner.dart
 2 lib/editor/replay/timelapse_plan.dart
-1 lib/club/state/paged.dart
-1 lib/club/state/profile_providers.dart
-1 lib/club/ui/hashtag_feed_page.dart
-1 lib/club/ui/profile_page.dart
 1 lib/editor/frames/frame_tile.dart
 1 lib/editor/keyboard/dispatcher.dart
 1 lib/editor/persistence/drawing_meta.dart

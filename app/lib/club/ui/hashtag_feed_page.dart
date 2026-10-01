@@ -24,7 +24,7 @@ class HashtagFeedPage extends ConsumerWidget {
       child: Scaffold(
         appBar: AppBar(title: Text('#$tag')),
         body: FilterFabOverlay(
-          filterKey: 'tag:$tag',
+          filterKey: 'tag:$tag', // l10n-ignore: provider key
           child: FeedGrid(
             state: state,
             onLoadMore: n.loadMore,
