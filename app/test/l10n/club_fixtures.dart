@@ -144,8 +144,16 @@ Map<String, dynamic> fixturePostJson(
       'public_visibility': true,
     };
 
-Post fixturePost(int id, {String title = 'Sunset Tower', List<String> modHashtags = const []}) =>
-    Post.fromJson(fixturePostJson(id, title: title, modHashtags: modHashtags));
+Post fixturePost(int id,
+        {String title = 'Sunset Tower',
+        List<String> modHashtags = const [],
+        int parents = 0,
+        int children = 0}) =>
+    Post.fromJson({
+      ...fixturePostJson(id, title: title, modHashtags: modHashtags),
+      'parent_count': parents,
+      'child_count': children,
+    });
 
 String _ago(Duration d) => DateTime.now().toUtc().subtract(d).toIso8601String();
 
@@ -382,6 +390,47 @@ FakeBackend fixtureBackend() => FakeBackend()
         'items': [fixtureOwnerJson(), fixtureOwnerJson(handle: 'pixel_ada', sqid: 't5')],
       })
   ..on('GET', r'/search', (_) => {'items': const []})
+  // Artwork pages. p1: someone else's animated remix with a layers file. p2: the signed-in
+  // user's own post, hidden, with moderator hashtags. p3: not remixable, promoted, hidden by
+  // moderators, awaiting approval — every moderator chip at once.
+  ..on('GET', r'/p/p1', (_) => {
+        ...fixturePostJson(1, frames: 12),
+        'description': '8-bit',
+        'parent_count': 2,
+        'child_count': 3,
+        'license': {'identifier': 'CC BY 4.0', 'title': 'CC BY 4.0'},
+      })
+  ..on('GET', r'/p/p2', (_) => {
+        ...fixturePostJson(2, mine: true, hashtags: const ['wip', 'nsfw'], modHashtags: const ['nsfw']),
+        'hidden_by_user': true,
+        'child_count': 1,
+      })
+  ..on('GET', r'/p/p3', (_) => {
+        ...fixturePostJson(3, title: '', hasMkpx: false),
+        'remixable': false,
+        'promoted': true,
+        'promoted_category': 'frontpage',
+        'hidden_by_mod': true,
+        'public_visibility': false,
+      })
+  ..on('GET', r'/post/\d+/reactions', (_) => {
+        'totals': {'🔥': 7, '👍': 5},
+        'mine': ['🔥'],
+      })
+  ..on('POST', r'/post/\d+/view', (_) => const <String, dynamic>{})
+  ..on('GET', r'/post/\d+/parents', (_) => {
+        'items': [
+          {'position': 0, 'state': 'available', 'post': fixturePostJson(11, title: '')},
+          {'position': 1, 'state': 'deleted'},
+          {'position': 2, 'state': 'unavailable'},
+        ],
+        'parents': [
+          {'position': 0, 'state': 'available', 'post': fixturePostJson(11, title: '')},
+          {'position': 1, 'state': 'deleted'},
+          {'position': 2, 'state': 'unavailable'},
+        ],
+      })
+  ..on('GET', r'/post/\d+/children', (_) => {'items': const []})
   ..on('GET', r'/user/u/t5/profile', (_) => fixtureProfileJson(own: true))
   ..on('GET', r'/user/u/b7/profile', (_) => fixtureProfileJson())
   ..on('GET', r'/user/u/[^/]+/reacted-posts', (_) => {'items': const []})

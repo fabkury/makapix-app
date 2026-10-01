@@ -89,6 +89,10 @@ label must not be longer than the full name, and no two tools may share one.
 | featured (on the welcome page) | destacados | destaques | à la une | empfohlen | избранное | 注目の作品 | 精选 |
 | reputation | reputación | reputação | réputation | Reputation | репутация | 評価 | 声望 |
 | tagline | lema | frase | devise | Motto | девиз | ひとこと | 个性签名 |
+| lineage (originals and remixes of an artwork) | linaje | linhagem | filiation | Abstammung | происхождение | 系譜 | 创作脉络 |
+| layers file (.mkpx) | archivo con capas | arquivo com camadas | fichier avec calques | Ebenendatei | файл со слоями | レイヤーファイル | 图层文件 |
+| promote / demote (moderator) | destacar / quitar de destacados | promover / remover promoção | mettre en avant / retirer | empfehlen / Empfehlung aufheben | продвинуть / снять продвижение | おすすめに追加 / 外す | 推荐 / 取消推荐 |
+| hide / unhide (a post) | ocultar / mostrar | ocultar / reexibir | masquer / réafficher | ausblenden / einblenden | скрыть / показать | 非表示 / 再表示 | 隐藏 / 取消隐藏 |
 | monitored hashtags | hashtags supervisados | hashtags monitoradas | hashtags surveillés | überwachte Hashtags | отслеживаемые хештеги | 監視対象のハッシュタグ | 受监控的话题标签 |
 
 ### Editor
@@ -135,4 +139,3 @@ glossary. Notable choices:
 
 - **Draft** (CONTEXT.md: visible but uncommitted editor state) vs. **Eraser** in Spanish: both
   are naturally "borrador". Decide when batch E1/E2 shows where "draft" appears in UI text.
-- **Lineage** — decide in batch C5.

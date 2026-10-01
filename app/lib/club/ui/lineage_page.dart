@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/lineage.dart';
@@ -23,23 +24,24 @@ class LineagePage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final signedIn = ref.watch(authControllerProvider).isSignedIn;
+    final l10n = context.l10n;
     return Scaffold(
-      appBar: AppBar(title: Text('Lineage — ${post.title.isEmpty ? 'Untitled' : post.title}')),
+      appBar: AppBar(
+          title: Text(l10n.lineageTitle(post.title.isEmpty ? l10n.untitled : post.title))),
       body: !signedIn
           ? SignInPrompt(
-              message: 'Sign in to browse originals and remixes.',
+              message: l10n.lineageSignIn,
               onSignIn: () => Navigator.push(
                   context, MaterialPageRoute(builder: (_) => const ClubAccountPage())),
             )
           : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               if (post.parentCount > 0) ...[
-                _sectionHeader(
-                    post.parentCount == 1 ? 'Original artwork' : 'Original artworks'),
+                _sectionHeader(l10n.lineageOriginals(post.parentCount)),
                 _ParentsStrip(postId: post.id),
               ],
               _sectionHeader(post.childCount > 0
-                  ? 'Remixes (${post.childCount})'
-                  : 'Remixes'),
+                  ? l10n.lineageRemixesCount(post.childCount)
+                  : l10n.lineageRemixes),
               Expanded(child: _ChildrenGrid(postId: post.id)),
             ]),
     );
@@ -74,7 +76,7 @@ class _ParentsStrip extends ConsumerWidget {
         error: (_, _) => Center(
           child: TextButton(
             onPressed: () => ref.invalidate(lineageParentsProvider(postId)),
-            child: const Text('Could not load the originals — retry'),
+            child: Text(context.l10n.lineageParentsError),
           ),
         ),
         data: (slots) => ListView.separated(
@@ -111,7 +113,7 @@ class _ParentTile extends StatelessWidget {
                 size: 28, color: Colors.white24),
           ),
           const SizedBox(height: 4),
-          Text(slot.isDeleted ? 'Deleted artwork' : 'Not available',
+          Text(slot.isDeleted ? context.l10n.lineageDeleted : context.l10n.lineageUnavailable,
               style: const TextStyle(fontSize: 11, color: Colors.white38),
               overflow: TextOverflow.ellipsis),
         ]),
@@ -135,7 +137,7 @@ class _ParentTile extends StatelessWidget {
                 height: post.height),
           ),
           const SizedBox(height: 4),
-          Text(post.title.isEmpty ? 'Untitled' : post.title,
+          Text(post.title.isEmpty ? context.l10n.untitled : post.title,
               style: const TextStyle(fontSize: 11), overflow: TextOverflow.ellipsis),
           Text('@${post.owner.handle}',
               style: const TextStyle(fontSize: 10, color: Colors.white54),
@@ -158,7 +160,7 @@ class _ChildrenGrid extends ConsumerWidget {
       state: state,
       onLoadMore: notifier.loadMore,
       onRefresh: notifier.refresh,
-      emptyMessage: 'No remixes yet.',
+      emptyMessage: context.l10n.lineageNoRemixes,
       onTap: (p) => Navigator.push(
           context, MaterialPageRoute(builder: (_) => ArtworkDetailPage(sqid: p.sqid))),
     );

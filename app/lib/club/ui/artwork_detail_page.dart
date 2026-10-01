@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter/services.dart';
@@ -188,7 +189,7 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => ClubErrorRetry(
-        message: e is ClubError ? e.message : 'Could not load this artwork.',
+        message: e is ClubError ? e.message : context.l10n.artworkLoadError,
         onRetry: () async => ref.invalidate(postDetailProvider(widget.sqid)),
       ),
       data: (post) => _body(context, post),
@@ -215,7 +216,7 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
             // signed-in user can open — then it loads the full layered document.
             Row(children: [
               Expanded(
-                child: Text(post.title.isEmpty ? 'Untitled' : post.title,
+                child: Text(post.title.isEmpty ? context.l10n.untitled : post.title,
                     style: Theme.of(context).textTheme.titleLarge),
               ),
               _editButton(context, post),
@@ -225,13 +226,15 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
             _meta(post),
             ?_remixLine(post),
             if (_isOwner(post) && post.hiddenByUser)
-              const Padding(
-                padding: EdgeInsets.only(top: 6),
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.visibility_off_outlined, size: 14, color: Colors.amber),
-                  SizedBox(width: 6),
-                  Text('Hidden — only you can see this post',
-                      style: TextStyle(fontSize: 12, color: Colors.amber)),
+                  const Icon(Icons.visibility_off_outlined, size: 14, color: Colors.amber),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(context.l10n.artworkHiddenByYou,
+                        style: const TextStyle(fontSize: 12, color: Colors.amber)),
+                  ),
                 ]),
               ),
             if (ref.watch(isModeratorProvider)) _modStatusChips(post),
@@ -300,10 +303,10 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
                 context, MaterialPageRoute(builder: (_) => HashtagFeedPage(tag: tag))),
             child: (showModMarker && post.isModTag(tag))
                 ? Tooltip(
-                    message: 'Added by moderators',
+                    message: context.l10n.artworkTagByMods,
                     child: Semantics(
                       // Keep the tag itself the primary label for screen readers.
-                      label: '#$tag, added by moderators',
+                      label: context.l10n.artworkTagByModsLabel(tag),
                       excludeSemantics: true,
                       child: Row(mainAxisSize: MainAxisSize.min, children: [
                         Icon(Icons.shield,
@@ -319,13 +322,13 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
       // Long-press tooltips are undiscoverable; give the artist an always-visible
       // explanation of why those tags exist (and, implicitly, who controls them).
       if (showModMarker)
-        const Padding(
-          padding: EdgeInsets.only(top: 6),
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(Icons.shield, size: 12, color: Colors.white38),
-            SizedBox(width: 4),
-            Text('Tagged by a moderator',
-                style: TextStyle(fontSize: 11, color: Colors.white38)),
+            const Icon(Icons.shield, size: 12, color: Colors.white38),
+            const SizedBox(width: 4),
+            Text(context.l10n.artworkTaggedByMod,
+                style: const TextStyle(fontSize: 11, color: Colors.white38)),
           ]),
         ),
     ];
@@ -371,11 +374,12 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
         GestureDetector(
           onLongPress: () {
             Clipboard.setData(ClipboardData(text: '$base/p/${post.sqid}'));
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Link copied')));
+            ScaffoldMessenger.of(context)
+                .showSnackBar(SnackBar(content: Text(context.l10n.linkCopiedShort)));
           },
           child: IconButton(
             icon: const Icon(Icons.share),
-            tooltip: 'Share (long-press to copy link)',
+            tooltip: context.l10n.artworkShareTooltip,
             visualDensity: VisualDensity.compact,
             onPressed: () => _shareArtwork(context, post, base),
           ),
@@ -427,7 +431,9 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
             decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
             child: IconButton(
               icon: Icon(_playOverride ? Icons.stop : Icons.play_arrow, color: Colors.white),
-              tooltip: _playOverride ? 'Stop animation' : 'Play animation',
+              tooltip: _playOverride
+                  ? context.l10n.artworkStopAnimation
+                  : context.l10n.artworkPlayAnimation,
               onPressed: () => setState(() => _playOverride = !_playOverride),
             ),
           ),
@@ -460,10 +466,11 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
 
   Widget _meta(Post post) {
     final native = post.nativeFile;
+    final l10n = context.l10n;
     final parts = <String>[
       '${post.width}×${post.height}',
-      post.isAnimated ? '${post.frameCount} frames' : 'static',
-      if (post.uniqueColors != null) '≤ ${post.uniqueColors} colors / frame',
+      post.isAnimated ? l10n.artworkFrames(post.frameCount) : l10n.artworkStatic,
+      if (post.uniqueColors != null) l10n.artworkColorsPerFrame(post.uniqueColors!),
       if (native != null) '${formatFileSize(native.fileBytes)} ${native.format.toUpperCase()}',
       if (post.license != null) post.license!.identifier,
     ];
@@ -478,8 +485,8 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
   Widget? _remixLine(Post post) {
     if (post.parentCount == 0 && post.childCount == 0) return null;
     final parts = <String>[
-      if (post.parentCount > 0) 'Remix',
-      if (post.childCount > 0) '${post.childCount} remix${post.childCount == 1 ? '' : 'es'}',
+      if (post.parentCount > 0) context.l10n.artworkIsRemix,
+      if (post.childCount > 0) context.l10n.artworkRemixCount(post.childCount),
     ];
     return Padding(
       padding: const EdgeInsets.only(top: 4),
@@ -520,9 +527,9 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
   /// server would refuse the download (403) and the publish (422) anyway.
   Widget _editButton(BuildContext context, Post post) {
     if (!post.remixable && !_isOwner(post)) {
-      return const IconButton(
-        icon: Icon(Icons.edit_off),
-        tooltip: "The artist doesn't allow remixes",
+      return IconButton(
+        icon: const Icon(Icons.edit_off),
+        tooltip: context.l10n.artworkNoRemixes,
         onPressed: null,
       );
     }
@@ -531,7 +538,7 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
     if (!golden) {
       return IconButton(
         icon: const Icon(Icons.edit),
-        tooltip: 'Edit in Makapix',
+        tooltip: context.l10n.artworkEdit,
         onPressed: () => _openInEditor(context, post),
       );
     }
@@ -543,7 +550,7 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
       ),
       child: IconButton(
         icon: const Icon(Icons.edit, color: gold),
-        tooltip: 'Open with layers in Makapix',
+        tooltip: context.l10n.artworkEditLayers,
         onPressed: () => _openLayersInEditor(context, post),
       ),
     );
@@ -590,9 +597,10 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
       return const [];
     }
     final anyModEntry = showMod || showModTools;
+    final l10n = context.l10n;
     return [
       PopupMenuButton<String>(
-        tooltip: 'More actions',
+        tooltip: l10n.commonMoreActions,
         onSelected: (v) {
           if (v == 'edit_details') _editDetails(context, post);
           if (v == 'stats') {
@@ -619,20 +627,20 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
         },
         itemBuilder: (_) => [
           if (showOwner) ...[
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'edit_details',
               child: Row(children: [
-                Icon(Icons.edit_note, size: 16),
-                SizedBox(width: 8),
-                Text('Edit details…'),
+                const Icon(Icons.edit_note, size: 16),
+                const SizedBox(width: 8),
+                Flexible(child: Text(l10n.artworkMenuEditDetails)),
               ]),
             ),
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'stats',
               child: Row(children: [
-                Icon(Icons.insights, size: 16),
-                SizedBox(width: 8),
-                Text('Statistics…'),
+                const Icon(Icons.insights, size: 16),
+                const SizedBox(width: 8),
+                Flexible(child: Text(l10n.artworkMenuStats)),
               ]),
             ),
             PopupMenuItem(
@@ -644,15 +652,15 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
                         : Icons.visibility_off_outlined,
                     size: 16),
                 const SizedBox(width: 8),
-                Text(post.hiddenByUser ? 'Unhide post' : 'Hide post'),
+                Flexible(child: Text(post.hiddenByUser ? l10n.artworkMenuUnhide : l10n.artworkMenuHide)),
               ]),
             ),
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'delete_post',
               child: Row(children: [
-                Icon(Icons.delete_outline, size: 16),
-                SizedBox(width: 8),
-                Text('Delete post…'),
+                const Icon(Icons.delete_outline, size: 16),
+                const SizedBox(width: 8),
+                Flexible(child: Text(l10n.artworkMenuDelete)),
               ]),
             ),
           ],
@@ -661,29 +669,30 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
           if (showMkpx)
             PopupMenuItem(
               value: 'attach',
-              child: Text(post.hasMkpx ? 'Replace layers file…' : 'Attach layers file…'),
+              child: Text(
+                  post.hasMkpx ? l10n.artworkMenuReplaceLayers : l10n.artworkMenuAttachLayers),
             ),
           if (showMkpx && post.hasMkpx)
-            const PopupMenuItem(value: 'detach', child: Text('Remove layers file')),
+            PopupMenuItem(value: 'detach', child: Text(l10n.artworkMenuRemoveLayers)),
           // (The owner group's divider above already separates when mkpx is off.)
           if (showDownload && showMkpx) const PopupMenuDivider(),
           if (showDownload)
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'download',
               child: Row(children: [
-                Icon(Icons.download_outlined, size: 16),
-                SizedBox(width: 8),
-                Text('Download…'),
+                const Icon(Icons.download_outlined, size: 16),
+                const SizedBox(width: 8),
+                Flexible(child: Text(l10n.artworkMenuDownload)),
               ]),
             ),
           if (anyModEntry && (showDownload || showMkpx || showOwner)) const PopupMenuDivider(),
           if (showMod)
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'mod_hashtags',
               child: Row(children: [
-                Icon(Icons.shield, size: 16),
-                SizedBox(width: 8),
-                Text('Edit mod hashtags…'),
+                const Icon(Icons.shield, size: 16),
+                const SizedBox(width: 8),
+                Flexible(child: Text(l10n.artworkMenuModTags)),
               ]),
             ),
           if (showModTools) ...[
@@ -696,7 +705,7 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
                         : Icons.visibility_off_outlined,
                     size: 16),
                 const SizedBox(width: 8),
-                Text(post.hiddenByMod ? 'Unhide post (mod)' : 'Hide post (mod)…'),
+                Flexible(child: Text(post.hiddenByMod ? l10n.artworkMenuModUnhide : l10n.artworkMenuModHide)),
               ]),
             ),
             PopupMenuItem(
@@ -704,51 +713,54 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
               child: Row(children: [
                 Icon(post.promoted ? Icons.star_outline : Icons.star, size: 16),
                 const SizedBox(width: 8),
-                Text(post.promoted ? 'Demote…' : 'Promote…'),
+                Flexible(child: Text(post.promoted ? l10n.artworkMenuDemote : l10n.artworkMenuPromote)),
               ]),
             ),
             if (!post.publicVisibility)
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'mod_approve',
                 child: Row(children: [
-                  Icon(Icons.check_circle_outline, size: 16),
-                  SizedBox(width: 8),
-                  Text('Approve public visibility'),
+                  const Icon(Icons.check_circle_outline, size: 16),
+                  const SizedBox(width: 8),
+                  Flexible(child: Text(l10n.artworkMenuApprove)),
                 ]),
               ),
             // Same gate as the website: permanent delete only once the post is
             // already off the public surfaces (mod- or owner-hidden).
             if (post.hiddenByMod || post.hiddenByUser)
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'mod_delete',
                 child: Row(children: [
-                  Icon(Icons.delete_forever_outlined, size: 16, color: Colors.redAccent),
-                  SizedBox(width: 8),
-                  Text('Delete permanently…', style: TextStyle(color: Colors.redAccent)),
+                  const Icon(Icons.delete_forever_outlined, size: 16, color: Colors.redAccent),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(l10n.artworkMenuDeleteForever,
+                        style: const TextStyle(color: Colors.redAccent)),
+                  ),
                 ]),
               ),
           ],
           if (showUseAvatar && (showOwner || showMkpx || showDownload || anyModEntry))
             const PopupMenuDivider(),
           if (showUseAvatar)
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'use_avatar',
               child: Row(children: [
-                Icon(Icons.account_circle_outlined, size: 16),
-                SizedBox(width: 8),
-                Text('Use as profile photo…'),
+                const Icon(Icons.account_circle_outlined, size: 16),
+                const SizedBox(width: 8),
+                Flexible(child: Text(l10n.artworkMenuUseAvatar)),
               ]),
             ),
           if (showReport &&
               (showOwner || showMkpx || showDownload || anyModEntry || showUseAvatar))
             const PopupMenuDivider(),
           if (showReport)
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'report',
               child: Row(children: [
-                Icon(Icons.flag_outlined, size: 16),
-                SizedBox(width: 8),
-                Text('Report post…'),
+                const Icon(Icons.flag_outlined, size: 16),
+                const SizedBox(width: 8),
+                Flexible(child: Text(l10n.artworkMenuReport)),
               ]),
             ),
         ],
@@ -760,10 +772,11 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
   /// itself, so this just surfaces the confirmation.
   Future<void> _editDetails(BuildContext context, Post post) async {
     final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
     final saved = await Navigator.push<bool>(
         context, MaterialPageRoute(builder: (_) => EditPostDetailsPage(post: post)));
     if (saved == true) {
-      messenger.showSnackBar(const SnackBar(content: Text('Details saved.')));
+      messenger.showSnackBar(SnackBar(content: Text(l10n.artworkDetailsSaved)));
     }
   }
 
@@ -771,6 +784,7 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
   /// refetch the surfaces that filter on it.
   Future<void> _toggleHidden(BuildContext context, Post post) async {
     final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
     final hide = !post.hiddenByUser;
     try {
       await ref.read(postApiProvider).setHidden(post.id, hide);
@@ -780,13 +794,12 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
       ref.invalidate(hashtagFeedProvider);
       ref.invalidate(pmdListProvider);
       messenger.showSnackBar(SnackBar(
-          content:
-              Text(hide ? 'Post hidden — only you can see it.' : 'Post is visible again.')));
+          content: Text(hide ? l10n.artworkHiddenToast : l10n.artworkVisibleToast)));
     } on ClubError catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     } catch (_) {
       messenger.showSnackBar(SnackBar(
-          content: Text(hide ? 'Could not hide the post.' : 'Could not unhide the post.')));
+          content: Text(hide ? l10n.artworkHideFailed : l10n.artworkUnhideFailed)));
     }
   }
 
@@ -795,15 +808,15 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
   Future<void> _deletePost(BuildContext context, Post post) async {
     final messenger = ScaffoldMessenger.of(context);
     final nav = Navigator.of(context);
+    final l10n = context.l10n;
     final yes = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete this post?'),
-        content: const Text('It is removed from your profile and permanently deleted '
-            'after a 7-day grace period.'),
+        title: Text(ctx.l10n.artworkDeleteTitle),
+        content: Text(ctx.l10n.artworkDeleteBody),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.commonCancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(ctx.l10n.commonDelete)),
         ],
       ),
     );
@@ -814,12 +827,12 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
       ref.invalidate(ownerFeedProvider);
       ref.invalidate(hashtagFeedProvider);
       ref.invalidate(pmdListProvider);
-      messenger.showSnackBar(const SnackBar(content: Text('Post deleted.')));
+      messenger.showSnackBar(SnackBar(content: Text(l10n.artworkDeleted)));
       nav.pop(); // close the detail view; the grids refetch without it
     } on ClubError catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     } catch (_) {
-      messenger.showSnackBar(const SnackBar(content: Text('Could not delete the post.')));
+      messenger.showSnackBar(SnackBar(content: Text(l10n.artworkDeleteFailed)));
     }
   }
 
@@ -832,18 +845,19 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
 
   // ---- moderator post actions (the website's `p/{sqid}` moderator block) ----
 
-  /// Display names for `promoted_category` (server notification copy) —
+  /// Display name for a `promoted_category` slug, or null for an unknown one —
   /// **read-only**: the app promotes to `frontpage` only (2026-09-17). The
   /// server still accepts the other three slugs, but nothing server-side reads
   /// them (the promoted feed filters on the `promoted` boolean alone; category
-  /// follows never shipped), so the app stopped offering them. The map stays
+  /// follows never shipped), so the app stopped offering them. The names stay
   /// so posts promoted elsewhere into a legacy category still render by name.
-  static const Map<String, String> kPromoteCategories = {
-    'frontpage': 'Recommended',
-    'editor-pick': "Editor's Pick",
-    'weekly-pack': 'Weekly Pack',
-    "daily's-best": "Daily's Best",
-  };
+  static String? promoteCategoryName(AppLocalizations l10n, String? slug) => switch (slug) {
+        'frontpage' => l10n.feedRecommended,
+        'editor-pick' => l10n.promoteEditorsPick,
+        'weekly-pack' => l10n.promoteWeeklyPack,
+        "daily's-best" => l10n.promoteDailysBest,
+        _ => null,
+      };
 
   /// Moderation-state chips under the meta line, visible to moderators only —
   /// they carry the state the kebab entries act on (a menu of "Unhide" with no
@@ -861,13 +875,16 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
             Text(label, style: TextStyle(fontSize: 11, color: color)),
           ]),
         );
+    final l10n = context.l10n;
     final chips = <Widget>[
-      if (post.hiddenByMod)
-        chip(Icons.visibility_off, 'Hidden by moderators', Colors.redAccent),
-      if (!post.publicVisibility)
-        chip(Icons.hourglass_empty, 'Awaiting approval', Colors.amber),
+      if (post.hiddenByMod) chip(Icons.visibility_off, l10n.modChipHidden, Colors.redAccent),
+      if (!post.publicVisibility) chip(Icons.hourglass_empty, l10n.modChipAwaiting, Colors.amber),
       if (post.promoted)
-        chip(Icons.star, 'Promoted · ${kPromoteCategories[post.promotedCategory] ?? post.promotedCategory ?? '—'}',
+        chip(
+            Icons.star,
+            l10n.modChipPromoted(promoteCategoryName(l10n, post.promotedCategory) ??
+                post.promotedCategory ??
+                '—'),
             Theme.of(context).colorScheme.primary),
     ];
     if (chips.isEmpty) return const SizedBox.shrink();
@@ -887,16 +904,18 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
 
   Future<void> _modSetHidden(BuildContext context, Post post, bool hide) async {
     final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
     if (hide) {
       final yes = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Hide this post as moderator?'),
-          content: const Text('It disappears from feeds and search for everyone. '
-              'The artist cannot undo a moderator hide; you can.'),
+          title: Text(ctx.l10n.modHideTitle),
+          content: Text(ctx.l10n.modHideBody),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Hide')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.commonCancel)),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true), child: Text(ctx.l10n.commonHide)),
           ],
         ),
       );
@@ -905,28 +924,30 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
     try {
       await ref.read(moderationApiProvider).setModHidden(post.id, hide);
       _refreshAfterModAction();
-      messenger.showSnackBar(SnackBar(
-          content: Text(hide ? 'Post hidden by moderator.' : 'Post is visible again.')));
+      messenger.showSnackBar(
+          SnackBar(content: Text(hide ? l10n.modHiddenToast : l10n.artworkVisibleToast)));
     } on ClubError catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     } catch (_) {
-      messenger.showSnackBar(
-          SnackBar(content: Text(hide ? 'Could not hide the post.' : 'Could not unhide the post.')));
+      messenger.showSnackBar(SnackBar(
+          content: Text(hide ? l10n.artworkHideFailed : l10n.artworkUnhideFailed)));
     }
   }
 
   Future<void> _modPromote(BuildContext context, Post post) async {
     final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
     // Plain confirmation (the artist is notified). Recommended is the only
-    // promotion the app offers — see the note on [kPromoteCategories].
+    // promotion the app offers — see the note on [promoteCategoryName].
     final yes = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Promote this post?'),
-        content: const Text('It joins the Recommended feed. The artist is notified.'),
+        title: Text(ctx.l10n.modPromoteTitle),
+        content: Text(ctx.l10n.modPromoteBody),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Promote')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.commonCancel)),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true), child: Text(ctx.l10n.modPromoteAction)),
         ],
       ),
     );
@@ -934,52 +955,58 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
     try {
       await ref.read(moderationApiProvider).promotePost(post.id);
       _refreshAfterModAction();
-      messenger.showSnackBar(const SnackBar(content: Text('Promoted to Recommended.')));
+      messenger.showSnackBar(SnackBar(content: Text(l10n.modPromotedToast)));
     } on ClubError catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     } catch (_) {
-      messenger.showSnackBar(const SnackBar(content: Text('Could not promote the post.')));
+      messenger.showSnackBar(SnackBar(content: Text(l10n.modPromoteFailed)));
     }
   }
 
   Future<void> _modDemote(BuildContext context, Post post) async {
     final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
     final yes = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Demote this post?'),
-        content: Text('It leaves '
-            '${kPromoteCategories[post.promotedCategory] ?? 'its promoted category'} '
-            'and returns to normal feed placement.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Demote')),
-        ],
-      ),
+      builder: (ctx) {
+        final category = promoteCategoryName(ctx.l10n, post.promotedCategory);
+        return AlertDialog(
+          title: Text(ctx.l10n.modDemoteTitle),
+          content: Text(category != null
+              ? ctx.l10n.modDemoteBody(category)
+              : ctx.l10n.modDemoteBodyUnknown),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.commonCancel)),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true), child: Text(ctx.l10n.modDemoteAction)),
+          ],
+        );
+      },
     );
     if (yes != true) return;
     try {
       await ref.read(moderationApiProvider).demotePost(post.id);
       _refreshAfterModAction();
-      messenger.showSnackBar(const SnackBar(content: Text('Post demoted.')));
+      messenger.showSnackBar(SnackBar(content: Text(l10n.modDemotedToast)));
     } on ClubError catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     } catch (_) {
-      messenger.showSnackBar(const SnackBar(content: Text('Could not demote the post.')));
+      messenger.showSnackBar(SnackBar(content: Text(l10n.modDemoteFailed)));
     }
   }
 
   Future<void> _modApprovePublic(BuildContext context, Post post) async {
     final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
     try {
       await ref.read(moderationApiProvider).setPublicVisibility(post.id, true);
       _refreshAfterModAction();
-      messenger.showSnackBar(
-          const SnackBar(content: Text('Approved — the post can appear in Recent and search.')));
+      messenger.showSnackBar(SnackBar(content: Text(l10n.modApprovedToast)));
     } on ClubError catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     } catch (_) {
-      messenger.showSnackBar(const SnackBar(content: Text('Could not approve the post.')));
+      messenger.showSnackBar(SnackBar(content: Text(l10n.modApproveFailed)));
     }
   }
 
@@ -988,15 +1015,15 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
   Future<void> _modDeletePermanently(BuildContext context, Post post) async {
     final messenger = ScaffoldMessenger.of(context);
     final nav = Navigator.of(context);
+    final l10n = context.l10n;
     final first = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Permanently delete this post?'),
-        content: const Text('The post, its comments and reactions, and the stored '
-            'artwork files are all removed.'),
+        title: Text(ctx.l10n.modDeleteForeverTitle),
+        content: Text(ctx.l10n.modDeleteForeverBody),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.commonCancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(ctx.l10n.commonDelete)),
         ],
       ),
     );
@@ -1004,15 +1031,15 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
     final second = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('This cannot be undone'),
-        content: Text('Really delete "${post.title.isEmpty ? 'Untitled' : post.title}" forever? '
-            'There is no grace period and no recovery.'),
+        title: Text(ctx.l10n.commentsPurgeFinalTitle),
+        content: Text(ctx.l10n
+            .modDeleteForeverFinalBody(post.title.isEmpty ? ctx.l10n.untitled : post.title)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep the post')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.modKeepPost)),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete forever'),
+            child: Text(ctx.l10n.modDeleteForever),
           ),
         ],
       ),
@@ -1021,12 +1048,12 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
     try {
       await ref.read(moderationApiProvider).deletePostPermanently(post.id);
       _refreshAfterModAction();
-      messenger.showSnackBar(const SnackBar(content: Text('Post permanently deleted.')));
+      messenger.showSnackBar(SnackBar(content: Text(l10n.modDeletedForeverToast)));
       nav.pop(); // leave the detail view — the post no longer exists
     } on ClubError catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     } catch (_) {
-      messenger.showSnackBar(const SnackBar(content: Text('Could not delete the post.')));
+      messenger.showSnackBar(SnackBar(content: Text(l10n.artworkDeleteFailed)));
     }
   }
 
@@ -1038,29 +1065,26 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
     final me = ref.read(authControllerProvider).me;
     if (me == null) return;
     final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
     final go = await showUseAsProfilePhotoDialog(context,
         artUrl: post.artUrl, handle: me.user.handle);
     if (go != true) return;
     try {
       await ref.read(clubApiClientProvider).avatarFromPost(me.user.userKey, post.sqid);
       await ref.read(authControllerProvider.notifier).reloadMe();
-      messenger.showSnackBar(const SnackBar(content: Text('Profile photo updated.')));
+      messenger.showSnackBar(SnackBar(content: Text(l10n.avatarFromPostDone)));
     } on ClubError catch (e) {
       if (e.isAuth) {
-        messenger.showSnackBar(
-            const SnackBar(content: Text('Your session expired — sign in again.')));
+        messenger.showSnackBar(SnackBar(content: Text(l10n.sessionExpired)));
       } else if (e.isRateLimited) {
-        messenger.showSnackBar(const SnackBar(
-            content: Text('Too many profile-photo changes — try again later.')));
+        messenger.showSnackBar(SnackBar(content: Text(l10n.avatarFromPostRateLimited)));
       } else if (e.status == 507) {
-        messenger.showSnackBar(const SnackBar(
-            content: Text('Server storage is temporarily full — try again later.')));
+        messenger.showSnackBar(SnackBar(content: Text(l10n.serverStorageFull)));
       } else {
         messenger.showSnackBar(SnackBar(content: Text(e.message)));
       }
     } catch (_) {
-      messenger.showSnackBar(
-          const SnackBar(content: Text('Could not set the profile photo.')));
+      messenger.showSnackBar(SnackBar(content: Text(l10n.avatarFromPostFailed)));
     }
   }
 
@@ -1069,7 +1093,8 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
   Future<void> _openLayersInEditor(BuildContext context, Post post) async {
     final messenger = ScaffoldMessenger.of(context);
     final nav = Navigator.of(context);
-    messenger.showSnackBar(const SnackBar(content: Text('Downloading the layers file…')));
+    final l10n = context.l10n;
+    messenger.showSnackBar(SnackBar(content: Text(l10n.layersDownloading)));
     try {
       final bytes = await ref.read(mkpxApiProvider).download(post.sqid);
       final mySub = ref.read(authControllerProvider).me?.user.sub;
@@ -1088,24 +1113,20 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
       nav.popUntil((r) => r.isFirst); // surface the editor (app root)
     } on ClubError catch (e) {
       if (e.isAuth) {
-        messenger.showSnackBar(const SnackBar(
-            content: Text('Your session expired — sign in again to download the layers file.')));
+        messenger.showSnackBar(SnackBar(content: Text(l10n.layersSessionExpired)));
       } else if (e.status == 403 && e.code == 'not_remixable') {
         // The owner turned Remixable off since this page loaded.
-        messenger.showSnackBar(
-            const SnackBar(content: Text("The artist doesn't allow remixes of this post.")));
+        messenger.showSnackBar(SnackBar(content: Text(l10n.layersNotRemixable)));
         ref.invalidate(postDetailProvider(widget.sqid));
       } else if (e.status == 404) {
         // Detached or dropped (artwork replaced) since this payload was fetched.
-        messenger.showSnackBar(
-            const SnackBar(content: Text('The layers file is no longer available.')));
+        messenger.showSnackBar(SnackBar(content: Text(l10n.layersGone)));
         ref.invalidate(postDetailProvider(widget.sqid));
       } else {
         messenger.showSnackBar(SnackBar(content: Text(e.message)));
       }
     } catch (_) {
-      messenger
-          .showSnackBar(const SnackBar(content: Text('Could not download the layers file.')));
+      messenger.showSnackBar(SnackBar(content: Text(l10n.layersDownloadFailed)));
     }
   }
 
@@ -1114,6 +1135,7 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
   /// attach would still burn an upload rate-limit token server-side.
   Future<void> _attachMkpx(BuildContext context, Post post) async {
     final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
     // ref.read (not the watch-based getter): this runs from an event handler.
     final rules = ref.read(serverConfigProvider).valueOrNull?.upload.mkpx ?? MkpxRules.disabled;
     final res = await FilePicker.pickFiles(
@@ -1121,40 +1143,39 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
     final bytes = res?.files.single.bytes;
     if (bytes == null) return; // canceled
     if (!MkpxApi.looksLikeMkpx(bytes)) {
-      messenger.showSnackBar(const SnackBar(content: Text('Not a valid .mkpx file.')));
+      messenger.showSnackBar(SnackBar(content: Text(l10n.layersNotMkpx)));
       return;
     }
     if (bytes.length > rules.maxFileBytes) {
       messenger.showSnackBar(SnackBar(
-          content: Text('Too large — the layers file limit is '
-              '${(rules.maxFileBytes / (1024 * 1024)).toStringAsFixed(0)} MiB.')));
+          content: Text(l10n
+              .layersTooLarge((rules.maxFileBytes / (1024 * 1024)).toStringAsFixed(0)))));
       return;
     }
-    messenger.showSnackBar(const SnackBar(content: Text('Uploading the layers file…')));
+    messenger.showSnackBar(SnackBar(content: Text(l10n.layersUploading)));
     try {
       await ref.read(mkpxApiProvider).attach(post.id, bytes);
       ref.invalidate(postDetailProvider(widget.sqid));
       messenger.showSnackBar(SnackBar(
-          content: Text(post.hasMkpx ? 'Layers file replaced.' : 'Layers file attached.')));
+          content: Text(post.hasMkpx ? l10n.layersReplaced : l10n.layersAttached)));
     } on ClubError catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     } catch (_) {
-      messenger.showSnackBar(const SnackBar(content: Text('Could not upload the layers file.')));
+      messenger.showSnackBar(SnackBar(content: Text(l10n.layersUploadFailed)));
     }
   }
 
   Future<void> _detachMkpx(BuildContext context, Post post) async {
     final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
     final go = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Remove layers file?'),
-        content: const Text(
-            'Members will no longer be able to open this artwork with its layers. '
-            'The post itself is unaffected. You can attach a new layers file later.'),
+        title: Text(ctx.l10n.layersRemoveTitle),
+        content: Text(ctx.l10n.layersRemoveBody),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remove')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.commonCancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(ctx.l10n.commonRemove)),
         ],
       ),
     );
@@ -1162,11 +1183,11 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
     try {
       await ref.read(mkpxApiProvider).detach(post.id);
       ref.invalidate(postDetailProvider(widget.sqid));
-      messenger.showSnackBar(const SnackBar(content: Text('Layers file removed.')));
+      messenger.showSnackBar(SnackBar(content: Text(l10n.layersRemoved)));
     } on ClubError catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     } catch (_) {
-      messenger.showSnackBar(const SnackBar(content: Text('Could not remove the layers file.')));
+      messenger.showSnackBar(SnackBar(content: Text(l10n.layersRemoveFailed)));
     }
   }
 
@@ -1193,6 +1214,7 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
   Future<void> _openInEditor(BuildContext context, Post post) async {
     final messenger = ScaffoldMessenger.of(context);
     final nav = Navigator.of(context);
+    final l10n = context.l10n;
     try {
       final bytes = await ref.read(editApiProvider).downloadArtwork(post.artUrl);
       final mySub = ref.read(authControllerProvider).me?.user.sub;
@@ -1210,7 +1232,7 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
       nav.popUntil((r) => r.isFirst); // surface the editor (app root)
     } catch (e) {
       messenger.showSnackBar(
-          SnackBar(content: Text(e is ClubError ? e.message : 'Could not load artwork.')));
+          SnackBar(content: Text(e is ClubError ? e.message : l10n.artworkOpenFailed)));
     }
   }
 }
@@ -1223,7 +1245,7 @@ Future<bool?> showUseAsProfilePhotoDialog(BuildContext context,
   return showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: const Text('Use as profile photo?'),
+      title: Text(ctx.l10n.avatarFromPostTitle),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1234,13 +1256,13 @@ Future<bool?> showUseAsProfilePhotoDialog(BuildContext context,
             Flexible(child: Text(handle, overflow: TextOverflow.ellipsis)),
           ]),
           const SizedBox(height: 12),
-          const Text('This artwork becomes your profile photo. It stays even if '
-              'the post is later deleted.'),
+          Text(ctx.l10n.avatarFromPostBody),
         ],
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Use photo')),
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.commonCancel)),
+        FilledButton(
+            onPressed: () => Navigator.pop(ctx, true), child: Text(ctx.l10n.avatarFromPostAction)),
       ],
     ),
   );

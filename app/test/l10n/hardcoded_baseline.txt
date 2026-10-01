@@ -2,10 +2,9 @@
 # file. test/l10n/hardcoded_strings_test.dart fails if a file has MORE than its number (a
 # new hardcoded string) or FEWER (strings were extracted: re-pin with
 # `dart run tool/l10n/scan.dart --write-baseline`). Done when this file is empty.
-# total 2125 in 92 files
+# total 2000 in 90 files
 255 lib/editor/editor_page.controls.dart
 212 lib/editor/replay/visible_index.dart
-113 lib/club/ui/artwork_detail_page.dart
 103 lib/editor/editor_page.fileio.dart
 78 lib/editor/editor_page.engine.dart
 73 lib/club/ui/user_management_page.dart
@@ -41,7 +40,6 @@
 14 lib/editor/patterns/patterns_page.dart
 13 lib/editor/gallery/drawing_library_grid.dart
 13 lib/editor/layers/layer_model.dart
-12 lib/club/ui/lineage_page.dart
 12 lib/club/ui/pending_approval_page.dart
 12 lib/editor/keyboard/chords.dart
 11 lib/club/ui/rules_gate_page.dart
