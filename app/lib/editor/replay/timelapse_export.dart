@@ -140,7 +140,7 @@ class TimelapseExportException implements Exception {
   const TimelapseExportException(this.message);
   final String message;
   @override
-  String toString() => 'TimelapseExportException: $message';
+  String toString() => 'TimelapseExportException: $message'; // l10n-ignore: debug
 }
 
 Future<void> _timelapseWorker(_TimelapseJob job) async {

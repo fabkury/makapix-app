@@ -174,13 +174,12 @@ int tickIndexAt(Uint32List cumUs, int us) {
 
 /// Output shape presets (ADR 0004: even dimensions, safe on every OS encoder).
 enum TimelapseShape {
-  square(1080, 1080, 'Square 1080×1080'),
-  portrait(1080, 1920, 'Portrait 1080×1920');
+  square(1080, 1080),
+  portrait(1080, 1920);
 
-  const TimelapseShape(this.outW, this.outH, this.label);
+  const TimelapseShape(this.outW, this.outH);
   final int outW;
   final int outH;
-  final String label;
 }
 
 /// Sample [samples] frames over a paced timeline: frame `f` shows the tick in progress at the

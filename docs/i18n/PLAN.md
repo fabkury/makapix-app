@@ -19,13 +19,35 @@ are the acceptance test.
 |---|---|---|
 | L0 | Infrastructure, test harness, pilot (Settings, language picker, tool names) | **done 2026-10-01** |
 | L1 | Club pillar: extract + translate + sweep, batch by batch | **done 2026-10-01** (C1–C9) |
-| L2 | Editor pillar: extract + translate + sweep, batch by batch | in progress: E0–E5 and E8 done; E6, E7 left |
-| L3 | Independent translation review (one agent per language), fixes, layout hardening | not started |
+| L2 | Editor pillar: extract + translate + sweep, batch by batch | **done 2026-10-01** (E0–E8) |
+| L3 | Independent translation review (one agent per language), fixes, layout hardening | next |
 | L4 | Seams and periphery, then flip `kTranslationsShipped` | not started |
+
+**Paused here (2026-10-01, end of the session). Resume in this order:**
+
+1. Run `flutter test test_engine` (about 35 min, run it in the background). It has not run
+   since E5 and E6 + E7 were committed; the analyzer and the whole `flutter test` suite
+   (7,766 tests) were green on that code. The walk in `editor_chrome_test.dart` gained the
+   Replay page, the timelapse options dialog, the armed Delete, and the go-to-frame dialog:
+   expect to tune the walk itself, not the app.
+2. Run `dart run tool/l10n/scan.dart --list --lower` once and read the list (lowercase
+   single words, which the scanner does not count by default).
+3. **L3 review is under way.** Reviewers (independent agents that see only the English text,
+   its context note, the translation, and the glossary) write their findings to
+   `docs/i18n/review/<lang>-<part>.md` (three parts of about 550 messages per language).
+   Launched: es, pt, fr, de, ru. **Not launched yet: ja, zh.** A file without a "Systemic
+   notes" section at its end is from a reviewer that was stopped: run that part again. The
+   review packs are rebuilt from the ARB files by the snippet in the session log below.
+   Then: triage the findings (high and medium first; a glossary term changes in
+   `GLOSSARY.md` first, then in every message), apply with `setv` patches, rerun the sweeps
+   (longer wording can break a fit), and second-pass only the changed messages.
+4. The rest of L3 (glossary check tool, text scale 1.3 sweep, full screenshot review), then L4.
 
 **Progress number:** the total on line 5 of `app/test/l10n/hardcoded_baseline.txt` — the
 hardcoded strings the scanner still finds. 2,683 after L0 (scanner as tightened in C1); 2,516
-after C1; 2,334 after C2; 2,253 after C3; 2,125 after C4; 2,000 after C5; 1,856 after C6; 1,709 after C7; 1,654 after C8; 1,598 after C9 (all in `lib/editor`); 1,048 after E1 + E8; 877 after E2; 363 after E3 + E4; 141 after E5. Zero means L1 + L2 are done.
+after C1; 2,334 after C2; 2,253 after C3; 2,125 after C4; 2,000 after C5; 1,856 after C6; 1,709 after C7; 1,654 after C8; 1,598 after C9 (all in `lib/editor`); 1,048 after E1 + E8; 877 after E2; 363 after E3 + E4; 141 after E5; **0 after E6 + E7 (2026-10-01)**: extraction is
+complete. From here the baseline file stays empty, and `hardcoded_strings_test.dart` fails on
+any new hardcoded string.
 
 **Release safety while this is in progress:** `kTranslationsShipped` is `false`
 (`app/lib/l10n/app_locale.dart`), so a release build offers English only and hides the language
@@ -188,10 +210,24 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
     `// l10n-ignore-end`.
   Tests: `test/l10n/sweep_color_test.dart` (20 states); the go-to-frame dialog is in the
   `test_engine/editor_chrome_test.dart` walk.
-- [ ] **E6 Keyboard** — keyboard/commands (67; make `CommandDef.label` a per-build lookup —
-  the L0 bridge `t.name(appL10n)` in commands.dart is marked TODO), cheat_sheet (18), chords (13)
-- [ ] **E7 Replay and timelapse** — editor_page.replay (28), replay/ (page 9, host 4,
-  journal_format 5, action_runner 2, timelapse_plan 2, timelapse_export 1), tap_again (1)
+- [x] **E6 Keyboard** — done 2026-10-01: the Keyboard shortcuts page and the hold-Primary
+  overlay.
+  - `CommandDef` carries `labelOf(l10n)` (the cheat sheet asks per build, so a language
+    change shows at once; `label` is the current-language shortcut) and a `CommandCategory`
+    enum instead of an English category string. The L0 bridge is gone.
+  - Key legends are messages, named as printed on that language's keyboards (`keyCtrl` =
+    Strg, `keyShift` = Maj / Mayús / Umschalt, `keyDelete` = Entf / Suppr / Supr, `keySpace` =
+    Leertaste / Пробел / スペース / 空格). `Chord.display()` uses them; `Chord.serialize()` (the
+    bindings-file wire format) stays English.
+- [x] **E7 Replay and timelapse** — done 2026-10-01: the Watch replay toasts, the Replay page
+  (title, "Older recording" chip and its tip, the preparing state, the three failure
+  messages through `appL10n`), the timelapse options, long-animation, and progress dialogs,
+  and the default "Tap again to confirm" of the two-tap Delete button.
+  Tests for E6 and E7: `test/l10n/sweep_keyboard_replay_test.dart`; the Replay page on a
+  real journal, the timelapse options dialog, and the armed Delete are in the
+  `test_engine/editor_chrome_test.dart` walk. Not reached by any test: the long-animation
+  dialog (needs a cycle over 60 s) and the rendering dialog (needs an export to run); both
+  are plain scrollable dialogs.
 - [x] **E8 Engine-name files** — done 2026-10-01: `replay/visible_index.dart` holds only DSL
   verb and tool names (checked: 212 of 212) and is marked `l10n-ignore-file`.
 
@@ -254,6 +290,15 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 - `use-escaping` is off, so a message cannot contain a literal `{` or `}`.
 
 ## Findings outside i18n
+
+- **Keyboard shortcuts page** (2026-10-01): the key column no longer uses the `monospace`
+  family. Key names are words in the current language now, and a monospace face showed the
+  Cyrillic and CJK ones in a fallback font of another width; in the tests that family is not
+  loaded at all, so the sweep could not measure the rows. The keys are in the app font, bold.
+  Command names may take two lines. English wording: "Replay: <title>" (was "Replay —
+  <title>"); "This drawing has no replay yet. Draw something first!"; the keyboard command
+  "Import & export" lost its ellipsis; the timelapse options dialog is titled "Export
+  timelapse" on desktop (it said "Share timelapse" there too).
 
 - **Dither page: the note beside a dither name** was one line with an ellipsis; it is two
   lines now (2026-10-01). English wording changed in the Palettes page confirmations, which
@@ -333,6 +378,19 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   editor was cut off.
 
 ## Session log
+
+- **Review packs for L3** (one JSON line per message: `n`, `key`, `context`, `en`, the
+  translation, `placeholders`): for each language, read `app/lib/l10n/app_en.arb` and
+  `app_<lang>.arb`, take the keys that do not start with `@` in file order, use the
+  `description` of `@key` as `context`, and split the lines 550 / 550 / the rest. The
+  reviewer brief is in the git history of this session; its rules are the eight checks
+  listed under L3 plus "report only real problems, do not rewrite for taste".
+
+- **2026-10-01** — E6 + E7 (keyboard, replay, timelapse): 64 messages. The scanner finds
+  nothing: **L1 and L2 are done.** 1,645 messages in eight languages. Next is L3 (the
+  independent review per language, the glossary check tool, the text-scale sweep), then L4.
+  Before L3, one manual pass is still owed: `dart run tool/l10n/scan.dart --list --lower`
+  (lowercase single words, which the scanner does not count by default).
 
 - **2026-10-01** — E5 (color, palettes, patterns, dither, memory warnings): 113 messages.
   Baseline 363 → 141; what is left is E6 (keyboard) and E7 (replay and timelapse).

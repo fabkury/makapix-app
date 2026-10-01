@@ -55,19 +55,19 @@ int? journalEpochOf(String firstLine) {
 const String kJournalFileName = 'journal.mkpxj';
 
 /// The immutable chapter-base file name for chapter [seq] (compact `.mkpx` bytes).
-String chapterBaseFileName(int seq) => 'chapter-${seq.toString().padLeft(4, '0')}.mkpx';
+String chapterBaseFileName(int seq) => 'chapter-${seq.toString().padLeft(4, '0')}.mkpx'; // l10n-ignore: file name
 
 /// Render one action line: `+<delta-ms> <verbatim dsl>`.
 String actionLine(int deltaMs, String dsl) => '+$deltaMs $dsl';
 
 /// Render a marker line for the autosave byte-hash (16 lowercase hex digits of FNV-1a-64).
 String markerLine(int fnv64) =>
-    '# marker ${(fnv64 & 0x7FFFFFFFFFFFFFFF).toRadixString(16).padLeft(16, '0')}';
+    '# marker ${(fnv64 & 0x7FFFFFFFFFFFFFFF).toRadixString(16).padLeft(16, '0')}'; // l10n-ignore: journal wire format
 
 /// Render a chapter header. [t] is stamped in UTC; [base] is a chapter-base file name or
 /// null for a from-empty chapter; [reason] is diagnostic (fresh/open/club/import/reanchor).
 String chapterHeaderLine(int seq, DateTime t, String? base, String reason) =>
-    '# chapter $seq t=${t.toUtc().toIso8601String()} base=${base ?? 'none'} reason=$reason';
+    '# chapter $seq t=${t.toUtc().toIso8601String()} base=${base ?? 'none'} reason=$reason'; // l10n-ignore: journal wire format
 
 /// One parsed action: the delta and the verbatim DSL text (which may itself contain
 /// `;`-separated statements — recorded and replayed as one line).
@@ -103,14 +103,14 @@ class ParsedJournal {
 /// Parse a marker line; null when [line] is not one.
 int? parseMarkerLine(String line) {
   if (!line.startsWith('# marker ')) return null;
-  return int.tryParse(line.substring('# marker '.length).trim(), radix: 16);
+  return int.tryParse(line.substring('# marker '.length).trim(), radix: 16); // l10n-ignore: journal wire format
 }
 
 /// Parse a chapter header; null when [line] is not one. Unknown trailing `key=value`
 /// fields are ignored.
 JournalChapter? parseChapterHeaderLine(String line) {
   if (!line.startsWith('# chapter ')) return null;
-  final parts = line.substring('# chapter '.length).trim().split(RegExp(r'\s+'));
+  final parts = line.substring('# chapter '.length).trim().split(RegExp(r'\s+')); // l10n-ignore: journal wire format
   if (parts.isEmpty) return null;
   final seq = int.tryParse(parts.first);
   if (seq == null) return null;

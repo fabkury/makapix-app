@@ -5,6 +5,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import 'package:makapix_club/l10n/l10n.dart';
+
 /// Whether the Primary modifier is ⌘ (meta) on this platform. Follows
 /// [defaultTargetPlatform] so tests can steer it via [debugDefaultTargetPlatformOverride].
 bool primaryIsMeta() =>
@@ -45,6 +47,7 @@ class Chord {
   @override
   int get hashCode => Object.hash(key, shift, alt, primary);
 
+  // l10n-ignore-start: the bindings-file wire format
   /// Wire format, e.g. "Primary+Shift+Z" — the 6.B bindings-file representation.
   String serialize() => [
         if (primary) 'Primary',
@@ -75,21 +78,24 @@ class Chord {
     if (key == null) return null;
     return Chord(key, shift: shift, alt: alt, primary: primary);
   }
+  // l10n-ignore-end
 
   /// Human label in the platform's modifier vocabulary, for the cheat sheet:
-  /// glyph-run on Apple platforms (⌘⇧Z), plus-separated words elsewhere (Ctrl+Shift+Z).
+  /// glyph-run on Apple platforms (⌘⇧Z), plus-separated words elsewhere (Ctrl+Shift+Z). The
+  /// words are the ones printed on keyboards of the current language (Strg, Maj, Entf).
   String display() {
     final mac = primaryIsMeta();
+    final l = appL10n;
     return [
-      if (primary) mac ? '⌘' : 'Ctrl',
-      if (alt) mac ? '⌥' : 'Alt',
-      if (shift) mac ? '⇧' : 'Shift',
-      _keyName(key),
+      if (primary) mac ? '⌘' : l.keyCtrl,
+      if (alt) mac ? '⌥' : l.keyAlt,
+      if (shift) mac ? '⇧' : l.keyShift,
+      shownKeyName(l, key),
     ].join(mac ? '' : '+');
   }
 
   @override
-  String toString() => 'Chord(${serialize()})';
+  String toString() => 'Chord(${serialize()})'; // l10n-ignore: debug
 }
 
 // Fold physical/shifted variants of a trigger key onto its canonical logical key, and reject
@@ -126,8 +132,21 @@ final _synonyms = <LogicalKeyboardKey, LogicalKeyboardKey>{
   LogicalKeyboardKey.numpadDecimal: LogicalKeyboardKey.period,
 };
 
+/// The name of [key] as the cheat sheet shows it: the named keys in the current language,
+/// letters and signs as they are.
+String shownKeyName(AppLocalizations l, LogicalKeyboardKey key) {
+  if (key == LogicalKeyboardKey.enter) return l.keyEnter;
+  if (key == LogicalKeyboardKey.escape) return l.keyEsc;
+  if (key == LogicalKeyboardKey.space) return l.keySpace;
+  if (key == LogicalKeyboardKey.backspace) return l.keyBackspace;
+  if (key == LogicalKeyboardKey.delete) return l.keyDelete;
+  if (key == LogicalKeyboardKey.tab) return l.keyTab;
+  return _keyName(key);
+}
+
 // Names for the keys the default map uses (letters/digits come from keyLabel). The name table
 // is the serialization vocabulary — additions are fine, renames are a bindings-file migration.
+// l10n-ignore-start: the bindings-file wire format
 final _namedKeys = <LogicalKeyboardKey, String>{
   LogicalKeyboardKey.enter: 'Enter',
   LogicalKeyboardKey.escape: 'Esc',
@@ -143,6 +162,7 @@ final _namedKeys = <LogicalKeyboardKey, String>{
   LogicalKeyboardKey.equal: '=',
   LogicalKeyboardKey.minus: '-',
 };
+// l10n-ignore-end
 
 String _keyName(LogicalKeyboardKey key) => _namedKeys[key] ?? key.keyLabel.toUpperCase();
 

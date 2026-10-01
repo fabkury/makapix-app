@@ -8,6 +8,7 @@ import 'package:makapix_club/engine_ffi.dart';
 import 'action_runner.dart';
 import 'journal_format.dart';
 import 'visible_index.dart' as vi;
+import 'package:makapix_club/l10n/l10n.dart';
 
 /// What the Replay viewer needs from a replayable Journal — abstract so the page is
 /// widget-testable without the engine DLL (the PaletteHost pattern).
@@ -111,21 +112,21 @@ class EngineReplayHost implements ReplayHost {
     try {
       final parsed = parseJournal(journalText);
       if (parsed == null || parsed.chapters.isEmpty) {
-        _error = 'This drawing has no replayable history yet.';
+        _error = appL10n.replayNoHistory;
         return;
       }
       _journalEpoch = parsed.epoch;
       final flat = FlatJournal.from(parsed);
       for (final base in flat.chapterBaseAt.values) {
         if (!bases.containsKey(base)) {
-          _error = 'Part of this replay is missing (a chapter base file).';
+          _error = appL10n.replayMissingPart;
           return;
         }
       }
       _actions.addAll(flat.actions);
       _chapterBaseAt.addAll(flat.chapterBaseAt);
       if (_actions.isEmpty) {
-        _error = 'This drawing has no replayable history yet.';
+        _error = appL10n.replayNoHistory;
         return;
       }
       _timeline = vi.buildTimeline(flat);
@@ -142,7 +143,7 @@ class EngineReplayHost implements ReplayHost {
       _endSize = (_engine!.width, _engine!.height);
       _ready = true;
     } catch (e) {
-      _error = 'Could not prepare the replay: $e';
+      _error = appL10n.replayPrepareFailed('$e');
     } finally {
       _progress.value = 1;
     }

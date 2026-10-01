@@ -3,6 +3,7 @@
 // added without a Command. Engine-free by construction.
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:makapix_club/l10n/l10n.dart';
 import 'package:makapix_club/editor/keyboard/chords.dart';
 import 'package:makapix_club/editor/keyboard/commands.dart';
 import 'package:makapix_club/editor/keyboard/default_bindings.dart';
@@ -64,12 +65,9 @@ void main() {
   });
 
   test('labels and categories are presentable', () {
-    const categories = {
-      'Tools', 'Edit', 'Draft', 'Frames', 'Layers', 'View', 'Playback', 'Color', 'File', 'Panels',
-    };
     for (final c in commands) {
       expect(c.label.trim(), isNotEmpty, reason: c.id);
-      expect(categories.contains(c.category), isTrue, reason: '${c.id} → ${c.category}');
+      expect(c.category.label(appL10n).trim(), isNotEmpty, reason: '${c.id} → ${c.category}');
     }
   });
 

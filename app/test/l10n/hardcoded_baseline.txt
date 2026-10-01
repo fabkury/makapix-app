@@ -2,15 +2,4 @@
 # file. test/l10n/hardcoded_strings_test.dart fails if a file has MORE than its number (a
 # new hardcoded string) or FEWER (strings were extracted: re-pin with
 # `dart run tool/l10n/scan.dart --write-baseline`). Done when this file is empty.
-# total 141 in 11 files
-67 lib/editor/keyboard/commands.dart
-21 lib/editor/editor_page.replay.dart
-18 lib/editor/keyboard/cheat_sheet.dart
-12 lib/editor/keyboard/chords.dart
-8 lib/editor/replay/replay_page.dart
-5 lib/editor/replay/journal_format.dart
-4 lib/editor/replay/replay_host.dart
-2 lib/editor/replay/action_runner.dart
-2 lib/editor/replay/timelapse_plan.dart
-1 lib/editor/replay/timelapse_export.dart
-1 lib/editor/tap_again.dart
+# total 0 in 0 files

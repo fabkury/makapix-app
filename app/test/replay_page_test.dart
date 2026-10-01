@@ -198,7 +198,7 @@ void main() {
             key: ValueKey(title), host: FakeReplayHost(actions: 100), title: title, onShareTimelapse: () {}),
       ));
       await tester.pump();
-      final text = find.textContaining('Replay — ');
+      final text = find.textContaining('Replay: ');
       expect(tester.widget<Text>(text).maxLines, 2);
       final h = tester.getSize(text).height;
       await tester.tap(find.byIcon(Icons.pause)); // stop the sweep timer

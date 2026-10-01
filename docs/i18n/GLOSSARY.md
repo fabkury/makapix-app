@@ -176,8 +176,20 @@ Multiply is 正片叠底 and Screen is 滤色. The two-letter tile badges are on
 (`blendBadges`, ten codes in wire order; one character each in Japanese and Chinese), and a
 test keeps them unique per language.
 
-A keyboard key is named as printed on that language's keyboards (Spanish "Supr", French
-"Suppr", German "Entf"; "Delete" elsewhere).
+A keyboard key is named as printed on that language's keyboards (the `key*` messages):
+Ctrl is "Strg" in German; Shift is "Mayús", "Maj", "Umschalt"; Enter is "Intro", "Entrée",
+"Eingabe"; Delete is "Supr", "Suppr", "Entf"; the space bar is "Espacio", "Espaço", "Espace",
+"Leertaste", «Пробел», スペース, 空格. Russian, Japanese, Chinese, and Brazilian keyboards keep
+the English legends for the rest.
+
+### Replay and timelapse
+
+- **Finale** (the last part of a timelapse, where the finished animation plays): el final,
+  o final, le final, das Finale, финал, フィナーレ, 结尾.
+- **Shape** of a timelapse (square or tall) is the aspect, and must not collide with
+  **Format** (the file type) in the same dialog: Proporción, Proporção, Proportions,
+  Seitenverhältnis, Пропорции, 縦横比, 画面比例.
+- **Chapter** (a segment of a recording): capítulo, chapitre, Kapitel, глава, チャプター, 章节.
 
 ### Tools
 

@@ -13,6 +13,7 @@ import 'package:makapix_club/engine_ffi.dart' show premultiplyRgbaInPlace;
 import 'journal_format.dart' show kJournalEpoch;
 import 'replay_host.dart';
 import 'timelapse_plan.dart' show kProgressFrameUs, paceTimeline, progressDurationUs, tickIndexAt;
+import 'package:makapix_club/l10n/l10n.dart';
 
 /// The remembered sweep-duration choice (15/30/60 s), shared across replay sessions.
 const String _kSweepSecondsPref = 'replay.sweepSeconds_v1';
@@ -42,8 +43,8 @@ class ReplayPage extends StatefulWidget {
   /// The share button's label. Mobile hands the Timelapse to the OS share sheet ("Share");
   /// desktop writes a file ("Export") — the same split as the export dialog's confirm button.
   static String shareLabel(TargetPlatform platform) => switch (platform) {
-        TargetPlatform.android || TargetPlatform.iOS => 'Share timelapse',
-        _ => 'Export timelapse',
+        TargetPlatform.android || TargetPlatform.iOS => appL10n.timelapseShare,
+        _ => appL10n.timelapseExport,
       };
 
   @override
@@ -223,15 +224,14 @@ class _ReplayPageState extends State<ReplayPage> with WidgetsBindingObserver {
         toolbarHeight: 64,
         title: Row(children: [
           Flexible(
-            child: Text('Replay — ${widget.title}', maxLines: 2, overflow: TextOverflow.ellipsis),
+            child: Text(context.l10n.replayTitle(widget.title), maxLines: 2, overflow: TextOverflow.ellipsis),
           ),
           // Pre-epoch journals replay under today's engine semantics, which may differ from the
           // session that recorded them (ADR 0015). Quiet chip, tap for the why.
           if (host.journalEpoch < kJournalEpoch) ...[
             const SizedBox(width: 8),
             Tooltip(
-              message: 'Recorded before an editor update — playback may differ from the '
-                  'original session.',
+              message: context.l10n.replayOlderTip,
               triggerMode: TooltipTriggerMode.tap,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -239,7 +239,7 @@ class _ReplayPageState extends State<ReplayPage> with WidgetsBindingObserver {
                   color: Colors.white.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Text('Older recording', style: TextStyle(fontSize: 11)),
+                child: Text(context.l10n.replayOlderChip, style: const TextStyle(fontSize: 11)),
               ),
             ),
           ],
@@ -257,7 +257,7 @@ class _ReplayPageState extends State<ReplayPage> with WidgetsBindingObserver {
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 48),
                     child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      const Text('Preparing replay…'),
+                      Text(context.l10n.replayPreparing),
                       const SizedBox(height: 12),
                       ValueListenableBuilder<double>(
                         valueListenable: host.initProgress,
@@ -300,7 +300,7 @@ class _ReplayPageState extends State<ReplayPage> with WidgetsBindingObserver {
                       Row(children: [
                       const SizedBox(width: 4),
                       IconButton(
-                        tooltip: _playing ? 'Pause' : 'Play',
+                        tooltip: _playing ? context.l10n.playbackPause : context.l10n.playbackPlay,
                         icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
                         onPressed: () => _playing ? _pause() : _play(),
                       ),

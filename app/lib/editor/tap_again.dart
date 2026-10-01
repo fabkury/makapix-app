@@ -7,6 +7,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 /// How long an armed control waits for its confirming second tap.
 const Duration kTapAgainWindow = Duration(seconds: 3);
@@ -82,7 +83,7 @@ class TapAgainDeleteButton extends StatefulWidget {
     this.window = kTapAgainWindow,
     this.icon = Icons.delete_outline,
     this.arm,
-    this.armedText = armedLabel,
+    this.armedText,
   });
 
   final String label;
@@ -94,10 +95,11 @@ class TapAgainDeleteButton extends StatefulWidget {
   /// A shared arm owned by the caller; `null` = the button owns a private one.
   final TapAgainArm? arm;
 
-  /// The armed label ("Tap again to confirm" by default; the action bar uses a shorter one).
-  final String armedText;
+  /// The armed label ("Tap again to confirm" when null; the action bar uses a shorter one).
+  final String? armedText;
 
-  static const String armedLabel = 'Tap again to confirm';
+  /// The default armed label, in the current language.
+  static String get armedLabel => appL10n.tapAgainConfirm;
 
   @override
   State<TapAgainDeleteButton> createState() => _TapAgainDeleteButtonState();
@@ -141,7 +143,7 @@ class _TapAgainDeleteButtonState extends State<TapAgainDeleteButton> {
         style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700, foregroundColor: Colors.white),
         onPressed: _tap,
         icon: icon,
-        label: Text(widget.armedText),
+        label: Text(widget.armedText ?? context.l10n.tapAgainConfirm),
       );
     }
     return TextButton.icon(

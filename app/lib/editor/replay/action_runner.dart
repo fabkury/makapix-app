@@ -37,12 +37,12 @@ int runActionsSkippingBad(
     final n = m == null ? null : int.tryParse(m.group(1)!);
     if (n == null || n < 1 || pos + n > to) {
       // No usable line number — abandon the remainder of this batch (the pre-fix behavior).
-      onSkip?.call('replay: unrecoverable script error at $pos..$to: $err');
+      onSkip?.call('replay: unrecoverable script error at $pos..$to: $err'); // l10n-ignore: log line
       return skipped;
     }
     // Lines [pos, pos + n - 1) already executed inside the engine; line pos + n - 1 is the
     // offender and is dropped; resume with the line after it.
-    onSkip?.call('replay: skipping action ${pos + n - 1}: $err');
+    onSkip?.call('replay: skipping action ${pos + n - 1}: $err'); // l10n-ignore: log line
     skipped++;
     pos += n;
   }

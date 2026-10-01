@@ -84,6 +84,8 @@ like any Club screen: the Frames and Layers pages (`sweep_frames_layers_test.dar
 scripted hosts in `frames_test_support.dart` / `layers_test_support.dart`) and the crop and
 place pages (`sweep_import_test.dart`, which runs each case inside `tester.runAsync`
 because the pages decode real images; `screenshot(..., inRunAsync: true)` there).
+A sweep can pass `allowEnglish:` for texts that read the same in every language but happen
+to equal an English message (the key letter "W" on the Keyboard shortcuts page).
 `editor_tool_options_test.dart` is the model for the real editor: it selects every tool, switches
 every chip on, and checks the options row and the help band with `within:` (the part of the
 page under test, found by a `ValueKey`), collecting problems and failing once at the end with

@@ -95,10 +95,11 @@ extension _EditorReplay on _EditorPageState {
   Future<void> _watchReplay() async {
     final store = _store, id = _drawingId;
     if (store == null || id == null || !_engineReady) {
-      _toast('The replay is still being prepared…');
+      _toast(context.l10n.replayStillPreparing);
       return;
     }
     if (_playing) _pause();
+    final l10n = context.l10n;
     // Flush doc + journal (the drain's preWrite appends the final marker), so the viewer
     // reads a journal that includes everything up to this moment.
     await _autosave?.flushNow();
@@ -114,7 +115,7 @@ extension _EditorReplay on _EditorPageState {
         }
       }
     } catch (_) {
-      _toast('This drawing has no replay yet — draw something first!');
+      _toast(l10n.replayNone);
       return;
     }
     if (!mounted) return;
@@ -149,47 +150,54 @@ extension _EditorReplay on _EditorPageState {
       context: pageCtx,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setS) => AlertDialog(
-          title: const Text('Share timelapse'),
+          scrollable: true,
+          title: Text(isMobile ? ctx.l10n.timelapseShare : ctx.l10n.timelapseExport),
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Shape', style: TextStyle(fontSize: 12, color: Colors.white60)),
+            Text(ctx.l10n.timelapseShape, style: const TextStyle(fontSize: 12, color: Colors.white60)),
             const SizedBox(height: 4),
             ToggleButtons(
               isSelected: [shape == TimelapseShape.square, shape == TimelapseShape.portrait],
               onPressed: (i) => setS(() => shape = TimelapseShape.values[i]),
-              children: const [
-                Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('Square')),
-                Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('Portrait')),
+              children: [
+                Padding(padding: const EdgeInsets.symmetric(horizontal: 10), child: Text(ctx.l10n.timelapseSquare)),
+                Padding(padding: const EdgeInsets.symmetric(horizontal: 10), child: Text(ctx.l10n.timelapsePortrait)),
               ],
             ),
             const SizedBox(height: 12),
-            const Text('Drawing time', style: TextStyle(fontSize: 12, color: Colors.white60)),
+            Text(ctx.l10n.timelapseDrawingTime, style: const TextStyle(fontSize: 12, color: Colors.white60)),
             const SizedBox(height: 4),
             ToggleButtons(
               isSelected: [seconds == 15, seconds == 30, seconds == 60],
               onPressed: (i) => setS(() => seconds = const [15, 30, 60][i]),
+              // l10n-ignore-start: seconds
               children: const [
                 Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('15 s')),
                 Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('30 s')),
                 Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('60 s')),
               ],
+              // l10n-ignore-end
             ),
             if (!isMobile) ...[
               const SizedBox(height: 12),
-              const Text('Format', style: TextStyle(fontSize: 12, color: Colors.white60)),
+              Text(ctx.l10n.timelapseFormat, style: const TextStyle(fontSize: 12, color: Colors.white60)),
               const SizedBox(height: 4),
               ToggleButtons(
                 isSelected: [format == 'webp', format == 'gif'],
                 onPressed: (i) => setS(() => format = const ['webp', 'gif'][i]),
+                // l10n-ignore-start: file format names
                 children: const [
                   Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('WebP')),
                   Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('GIF')),
                 ],
+                // l10n-ignore-end
               ),
             ],
           ]),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(isMobile ? 'Share' : 'Export')),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.commonCancel)),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(isMobile ? ctx.l10n.commonShare : ctx.l10n.exportAction)),
           ],
         ),
       ),
@@ -205,13 +213,12 @@ extension _EditorReplay on _EditorPageState {
       final choice = await showDialog<bool>(
         context: pageCtx,
         builder: (ctx) => AlertDialog(
-          title: const Text('Long animation'),
-          content: Text('This animation\'s full cycle runs $mins minutes. The finale can '
-              'play it once in full (a long video that may exceed some platforms\' upload '
-              'limits) or show the first ~60 seconds.'),
+          scrollable: true,
+          title: Text(ctx.l10n.timelapseLongTitle),
+          content: Text(ctx.l10n.timelapseLongBody(mins)),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('~60 s excerpt')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Full cycle')),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.timelapseExcerpt)),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(ctx.l10n.timelapseFullCycle)),
           ],
         ),
       );
@@ -269,6 +276,7 @@ extension _EditorReplay on _EditorPageState {
       mp4Path = p.join(tmp.path, 'timelapse_${DateTime.now().millisecondsSinceEpoch}.mp4');
     }
     if (!pageCtx.mounted) return;
+    final l10n = pageCtx.l10n;
 
     // Notifier-driven modal progress (the encodeWithProgress shape, but the replay loop
     // reports through the exporter, not the engine's static counters).
@@ -279,7 +287,7 @@ extension _EditorReplay on _EditorPageState {
       builder: (_) => PopScope(
         canPop: false,
         child: AlertDialog(
-          title: const Text('Rendering timelapse…'),
+          title: Text(l10n.timelapseRendering),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
             ValueListenableBuilder<double>(
               valueListenable: exporter.progress,
@@ -287,7 +295,7 @@ extension _EditorReplay on _EditorPageState {
             ),
           ]),
           actions: [
-            TextButton(onPressed: exporter.cancel, child: const Text('Cancel')),
+            TextButton(onPressed: exporter.cancel, child: Text(l10n.commonCancel)),
           ],
         ),
       ),
@@ -313,19 +321,19 @@ extension _EditorReplay on _EditorPageState {
       if (pageCtx.mounted && dialogOpen) Navigator.of(pageCtx, rootNavigator: true).pop();
       if (pageCtx.mounted) {
         ScaffoldMessenger.maybeOf(pageCtx)
-            ?.showSnackBar(SnackBar(content: Text('Timelapse export failed: $e')));
+            ?.showSnackBar(SnackBar(content: Text(l10n.timelapseFailed('$e'))));
       }
       return;
     }
     if (pageCtx.mounted && dialogOpen) Navigator.of(pageCtx, rootNavigator: true).pop();
     if (!pageCtx.mounted || result.isCanceled) return;
 
-    final baseName = '${sanitizeShareFilename(_drawingTitle)}-timelapse';
+    final baseName = '${sanitizeShareFilename(_drawingTitle)}-timelapse'; // l10n-ignore: file name
     if (result.mp4Path != null) {
       await shareVideoFile(result.mp4Path!, filename: '$baseName.mp4');
     } else if (result.bytes != null) {
       await _saveExport(result.bytes!,
-          fileName: '$baseName.$mode', ext: mode, done: 'Timelapse exported');
+          fileName: '$baseName.$mode', ext: mode, done: l10n.timelapseExported);
     }
   }
 

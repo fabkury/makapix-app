@@ -8,7 +8,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:makapix_club/editor/gallery/gallery_page.dart';
+import 'package:makapix_club/editor/replay/replay_page.dart';
+import 'package:makapix_club/editor/tap_again.dart';
 import 'package:makapix_club/editor/widgets/tool_tile.dart';
 
 import 'editor_harness.dart';
@@ -179,6 +182,11 @@ void main() {
         await tester.ensureVisible(find.byIcon(Icons.add_box_outlined).last);
         await tester.tap(find.byIcon(Icons.add_box_outlined).last);
         await settleReal(tester, rounds: 3);
+        // With two layers Delete layer is live: one tap arms it ("Tap again to confirm").
+        await tester.ensureVisible(find.byType(TapAgainDeleteButton).last);
+        await tester.pump();
+        await tester.tap(find.byType(TapAgainDeleteButton).last);
+        await check('layer sheet, delete armed');
         await dismiss();
         await openMenu();
         await tester.tap(find.byIcon(Icons.folder_outlined).last);
@@ -198,6 +206,35 @@ void main() {
           await settleReal(tester, rounds: 9);
         } else {
           problems.add('the keep-or-discard dialog did not open');
+        }
+
+        // ☰ → Watch replay: the Replay page on a real journal, then the timelapse options.
+        await openMenu();
+        await tester.ensureVisible(find.byIcon(Icons.replay).last);
+        await tester.pump();
+        await tester.tap(find.byIcon(Icons.replay).last);
+        await settleReal(tester, rounds: 20);
+        if (find.byType(ReplayPage).evaluate().isNotEmpty) {
+          if (find.byIcon(Icons.pause).evaluate().isNotEmpty) {
+            await tester.tap(find.byIcon(Icons.pause).first); // stop the sweep
+            await settleReal(tester, rounds: 2);
+          }
+          await check('replay page');
+          final share = find.text(ReplayPage.shareLabel(defaultTargetPlatform));
+          if (share.evaluate().isNotEmpty) {
+            await tester.tap(share);
+            await settleReal(tester, rounds: 9);
+            await check('timelapse options');
+            await tester.tap(find.descendant(
+                of: find.byType(AlertDialog), matching: find.text(l.commonCancel)));
+            await settleReal(tester, rounds: 9);
+          } else {
+            problems.add('the Replay page has no share button');
+          }
+          tester.state<NavigatorState>(find.byType(Navigator).first).pop();
+          await settleReal(tester, rounds: 12);
+        } else {
+          problems.add('Watch replay did not open the Replay page');
         }
 
         // The Play tool's options row: Go to… and its dialog. (Last: it changes the tool.)

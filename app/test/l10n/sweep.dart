@@ -56,8 +56,9 @@ Future<void> settleOpen(WidgetTester tester) async {
 /// under test. [overrides] are the Riverpod overrides it needs; it receives the [backend] this
 /// test created (a fresh fake per test), to hand to `clubOverrides`. [act] runs after the first
 /// pump (open a menu, scroll, tap a tab) so the state under test is on screen. [allowLatin]
-/// lists fixture text; [allowTruncated] lists texts that are cut off by design in every
-/// language (user content shown with an ellipsis). [sizes] narrows the screen sizes. [drain]
+/// lists fixture text; [allowEnglish] lists texts that read the same in every language but
+/// happen to equal an English message (a key letter such as "W"); [allowTruncated] lists texts
+/// that are cut off by design in every language (user content shown with an ellipsis). [sizes] narrows the screen sizes. [drain]
 /// unmounts the screen at the end and lets that much time pass, for screens that keep a timer.
 void sweepScreen(
   String name, {
@@ -65,6 +66,7 @@ void sweepScreen(
   List<Override> Function(FakeBackend? backend)? overrides,
   Future<void> Function(WidgetTester tester)? act,
   Iterable<Pattern> allowLatin = const [],
+  Iterable<Pattern> allowEnglish = const [],
   Iterable<Pattern> allowTruncated = const [],
   Map<String, Size>? sizes,
   Map<String, Object> prefs = const {},
@@ -124,8 +126,10 @@ void sweepScreen(
             expect(leftoverLatin(tester, allow: [...kFixtureText, ...allowLatin]), isEmpty,
                 reason: 'Latin-script text on a $lang screen');
           } else if (lang != 'en') {
-            expect(leftoverEnglish(tester, lang), isEmpty,
-                reason: 'English wording on a $lang screen');
+            final english = leftoverEnglish(tester, lang)
+                .where((t) => !allowEnglish.any((a) => a.allMatches(t).isNotEmpty))
+                .toList();
+            expect(english, isEmpty, reason: 'English wording on a $lang screen');
           }
 
           // A screen that polls leaves its next tick scheduled; unmount and let it run out.
