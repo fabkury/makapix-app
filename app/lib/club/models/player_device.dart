@@ -1,3 +1,5 @@
+import 'package:makapix_club/l10n/l10n.dart';
+
 /// A player device (a physical pixel display) owned by the signed-in user, as returned by
 /// `GET /api/u/{sqid}/player`. Hand-written `fromJson`, mirroring `models/post.dart`.
 class PlayerDevice {
@@ -43,7 +45,7 @@ class PlayerDevice {
     if (n != null && n.trim().isNotEmpty) return n.trim();
     final m = deviceModel;
     if (m != null && m.trim().isNotEmpty) return m.trim();
-    return 'Player';
+    return appL10n.playerLabel;
   }
 
   factory PlayerDevice.fromJson(Map<String, dynamic> j) => PlayerDevice(

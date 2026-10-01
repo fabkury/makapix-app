@@ -61,7 +61,7 @@ void main() {
     allowLatin: _commentBodies,
     act: (tester) async {
       await tester.tap(find.byIcon(Icons.shield_outlined).first);
-      await tester.pump(const Duration(milliseconds: 300));
+      await settleOpen(tester);
       await tester.tap(find.byType(PopupMenuItem<String>).first);
     },
   );

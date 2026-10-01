@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart'
     show AppLifecycleState, WidgetsBinding, WidgetsBindingObserver, visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/player_api.dart';
@@ -55,7 +56,7 @@ class ArtworkTarget extends PlayerSendTarget {
   final String title;
   const ArtworkTarget({required this.postId, required this.title});
   @override
-  String get label => title.trim().isEmpty ? 'Artwork' : title.trim();
+  String get label => title.trim().isEmpty ? appL10n.playerArtworkFallback : title.trim();
 
   @override
   bool operator ==(Object other) =>
@@ -314,7 +315,7 @@ class PlayerController extends StateNotifier<PlayerState> with WidgetsBindingObs
 
   Future<String?> _command(String playerId, PlayerCommand cmd) async {
     final sqid = _sqid;
-    if (sqid == null) return 'Not signed in.';
+    if (sqid == null) return appL10n.notSignedIn;
     try {
       await _api.command(sqid, playerId, cmd);
       return null;
@@ -328,7 +329,7 @@ class PlayerController extends StateNotifier<PlayerState> with WidgetsBindingObs
   // so the Player Bar never mounted). Each returns null on success, else an error message. ----
 
   Future<String?> register({required String code, required String name}) async {
-    if (!ref.read(authControllerProvider).isSignedIn) return 'Not signed in.';
+    if (!ref.read(authControllerProvider).isSignedIn) return appL10n.notSignedIn;
     try {
       await _api.register(code: code, name: name);
       await refresh(); // pull the newly-registered device into the list
@@ -340,7 +341,7 @@ class PlayerController extends StateNotifier<PlayerState> with WidgetsBindingObs
 
   Future<String?> rename(String playerId, String name) async {
     final sqid = ref.read(authControllerProvider).me?.user.sub;
-    if (sqid == null || sqid.isEmpty) return 'Not signed in.';
+    if (sqid == null || sqid.isEmpty) return appL10n.notSignedIn;
     try {
       final updated = await _api.updateName(sqid, playerId, name);
       _applyPlayers([
@@ -355,7 +356,7 @@ class PlayerController extends StateNotifier<PlayerState> with WidgetsBindingObs
 
   Future<String?> remove(String playerId) async {
     final sqid = ref.read(authControllerProvider).me?.user.sub;
-    if (sqid == null || sqid.isEmpty) return 'Not signed in.';
+    if (sqid == null || sqid.isEmpty) return appL10n.notSignedIn;
     try {
       await _api.delete(sqid, playerId);
       // Drop any optimistic overlay for the gone device, then re-run the auto-pick.

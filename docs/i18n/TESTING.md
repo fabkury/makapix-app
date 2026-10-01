@@ -63,7 +63,10 @@ sweepScreen(
 
 That generates 40 tests (8 languages × 5 sizes), each holding the screen to three rules: it lays
 out without overflow, no text is cut off, nothing is left in English. `act:` drives the screen to
-a state (open a menu, switch a tab) before the checks. `club_fixtures.dart` has the fake account
+a state (open a menu, switch a tab) before the checks. Inside `act:`, call `settleOpen(tester)`
+after opening a menu, sheet, or dialog and before tapping what it shows; a tap that lands on
+nothing fails the test (it used to be a warning, and the sweep then checked the wrong
+screen). `drain:` unmounts the screen at the end and lets time pass, for screens that poll. `club_fixtures.dart` has the fake account
 and a server config with every optional feature on; fixture text that legitimately appears in
 Latin script is listed in `kFixtureText`.
 

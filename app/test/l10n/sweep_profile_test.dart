@@ -43,7 +43,7 @@ void main() {
     allowLatin: _fixture,
     act: (tester) async {
       await tester.tap(find.byIcon(Icons.more_vert));
-      await tester.pump(const Duration(milliseconds: 400));
+      await settleOpen(tester);
       await tester.tap(find.byIcon(Icons.block));
     },
   );

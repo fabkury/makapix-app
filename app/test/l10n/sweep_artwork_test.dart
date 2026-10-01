@@ -17,7 +17,7 @@ Widget _page(String sqid) => Scaffold(body: SafeArea(child: ArtworkDetailPage(sq
 /// Opens the artwork's ⋮ menu (the last one on the page: comment rows have none of this icon).
 Future<void> _openMenu(WidgetTester tester) async {
   await tester.tap(find.byIcon(Icons.more_vert).first);
-  await tester.pump(const Duration(milliseconds: 400));
+  await settleOpen(tester);
 }
 
 void main() {

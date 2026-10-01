@@ -2,7 +2,7 @@
 # file. test/l10n/hardcoded_strings_test.dart fails if a file has MORE than its number (a
 # new hardcoded string) or FEWER (strings were extracted: re-pin with
 # `dart run tool/l10n/scan.dart --write-baseline`). Done when this file is empty.
-# total 1709 in 74 files
+# total 1654 in 70 files
 255 lib/editor/editor_page.controls.dart
 212 lib/editor/replay/visible_index.dart
 103 lib/editor/editor_page.fileio.dart
@@ -14,7 +14,6 @@
 46 lib/editor/editor_page.dart
 44 lib/editor/frames/frames_more_sheet.dart
 44 lib/editor/palette_page.dart
-43 lib/club/ui/my_players_page.dart
 41 lib/editor/dialogs/crop_dialog.dart
 38 lib/editor/blend_modes.dart
 38 lib/editor/patterns/gradient_dither.dart
@@ -40,9 +39,7 @@
 8 lib/editor/replay/replay_page.dart
 7 lib/editor/frames/frames_action_bar.dart
 7 lib/editor/layers/layers_action_bar.dart
-6 lib/club/api/player_api.dart
 5 lib/club/models/club_error.dart
-5 lib/club/state/player_providers.dart
 5 lib/editor/dialogs/color_picker_dialog.dart
 5 lib/editor/editor_page.canvas.dart
 5 lib/editor/palette_io.dart
@@ -66,7 +63,6 @@
 2 lib/editor/open_file.dart
 2 lib/editor/replay/action_runner.dart
 2 lib/editor/replay/timelapse_plan.dart
-1 lib/club/models/player_device.dart
 1 lib/club/state/paged.dart
 1 lib/club/state/profile_providers.dart
 1 lib/club/ui/hashtag_feed_page.dart

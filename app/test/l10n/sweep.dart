@@ -41,6 +41,15 @@ class Opener extends ConsumerWidget {
 
 Future<void> tapOpener(WidgetTester tester) => tester.tap(find.byKey(Opener.buttonKey));
 
+/// Lets a menu, sheet, or dialog that was just opened finish its animation, so the next tap
+/// lands on what it shows. One long `pump` is not enough: the animation only starts on the
+/// first frame after the tap.
+Future<void> settleOpen(WidgetTester tester) async {
+  for (var i = 0; i < 8; i++) {
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+}
+
 /// Registers the sweep tests for one screen state.
 ///
 /// [name] identifies the screen and state ("Settings, signed in"). [build] returns the widget
@@ -66,6 +75,10 @@ void sweepScreen(
     for (final locale in allLocales) {
       for (final size in (sizes ?? kSweepSizes).entries) {
         testWidgets('$locale @ ${size.key}', (tester) async {
+          // A tap that lands on nothing leaves the screen in the wrong state and the checks
+          // pass on a screen nobody asked about: make it a failure, not a warning.
+          WidgetController.hitTestWarningShouldBeFatal = true;
+          addTearDown(() => WidgetController.hitTestWarningShouldBeFatal = false);
           SharedPreferences.setMockInitialValues(prefs);
           final fake = backend?.call();
           await pumpLocalized(

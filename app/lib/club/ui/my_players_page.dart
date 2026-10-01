@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter/services.dart';
@@ -33,62 +34,64 @@ class _MyPlayersPageState extends ConsumerState<MyPlayersPage> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
   Future<void> _openRegister() async {
+    final l10n = context.l10n;
     final registered = await showAppSheet<bool>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (_) => const _RegisterSheet(),
     );
-    if (registered == true && mounted) _toast('Player registered.');
+    if (registered == true && mounted) _toast(l10n.playersRegistered);
   }
 
   Future<void> _rename(PlayerDevice p) async {
     final controller = TextEditingController(text: p.name ?? '');
+    final l10n = context.l10n;
     final newName = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Rename player'),
+        title: Text(ctx.l10n.playersRenameTitle),
         content: TextField(
           controller: controller,
           autofocus: true,
           maxLength: 100,
-          decoration: const InputDecoration(
-            labelText: 'Player name',
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            labelText: ctx.l10n.playersName,
+            border: const OutlineInputBorder(),
           ),
           onSubmitted: (v) => Navigator.pop(ctx, v),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(ctx.l10n.commonCancel)),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, controller.text),
-            child: const Text('Save'),
+            child: Text(ctx.l10n.commonSave),
           ),
         ],
       ),
     );
     if (newName == null) return;
     final trimmed = newName.trim();
-    if (trimmed.isEmpty) return _toast('Player name cannot be empty.');
+    if (trimmed.isEmpty) return _toast(l10n.playersNameEmpty);
     if (trimmed == (p.name ?? '')) return;
     final err = await ref.read(playerControllerProvider.notifier).rename(p.id, trimmed);
     if (!mounted) return;
-    _toast(err ?? 'Renamed.');
+    _toast(err ?? l10n.playersRenamed);
   }
 
   Future<void> _delete(PlayerDevice p) async {
+    final l10n = context.l10n;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete player'),
-        content: Text('Remove "${p.displayName}"? It will stop receiving artworks '
-            'until it is registered again.'),
+        title: Text(ctx.l10n.playersDeleteTitle),
+        content: Text(ctx.l10n.playersDeleteBody(p.displayName)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.l10n.commonCancel)),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            child: Text(ctx.l10n.commonDelete),
           ),
         ],
       ),
@@ -96,17 +99,18 @@ class _MyPlayersPageState extends ConsumerState<MyPlayersPage> {
     if (confirm != true) return;
     final err = await ref.read(playerControllerProvider.notifier).remove(p.id);
     if (!mounted) return;
-    _toast(err ?? 'Player deleted.');
+    _toast(err ?? l10n.playersDeleted);
   }
 
   @override
   Widget build(BuildContext context) {
     final signedIn = ref.watch(authControllerProvider.select((a) => a.isSignedIn));
+    final l10n = context.l10n;
     if (!signedIn) {
       return Scaffold(
-        appBar: AppBar(title: const Text('My Players')),
+        appBar: AppBar(title: Text(l10n.myPlayers)),
         body: SignInPrompt(
-          message: 'Sign in to register and manage your players.',
+          message: l10n.playersSignIn,
           onSignIn: () => Navigator.pop(context),
         ),
       );
@@ -118,11 +122,11 @@ class _MyPlayersPageState extends ConsumerState<MyPlayersPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('My Players'),
+        title: Text(l10n.myPlayers),
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
-            tooltip: 'Register player',
+            tooltip: l10n.playersRegisterTooltip,
             onPressed: _openRegister,
           ),
         ],
@@ -157,7 +161,7 @@ class _MyPlayersPageState extends ConsumerState<MyPlayersPage> {
                     OutlinedButton.icon(
                       onPressed: _openRegister,
                       icon: const Icon(Icons.add),
-                      label: const Text('Register a player'),
+                      label: Text(l10n.playersRegisterA),
                     ),
                   ],
                 ],
@@ -173,9 +177,9 @@ class _MyPlayersPageState extends ConsumerState<MyPlayersPage> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _stat(context, '$total', 'Total'),
-              _stat(context, '$online', 'Online'),
-              _stat(context, '${total - online}', 'Offline'),
+              _stat(context, '$total', context.l10n.playersTotal),
+              _stat(context, '$online', context.l10n.playersOnline),
+              _stat(context, '${total - online}', context.l10n.playersOffline),
             ],
           ),
         ),
@@ -198,18 +202,19 @@ class _MyPlayersPageState extends ConsumerState<MyPlayersPage> {
             children: [
               const Icon(Icons.cast_outlined, size: 48, color: Colors.white24),
               const SizedBox(height: 12),
-              Text('No players registered', style: Theme.of(context).textTheme.titleMedium),
+              Text(context.l10n.playersEmptyTitle,
+                  textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 6),
-              const Text(
-                'Register a player to display your artworks on a physical device.',
+              Text(
+                context.l10n.playersEmptyBody,
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white54, fontSize: 13),
+                style: const TextStyle(color: Colors.white54, fontSize: 13),
               ),
               const SizedBox(height: 20),
               FilledButton.icon(
                 onPressed: _openRegister,
                 icon: const Icon(Icons.add),
-                label: const Text('Register your first player'),
+                label: Text(context.l10n.playersRegisterFirst),
               ),
             ],
           ),
@@ -253,7 +258,9 @@ class _PlayerTile extends StatelessWidget {
                       overflow: TextOverflow.ellipsis),
                   const SizedBox(height: 2),
                   Text(
-                    online ? 'Online' : _offlineLabel(player.lastSeenAt),
+                    online
+                        ? context.l10n.playersOnline
+                        : _offlineLabel(context.l10n, player.lastSeenAt),
                     style: TextStyle(
                       color: online ? const Color(0xFF10B981) : Colors.white54,
                       fontSize: 12.5,
@@ -268,23 +275,23 @@ class _PlayerTile extends StatelessWidget {
               ),
             ),
             PopupMenuButton<String>(
-              tooltip: 'Player options',
+              tooltip: context.l10n.playerOptions,
               onSelected: (v) => v == 'rename' ? onRename() : onDelete(),
-              itemBuilder: (_) => [
-                const PopupMenuItem(
+              itemBuilder: (ctx) => [
+                PopupMenuItem(
                   value: 'rename',
                   child: Row(children: [
-                    Icon(Icons.edit_outlined, size: 18),
-                    SizedBox(width: 10),
-                    Text('Rename'),
+                    const Icon(Icons.edit_outlined, size: 18),
+                    const SizedBox(width: 10),
+                    Text(ctx.l10n.commonRename),
                   ]),
                 ),
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'delete',
                   child: Row(children: [
-                    Icon(Icons.delete_outline, size: 18, color: Colors.redAccent),
-                    SizedBox(width: 10),
-                    Text('Delete', style: TextStyle(color: Colors.redAccent)),
+                    const Icon(Icons.delete_outline, size: 18, color: Colors.redAccent),
+                    const SizedBox(width: 10),
+                    Text(ctx.l10n.commonDelete, style: const TextStyle(color: Colors.redAccent)),
                   ]),
                 ),
               ],
@@ -295,14 +302,9 @@ class _PlayerTile extends StatelessWidget {
     );
   }
 
-  String _offlineLabel(DateTime? lastSeen) {
-    if (lastSeen == null) return 'Offline';
-    final d = DateTime.now().difference(lastSeen);
-    if (d.isNegative || d.inSeconds < 60) return 'Offline · last seen just now';
-    if (d.inMinutes < 60) return 'Offline · last seen ${d.inMinutes}m ago';
-    if (d.inHours < 24) return 'Offline · last seen ${d.inHours}h ago';
-    return 'Offline · last seen ${d.inDays}d ago';
-  }
+  String _offlineLabel(AppLocalizations l10n, DateTime? lastSeen) => lastSeen == null
+      ? l10n.playersOffline
+      : l10n.playersOfflineSeen(timeAgo(lastSeen));
 }
 
 /// Uppercases input and keeps only [A-Z0-9], capped at 6 chars — matches the registration-code
@@ -339,23 +341,24 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
     super.dispose();
   }
 
+  /// The server answers a failed registration in English prose; the known cases are matched
+  /// by their wording and shown in the app's language (docs/i18n/PLAN.md, L4 server text).
   String _friendly(String raw) {
+    final l10n = context.l10n;
     final r = raw.toLowerCase();
     if (r.contains('invalid') || r.contains('expired') || r.contains('not found')) {
-      return 'This code is invalid or has expired.';
+      return l10n.playersCodeInvalid;
     }
-    if (r.contains('already registered')) return 'This player is already registered.';
-    if (r.contains('maximum') && r.contains('player')) {
-      return "You've reached the maximum number of players.";
-    }
+    if (r.contains('already registered')) return l10n.playersAlreadyRegistered;
+    if (r.contains('maximum') && r.contains('player')) return l10n.playersMaxReached;
     return raw;
   }
 
   Future<void> _submit() async {
     final code = _code.text.trim();
     final name = _name.text.trim();
-    if (code.length != 6) return setState(() => _error = 'Enter the 6-character code.');
-    if (name.isEmpty) return setState(() => _error = 'Enter a name for this player.');
+    if (code.length != 6) return setState(() => _error = context.l10n.playersEnterCode);
+    if (name.isEmpty) return setState(() => _error = context.l10n.playersEnterName);
     setState(() {
       _busy = true;
       _error = null;
@@ -383,7 +386,7 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Register a player', style: Theme.of(context).textTheme.titleLarge),
+          Text(context.l10n.playersRegisterA, style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 16),
           TextField(
             controller: _code,
@@ -392,11 +395,12 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
             textCapitalization: TextCapitalization.characters,
             inputFormatters: [_CodeFormatter()],
             style: const TextStyle(fontFamily: 'monospace', letterSpacing: 4, fontSize: 20),
-            decoration: const InputDecoration(
-              labelText: 'Registration code',
+            decoration: InputDecoration(
+              labelText: context.l10n.playersCode,
               hintText: 'A3F8X2',
-              border: OutlineInputBorder(),
-              helperText: 'The 6-character code shown on your player.',
+              border: const OutlineInputBorder(),
+              helperText: context.l10n.playersCodeHelper,
+              helperMaxLines: 2,
             ),
           ),
           const SizedBox(height: 14),
@@ -404,10 +408,10 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
             controller: _name,
             enabled: !_busy,
             maxLength: 100,
-            decoration: const InputDecoration(
-              labelText: 'Player name',
-              hintText: 'Living Room Display',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: context.l10n.playersName,
+              hintText: context.l10n.playersNameHint,
+              border: const OutlineInputBorder(),
             ),
             onSubmitted: (_) => _busy ? null : _submit(),
           ),
@@ -421,7 +425,7 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
             child: _busy
                 ? const SizedBox(
                     height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Register'),
+                : Text(context.l10n.playersRegisterAction),
           ),
         ],
       ),

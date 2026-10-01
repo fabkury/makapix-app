@@ -1,3 +1,4 @@
+// l10n-ignore-file: no display text here; the strings are URL paths and wire names.
 import '../models/player_device.dart';
 import 'club_api_client.dart';
 
