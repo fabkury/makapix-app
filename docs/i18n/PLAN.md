@@ -35,8 +35,14 @@ are the acceptance test.
 3. **L3 review is under way.** Reviewers (independent agents that see only the English text,
    its context note, the translation, and the glossary) write their findings to
    `docs/i18n/review/<lang>-<part>.md` (three parts of about 550 messages per language).
-   Launched: es, pt, fr, de, ru. **Not launched yet: ja, zh.** A file without a "Systemic
-   notes" section at its end is from a reviewer that was stopped: run that part again. The
+   State at the pause, per part:
+   - finished: es-1, es-2, es-3, pt-1, pt-3, fr-1;
+   - stopped while finishing (the file ends with its "Systemic notes"; read it, and run the
+     part again if it looks cut short): fr-3, ru-3;
+   - stopped part-way (run again; delete the partial file first): fr-2, ru-2;
+   - stopped before writing anything (run again): pt-2, de-1, de-2, de-3, ru-1;
+   - **not launched yet: ja-1..3, zh-1..3.**
+   A reviewer takes about three minutes per part. The
    review packs are rebuilt from the ARB files by the snippet in the session log below.
    Then: triage the findings (high and medium first; a glossary term changes in
    `GLOSSARY.md` first, then in every message), apply with `setv` patches, rerun the sweeps
