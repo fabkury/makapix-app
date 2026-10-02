@@ -24,9 +24,10 @@ are the acceptance test.
 | L4 | Seams and periphery, then flip `kTranslationsShipped` | in progress (engine and server text done) |
 
 **Next steps (2026-10-02):** what is left needs the user or a device: the live pass on the
-Pixel (wireless debugging on), the App Store agreement, a yes to upload the Play listings, and
-the CJK headline font for the store slides; then the store screenshots, release notes, and the
-flip (files ready in `docs/i18n/flip/`). Gates on the current code: analyzer clean,
+Pixel (wireless debugging on; it also produces the per-language phone shots the store slides
+embed) and the App Store agreement; then the store slides (Noto Sans CJK for ja/zh headlines),
+release notes, and the flip, which also uploads the eight Play listings (files ready in
+`docs/i18n/flip/` and `distribution/listings/`). Gates on the current code: analyzer clean,
 `flutter test` 7,815 passed, every sweep passes at 1.3×, `flutter test test_engine` 72 of 72 at
 1.0× and at 1.3×.
 
@@ -371,13 +372,15 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 - [ ] **Store listings**: Play drafted 2026-10-02 in `distribution/listings/play/` (eight
   languages, limits checked; README there), under independent review (`review/listing-<lang>.md`,
   brief `review/BRIEF-listing.md`). App Store blocked on the expired agreement (Findings outside
-  i18n). Release notes per language: at the flip.
+  i18n). Release notes per language: at the flip. User decision 2026-10-02: all eight Play
+  languages go live together at the flip, the corrected English too.
 - [ ] **Store screenshots** per language through the store-slide pipeline
   (`docs/marketing/`). Depends on two things (found 2026-10-02): the slides embed real phone
   screenshots (`docs/marketing/shots/`, English UI), so each language needs its own from the
   live pass on the Pixel; and the headline font, Press Start 2P, has no Japanese or Chinese
   glyphs, so those two need an OFL pixel font with CJK (candidates to check: DotGothic16,
-  Zpix) or a decision to keep their headlines in a regular font.
+  Zpix) or a decision to keep their headlines in a regular font. User decision 2026-10-02:
+  a regular font, Noto Sans CJK (OFL), for the Japanese and Chinese headlines.
 - [ ] Flip `kTranslationsShipped` to `true`; update README, STATUS.md, CLAUDE.md; release notes.
 
 ## Open questions and risks

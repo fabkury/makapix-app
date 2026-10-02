@@ -1,8 +1,9 @@
 # Store listings
 
 The text of the store listings, one file per store language. **Not live**: the stores show what
-was last uploaded, and these files reach them only when someone uploads them (at the language
-flip, `docs/i18n/PLAN.md`, L4).
+was last uploaded, and these files reach them only when someone uploads them. User decision
+2026-10-02: all eight go live together at the language flip (`docs/i18n/PLAN.md`, L4), the
+corrected English included.
 
 ## Google Play (`play/<code>.json`)
 
