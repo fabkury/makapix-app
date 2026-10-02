@@ -10,7 +10,9 @@ for the one-time Play Console / GCP setup):
               pubspec history can understate what Play has consumed.
 
   publish     Upload an .aab to a track and roll it out (status=completed), with
-              optional release notes. Prints the resolved versionCode on success.
+              optional release notes: one file (--notes-file, one language) or a
+              directory of whatsnew-<language> files (--notes-dir, every language).
+              Prints the resolved versionCode on success.
 
   promote     Copy the current release of one track onto another (no re-upload;
               the exact same versionCodes roll out on the destination track).
@@ -94,13 +96,37 @@ def read_notes(notes_file: str) -> str | None:
     return text or None
 
 
+def read_notes_dir(notes_dir: str) -> list[dict]:
+    """Every `whatsnew-<language>` file in the directory (the Play language code, e.g.
+    whatsnew-pt-BR), as Play's releaseNotes list. Unlike a single notes file, an over-limit
+    translation is an error: truncating text in a language nobody here reads would go unseen."""
+    path = Path(notes_dir)
+    if not path.is_dir():
+        die(f"notes directory not found: {notes_dir}")
+    notes = []
+    for f in sorted(path.glob("whatsnew-*")):
+        text = f.read_text(encoding="utf-8").strip()
+        if len(text) > NOTES_LIMIT:
+            die(f"{f.name} is {len(text)} chars; Play's limit is {NOTES_LIMIT}")
+        if text:
+            notes.append({"language": f.name[len("whatsnew-"):], "text": text})
+    return notes
+
+
+def release_notes(args) -> list[dict] | None:
+    if getattr(args, "notes_dir", None):
+        return read_notes_dir(args.notes_dir) or None
+    notes = read_notes(args.notes_file)
+    return [{"language": args.notes_language, "text": notes}] if notes else None
+
+
 def cmd_publish(args) -> None:
     from googleapiclient.http import MediaFileUpload
 
     aab = Path(args.aab)
     if not aab.is_file():
         die(f"AAB not found: {aab}")
-    notes = read_notes(args.notes_file)
+    notes = release_notes(args)
 
     svc = service(args.key)
     edit = svc.edits().insert(packageName=args.package, body={}).execute()
@@ -122,7 +148,8 @@ def cmd_publish(args) -> None:
     if args.release_name:
         release["name"] = args.release_name
     if notes:
-        release["releaseNotes"] = [{"language": args.notes_language, "text": notes}]
+        release["releaseNotes"] = notes
+        print(f"Release notes: {', '.join(n['language'] for n in notes)}")
     svc.edits().tracks().update(
         packageName=args.package,
         editId=edit_id,
@@ -161,9 +188,9 @@ def cmd_promote(args) -> None:
     }
     if source.get("name"):
         release["name"] = source["name"]
-    notes = read_notes(args.notes_file) if args.notes_file else None
+    notes = release_notes(args) if (args.notes_file or args.notes_dir) else None
     if notes:
-        release["releaseNotes"] = [{"language": args.notes_language, "text": notes}]
+        release["releaseNotes"] = notes
     elif source.get("releaseNotes"):
         release["releaseNotes"] = source["releaseNotes"]
 
@@ -248,6 +275,8 @@ def main() -> None:
     pub.add_argument("--track", default="internal")
     pub.add_argument("--notes-file", default=None)
     pub.add_argument("--notes-language", default="en-US")
+    pub.add_argument("--notes-dir", default=None,
+                     help="every whatsnew-<language> file in it (overrides --notes-file)")
     pub.add_argument("--release-name", default=None, help="defaults to the versionName on Play")
 
     pro = sub.add_parser("promote", help="copy a track's current release onto another track")
@@ -255,6 +284,7 @@ def main() -> None:
     pro.add_argument("--to-track", required=True, dest="to_track")
     pro.add_argument("--notes-file", default=None, help="override notes; default: keep source notes")
     pro.add_argument("--notes-language", default="en-US")
+    pro.add_argument("--notes-dir", default=None, help="override notes from whatsnew-* files")
     pro.add_argument("--draft", action="store_true", help="create as draft (required on a draft app)")
 
     img = sub.add_parser("images", help="replace store-listing screenshots for a language")

@@ -54,7 +54,7 @@ never locally.**
                               #   from the Play API → signed prod AAB →
                               #   upload+rollout → commit/tag/push. -Track (default production; alpha =
                               #   closed testing, internal = review-free smoke test) · -DryRun ·
-                              #   -VersionName X.Y.Z · -NotesFile · -SkipGates. Setup: docs/play-release.md
+                              #   -VersionName X.Y.Z · -NotesDir/-NotesFile · -SkipGates. Setup: docs/play-release.md
 ```
 
 Every build defaults to the **prod** backend (`makapix.club`); only an explicit `-Dev` flag

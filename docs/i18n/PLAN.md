@@ -23,9 +23,9 @@ are the acceptance test.
 | L3 | Independent translation review (one agent per language), fixes, layout hardening | **done 2026-10-02** |
 | L4 | Seams and periphery, then flip `kTranslationsShipped` | in progress (engine and server text done) |
 
-**Next steps (2026-10-02):** the live pass and the store slides are done. Left: release notes,
-the App Store listing (blocked on the expired agreement), and the flip, which also uploads the
-eight Play listings and the per-language slides (files ready in `docs/i18n/flip/`,
+**Next steps (2026-10-02):** the live pass, the store slides and the release notes are done.
+Left: the App Store listing (blocked on the expired agreement), and the flip, which also uploads the
+eight Play listings, the per-language slides and the notes (files ready in `docs/i18n/flip/`,
 `distribution/listings/` and `docs/marketing/out/<lang>/`). Gates on the current code: analyzer
 clean, `flutter test` 7,817 passed, every sweep passes at 1.3×, `flutter test test_engine` 72 of
 72 at 1.0× and at 1.3×.
@@ -387,8 +387,12 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 - [ ] **Store listings**: Play drafted 2026-10-02 in `distribution/listings/play/` (eight
   languages, limits checked; README there), under independent review (`review/listing-<lang>.md`,
   brief `review/BRIEF-listing.md`). App Store blocked on the expired agreement (Findings outside
-  i18n). Release notes per language: at the flip. User decision 2026-10-02: all eight Play
-  languages go live together at the flip, the corrected English too.
+  i18n). User decision 2026-10-02: all eight Play languages go live together at the flip, the
+  corrected English too.
+- [x] **Release notes** per language (done 2026-10-02): `docs/i18n/flip/whatsnew/`, one file per
+  Play listing language, reviewed per language; they move to `distribution/whatsnew/` at the
+  flip (`docs/i18n/flip/README.md`). `play_publish.py --notes-dir` uploads them all;
+  `release_android.ps1` refuses a translation last committed before the English file.
 - [x] **Store screenshots** per language (done 2026-10-02): `docs/marketing/out/<lang>/`
   (Play, App Store iPhone and iPad, feature graphic) from `docs/marketing/src/copy/<lang>.json`;
   mechanics and decisions in `docs/marketing/README.md`, Languages. Phone shots:
@@ -524,6 +528,8 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 
 ## Session log
 
+- **2026-10-02** — Release notes for the translations release in all nine Play languages,
+  reviewed per language; per-language upload and a stale-translation check in the release tools.
 - **2026-10-02** — Store slides in all eight languages (L4): per-language copy files, Noto Sans
   JP/SC subsets, lifted accents for Press Start 2P capitals, grayscale text rendering, a fit check
   that fails store slides, Spanish price as GRATIS (one set serves es-419 and es-ES).

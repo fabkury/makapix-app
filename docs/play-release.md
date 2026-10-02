@@ -18,10 +18,15 @@ The pipeline: verify clean tree on `main` → `cargo test` + `flutter analyze` +
 35 minutes; `-SkipGates` skips all gates) →
 ask the Play API for the next free `versionCode` → write it to `app/pubspec.yaml` →
 `./build_android.ps1 -Bundle` (**prod** is the backend default everywhere; dev requires `-Dev`) →
-upload + roll out to the chosen track with notes from `distribution/whatsnew/whatsnew-en-US` →
+upload + roll out to the chosen track with notes from every `distribution/whatsnew/whatsnew-<language>` →
 commit `chore(release)`, tag `v<name>+<code>`, push with tags.
 
-Update `distribution/whatsnew/whatsnew-en-US` before each release (≤500 chars; Play's limit).
+Update `distribution/whatsnew/whatsnew-en-US` before each release (≤500 chars; Play's limit). Once the
+app ships in eight languages, the folder also holds one file per Play listing language (`whatsnew-de-DE`,
+`whatsnew-es-419`, ...; the file name after `whatsnew-` is the Play language code) and they go up
+together (`play_publish.py publish --notes-dir`). Update them in the same commit as the English file: the
+release script refuses a translation last committed before `whatsnew-en-US`, so last release's notes
+never ship in another language. `-NotesFile <file>` overrides with a single en-US file.
 
 Notes on tracks:
 

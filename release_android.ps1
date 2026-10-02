@@ -15,10 +15,14 @@
 #         ./release_android.ps1 -DryRun              # preflight + gates + print the plan; no changes
 #         ./release_android.ps1 -VersionName 1.1.0   # bump the user-visible version too
 #         ./release_android.ps1 -SkipGates           # only when the gates just ran
+#
+# Release notes: every distribution/whatsnew/whatsnew-<language> file (Play language codes,
+# ≤500 chars each). A translation committed before the English file is refused as stale.
 param(
   [string]$Track = "production",
   [string]$VersionName,                                   # default: keep pubspec's current versionName
-  [string]$NotesFile = "distribution/whatsnew/whatsnew-en-US",
+  [string]$NotesDir = "distribution/whatsnew",           # whatsnew-<Play language> files
+  [string]$NotesFile,                                     # override: one file, en-US only
   [switch]$SkipGates,
   [switch]$DryRun
 )
@@ -40,6 +44,21 @@ $branch = git -C $root rev-parse --abbrev-ref HEAD
 if ($branch -ne "main") { Fail "releases are cut from main (current branch: $branch)" }
 if (-not (Test-Path $keyFile) -and -not $DryRun) {
   Fail "service-account key missing: $keyFile`nOne-time setup: docs/play-release.md"
+}
+
+# Release notes: a translation last committed before whatsnew-en-US was not updated for this
+# release — refuse rather than ship last release's notes in that language.
+if (-not $NotesFile) {
+  $en = "$root\$NotesDir\whatsnew-en-US"
+  if (-not (Test-Path $en)) { Fail "release notes missing: $NotesDir/whatsnew-en-US" }
+  $enTime = [long](git -C $root log -1 --format=%ct -- "$NotesDir/whatsnew-en-US")
+  $stale = Get-ChildItem "$root\$NotesDir" -Filter "whatsnew-*" | Where-Object {
+    $_.Name -ne "whatsnew-en-US" -and
+    [long](git -C $root log -1 --format=%ct -- "$NotesDir/$($_.Name)") -lt $enTime
+  }
+  if ($stale) {
+    Fail "release notes older than whatsnew-en-US (update them in the same commit): $($stale.Name -join ', ')"
+  }
 }
 
 # Current version from pubspec ("version: 1.0.1+3").
@@ -98,7 +117,8 @@ if ($DryRun) {
   Step "DryRun — stopping before any changes"
   Write-Host "Would: write 'version: $name+$code' to app/pubspec.yaml"
   Write-Host "Would: ./build_android.ps1 -Bundle   (prod backend — the default)"
-  Write-Host "Would: upload $aab to '$Track' with notes from $NotesFile"
+  $notesFrom = if ($NotesFile) { $NotesFile } else { "$NotesDir (every whatsnew-*)" }
+  Write-Host "Would: upload $aab to '$Track' with notes from $notesFrom"
   Write-Host "Would: commit + tag v$name+$code + push origin main --follow-tags"
   return
 }
@@ -113,9 +133,7 @@ if ($LASTEXITCODE -ne 0) { Fail "AAB build failed (pubspec already bumped — fi
 
 # ---- Upload -----------------------------------------------------------------
 Step "Publishing to Play ($Track)"
-$notesArg = @()
-if (Test-Path "$root\$NotesFile") { $notesArg = @("--notes-file", "$root\$NotesFile") }
-else { Write-Host "    (no notes file at $NotesFile — releasing without notes)" -ForegroundColor Yellow }
+$notesArg = if ($NotesFile) { @("--notes-file", "$root\$NotesFile") } else { @("--notes-dir", "$root\$NotesDir") }
 python "$root\tools\play_publish.py" publish --aab $aab --track $Track --release-name "$name ($code)" @notesArg
 if ($LASTEXITCODE -ne 0) { Fail "upload failed (pubspec already bumped — fix and rerun; versionCode is re-queried)" }
 
