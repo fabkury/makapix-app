@@ -1,7 +1,7 @@
 # One-command Play Store release for the Makapix Club app (production track by default).
 #
 # Pipeline:  preflight (clean tree, on main, key present)
-#          → gates (cargo test, flutter analyze, flutter test)
+#          → gates (cargo test, flutter gen-l10n + analyze + test, the editor in every language)
 #          → query Play for the next free versionCode (tools/play_publish.py next-code)
 #          → write version to app/pubspec.yaml
 #          → build the signed prod AAB (build_android.ps1 -Bundle; prod is the default backend)
@@ -70,6 +70,15 @@ if ($SkipGates) {
   Step "Gate: flutter test"
   flutter test
   if ($LASTEXITCODE -ne 0) { Pop-Location; Fail "flutter test failed" }
+  Pop-Location
+  # The editor's own screens in all eight languages, against the real engine (app/test_engine,
+  # docs/i18n/TESTING.md). It loads the release engine DLL, so build that first. About 35 min.
+  Step "Gate: the editor in every language (flutter test test_engine, about 35 min)"
+  cargo build -p makapix-ffi --release
+  if ($LASTEXITCODE -ne 0) { Fail "engine DLL build failed" }
+  Push-Location "$root\app"
+  flutter test test_engine
+  if ($LASTEXITCODE -ne 0) { Pop-Location; Fail "flutter test test_engine failed" }
   Pop-Location
 }
 

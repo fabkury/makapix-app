@@ -38,7 +38,7 @@ String formatFrameSetHuman(Iterable<int> indices) {
     parts.add(j == i ? '${sorted[i] + 1}' : '${sorted[i] + 1}–${sorted[j] + 1}');
     i = j + 1;
   }
-  return parts.join(', ');
+  return parts.join(appL10n.listSeparator);
 }
 
 /// Parse the Range entry: 1-based frame numbers and ranges, separated by commas or spaces

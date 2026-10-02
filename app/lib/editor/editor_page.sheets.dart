@@ -595,7 +595,7 @@ extension _EditorSheets on _EditorPageState {
           _sheetHeader(
             thumb: cached, // stale-while-revalidate: old thumb beats a checkerboard flash
             title: ctx.l10n.frameOfCount(cur + 1, count),
-            subtitle: '${ms.toStringAsFixed(1)} ms · ${(1000 / ms).toStringAsFixed(1)} fps', // l10n-ignore: units
+            subtitle: '${fmtFixed(ms, 1)} ms · ${fmtFixed(1000 / ms, 1)} fps', // l10n-ignore: units
           ),
           const SizedBox(height: 12),
           // The Frames page (ADR 0031): every frame as a grid, multi-select, batch operations.

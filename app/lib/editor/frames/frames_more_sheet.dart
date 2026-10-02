@@ -151,7 +151,7 @@ Future<FramesOp?> showFramesMoreSheet(
               _section(l.sectionTiming),
               _row(Icons.timer_outlined, l.framesSetDuration, l.framesSetDurationSub, () => pick(const SetDurationOp())),
               _chips([
-                ('× 0.5', () => pick(const ScaleOp(500))),
+                ('× ${fmtFixed(0.5, 1)}', () => pick(const ScaleOp(500))),
                 ('× 2', () => pick(const ScaleOp(2000))),
                 ('× …', () => pick(const ScaleOp(null))),
               ]),

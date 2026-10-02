@@ -399,7 +399,8 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
     final pal = widget.palette;
     return SizedBox(
       // The labeled swatches set the height; the palette lane top-aligns with their swatches.
-      height: _kSourceSz + 2 + 11,
+      // The label line grows with the system font size.
+      height: _kSourceSz + 2 + MediaQuery.textScalerOf(context).scale(11),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         ...fixed,
         if (fixed.isNotEmpty && pal.isNotEmpty)
@@ -509,6 +510,7 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
           child: Text(context.l10n.pickColorTitle),
         ),
       ),
+      const SizedBox(width: 12),
       // Same dual indicator as the row-2 swatches: a translucent pick splits along the
       // anti-diagonal (opaque top-left / real alpha over the transparency checker
       // bottom-right), showing both its hue and how it will actually composite.

@@ -410,7 +410,7 @@ void main() {
       expect(preview.loaded, isTrue);
       // Default: a canvas-sized rect centered on the source, x = (300 - 64) / 2 = 118.
       expect(find.text('X 118'), findsOneWidget);
-      expect(find.text('On canvas: 64 × 64 px (placed 1:1)'), findsOneWidget);
+      expect(find.text('On canvas: 64\u00A0×\u00A064\u00A0px (placed 1:1)'), findsOneWidget);
       // A one-finger drag anywhere outside the rect moves it too (2026-09-15); Reset restores.
       final area = tester.getRect(find.byWidgetPredicate(
           (w) => w is CustomPaint && w.painter.runtimeType.toString() == '_CropPreviewPainter'));
@@ -442,11 +442,11 @@ void main() {
       await setChip('X 118', '0');
       await setChip('W 64', '150');
       expect(find.text('W 150'), findsOneWidget);
-      expect(find.text('Placed 1:1: 150 × 64 px. The part beyond the 64×64 canvas is kept off-canvas.'), findsOneWidget);
+      expect(find.text('Placed 1:1: 150\u00A0×\u00A064\u00A0px. The part beyond the 64×64 canvas is kept off-canvas.'), findsOneWidget);
       // Fit to canvas: the crop editor's old downscale, the engine's fitNoUpscale(150, 64, 64, 64).
       await tester.tap(find.text('Fit to canvas'));
       await tester.pump();
-      expect(find.text('On canvas: 64 × 27 px (downscaled to fit 64×64)'), findsOneWidget);
+      expect(find.text('On canvas: 64\u00A0×\u00A027\u00A0px (downscaled to fit 64×64)'), findsOneWidget);
       // Back to 1:1, wider than the whole storage area (64 + 2 × 64 = 192): the far part is lost.
       await tester.tap(find.text('1:1'));
       await tester.pump();
@@ -496,14 +496,14 @@ void main() {
       expect(composites, 2);
       expect(preview.durations, const [Duration(milliseconds: 100), Duration(milliseconds: 200)]);
       expect(find.text('Crop canvas'), findsOneWidget);
-      expect(find.text('New canvas: 8 × 8 px'), findsOneWidget);
+      expect(find.text('New canvas: 8\u00A0×\u00A08\u00A0px'), findsOneWidget);
       expect(find.text('note 8×8'), findsOneWidget);
       expect(find.text('Presets'), findsOneWidget);
       final crop = tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Crop'));
       expect(crop.onPressed, isNull, reason: 'the whole canvas has nothing to crop');
       await tester.tap(find.byTooltip('Trim to content'));
       await tester.pump();
-      expect(find.text('New canvas: 3 × 3 px'), findsOneWidget);
+      expect(find.text('New canvas: 3\u00A0×\u00A03\u00A0px'), findsOneWidget);
       expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Crop')).onPressed, isNotNull);
       await tester.pumpWidget(const MaterialApp(home: SizedBox()));
       await tester.pump();

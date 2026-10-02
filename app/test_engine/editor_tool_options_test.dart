@@ -39,16 +39,22 @@ void main() {
 
         void check(String where) {
           final err = tester.takeException();
-          if (err != null) problems.add('$where: ${err.toString().split('\n').first}');
+          if (err != null) problems.add('$where: ${describeException(err)}');
           // The options row scrolls sideways, so nothing in it is cut off by the screen edge;
           // a cut-off text here is a label that does not fit its own control.
-          for (final t in truncatedTexts(tester, within: _row)) {
+          // With a large system font (L10N_TEXT_SCALE), "…" and a mid-word wrap are the
+          // designed fallbacks (docs/i18n/TESTING.md); clipped text still fails.
+          bool shown(Truncated t) => kSweepTextScale == 1.0 || !(t.ellipsized || t.brokenWord);
+          for (final t in truncatedTexts(tester, within: _row).where(shown)) {
             problems.add('$where: cut off in the options row: $t');
+          }
+          for (final t in clippedTexts(tester, within: _row)) {
+            problems.add('$where: cut by its container in the options row: "$t"');
           }
           // The help band is two lines on a 360 px phone (tool_tip_fit_test); the 320 px
           // phone shows an ellipsis on the longest tips in every language, English included.
           if (size.value.width >= 360) {
-            for (final t in truncatedTexts(tester, within: _band)) {
+            for (final t in truncatedTexts(tester, within: _band).where(shown)) {
               problems.add('$where: cut off in the help band: $t');
             }
           }

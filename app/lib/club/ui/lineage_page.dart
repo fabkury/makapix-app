@@ -68,7 +68,8 @@ class _ParentsStrip extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final parents = ref.watch(lineageParentsProvider(postId));
     return SizedBox(
-      height: _tile + 40,
+      // The tile plus its two caption lines, which grow with the system font size.
+      height: _tile + MediaQuery.textScalerOf(context).scale(40),
       child: parents.when(
         loading: () => const Center(
             child: SizedBox(

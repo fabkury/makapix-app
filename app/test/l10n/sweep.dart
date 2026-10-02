@@ -17,6 +17,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'club_fixtures.dart';
 import 'l10n_test_support.dart';
 
+export 'l10n_test_support.dart' show tapVisible;
+
 const _nonLatinScript = {'ja', 'zh', 'ru'};
 
 /// A bare screen with one button, for sweeping a sheet or dialog: the sweep's `act` calls
@@ -89,6 +91,7 @@ void sweepScreen(
             build(),
             size: size.value,
             overrides: overrides?.call(fake) ?? const [],
+            textScale: kSweepTextScale,
           );
           // Settle one-shot async state (FutureProviders, post-frame callbacks) without
           // waiting on spinners: a few fixed pumps (editor-test-gotchas).
@@ -118,8 +121,15 @@ void sweepScreen(
               // Fixture content (an email address, a handle) is user text: one long unbreakable
               // string of it splitting across lines is not a translation's doing.
               .where((t) => !(t.brokenWord && kFixtureText.any((f) => t.text.contains(f))))
+              // With a large system font (L10N_TEXT_SCALE), text ending in "…" and a long word
+              // wrapping mid-word are the designed fallbacks; clipped text still fails.
+              .where((t) => kSweepTextScale == 1.0 || !(t.ellipsized || t.brokenWord))
               .toList();
           expect(cut, isEmpty, reason: 'text cut off');
+          final clipped = clippedTexts(tester)
+              .where((t) => !allowTruncated.any((a) => a.allMatches(t).isNotEmpty))
+              .toList();
+          expect(clipped, isEmpty, reason: 'text cut by the box that clips it');
 
           final lang = locale.languageCode;
           if (_nonLatinScript.contains(lang)) {

@@ -40,12 +40,18 @@ void main() {
         Future<void> check(String where) async {
           await settleReal(tester, rounds: 2);
           final err = tester.takeException();
-          if (err != null) problems.add('$where: ${err.toString().split('\n').first}');
-          for (final t in truncatedTexts(tester)) {
+          if (err != null) problems.add('$where: ${describeException(err)}');
+          // With a large system font (L10N_TEXT_SCALE), "…" and a mid-word wrap are the
+          // designed fallbacks (docs/i18n/TESTING.md); clipped text still fails.
+          for (final t in truncatedTexts(tester)
+              .where((t) => kSweepTextScale == 1.0 || !(t.ellipsized || t.brokenWord))) {
             // The help band's tip is two lines from 360 px up (tool_tip_fit_test); on a 320 px
             // phone the longest tips end in an ellipsis in every language.
             if (size.value.width < 360 && tips.contains(t.text)) continue;
             problems.add('$where: cut off: $t');
+          }
+          for (final t in clippedTexts(tester)) {
+            problems.add('$where: cut by its container: "$t"');
           }
           final left = switch (lang) {
             'ru' || 'ja' || 'zh' => leftoverLatin(tester),
@@ -122,7 +128,7 @@ void main() {
         await settleReal(tester, rounds: 9);
         await check('layer sheet');
         // Its blend mode list (the row shows the current mode, Normal).
-        await tester.tap(find.text(l.blendNormal).last);
+        await tapVisible(tester, find.text(l.blendNormal).last);
         await settleReal(tester, rounds: 9);
         await check('layer sheet, blend list');
         await dismiss();
@@ -148,9 +154,9 @@ void main() {
         await tester.tap(find.byIcon(Icons.aspect_ratio).last); // the Resize tool's tile wears it too
         await settleReal(tester, rounds: 9);
         await check('resize canvas');
-        await tester.tap(find.text('32²'));
+        await tapVisible(tester, find.text('32²'));
         await tester.pump();
-        await tester.tap(find.byIcon(Icons.north_west));
+        await tapVisible(tester, find.byIcon(Icons.north_west));
         await check('resize canvas, anchored');
         await dismiss();
 

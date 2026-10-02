@@ -51,3 +51,23 @@ gate fails a hardcoded string. Data tables hold ids, not labels. A release needs
 `flutter gen-l10n` before `flutter analyze` (generated code is git-ignored and analyze does not
 rebuild it). The engine stays out of i18n: user-visible engine errors get stable codes at the FFI
 seam, and server prose stays English until the server offers codes — both tracked in the plan.
+
+**Amended 2026-10-02** (L3 and L4, `docs/i18n/PLAN.md`):
+
+- *Engine text without engine codes.* The engine's refusal sentences are recognized by pattern
+  in the shell (`app/lib/editor/refusal_l10n.dart`) and shown translated, instead of stable codes
+  at the FFI: the engine, its state JSON, and its goldens stay byte-identical, and a test pins
+  the engine's exact sentences so a reworded one fails there. An unknown sentence shows as is in
+  English and as a generic message elsewhere.
+- *Default names translate on display.* The engine stores "Layer 3", "Import 2", and "… copy"
+  in the document, in English; the shell shows them in the user's language
+  (`layers/layer_names.dart`), and every language's "Untitled" counts as unnamed
+  (`persistence/drawing_meta.dart`). Documents stay language-neutral, so a drawing moved between
+  languages reads right in each, and the batch verbs still address layers by stored name.
+- *Large system fonts.* The app follows the system font size. A tile label grows with it, and
+  past the tile's room it shrinks to fit instead of clipping. This is not the auto-shrinking
+  rejected above: at the default size the 48 px budget still holds, so no label ever shrinks
+  there. The sweeps run at 1.3× as a separate check (`--dart-define=L10N_TEXT_SCALE=1.3`), where
+  an ellipsis is accepted and clipping or overflow is not.
+- *Server text.* The app shows its own message for every specific error code in the server's
+  envelope; generic codes keep the server's prose (`messages/0005-localized-text/`).

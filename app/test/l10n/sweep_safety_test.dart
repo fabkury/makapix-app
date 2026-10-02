@@ -187,8 +187,7 @@ void main() {
     backend: () => _backend(banned: true),
     overrides: (b) => clubOverrides(me: fixtureModerator(), backend: b),
     act: (tester) async {
-      await tester.ensureVisible(find.byIcon(Icons.lock_open));
-      await tester.tap(find.byIcon(Icons.lock_open));
+      await tapVisible(tester, find.byIcon(Icons.lock_open));
     },
   );
 
@@ -197,7 +196,7 @@ void main() {
     build: () => const UserManagementPage(sqid: 'b7', handle: 'pixel_bob'),
     backend: _backend,
     overrides: (b) => clubOverrides(me: fixtureModerator(), backend: b),
-    act: (tester) => tester.tap(find.byIcon(Icons.alternate_email)),
+    act: (tester) => tapVisible(tester, find.byIcon(Icons.alternate_email)),
   );
 
   sweepScreen(

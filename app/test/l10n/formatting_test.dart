@@ -3,6 +3,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:makapix_club/club/ui/widgets/common.dart';
+import 'package:makapix_club/editor/levels_math.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import 'l10n_test_support.dart';
 
@@ -26,7 +28,7 @@ void main() {
       expect(timeAgo(_ago(const Duration(days: 800))), '2y');
       expect(formatFileSize(1), '1 byte');
       expect(formatFileSize(512), '512 bytes');
-      expect(formatFileSize(38214), '37.3 KiB');
+      expect(formatFileSize(38214), '37.3\u00A0KiB');
       expect(compactCount(12345), '12.3k');
     });
   });
@@ -34,14 +36,14 @@ void main() {
   testWidgets('Russian: plural years, comma decimals', (tester) async {
     await inLocale(tester, 'ru', () {
       expect(timeAgo(_ago(const Duration(seconds: 5))), 'сейчас');
-      expect(timeAgo(_ago(const Duration(hours: 3))), '3 ч');
-      expect(timeAgo(_ago(const Duration(days: 366))), '1 г.');
-      expect(timeAgo(_ago(const Duration(days: 365 * 3 + 5))), '3 г.');
-      expect(timeAgo(_ago(const Duration(days: 365 * 7 + 5))), '7 л.');
+      expect(timeAgo(_ago(const Duration(hours: 3))), '3\u00A0ч');
+      expect(timeAgo(_ago(const Duration(days: 366))), '1\u00A0г.');
+      expect(timeAgo(_ago(const Duration(days: 365 * 3 + 5))), '3\u00A0г.');
+      expect(timeAgo(_ago(const Duration(days: 365 * 7 + 5))), '7\u00A0л.');
       expect(formatFileSize(1), '1 байт');
       expect(formatFileSize(3), '3 байта');
       expect(formatFileSize(7), '7 байт');
-      expect(formatFileSize(38214), '37,3 KiB');
+      expect(formatFileSize(38214), '37,3\u00A0KiB');
     });
   });
 
@@ -60,12 +62,31 @@ void main() {
     });
   });
 
+  testWidgets("decimals on screen use the language's separator, with no grouping", (tester) async {
+    await inLocale(tester, 'en', () {
+      expect(fmtFixed(1.25, 2), '1.25');
+      expect(fmtFixed(1000, 1), '1000.0');
+      expect(fmtFixed(7, 0), '7');
+      expect(levelsGammaLabel(1000), '1.00');
+    });
+    await tester.pumpWidget(const SizedBox());
+    for (final lang in ['de', 'fr', 'es', 'pt', 'ru']) {
+      await inLocale(tester, lang, () {
+        expect(fmtFixed(1.25, 2), '1,25', reason: lang);
+        expect(fmtFixed(1000, 1), '1000,0', reason: lang);
+        expect(levelsGammaLabel(2200), '2,20', reason: lang);
+      });
+      await tester.pumpWidget(const SizedBox());
+    }
+    await inLocale(tester, 'ja', () => expect(fmtFixed(1.25, 2), '1.25'));
+  });
+
   testWidgets('Spanish, Portuguese, French, German', (tester) async {
     await inLocale(tester, 'es', () {
       expect(timeAgo(_ago(const Duration(days: 35))), '1 mes');
       expect(timeAgo(_ago(const Duration(days: 70))), '2 meses');
       expect(timeAgo(_ago(const Duration(days: 800))), '2 años');
-      expect(formatFileSize(38214), '37,3 KiB');
+      expect(formatFileSize(38214), '37,3\u00A0KiB');
     });
     await tester.pumpWidget(const SizedBox());
     await inLocale(tester, 'pt', () {
@@ -81,9 +102,9 @@ void main() {
     });
     await tester.pumpWidget(const SizedBox());
     await inLocale(tester, 'de', () {
-      expect(timeAgo(_ago(const Duration(hours: 3))), '3 Std.');
+      expect(timeAgo(_ago(const Duration(hours: 3))), '3\u00A0Std.');
       expect(formatFileSize(2), '2 Bytes');
-      expect(formatFileSize(38214), '37,3 KiB');
+      expect(formatFileSize(38214), '37,3\u00A0KiB');
     });
   });
 }

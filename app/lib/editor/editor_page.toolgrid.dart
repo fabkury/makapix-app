@@ -352,7 +352,7 @@ extension _EditorToolgrid on _EditorPageState {
   void _labeledSlider(List<Widget> children, String name, double value, double min, double max,
       ValueChanged<double> onChanged,
       {bool integer = true, int decimals = 1, VoidCallback? onChangeEnd}) {
-    final shown = integer ? value.round().toString() : value.toStringAsFixed(decimals);
+    final shown = integer ? value.round().toString() : fmtFixed(value, decimals);
     children.add(InkWell(
       onTap: () => _editSliderValue(name, value, min, max, onChanged,
           integer: integer, decimals: decimals, onChangeEnd: onChangeEnd),
@@ -384,7 +384,7 @@ extension _EditorToolgrid on _EditorPageState {
       borderRadius: BorderRadius.circular(4),
       child: Padding(
         padding: const EdgeInsets.only(left: 8, right: 4),
-        child: Text('$name ${v.toStringAsFixed(2)}',
+        child: Text('$name ${fmtFixed(v, 2)}',
             style: const TextStyle(
                 fontSize: 11,
                 color: Colors.white60,
@@ -398,8 +398,8 @@ extension _EditorToolgrid on _EditorPageState {
   Future<void> _editSliderValue(String name, double value, double min, double max,
       ValueChanged<double> onChanged,
       {required bool integer, int decimals = 1, VoidCallback? onChangeEnd}) async {
-    String fmt(double d) => integer ? d.round().toString() : d.toStringAsFixed(decimals);
-    final ctrl = TextEditingController(text: integer ? value.round().toString() : value.toStringAsFixed(2));
+    String fmt(double d) => integer ? d.round().toString() : fmtFixed(d, decimals);
+    final ctrl = TextEditingController(text: integer ? value.round().toString() : fmtFixed(value, 2));
     ctrl.selection = TextSelection(baseOffset: 0, extentOffset: ctrl.text.length);
     final entered = await showDialog<double>(
       context: context,

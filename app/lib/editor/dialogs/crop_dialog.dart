@@ -558,8 +558,10 @@ class CropPage extends StatefulWidget {
 class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin {
   static const double _reticleRadius = 11; // drawn radius
   static const double _reticleHit = 28; // touch radius
-  // Import mode's result line: two lines of 12 px × 1.3, reserved whatever the text.
-  static const double _resultSlotHeight = 32;
+  // Import mode's result line: two lines of 12 px × 1.3, reserved whatever the text. The strut
+  // holds every script to that line height (a CJK fallback font's own lines are taller), and the
+  // slot grows with the system font size.
+  static const _resultStrut = StrutStyle(fontSize: 12, height: 1.3, forceStrutHeight: true);
   // One wheel notch zooms by this factor (the editor canvas's constants: 60 logical px per notch).
   static const double _kWheelZoomStep = 1.2, _kWheelNotchDelta = 60.0;
 
@@ -1081,7 +1083,7 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
               // fit on a phone without the panel's height ever depending on the text; canvas
               // mode's short line keeps one.
               SizedBox(
-                height: canvasMode ? null : _resultSlotHeight,
+                height: canvasMode ? null : MediaQuery.textScalerOf(context).scale(12) * 1.3 * 2 + 1,
                 child: Text(
                   canvasMode
                       ? context.l10n.cropNewCanvas(_geo.w, _geo.h)
@@ -1094,6 +1096,7 @@ class _CropPageState extends State<CropPage> with SingleTickerProviderStateMixin
                                   : context.l10n.cropResultNative(rw, rh),
                   maxLines: canvasMode ? 1 : 2,
                   overflow: TextOverflow.ellipsis,
+                  strutStyle: _resultStrut,
                   style: TextStyle(fontSize: 12, height: 1.3, color: beyondStorage ? Colors.amber : Colors.white60),
                 ),
               ),

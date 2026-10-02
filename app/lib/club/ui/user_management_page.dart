@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:makapix_club/l10n/l10n.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../edit/reputation_gear.dart';
 import '../models/club_error.dart';
@@ -142,7 +143,8 @@ class _UmdBody extends ConsumerWidget {
           Text(
             [
               context.l10n.umdReputationLine(user.reputation),
-              if (user.roles.any((r) => r != 'user')) user.roles.join(', '),
+              if (user.roles.any((r) => r != 'user'))
+                [for (final r in user.roles) context.l10n.accountRole(r)].join(context.l10n.listSeparator),
               if (user.createdAt != null) context.l10n.umdJoined(_fmtDate(user.createdAt!)),
             ].join('  ·  '),
             style: const TextStyle(fontSize: 12, color: Colors.white54),
@@ -496,8 +498,5 @@ Future<int?> showBanDurationDialog(BuildContext context, {required String handle
   );
 }
 
-String _fmtDate(DateTime d) {
-  final l = d.toLocal();
-  String two(int n) => n.toString().padLeft(2, '0');
-  return '${l.year}-${two(l.month)}-${two(l.day)}';
-}
+/// A date in the user's language ("31 Oct 2026", "31. Okt. 2026", "2026年10月31日").
+String _fmtDate(DateTime d) => DateFormat.yMMMd(appL10n.localeName).format(d.toLocal());

@@ -33,7 +33,7 @@ class DurationEditor extends StatefulWidget {
 
 class _DurationEditorState extends State<DurationEditor> {
   late double _ms = widget.initialMs.clamp(kMinDurationMs, kMaxDurationMs);
-  late final TextEditingController _ctrl = TextEditingController(text: _ms.toStringAsFixed(1));
+  late final TextEditingController _ctrl = TextEditingController(text: fmtFixed(_ms, 1));
 
   @override
   void dispose() {
@@ -44,7 +44,7 @@ class _DurationEditorState extends State<DurationEditor> {
   void _set(double v, {bool writeField = true}) {
     setState(() {
       _ms = v.clamp(kMinDurationMs, kMaxDurationMs);
-      if (writeField) _ctrl.text = _ms.toStringAsFixed(1);
+      if (writeField) _ctrl.text = fmtFixed(_ms, 1);
     });
     widget.onChanged(_ms);
   }
@@ -68,11 +68,11 @@ class _DurationEditorState extends State<DurationEditor> {
           ),
         ),
         const Spacer(),
-        Text('${(1000 / _ms).toStringAsFixed(1)} fps'), // l10n-ignore: unit
+        Text('${fmtFixed(1000 / _ms, 1)}\u00A0fps'), // l10n-ignore: unit
       ]),
       Slider(value: _ms, min: kMinDurationMs, max: kMaxDurationMs, onChanged: _set),
       Wrap(spacing: 6, children: [
-        for (final f in kFpsPresets) ActionChip(label: Text('${f}fps'), onPressed: () => _set(1000 / f)), // l10n-ignore: unit
+        for (final f in kFpsPresets) ActionChip(label: Text('$f\u00A0fps'), onPressed: () => _set(1000 / f)), // l10n-ignore: unit
       ]),
     ]);
   }

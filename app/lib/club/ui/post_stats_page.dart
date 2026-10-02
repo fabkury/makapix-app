@@ -79,7 +79,7 @@ class _PostStatsPageState extends ConsumerState<PostStatsPage> {
         if (daily.isNotEmpty) _dailyChart(daily),
         _breakdown(l10n.statsByCountry, s.countries(_authOnly)),
         _breakdown(l10n.statsByDevice, s.devices(_authOnly), label: statsBucketLabel),
-        _breakdown(l10n.statsByType, s.types(_authOnly), label: statsBucketLabel),
+        _breakdown(l10n.statsByType, s.types(_authOnly), label: statsViewTypeLabel),
         _breakdown(l10n.statsByEmoji, s.emoji(_authOnly)),
         const SizedBox(height: 20),
         if (s.firstViewAt != null) _footerLine(l10n.statsFirstView, timeAgo(s.firstViewAt)),

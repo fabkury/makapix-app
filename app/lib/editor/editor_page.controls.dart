@@ -1359,7 +1359,7 @@ extension _EditorControls on _EditorPageState {
   /// columns 15 and 16, `15` = through column 15), one field per active direction.
   Future<void> _editAxisValue() async {
     if (!_symOn) return;
-    String fmt(int a) => (a / 2).toStringAsFixed(a.isOdd ? 1 : 0);
+    String fmt(int a) => fmtFixed(a / 2, a.isOdd ? 1 : 0);
     final hCtrl = TextEditingController(text: _symH ? fmt(_symHAxis!) : '');
     final vCtrl = TextEditingController(text: _symV ? fmt(_symVAxis!) : '');
     final ok = await showDialog<bool>(

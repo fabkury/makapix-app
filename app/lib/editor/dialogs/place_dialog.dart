@@ -436,7 +436,7 @@ class _PlacePageState extends State<PlacePage> with SingleTickerProviderStateMix
         ]),
       );
 
-  static String _mb(int bytes) => (bytes / (1024 * 1024)).toStringAsFixed(bytes < 10 * 1024 * 1024 ? 1 : 0);
+  static String _mb(int bytes) => fmtFixed(bytes / (1024 * 1024), bytes < 10 * 1024 * 1024 ? 1 : 0);
 
   /// Where the pixels go: on the canvas, parked off-canvas, or dropped beyond storage.
   Widget _placementSlot() {

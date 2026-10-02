@@ -50,7 +50,8 @@ never locally.**
 ./build_android.ps1           # Android APK: engine .so (arm64-v8a + armeabi-v7a + x86_64) → jniLibs →
                               #   release APK. -Install: adb install -r · -Bundle: build an .aab
 ./release_android.ps1         # Play release: gates (cargo test · flutter analyze --no-fatal-infos ·
-                              #   flutter test) → versionCode from the Play API → signed prod AAB →
+                              #   flutter test · flutter test test_engine, ~35 min) → versionCode
+                              #   from the Play API → signed prod AAB →
                               #   upload+rollout → commit/tag/push. -Track (default production; alpha =
                               #   closed testing, internal = review-free smoke test) · -DryRun ·
                               #   -VersionName X.Y.Z · -NotesFile · -SkipGates. Setup: docs/play-release.md

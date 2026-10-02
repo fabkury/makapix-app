@@ -85,9 +85,9 @@ class _FilterSheetState extends State<_FilterSheet> {
   static String _fmtBytes(int bytes) {
     final locale = appL10n.localeName;
     // l10n-ignore: KiB / MiB are unit symbols, the same in every language
-    if (bytes >= 1024 * 1024) return '${NumberFormat('0.00', locale).format(bytes / (1024 * 1024))} MiB';
+    if (bytes >= 1024 * 1024) return '${NumberFormat('0.00', locale).format(bytes / (1024 * 1024))}\u00A0MiB';
     // l10n-ignore: unit symbol
-    return '${NumberFormat('0', locale).format(bytes / 1024)} KiB';
+    return '${NumberFormat('0', locale).format(bytes / 1024)}\u00A0KiB';
   }
 
   FeedFilters _build() {

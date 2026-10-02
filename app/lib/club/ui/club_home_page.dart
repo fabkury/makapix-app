@@ -194,7 +194,8 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
 
   PopupMenuItem<String> _menuItem(String value, IconData icon, String label) => PopupMenuItem<String>(
         value: value,
-        child: Row(children: [Icon(icon, size: 18), const SizedBox(width: 10), Text(label)]),
+        // The label wraps rather than overflow the menu (long translations, large fonts).
+        child: Row(children: [Icon(icon, size: 18), const SizedBox(width: 10), Flexible(child: Text(label))]),
       );
 
   void _onMenu(String value) {

@@ -215,7 +215,7 @@ extension _EditorReplay on _EditorPageState {
     final durations = host.endFrameDurationsUs;
     var fullCycle = true;
     if (durations.length > 1 && cycleUs(durations) > 60_000_000) {
-      final mins = (cycleUs(durations) / 60_000_000).toStringAsFixed(1);
+      final mins = fmtFixed(cycleUs(durations) / 60_000_000, 1);
       final choice = await showDialog<bool>(
         context: pageCtx,
         builder: (ctx) => AlertDialog(

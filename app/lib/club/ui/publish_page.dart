@@ -155,7 +155,7 @@ class _PublishPageState extends ConsumerState<PublishPage> {
                 l10n.publishLoopSeconds(
                     NumberFormat('0.0', l10n.localeName).format(d.totalDurationMs! / 1000)),
               d.format.toUpperCase(),
-              '$kib KiB', // l10n-ignore: unit symbol
+              '$kib\u00A0KiB', // l10n-ignore: unit symbol
             ].join('  ·  '),
             style: const TextStyle(fontSize: 12, color: Colors.white54),
           ),

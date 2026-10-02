@@ -572,7 +572,7 @@ class _PalettePageState extends State<PalettePage> {
           const SizedBox(
             width: 24,
             height: 24,
-            child: Center(child: Text('…', style: TextStyle(color: Colors.white70))),
+            child: FittedBox(fit: BoxFit.scaleDown, child: Text('…', style: TextStyle(color: Colors.white70))),
           ),
       ]);
     });

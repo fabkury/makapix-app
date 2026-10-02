@@ -32,10 +32,10 @@ void main() {
   testWidgets('typing sets the value; the last action is the filled one and returns its index', (tester) async {
     await _open(tester);
     expect(find.text('Frame 1 duration'), findsOneWidget);
-    expect(find.text('10.0 fps'), findsOneWidget);
+    expect(find.text('10.0\u00A0fps'), findsOneWidget);
     await tester.enterText(find.byType(TextField), '40');
     await tester.pump();
-    expect(find.text('25.0 fps'), findsOneWidget, reason: 'the fps readout follows the field');
+    expect(find.text('25.0\u00A0fps'), findsOneWidget, reason: 'the fps readout follows the field');
     expect(find.widgetWithText(FilledButton, 'All'), findsOneWidget);
     expect(find.widgetWithText(TextButton, 'This'), findsOneWidget);
     await tester.tap(find.text('All'));
@@ -61,10 +61,10 @@ void main() {
     await tester.enterText(find.byType(TextField), '5');
     await tester.pump();
     expect(find.text('5'), findsOneWidget, reason: 'the field keeps the partial entry');
-    expect(find.text('60.2 fps'), findsOneWidget, reason: '5 ms clamps to the 16.6 ms floor');
+    expect(find.text('60.2\u00A0fps'), findsOneWidget, reason: '5 ms clamps to the 16.6 ms floor');
     await tester.enterText(find.byType(TextField), '5000');
     await tester.pump();
-    expect(find.text('1.0 fps'), findsOneWidget, reason: '5000 ms clamps to the 1000 ms ceiling');
+    expect(find.text('1.0\u00A0fps'), findsOneWidget, reason: '5000 ms clamps to the 1000 ms ceiling');
     await tester.tap(find.text('Apply'));
     await tester.pumpAndSettle();
     expect(result, isNotNull);
@@ -88,10 +88,10 @@ void main() {
     ));
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('24fps'));
+    await tester.tap(find.text('24\u00A0fps'));
     await tester.pump();
     expect(find.text('41.7'), findsOneWidget, reason: 'the chip writes the field');
-    expect(find.text('24.0 fps'), findsOneWidget);
+    expect(find.text('24.0\u00A0fps'), findsOneWidget);
     await tester.tap(find.text('One'));
     await tester.pumpAndSettle();
     expect(result!.action, 0);

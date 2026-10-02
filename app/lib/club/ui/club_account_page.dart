@@ -270,7 +270,7 @@ class _AccountView extends ConsumerWidget {
           Center(child: Text(u.email!, style: const TextStyle(color: Colors.white54, fontSize: 12))),
         const SizedBox(height: 4),
         Center(
-          child: Text(l10n.accountSignedInAs(roles.join(', ')),
+          child: Text(l10n.accountSignedInAs(roles.join(l10n.listSeparator)),
               style: const TextStyle(color: Colors.white38, fontSize: 11)),
         ),
         const SizedBox(height: 24),
@@ -326,7 +326,7 @@ class _AccountView extends ConsumerWidget {
     final used = (s['used_bytes'] as num?)?.toDouble() ?? 0;
     final limit = (s['limit_bytes'] as num?)?.toDouble() ?? 0;
     // l10n-ignore: MiB is a unit symbol
-    String mib(double b) => '${NumberFormat('0.0', appL10n.localeName).format(b / (1024 * 1024))} MiB';
+    String mib(double b) => '${NumberFormat('0.0', appL10n.localeName).format(b / (1024 * 1024))}\u00A0MiB';
     return limit > 0 ? '${mib(used)} / ${mib(limit)}' : mib(used);
   }
 

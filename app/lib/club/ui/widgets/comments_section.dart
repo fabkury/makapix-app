@@ -304,6 +304,8 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
     final yes = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        // Scrolls on a small phone with a large font, where the explanation is taller than the dialog.
+        scrollable: true,
         title: Text(ctx.l10n.commentsModDeleteTitle),
         content: Text(ctx.l10n.commentsModDeleteBody),
         actions: [

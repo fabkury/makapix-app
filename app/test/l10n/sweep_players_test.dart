@@ -97,10 +97,10 @@ void main() {
     // The example code in the empty field.
     allowLatin: [..._fixture, 'A3F8X2'],
     act: (tester) async {
-      await tester.tap(find.byIcon(Icons.add).first);
+      await tapVisible(tester, find.byIcon(Icons.add));
       await settleOpen(tester);
       // Submit empty: the "enter the code" error appears under the fields.
-      await tester.tap(find.byType(FilledButton).last);
+      await tapVisible(tester, find.byType(FilledButton).last);
     },
   );
 }

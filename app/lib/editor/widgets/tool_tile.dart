@@ -59,10 +59,16 @@ class ToolTile extends StatelessWidget {
         children: [
           tool.iconWidget(size: 18 * s, color: fg),
           const SizedBox(height: 1),
-          Text(tool.shortLabel(context.l10n),
-              style: TextStyle(fontSize: labelFontSize * s, color: active ? Colors.amber : null),
-              maxLines: 1,
-              overflow: TextOverflow.clip),
+          // A large system font grows the label up to the tile's room, then shrinks it to fit:
+          // a clipped tool name is never shown ([labelBudget] holds at the default size).
+          Flexible(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(tool.shortLabel(context.l10n),
+                  style: TextStyle(fontSize: labelFontSize * s, color: active ? Colors.amber : null),
+                  maxLines: 1),
+            ),
+          ),
         ],
       ),
     );

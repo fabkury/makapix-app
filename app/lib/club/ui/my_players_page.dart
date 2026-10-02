@@ -283,7 +283,7 @@ class _PlayerTile extends StatelessWidget {
                   child: Row(children: [
                     const Icon(Icons.edit_outlined, size: 18),
                     const SizedBox(width: 10),
-                    Text(ctx.l10n.commonRename),
+                    Flexible(child: Text(ctx.l10n.commonRename)),
                   ]),
                 ),
                 PopupMenuItem(
@@ -291,7 +291,8 @@ class _PlayerTile extends StatelessWidget {
                   child: Row(children: [
                     const Icon(Icons.delete_outline, size: 18, color: Colors.redAccent),
                     const SizedBox(width: 10),
-                    Text(ctx.l10n.commonDelete, style: const TextStyle(color: Colors.redAccent)),
+                    Flexible(
+                        child: Text(ctx.l10n.commonDelete, style: const TextStyle(color: Colors.redAccent))),
                   ]),
                 ),
               ],

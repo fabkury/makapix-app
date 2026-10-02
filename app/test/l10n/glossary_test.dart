@@ -20,6 +20,8 @@ const _mustDiffer = <(String, String, String, bool)>[
   ('placeDroppedStorage', 'placeDroppedCanvas', 'two causes of loss on the place page', true),
   ('cropCanvasTitle', 'importCrop', 'cropping the canvas vs. cropping an import', true),
   ('toolMove', 'barShift', 'the Move tool vs. moving items one position', true),
+  ('toolMoveShort', 'barShift', 'the Move tile vs. moving items one position', true),
+  ('profileTabReacted', 'statReactions', 'works this person reacted to vs. reactions they received', true),
 ];
 
 /// Keys whose texts must be the same: one meaning, one wording.
@@ -27,7 +29,42 @@ const _mustMatch = <(String, String)>[
   ('engineRefused', 'engineRefusedFallback'),
 ];
 
+/// Glossary terms a message must use whenever its English names the thing, by language. The
+/// test checks every message whose description says it is about that thing: a "tag" in a
+/// hashtag message is still the glossary's hashtag word (GLOSSARY.md).
+const _term = <String, Map<String, String>>{
+  'hashtag': {
+    'es': 'hashtag', 'pt': 'hashtag', 'fr': 'hashtag', 'de': 'hashtag',
+    'ru': 'хештег', 'ja': 'ハッシュタグ', 'zh': '话题标签',
+  },
+};
+
 void main() {
+  for (final locale in allLocales.where((l) => l.languageCode != 'en')) {
+    final lang = locale.languageCode;
+    test('hashtag messages use the glossary word in $lang', () {
+      final en = readArb('en');
+      final meta = readArbMeta();
+      final arb = readArb(lang);
+      final word = _term['hashtag']![lang]!;
+      final problems = <String>[
+        for (final key in en.keys)
+          // A message about hashtags whose text names one ("tag" or "hashtag"), unless its
+          // only mention is a placeholder such as #{tag}.
+          if ('${meta[key]?['description'] ?? ''}'.toLowerCase().contains('hashtag') &&
+              RegExp(r'\b(hash)?tags?\b', caseSensitive: false).hasMatch(en[key]!.replaceAll(RegExp(r'\{[^}]*\}'), '')) &&
+              !(arb[key] ?? '').toLowerCase().contains(word))
+            '$key: "${arb[key]}"',
+      ];
+      expect(problems, isEmpty, reason: 'say "$word" for hashtag in $lang');
+    });
+  }
+  test('Russian never says a bare "Club" (it cannot decline)', () {
+    final ru = readArb('ru');
+    final bare = RegExp(r'(?<!Makapix )\bClub\b');
+    expect([for (final e in ru.entries) if (bare.hasMatch(e.value)) '${e.key}: "${e.value}"'], isEmpty,
+        reason: 'write "Makapix Club" in Russian (GLOSSARY.md)');
+  });
   for (final locale in allLocales) {
     final lang = locale.languageCode;
     final arb = readArb(lang);

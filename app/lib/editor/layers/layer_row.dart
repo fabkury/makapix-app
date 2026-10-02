@@ -71,7 +71,7 @@ class LayerRowTile extends StatelessWidget {
     final tags = <Widget>[
       if (!layer.visible) Icon(Icons.visibility_off, size: 14 * scale, color: Colors.white54),
       if (layer.locked) Icon(Icons.lock, size: 14 * scale, color: Colors.white54),
-      if (layer.opacity < 255) Text('${(layer.opacity * 100 / 255).round()} %', style: tagStyle),
+      if (layer.opacity < 255) Text(context.l10n.percent((layer.opacity * 100 / 255).round()), style: tagStyle),
       if (layer.blend != 'Normal') Text(blendBadgeText(context.l10n, layer.blend), style: tagStyle),
       if (layer.isEmpty) Text(context.l10n.layersTagEmpty, style: tagStyle.copyWith(fontStyle: FontStyle.italic)),
     ];

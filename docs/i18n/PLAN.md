@@ -20,13 +20,15 @@ are the acceptance test.
 | L0 | Infrastructure, test harness, pilot (Settings, language picker, tool names) | **done 2026-10-01** |
 | L1 | Club pillar: extract + translate + sweep, batch by batch | **done 2026-10-01** (C1–C9) |
 | L2 | Editor pillar: extract + translate + sweep, batch by batch | **done 2026-10-01** (E0–E8) |
-| L3 | Independent translation review (one agent per language), fixes, layout hardening | review done; large-text fixes in progress |
+| L3 | Independent translation review (one agent per language), fixes, layout hardening | **done 2026-10-02** |
 | L4 | Seams and periphery, then flip `kTranslationsShipped` | in progress (engine and server text done) |
 
-**Next steps (2026-10-02):** fix the large-text overflows at 360 px and wider (list under L3),
-then the full screenshot review, then the rest of L4. Gates on the current text: analyzer
-clean, `flutter test` 7,778 passed, `flutter test test_engine` 72 of 72 (before the L4 text
-changes; rerun at the next milestone).
+**Next steps (2026-10-02):** what is left needs the user or a device: the live pass on the
+Pixel (wireless debugging on), the App Store agreement, a yes to upload the Play listings, and
+the CJK headline font for the store slides; then the store screenshots, release notes, and the
+flip (files ready in `docs/i18n/flip/`). Gates on the current code: analyzer clean,
+`flutter test` 7,815 passed, every sweep passes at 1.3×, `flutter test test_engine` 72 of 72 at
+1.0× and at 1.3×.
 
 The lowercase pass (`scan.dart --list --lower`, 239 words) is done: every one is a wire
 value, a menu or tool id, a file format, a font name, or the fallback handle "unknown"
@@ -253,13 +255,56 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   more collapses (below). A mechanical scan for "same English, different translation" was
   tried and dropped: 189 hits, nearly all legitimate (a tool's name is a noun, its option a
   verb, a tile label abbreviated).
-- [ ] Full screenshot gallery (T6) reviewed per language: every sweep screen.
+- [x] Full screenshot gallery (T6) reviewed per language, done 2026-10-02: one contact sheet
+  per screen with the eight languages side by side (script pattern: PIL, 4 × 2 grid at half
+  scale, from `build/l10n_shots/`); all 221 sheets. Found and fixed: French "Réactions" named both the reacted-to tab and the received
+  count (now "Réagi", and a glossary-test pair); German counts printed "78901" (intl's German
+  compact form has no thousands step; five digits and up are now grouped, "78.901"); a number
+  and its unit could break across lines in every language (no-break spaces, GLOSSARY.md); the
+  Russian Move tile said "Сдвиг", the Layers and Frames pages' Shift (now "Перемещ.", and a
+  glossary-test pair on the short labels); the Chinese Patterns hint spaced a Chinese tool
+  name; the
+  statistics showed the server's view types in English ("Intentional", "Listing"; now a
+  translated select with an untranslated fallback); the French color dialog's title touched the
+  swatch; German "Werk" in two editor messages (the editor's drawing is "Zeichnung"); Japanese
+  and Chinese "unique (7 days)" broke inside the parenthesis; the German crop label "In
+  Leinwand einpassen" wrapped and was cut by its segment, which no check could see, hence two
+  new detectors (TESTING.md) that then found the crop result slot cutting CJK and large-font
+  lines, the Frames tiles' captions (1 px), the palette "…" marker, and two long dialogs on a
+  320 px phone (now scrollable); the editor's ☰ menu labels could not wrap (Japanese, 1.3×);
+  decimals on screen always used a point ("100.0 ms", "Ratio 1.00", the Levels gamma, the
+  ruler's angle, the scale label) — `fmtFixed` in `l10n.dart` now writes the language's
+  separator, and is tested per language; lists joined with ", " in Japanese and Chinese (roles,
+  removed hashtags, frame ranges) now use the language's separator (`listSeparator`, "、"), and
+  the user-management roles are translated as on the account page; the German download sheet's
+  subtitle repeated its title; the moderation page wrote dates as "2026-10-31" in every
+  language (now the language's own medium date); the Russian "Edit profile" button wrapped
+  ("Изменить профиль", as every other Russian edit action); "tag" where the glossary says
+  hashtag in four moderation messages (de, ru, ja, zh; now a glossary test for every hashtag
+  message); bare "Club" in five Russian messages (now "Makapix Club", and a test; the publish
+  title became "Опубликовать", which fits a 320 px bar); the Russian
+  Move group used the Shift word (the glossary row itself had it; corrected); percentages
+  wrote "50 %" in English (a `percent` message with each language's spacing); "53687
+  Millionen" ungrouped; the fps readout and presets ("10.0 fps", "60fps"); the layer opacity
+  dialog stretched to the full screen height (a Slider takes all the height it is offered; in
+  every language); a wrapped empty-state message ran edge to edge (shared `ClubEmpty`).
+  Left as is: emoji and "✔" show as boxes only in the test fonts; single-character
+  blend badges in ja/zh (as cryptic as English "Mu"); the Japanese timelapse title breaking
+  inside a katakana word (ordinary CJK wrapping, permitted by Japanese line-breaking rules).
 - [ ] Layout hardening for whatever the sweeps flag in German and Russian.
 - [x] Text scale 1.3× sweep, run 2026-10-02 (`--dart-define=L10N_TEXT_SCALE=1.3`, TESTING.md):
   771 failing screen states of 5,946. Most are ellipsis truncation, the designed fallback; English
   fails on 35 states too, so this is large-font layout in general, not translation. The 320 px
   phone at 1.3× is the worst case (408 failures) and is accepted except where a fix is free.
-- [ ] Large-text overflows (content clipped, not ellipsized) at 360 px and wider, all languages:
+- [x] Large-text fixes, done 2026-10-02. The harness now tells "…" (accepted at 1.3×) from
+  clipping (never accepted); 771 failures became 57, and those were fixed: fixed heights that
+  ignored the font size (color dialog sources strip, lineage strip, the editor's help band),
+  menu labels that could not wrap (Club home, profile, My Players), the moderation chip, the
+  onboarding buttons (now an `OverflowBar`), the player options sheet (now scrolls), and four
+  sweep walks that tapped before a scroll landed (`tapVisible`). The row-3 tool tile labels were
+  clipped under a large font in six languages: they now shrink to the tile past its room
+  (ADR 0037 amendment), tested at 1.3× and 2× in every language. All sweeps pass at 1.3×.
+  The original list, for the record:
   Color dialog with sources and Lineage (every size, English too), Artist dashboard and Post
   statistics (stat columns), User management (reputation row), Place page (parked line),
   Welcome and Resolving pages (title), Account management, Dither page end, Keyboard shortcuts
@@ -297,24 +342,42 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   - `error_message` on a failed download request (`GET /pmd/bdr`), shown in the downloads sheet.
   - License `title` on `GET /license` (license names; proper names, probably stay as they are).
   - Statistics bucket names: `views_by_type` keys (shown capitalized) and country codes.
-- [ ] **Default names stored in documents** ("Layer 1", "Untitled"): decide display-time mapping
-  vs. localized-at-creation; ADR.
+- [x] **Default names stored in documents**: display-time mapping, done in E4 and completed
+  2026-10-02 with the "Import N" layers; recorded in the ADR 0037 amendment. Test:
+  `test/layer_names_test.dart`.
 - [ ] **Android**: `res/xml/locales_config.xml` + `android:localeConfig` (per-app language in
   system settings, Android 13+); confirm the app label stays "Makapix Club". Decided
   2026-10-02: lands in the same commit as the `kTranslationsShipped` flip, never before — it
   advertises the languages to the system, and a release build would list seven it does not show.
+  The file is ready in `docs/i18n/flip/` (README there says where it goes).
 - [ ] **iOS**: `CFBundleLocalizations` in Info.plist; localized `NSPhotoLibraryUsageDescription` /
   `NSCameraUsageDescription` (`InfoPlist.strings`). First real check is the next Codemagic build
-  on TestFlight — record the result here. Same rule as Android: in the flip commit.
-- [ ] **Windows**: smoke-test CJK and Cyrillic rendering in the real build (system font fallback).
-- [ ] **Material's own strings** (date pickers, text-selection menu, back-button tooltip): confirm
-  per language in a sweep.
-- [ ] Add `flutter gen-l10n` and `flutter test test_engine` to `release_android.ps1` gates.
+  on TestFlight — record the result here. Same rule as Android: in the flip commit. The seven
+  `InfoPlist.strings` are ready in `docs/i18n/flip/ios/` (reviewed, `review/infoplist.md`).
+- [x] **Windows**: smoke-tested 2026-10-02 in the release build (`--dart-define=L10N_PREVIEW=true`):
+  Japanese, Chinese, Russian, and German render correctly through the system font fallback
+  (Japanese and Chinese each in their own font), and a saved language is applied at launch.
+  Method: the language is preset in the app's preferences file (backed up and restored byte
+  for byte) and the window captured with `PrintWindow` (a screen capture shows whatever window
+  is on top).
+- [x] **Material's own strings**, done 2026-10-02: the global delegates are wired, the app has
+  no date or time pickers, and `test/l10n/material_strings_test.dart` checks the back tooltip,
+  the text-selection menu, Close, and the sheet barrier label in every language.
+- [x] Release gates, done 2026-10-02: `flutter gen-l10n` was already a gate (L0); `flutter test
+  test_engine` now runs after `flutter test`, building the release DLL first (about 35 min;
+  `-SkipGates` skips all gates). CLAUDE.md and `docs/play-release.md` updated.
 - [ ] **Live pass**: Windows build and the Pixel over wireless adb — per language, screenshot the
   key screens; confirm device-language pickup and the override surviving a restart.
-- [ ] **Store listings**: title, short and full description, release notes for the seven
-  languages (Play + App Store), as files under `docs/marketing/`.
-- [ ] **Store screenshots** per language through the store-slide pipeline.
+- [ ] **Store listings**: Play drafted 2026-10-02 in `distribution/listings/play/` (eight
+  languages, limits checked; README there), under independent review (`review/listing-<lang>.md`,
+  brief `review/BRIEF-listing.md`). App Store blocked on the expired agreement (Findings outside
+  i18n). Release notes per language: at the flip.
+- [ ] **Store screenshots** per language through the store-slide pipeline
+  (`docs/marketing/`). Depends on two things (found 2026-10-02): the slides embed real phone
+  screenshots (`docs/marketing/shots/`, English UI), so each language needs its own from the
+  live pass on the Pixel; and the headline font, Press Start 2P, has no Japanese or Chinese
+  glyphs, so those two need an OFL pixel font with CJK (candidates to check: DotGothic16,
+  Zpix) or a decision to keep their headlines in a regular font.
 - [ ] Flip `kTranslationsShipped` to `true`; update README, STATUS.md, CLAUDE.md; release notes.
 
 ## Open questions and risks
@@ -327,6 +390,18 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 
 ## Findings outside i18n
 
+- **App Store Connect refuses the API** (2026-10-02): every call returns 403
+  `FORBIDDEN.REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED` ("A required agreement is missing or has
+  expired"). The account holder accepts it in App Store Connect → Business. Until then the
+  App Store listing cannot be read or changed by API, and the Codemagic → TestFlight path
+  (same key) will likely fail too. Needs the user.
+- **The Play listing is out of date** (2026-10-02): it says canvases "up to 256×256" and "64
+  layers"; the app does 512×512 (ADR 0021) and 128 layers (ADR 0032). Corrected in
+  `distribution/listings/play/en-US.json`, which is not uploaded (uploading changes the live
+  listing: the user's call, or at the flip).
+- **Large system fonts** (2026-10-02, fixed; see L3): the app ignored the font size in fixed
+  heights, and the row-3 tool labels were clipped under a large font in six languages. Most of
+  the list was in English too.
 - **Decimal comma and full-width comma** (found by the L3 review, 2026-10-02, fixed; see L3).
 - **"Invert selection" meant two things** (found by the glossary test, 2026-10-02): the Invert
   tool's option inverts the colors inside the selection; the floating menu's item selects
@@ -425,6 +500,15 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 
 ## Session log
 
+- **2026-10-02** — Screenshot review (first ~50 sheets) and the store listings. Fixes listed
+  under L3. Play listings drafted in eight languages and reviewed (`review/listing-*.md`; no
+  high findings, all mediums applied). Two harness detectors added (squeezed and clipped
+  text). The editor at 1.3× had two problems: the ☰ menu labels could not wrap (Japanese, every
+  size) and a walk tap behind the Resize dialog's buttons on 320 px phones.
+- **2026-10-02** — Large text. The 1.3× sweep now separates "…" from clipping; every sweep
+  passes at 1.3× after the fixes listed under L3, and the tool tiles are tested at 1.3× and 2×.
+  Also: "Import N" layer names, Material-strings test, the editor suite as a release gate, ADR
+  0037 amended. 7,794 Dart tests pass.
 - **2026-10-02** — L4 begins. Engine refusals and server error codes now show in the user's
   language (22 new messages); the server thread `0005-localized-text` is open. The 1.3×
   large-text sweep ran: 771 of 5,946 states fail, most of them ellipsis or 320 px; the real

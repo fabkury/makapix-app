@@ -172,9 +172,11 @@ void main() {
       });
 
       test('no empty translation, no stray whitespace', () {
+        // listSeparator is the one message whose space is its content (", " between items).
+        const spaced = {'listSeparator'};
         final bad = [
           for (final e in tr.entries)
-            if (e.value.trim().isEmpty || e.value != e.value.trim()) e.key,
+            if (e.value.trim().isEmpty || (e.value != e.value.trim() && !spaced.contains(e.key))) e.key,
         ];
         expect(bad, isEmpty);
       });

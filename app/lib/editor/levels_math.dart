@@ -6,6 +6,8 @@
 // presentational and platform variance in dart:math cannot fork engine goldens.
 import 'dart:math';
 
+import 'package:makapix_club/l10n/l10n.dart';
+
 /// Gamma bounds in engine thousandths: γ ∈ [0.1, 10], identity 1000.
 const int kLevelsGammaMinTh = 100;
 const int kLevelsGammaMaxTh = 10000;
@@ -27,7 +29,7 @@ int levelsGammaThFromMid(double f) =>
     (levelsGammaFromMid(f) * 1000).round().clamp(kLevelsGammaMinTh, kLevelsGammaMaxTh);
 
 /// "1.00"-style label for a thousandths gamma.
-String levelsGammaLabel(int gammaTh) => (gammaTh / 1000).toStringAsFixed(2);
+String levelsGammaLabel(int gammaTh) => fmtFixed(gammaTh / 1000, 2);
 
 /// Track-x for a 0..255 level value on a track [trackWidth] px wide (0 at the left edge).
 double levelsThumbX(int value, double trackWidth) => value / 255.0 * trackWidth;

@@ -13,7 +13,9 @@ public release:
 ./release_android.ps1 -VersionName 1.1.0 ...       # also bump the user-visible version (default: keep current)
 ```
 
-The pipeline: verify clean tree on `main` → `cargo test` + `flutter analyze` + `flutter test` →
+The pipeline: verify clean tree on `main` → `cargo test` + `flutter analyze` + `flutter test` +
+`flutter test test_engine` (the editor in every language against the release engine DLL, about
+35 minutes; `-SkipGates` skips all gates) →
 ask the Play API for the next free `versionCode` → write it to `app/pubspec.yaml` →
 `./build_android.ps1 -Bundle` (**prod** is the backend default everywhere; dev requires `-Dev`) →
 upload + roll out to the chosen track with notes from `distribution/whatsnew/whatsnew-en-US` →

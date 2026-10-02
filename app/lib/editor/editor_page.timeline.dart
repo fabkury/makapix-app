@@ -195,7 +195,8 @@ extension _EditorTimeline on _EditorPageState {
         child: Row(children: [
           Icon(icon, size: 18),
           const SizedBox(width: 12),
-          Text(label),
+          // The label wraps rather than overflow the menu (long translations, large fonts).
+          Flexible(child: Text(label)),
           if (submenu) ...[const Spacer(), const Icon(Icons.chevron_right, size: 18, color: Colors.white54)],
         ]),
       );

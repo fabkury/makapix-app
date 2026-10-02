@@ -1,8 +1,10 @@
 // T5 (docs/i18n/TESTING.md): every row-3 tool label fits its tile, in every language.
 //
-// The tile is 54 px wide and its label is one line of 8.5 px type, clipped — the tightest
-// text box in the app. A translation that is one glyph too long loses that glyph silently on
-// a phone. This pumps the real [ToolTile] with real font metrics and fails on any clip.
+// The tile is 54 px wide and its label is one line of 8.5 px type — the tightest text box in
+// the app. A label too long for it shrinks to fit, so at the default font size every label is
+// held to a budget that never needs shrinking. This pumps the real [ToolTile] with real font
+// metrics. With a large system font the labels grow and then shrink to fit; the last test
+// checks that none spills out of its tile.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:makapix_club/editor/tool_l10n.dart';
@@ -62,5 +64,36 @@ void main() {
       }
       expect(problems, isEmpty);
     });
+  }
+
+  for (final locale in allLocales) {
+    for (final scale in const [1.3, 2.0]) {
+      testWidgets('tool labels stay inside the tile at text scale $scale — $locale', (tester) async {
+        await pumpLocalized(
+          tester,
+          locale,
+          Scaffold(
+            body: SingleChildScrollView(
+              child: Wrap(children: [
+                for (final t in _allTiles) ToolTile(t, selected: false),
+              ]),
+            ),
+          ),
+          size: const Size(412, 915),
+          textScale: scale,
+        );
+        final l = l10nFor(locale);
+        final spills = <String>[];
+        for (final t in _allTiles) {
+          final tile = find.byWidgetPredicate((w) => w is ToolTile && w.tool == t);
+          final box = tester.getRect(find.descendant(of: tile, matching: find.byType(Container)).first);
+          final text = tester.getRect(find.descendant(of: tile, matching: find.text(t.shortLabel(l))));
+          if (text.left < box.left - 0.5 || text.right > box.right + 0.5 || text.bottom > box.bottom + 0.5) {
+            spills.add('"${t.shortLabel(l)}" ${text.width.toStringAsFixed(1)} px');
+          }
+        }
+        expect(spills, isEmpty, reason: 'tile labels outside their tile at text scale $scale');
+      });
+    }
   }
 }

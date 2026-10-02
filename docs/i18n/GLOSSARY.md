@@ -32,7 +32,12 @@ and legal pages stay in English.
 
 All languages: sentence case, as in English. Short and plain, like the English. No exclamation
 marks the English does not have. The ellipsis is the single character `…`. A button names its
-action with the same verb the menu item uses.
+action with the same verb the menu item uses. A number and its unit symbol or abbreviation are
+joined by a no-break space (U+00A0), so a line never breaks between them: `{size} KiB`,
+`{n} px`, `{width} × {height} px`, `{n} ч`, `{n} Std.` (written as such in every ARB, 2026-10-02;
+a unit spelled out as a word, "2 meses", is not joined). A decimal number on screen uses the
+language's separator (`fmtFixed`, "1,25" in de, fr, es, pt, ru); a list in running text uses
+`listSeparator` (", ", or "、" in ja and zh).
 
 ## Field labels, titles, and buttons
 
@@ -156,7 +161,8 @@ Open and Import are different gestures (CONTEXT.md): keep two distinct words in 
   says, capitalized as on screen.
 - **Bare "Club"** inside a Russian sentence is written *Makapix Club* (it cannot decline).
 - **"Reacted"** (the profile tab of artworks the user reacted to) must differ from
-  "Reactions" (received): es *Reaccionó*, pt *Reagiu*, ru *Понравилось*, ja リアクション済み.
+  "Reactions" (received): es *Reaccionó*, pt *Reagiu*, fr *Réagi*, de *Reagiert*,
+  ru *Понравилось*, ja リアクション済み (checked by `glossary_test.dart`).
 - **Japanese spacing**, settled: a half-width space between Japanese and a Latin word or a
   placeholder that stands for a name, title, or handle (GitHub で登録, {name} を開きました);
   no space between a number or numeric placeholder and its Japanese counter ({count}フレーム,
@@ -176,7 +182,7 @@ More editor terms (Frames and Layers pages):
 | en | es | pt | fr | de | ru | ja | zh |
 |---|---|---|---|---|---|---|---|
 | stack (the layers of a frame) | pila | pilha | pile | Stapel | стопка | 重ね順 | 堆叠 |
-| Move group | grupo de movimiento | grupo de movimento | groupe de déplacement | Bewegungsgruppe | группа сдвига | 移動グループ | 移动组 |
+| Move group | grupo de movimiento | grupo de movimento | groupe de déplacement | Bewegungsgruppe | группа перемещения | 移動グループ | 移动组 |
 | shift (move items one position) | desplazar | deslocar | décaler | versetzen | сдвиг | ずらす | 移位 |
 | merge (layers) | combinar | mesclar | fusionner | vereinen | объединить | 結合 | 合并 |
 | off-canvas (kept outside the canvas) | fuera del lienzo | fora da tela | hors toile | außerhalb | за холстом | キャンバス外 | 画布外 |

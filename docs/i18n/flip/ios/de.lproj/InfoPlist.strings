@@ -1,0 +1,3 @@
+/* Purpose strings in de (docs/i18n/PLAN.md, L4; English is in Info.plist). */
+"NSPhotoLibraryUsageDescription" = "Makapix braucht Zugriff auf deine Fotos, damit du ein Bild für deinen Avatar oder dein Werk auswählen kannst.";
+"NSCameraUsageDescription" = "Makapix braucht Zugriff auf die Kamera, wenn du ein Foto für deinen Avatar oder dein Werk aufnehmen möchtest.";

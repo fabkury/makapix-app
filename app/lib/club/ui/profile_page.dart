@@ -198,7 +198,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             child: Row(children: [
               const Icon(Icons.shield_outlined, size: 18),
               const SizedBox(width: 10),
-              Text(l10n.profileMenuManage),
+              Flexible(child: Text(l10n.profileMenuManage)),
             ]),
           ),
           if (rules != null) const PopupMenuDivider(),
@@ -209,7 +209,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             child: Row(children: [
               const Icon(Icons.flag_outlined, size: 18),
               const SizedBox(width: 10),
-              Text(l10n.profileMenuReport),
+              Flexible(child: Text(l10n.profileMenuReport)),
             ]),
           ),
         if (rules != null && signedIn && !p.isBlockedByViewer)
@@ -218,7 +218,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             child: Row(children: [
               const Icon(Icons.block, size: 18),
               const SizedBox(width: 10),
-              Text(l10n.profileMenuBlock(p.handle)),
+              Flexible(child: Text(l10n.profileMenuBlock(p.handle))),
             ]),
           ),
         if (rules != null && signedIn && p.isBlockedByViewer)
@@ -227,7 +227,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             child: Row(children: [
               const Icon(Icons.lock_open, size: 18),
               const SizedBox(width: 10),
-              Text(l10n.profileMenuUnblock(p.handle)),
+              Flexible(child: Text(l10n.profileMenuUnblock(p.handle))),
             ]),
           ),
       ],
@@ -239,6 +239,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (dctx) => AlertDialog(
+        // Scrolls on a small phone with a large font, where the explanation is taller than the dialog.
+        scrollable: true,
         title: Text(dctx.l10n.blockConfirmTitle(p.handle)),
         content: Text(dctx.l10n.blockConfirmBody),
         actions: [

@@ -333,7 +333,7 @@ void main() {
       await tester.pump();
       await tester.tap(find.text('More'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('Undo will hold about 156 MB'), findsOneWidget);
+      expect(find.textContaining('Undo will hold about 156\u00A0MB'), findsOneWidget);
       expect(find.textContaining('Not square'), findsOneWidget);
     });
 

@@ -21,8 +21,9 @@ extension _EditorCanvas on _EditorPageState {
     final tip = toolTip(context.l10n, _tool);
     final tool = tools.firstWhere((t) => t.dsl == _tool, orElse: () => tools.first);
     // FIXED height = exactly the text lines + top padding + the reserved gesture pad, so the
-    // band never changes height (no reflow of the rest of the screen).
-    const lineH = 13.75; // 11px * 1.25
+    // band never changes height (no reflow of the rest of the screen). The line grows with the
+    // system font size; a tip longer than the lines then ends in an ellipsis.
+    final lineH = MediaQuery.textScalerOf(context).scale(11) * 1.25;
     final lines = compact ? 1 : 2;
     final bandHeight = 6 + lineH * lines + 6 + gesturePad;
     return Container(

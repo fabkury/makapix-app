@@ -111,29 +111,37 @@ class _OnboardingWizardState extends ConsumerState<OnboardingWizard> {
                   _Step.profile => _profileStep(),
                 },
                 const SizedBox(height: 24),
-                Row(children: [
-                  // Go back to the previous step (e.g. profile → handle). Not offered when the
-                  // previous step is the legacy "set password" step (re-entering it would trap
-                  // the user, since it has no skip and the fields aren't pre-filled).
-                  if (i > 0 && steps[i - 1] != _Step.password)
-                    TextButton(
-                      onPressed: st.busy ? null : () => setState(() => _index = i - 1),
-                      child: Text(l10n.commonBack),
+                // One row when it fits; on a narrow phone with long labels or a large font the
+                // primary button drops below, right-aligned.
+                OverflowBar(
+                  alignment: MainAxisAlignment.spaceBetween,
+                  overflowAlignment: OverflowBarAlignment.end,
+                  overflowSpacing: 8,
+                  children: [
+                    Row(mainAxisSize: MainAxisSize.min, children: [
+                      // Go back to the previous step (e.g. profile → handle). Not offered when the
+                      // previous step is the legacy "set password" step (re-entering it would trap
+                      // the user, since it has no skip and the fields aren't pre-filled).
+                      if (i > 0 && steps[i - 1] != _Step.password)
+                        TextButton(
+                          onPressed: st.busy ? null : () => setState(() => _index = i - 1),
+                          child: Text(l10n.commonBack),
+                        ),
+                      if (!_isPasswordStep(step))
+                        TextButton(
+                          onPressed: st.busy ? null : () => _advance(isLast, ctrl),
+                          child: Text(l10n.commonSkip),
+                        ),
+                    ]),
+                    FilledButton(
+                      onPressed: st.busy ? null : () => _submit(step, isLast, ctrl, me, tempPw),
+                      child: st.busy
+                          ? const SizedBox(
+                              height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                          : Text(isLast ? l10n.commonFinish : l10n.commonContinue),
                     ),
-                  if (!_isPasswordStep(step))
-                    TextButton(
-                      onPressed: st.busy ? null : () => _advance(isLast, ctrl),
-                      child: Text(l10n.commonSkip),
-                    ),
-                  const Spacer(),
-                  FilledButton(
-                    onPressed: st.busy ? null : () => _submit(step, isLast, ctrl, me, tempPw),
-                    child: st.busy
-                        ? const SizedBox(
-                            height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                        : Text(isLast ? l10n.commonFinish : l10n.commonContinue),
-                  ),
-                ]),
+                  ],
+                ),
               ],
             ),
           ),

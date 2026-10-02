@@ -51,7 +51,7 @@ Widget _layers({int frames = 3}) {
 }
 
 Future<void> _tapText(WidgetTester tester, String text) async {
-  await tester.tap(find.text(text).first);
+  await tapVisible(tester, find.text(text));
   await tester.pump(const Duration(milliseconds: 50));
 }
 

@@ -51,7 +51,8 @@ void main() {
         ]),
       ),
     );
-    final cut = truncatedTexts(tester).map((t) => t.text).toSet();
+    final found = truncatedTexts(tester);
+    final cut = found.map((t) => t.text).toSet();
     expect(cut, {
       'This label is far too long',
       'Another long label here',
@@ -59,6 +60,41 @@ void main() {
       'No wrap at all here',
       '78,9 тыс.',
     });
+    // The large-text sweep accepts "…" but not clipping: only the ellipsized one says so.
+    expect({for (final t in found) if (t.ellipsized) t.text}, {'Another long label here'});
+  });
+
+  testWidgets('a label squeezed to one line of height, or cut by a clipping parent, is caught',
+      (tester) async {
+    await pumpLocalized(
+      tester,
+      const Locale('en'),
+      Scaffold(
+        body: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // Wraps to two lines in a box one line tall: the paragraph cuts the second line.
+          const SizedBox(width: 60, height: 16, child: Text('Fit to the canvas')),
+          // Fits its own box, but the box sticks out of a rounded clip.
+          SizedBox(
+            width: 80,
+            height: 20,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: const OverflowBox(
+                  alignment: Alignment.topLeft, maxHeight: 60, child: Text('Two lines\nin a chip')),
+            ),
+          ),
+          // Fine: fits its clip.
+          const ClipRRect(child: Text('Fits')),
+          // Fine: a list cuts it at its edge, but it scrolls.
+          SizedBox(
+            height: 30,
+            child: ListView(children: const [SizedBox(height: 20), Text('Scrolls\ninto view')]),
+          ),
+        ]),
+      ),
+    );
+    expect({for (final t in truncatedTexts(tester)) t.text}, {'Fit to the canvas'});
+    expect(clippedTexts(tester).toSet(), {'Two lines\nin a chip'});
   });
 
   testWidgets('leftoverLatin flags English on a Japanese screen, not brand names or fixtures', (tester) async {

@@ -85,7 +85,7 @@ class _ModHashtagsSheetState extends ConsumerState<_ModHashtagsSheet> {
     // Removing a monitored tag re-exposes the post to everyone — confirm.
     final removed = _edit.removedMonitored;
     if (removed.isNotEmpty) {
-      final tags = removed.map((t) => '#$t').join(', ');
+      final tags = removed.map((t) => '#$t').join(appL10n.listSeparator);
       final ok = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(

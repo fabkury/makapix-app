@@ -39,9 +39,15 @@ flutter test test_engine         # the real editor, in every language
 - **`pumpLocalized(tester, locale, widget, size:)`** — the app's theme and delegates, one
   language, one screen size.
 - **`truncatedTexts(tester)`** — every laid-out text that ran past its last line, is wider than
-  its single-line box, or wraps with one word wider than the box (a number and its unit split
+  its single-line box, is taller than its box (lines squeezed into a fixed height, which the
+  paragraph cuts), or wraps with one word wider than the box (a number and its unit split
   across two lines). The last one is skipped for Chinese and Japanese, where the test engine
-  reports a whole sentence as one unbreakable run.
+  reports a whole sentence as one unbreakable run. Each finding says whether the text ends in
+  "…" (`ellipsized`), which the large-text run accepts.
+- **`clippedTexts(tester)`** — every text that a clipping ancestor cuts: it fits its own box,
+  but that box sticks out of the nearest clip (a two-line label in a one-line button). A scroll
+  view's edge is not a cut. Added 2026-10-02 after the screenshot review found a German crop
+  label cut this way that every other check passed.
 - **`leftoverLatin` / `leftoverEnglish`** — untranslated text. On Japanese, Chinese, and Russian
   screens any Latin word outside the never-translated list (brands, formats, units) is a miss.
   On Spanish, Portuguese, French, and German screens a text is a miss when it equals an English
@@ -53,9 +59,14 @@ flutter test test_engine         # the real editor, in every language
 Sizes swept (`kSweepSizes`): 320×568, 360×740, 412×915, 800×1280, 1280×800.
 
 **Large text.** `flutter test test/l10n/ --dart-define=L10N_TEXT_SCALE=1.3` runs every sweep
-with the system font size raised (the Android "large" setting is about 1.3). `pumpLocalized`
-sets the test's text scale and clears it after the test. The default run stays at 1.0; the
-1.3 run is a separate check (see PLAN.md, L3, for what it found and what is accepted).
+with the system font size raised (the Android "large" setting is about 1.3); so does
+`flutter test test_engine` with the same flag. The sweeps pass the scale to `pumpLocalized`;
+other tests measure at 1.0. At 1.3 a text ending in "…" and a long word wrapping mid-word are
+accepted (the designed fallbacks for big fonts); clipped text, overflow, and controls that
+cannot be reached still fail. Large-text screenshots go to `build/l10n_shots_x1.3/`. A walk
+that taps a control below the fold uses `tapVisible` (scroll, pump, tap): a tap right after
+`ensureVisible` hits the old position. The tool tiles are checked at 1.3× and 2× in every run
+(`tool_label_fit_test.dart`).
 
 ## Sweeping a Club or shared screen
 

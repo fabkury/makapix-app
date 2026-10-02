@@ -1,0 +1,3 @@
+/* Purpose strings in zh-Hans (docs/i18n/PLAN.md, L4; English is in Info.plist). */
+"NSPhotoLibraryUsageDescription" = "Makapix 需要访问你的照片，以便你为头像或作品选择图片。";
+"NSCameraUsageDescription" = "如果你想拍照用作头像或作品，Makapix 需要访问相机。";

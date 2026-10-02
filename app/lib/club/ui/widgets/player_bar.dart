@@ -178,7 +178,8 @@ class _AdjustmentsSheetState extends ConsumerState<_AdjustmentsSheet> {
     final effBrightness = (pending?.brightness ?? active.brightness)?.toDouble();
 
     return SafeArea(
-      child: Padding(
+      // Scrolls when it is taller than the sheet may be (small phone, large font).
+      child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,

@@ -113,8 +113,10 @@ Widget localizedApp(Locale locale, Widget child) => MaterialApp(
 
 final GlobalKey _shotKey = GlobalKey(debugLabel: 'l10n screenshot');
 
-/// Where [screenshot] writes: app/build/l10n_shots/ (git-ignored build output).
-const String kShotDir = 'build/l10n_shots';
+/// Where [screenshot] writes: app/build/l10n_shots/ (git-ignored build output), or
+/// l10n_shots_x1.3/ for a large-text run, so it never overwrites the gallery.
+final String kShotDir =
+    kSweepTextScale == 1.0 ? 'build/l10n_shots' : 'build/l10n_shots_x$kSweepTextScale';
 
 /// Saves the screen pumped by [pumpLocalized] as `build/l10n_shots/<name>.png`, at 2× so small
 /// type stays legible. The pictures are for looking at — the review step of T6 — not goldens:
@@ -146,20 +148,23 @@ void setSurface(WidgetTester tester, Size size) {
   addTearDown(tester.view.resetDevicePixelRatio);
 }
 
-/// Pumps [child] in [locale] on a [size] screen, with real fonts.
-///
-/// As in the app, the `ProviderScope` sits above the `MaterialApp`, so sheets, dialogs, and
-/// pushed routes see the same providers (and [overrides]) as the screen that opened them.
 /// The system text scale the sweeps run at: 1.0, or the accessibility font size given with
 /// `flutter test --dart-define=L10N_TEXT_SCALE=1.3` (docs/i18n/TESTING.md).
 final double kSweepTextScale = double.parse(const String.fromEnvironment('L10N_TEXT_SCALE', defaultValue: '1.0'));
 
+/// Pumps [child] in [locale] on a [size] screen, with real fonts, at the system font size
+/// [textScale] (the sweeps pass [kSweepTextScale]; other tests measure at 1.0).
+///
+/// As in the app, the `ProviderScope` sits above the `MaterialApp`, so sheets, dialogs, and
+/// pushed routes see the same providers (and [overrides]) as the screen that opened them.
 Future<void> pumpLocalized(WidgetTester tester, Locale locale, Widget child,
-    {Size size = const Size(360, 740), List<Override> overrides = const []}) async {
+    {Size size = const Size(360, 740),
+    List<Override> overrides = const [],
+    double textScale = 1.0}) async {
   await loadAppFonts();
   setSurface(tester, size);
-  if (kSweepTextScale != 1.0) {
-    tester.platformDispatcher.textScaleFactorTestValue = kSweepTextScale;
+  if (textScale != 1.0) {
+    tester.platformDispatcher.textScaleFactorTestValue = textScale;
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
   }
   await tester.pumpWidget(ProviderScope(overrides: overrides, child: localizedApp(locale, child)));
@@ -167,15 +172,27 @@ Future<void> pumpLocalized(WidgetTester tester, Locale locale, Widget child,
   addTearDown(debugResetAppL10n);
 }
 
+/// Scrolls [finder]'s first match into view and taps it. The pump in between matters: the
+/// scroll lands in the next frame, and a tap before it hits the old position. (With a large
+/// system font, controls that fit at 1.0 sit below the fold of a small phone.)
+Future<void> tapVisible(WidgetTester tester, Finder finder) async {
+  await tester.ensureVisible(finder.first);
+  await tester.pump();
+  await tester.tap(finder.first);
+}
+
 /// The strings of [locale], without a widget tree.
 AppLocalizations l10nFor(Locale locale) => lookupAppLocalizations(locale);
 
 /// A laid-out text that does not fit its box.
 class Truncated {
-  Truncated(this.text, this.box, this.needed, {this.brokenWord = false});
+  Truncated(this.text, this.box, this.needed, {this.brokenWord = false, this.ellipsized = false});
   final String text;
   final Size box;
   final double needed;
+
+  /// The text ends in "…" (or fades out): cut short on purpose, not clipped.
+  final bool ellipsized;
 
   /// The text wraps, but one word of it is wider than the box and was split across lines.
   final bool brokenWord;
@@ -222,10 +239,53 @@ List<Truncated> truncatedTexts(WidgetTester tester, {Finder? within}) {
     // engine reports a whole sentence as one unbreakable run.)
     final brokenWord =
         !singleLine && !_cjk.hasMatch(text) && widestWord > ro.size.width + 0.5;
-    if (ro.didExceedMaxLines || tooWide) {
-      out.add(Truncated(text, ro.size, natural));
+    // Squeezed to a height its lines do not fit (a fixed-height button around a wrapped label):
+    // the paragraph cuts the lines below its box.
+    final tooTall = ro.textSize.height > ro.size.height + 0.5;
+    if (ro.didExceedMaxLines || tooWide || tooTall) {
+      final ellipsized = ro.overflow == TextOverflow.ellipsis || ro.overflow == TextOverflow.fade;
+      out.add(Truncated(text, ro.size, natural, ellipsized: ellipsized));
     } else if (brokenWord) {
       out.add(Truncated(text, ro.size, widestWord, brokenWord: true));
+    }
+  }
+  return out;
+}
+
+/// Every text that a clipping ancestor cuts: it lies partly outside the nearest box that clips
+/// its children — a label wrapped to two lines inside a one-line button, say. [truncatedTexts]
+/// cannot see this: the text itself fits its own box. A scroll view's edge is not a cut (the
+/// text scrolls into view), so the search stops at a viewport.
+List<String> clippedTexts(WidgetTester tester, {Finder? within}) {
+  final out = <String>[];
+  for (final ro in paragraphs(tester, within: within)) {
+    if (!ro.hasSize) continue;
+    final text = ro.text.toPlainText();
+    if (_withoutIconGlyphs(text).trim().isEmpty) continue;
+    // The lines as laid out, which can be taller than a paragraph squeezed to a fixed height.
+    final lines = Size(ro.size.width, ro.textSize.height > ro.size.height ? ro.textSize.height : ro.size.height);
+    final box = MatrixUtils.transformRect(ro.getTransformTo(null), Offset.zero & lines);
+    for (var node = ro.parent; node != null; node = node.parent) {
+      if (node is RenderAbstractViewport) break;
+      final clips = switch (node) {
+        RenderClipRect(:final clipBehavior) ||
+        RenderClipRRect(:final clipBehavior) ||
+        RenderClipOval(:final clipBehavior) ||
+        RenderClipPath(:final clipBehavior) ||
+        RenderPhysicalModel(:final clipBehavior) ||
+        RenderPhysicalShape(:final clipBehavior) =>
+          clipBehavior != Clip.none,
+        _ => false,
+      };
+      if (!clips || node is! RenderBox || !node.hasSize) continue;
+      final clip = MatrixUtils.transformRect(node.getTransformTo(null), Offset.zero & node.size);
+      if (box.left < clip.left - 1 ||
+          box.top < clip.top - 1 ||
+          box.right > clip.right + 1 ||
+          box.bottom > clip.bottom + 1) {
+        out.add(text);
+      }
+      break;
     }
   }
   return out;

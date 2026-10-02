@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import '../levels_math.dart';
 
@@ -408,8 +409,8 @@ class ResizeHandlePainter extends CustomPainter {
     canvas.drawCircle(knob, 11, Paint()..color = const Color(0xFF4DA3FF)..style = PaintingStyle.stroke..strokeWidth = 2.5..isAntiAlias = true);
     canvas.drawCircle(knob, 2.5, Paint()..color = Colors.white);
     final label = sx == sy
-        ? '${sx.toStringAsFixed(2)}×'
-        : '${sx.toStringAsFixed(2)}× · ${sy.toStringAsFixed(2)}×';
+        ? '${fmtFixed(sx, 2)}×'
+        : '${fmtFixed(sx, 2)}× · ${fmtFixed(sy, 2)}×';
     final tp = TextPainter(
       text: TextSpan(
         text: ' $label ',
@@ -585,7 +586,7 @@ class RulerPainter extends CustomPainter {
     // The headline degree chip goes LAST, on top of everything at the vertex — in the arc's cyan,
     // so an angle number can never be mistaken for a pixel count (which stays white).
     if (dir != null && deg != null) {
-      _label(canvas, '${deg.toStringAsFixed(1)}°', pa + dir * (kRulerAngleArcRadius + 18.0),
+      _label(canvas, '${fmtFixed(deg, 1)}°', pa + dir * (kRulerAngleArcRadius + 18.0),
           centerX: true, centerY: true, color: kRulerAngleArcColor);
     }
   }

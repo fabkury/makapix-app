@@ -15,10 +15,15 @@ import 'synced_pixel_art_image.dart';
 const Color kArtworkBackdrop = Color(0xFF15171A);
 
 /// Compact count for stat rows, e.g. 999 → "999", 12345 → "12.3k", 3400000 → "3.4M".
-/// Other languages use their own compact notation (German "12.345", Japanese "1.2万").
+/// Other languages use their own compact notation (Japanese "1.2万"). German has none below a
+/// million, where the count is grouped instead ("78.901", never "78901").
 String compactCount(int n) {
   final locale = appL10n.localeName;
-  if (locale != 'en') return NumberFormat.compact(locale: locale).format(n);
+  if (locale != 'en') {
+    final compact = NumberFormat.compact(locale: locale).format(n);
+    final bare = RegExp(r'^\d{5,}$').hasMatch(compact);
+    return bare ? NumberFormat.decimalPattern(locale).format(n) : compact;
+  }
   if (n < 1000) return '$n';
   // 999500+ rounds to "1000k" in the k branch — hand it to M ("1M") instead.
   final (v, suffix) = n < 999500 ? (n / 1000.0, 'k') : (n / 1000000.0, 'M');
@@ -28,10 +33,15 @@ String compactCount(int n) {
   return '$txt$suffix';
 }
 
-/// A statistics bucket's name: the known device types are translated; anything else (a view
-/// type, a new device the server starts reporting) is shown capitalized as the server sent it.
-String statsBucketLabel(String key) {
-  final label = appL10n.statsDevice(key);
+/// A device type's name in the statistics: the known ones are translated; a new device the
+/// server starts reporting is shown capitalized as the server sent it.
+String statsBucketLabel(String key) => _knownOrCapitalized(key, appL10n.statsDevice(key));
+
+/// A view type's name ("view", "impression", and the older "intentional", "listing", …),
+/// translated; an unknown type is shown capitalized as the server sent it.
+String statsViewTypeLabel(String key) => _knownOrCapitalized(key, appL10n.statsViewType(key));
+
+String _knownOrCapitalized(String key, String label) {
   if (label != key || key.isEmpty) return label;
   return key[0].toUpperCase() + key.substring(1);
 }
@@ -54,8 +64,9 @@ String formatFileSize(int bytes) {
   final (v, unit) = bytes < 1024 * 1024
       ? (bytes / 1024.0, 'KiB') // l10n-ignore: unit symbol
       : (bytes / (1024.0 * 1024.0), 'MiB'); // l10n-ignore: unit symbol
-  // One decimal at most, with the language's decimal separator ("37.3" / "37,3").
-  return '${NumberFormat('0.#', l10n.localeName).format(v)} $unit';
+  // One decimal at most, with the language's decimal separator ("37.3" / "37,3"). A no-break
+  // space keeps the number and its unit on one line.
+  return '${NumberFormat('0.#', l10n.localeName).format(v)}\u00A0$unit';
 }
 
 /// Compact relative time, e.g. "3h", "2d".
@@ -97,11 +108,14 @@ class ClubEmpty extends StatelessWidget {
   const ClubEmpty({super.key, required this.message, this.icon = Icons.inbox_outlined});
   @override
   Widget build(BuildContext context) => Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 40, color: Colors.white24),
-          const SizedBox(height: 12),
-          Text(message, style: const TextStyle(color: Colors.white38)),
-        ]),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, size: 40, color: Colors.white24),
+            const SizedBox(height: 12),
+            Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white38)),
+          ]),
+        ),
       );
 }
 

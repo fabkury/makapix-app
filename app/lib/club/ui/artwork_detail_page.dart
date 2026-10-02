@@ -327,8 +327,10 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             const Icon(Icons.shield, size: 12, color: Colors.white38),
             const SizedBox(width: 4),
-            Text(context.l10n.artworkTaggedByMod,
-                style: const TextStyle(fontSize: 11, color: Colors.white38)),
+            Flexible(
+              child: Text(context.l10n.artworkTaggedByMod,
+                  style: const TextStyle(fontSize: 11, color: Colors.white38)),
+            ),
           ]),
         ),
     ];
@@ -872,7 +874,9 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(icon, size: 12, color: color),
             const SizedBox(width: 4),
-            Text(label, style: TextStyle(fontSize: 11, color: color)),
+            Flexible(
+                child: Text(label,
+                    style: TextStyle(fontSize: 11, color: color), overflow: TextOverflow.ellipsis)),
           ]),
         );
     final l10n = context.l10n;

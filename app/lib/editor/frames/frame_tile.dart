@@ -89,20 +89,26 @@ class FrameTile extends StatelessWidget {
           height: kFrameTileLabelBand * scale,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
+            // The band's height is part of the grid's geometry, so a large system font shrinks the
+            // captions to fit it rather than cut them.
             child: Row(children: [
-              Text('$number',
-                  maxLines: 1,
-                  softWrap: false,
-                  overflow: TextOverflow.clip,
-                  style: TextStyle(fontSize: 10 * scale, color: active ? Colors.white : Colors.white70, fontWeight: FontWeight.w600)),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text('${durationMs.toStringAsFixed(durationMs == durationMs.roundToDouble() ? 0 : 1)} ms', // l10n-ignore: unit
-                    textAlign: TextAlign.right,
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text('$number',
                     maxLines: 1,
                     softWrap: false,
-                    overflow: TextOverflow.clip,
-                    style: TextStyle(fontSize: 9 * scale, color: Colors.white54)),
+                    style: TextStyle(fontSize: 10 * scale, color: active ? Colors.white : Colors.white70, fontWeight: FontWeight.w600)),
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Text('${durationMs.toStringAsFixed(durationMs == durationMs.roundToDouble() ? 0 : 1)} ms', // l10n-ignore: unit
+                      maxLines: 1,
+                      softWrap: false,
+                      style: TextStyle(fontSize: 9 * scale, color: Colors.white54)),
+                ),
               ),
             ]),
           ),

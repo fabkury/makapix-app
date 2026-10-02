@@ -144,14 +144,14 @@ void main() {
     });
 
     test('KiB with one decimal, trailing .0 stripped', () {
-      expect(formatFileSize(1024), '1 KiB');
-      expect(formatFileSize(1536), '1.5 KiB');
-      expect(formatFileSize(38214), '37.3 KiB');
+      expect(formatFileSize(1024), '1\u00A0KiB');
+      expect(formatFileSize(1536), '1.5\u00A0KiB');
+      expect(formatFileSize(38214), '37.3\u00A0KiB');
     });
 
     test('MiB from 1024 KiB up', () {
-      expect(formatFileSize(1048576), '1 MiB');
-      expect(formatFileSize(5452595), '5.2 MiB');
+      expect(formatFileSize(1048576), '1\u00A0MiB');
+      expect(formatFileSize(5452595), '5.2\u00A0MiB');
     });
   });
 

@@ -1,0 +1,3 @@
+/* Purpose strings in ru (docs/i18n/PLAN.md, L4; English is in Info.plist). */
+"NSPhotoLibraryUsageDescription" = "Makapix нужен доступ к фото, чтобы вы могли выбрать изображение для аватара или работы.";
+"NSCameraUsageDescription" = "Makapix нужен доступ к камере, если вы хотите сделать снимок для аватара или работы.";

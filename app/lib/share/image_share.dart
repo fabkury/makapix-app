@@ -11,6 +11,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -103,7 +104,7 @@ Future<(int, String)?> showExportScaleDialog({
       final totalPx = ow * oh * frames;
       final big = totalPx > kExportWarnPixels;
       final l10n = ctx.l10n;
-      final millions = (totalPx / 1e6).toStringAsFixed(0);
+      final millions = NumberFormat.decimalPattern(appL10n.localeName).format((totalPx / 1e6).round());
       return AlertDialog(
         title: Text(share ? l10n.commonShare : l10n.exportSizeTitle),
         // Scrolls: with the warning showing, the content is taller than a small phone allows.

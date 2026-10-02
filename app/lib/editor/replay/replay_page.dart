@@ -220,8 +220,8 @@ class _ReplayPageState extends State<ReplayPage> with WidgetsBindingObserver {
       appBar: AppBar(
         // Two lines before the ellipsis: the title is the artist's words, and the bar has the
         // room now that the share action lives in the footer (2026-09-18). 64 dp fits two
-        // titleLarge lines (2 × 28) with a little air.
-        toolbarHeight: 64,
+        // titleLarge lines (2 × 28) with a little air, and grows with the system font size.
+        toolbarHeight: MediaQuery.textScalerOf(context).scale(28) * 2 + 8,
         title: Row(children: [
           Flexible(
             child: Text(context.l10n.replayTitle(widget.title), maxLines: 2, overflow: TextOverflow.ellipsis),

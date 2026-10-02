@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The app's languages for Android 13+ per-app language settings. Must list exactly the ARB
+     languages in app/lib/l10n/ (ADR 0037). Referenced by android:localeConfig in the manifest. -->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="en"/>
+    <locale android:name="es"/>
+    <locale android:name="pt-BR"/>
+    <locale android:name="fr"/>
+    <locale android:name="de"/>
+    <locale android:name="ru"/>
+    <locale android:name="ja"/>
+    <locale android:name="zh-Hans"/>
+</locale-config>

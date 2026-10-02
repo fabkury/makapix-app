@@ -1,0 +1,3 @@
+/* Purpose strings in ja (docs/i18n/PLAN.md, L4; English is in Info.plist). */
+"NSPhotoLibraryUsageDescription" = "アバターや作品に使う画像を選ぶため、Makapix は写真へのアクセスを必要とします。";
+"NSCameraUsageDescription" = "アバターや作品に使う写真を撮影する場合、Makapix はカメラへのアクセスを必要とします。";

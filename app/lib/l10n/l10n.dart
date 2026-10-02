@@ -47,6 +47,12 @@ class L10nBinding extends StatelessWidget {
   }
 }
 
+/// [value] with exactly [digits] decimals and the user's decimal separator ("1.25" in English,
+/// "1,25" in German): `toStringAsFixed` for text on screen. No digit grouping, so it also suits
+/// a text field the user edits (every numeric field accepts a decimal comma).
+String fmtFixed(num value, int digits) =>
+    NumberFormat(digits == 0 ? '0' : '0.${'0' * digits}', _current.localeName).format(value);
+
 /// Test hook: put [appL10n] back to English between tests that pumped another language.
 @visibleForTesting
 void debugResetAppL10n() {

@@ -49,6 +49,14 @@ Future<void> settleReal(WidgetTester tester, {int rounds = 6}) async {
   }
 }
 
+/// One line for a caught exception: its first line, plus the widget chain of a layout overflow
+/// ("creator: Row ← Padding ← …"), which says where it is.
+String describeException(Object err) {
+  final lines = err.toString().split('\n');
+  final creator = lines.map((l) => l.trim()).where((l) => l.startsWith('creator:')).firstOrNull;
+  return creator == null ? lines.first : '${lines.first} ($creator)';
+}
+
 /// Pumps the real editor in [locale] on a [size] screen and waits for its first drawing.
 Future<void> pumpEditor(
   WidgetTester tester,
@@ -64,6 +72,7 @@ Future<void> pumpEditor(
     const EditorPage(),
     size: size,
     overrides: clubOverrides(signedIn: false),
+    textScale: kSweepTextScale,
   );
   // The editor restores (or creates) its drawing asynchronously after the first frame. Wait
   // for the drawing to reach disk — unmounting earlier than that races the startup code.

@@ -66,13 +66,18 @@ Future<int?> showLayersOpacityDialog(BuildContext context, {required int selecte
           title: Text(ctx.l10n.layersOpacityTitle(selectedCount)),
           content: Row(children: [
             Expanded(
-              child: Slider(
+              // A Slider takes all the height it is offered; without this it stretched the
+              // dialog to the full screen.
+              child: SizedBox(
+                height: kMinInteractiveDimension,
+                child: Slider(
                 value: value.toDouble(),
                 max: 255,
                 onChanged: (v) => setS(() {
                   value = v.round();
                   ctrl.text = '$value';
                 }),
+                ),
               ),
             ),
             SizedBox(
