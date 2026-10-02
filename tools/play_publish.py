@@ -18,6 +18,10 @@ for the one-time Play Console / GCP setup):
               the exact same versionCodes roll out on the destination track).
               e.g.  promote --from-track internal --to-track alpha
 
+  listings    Replace the listing of every language in distribution/listings/play/:
+              text, phone/7"/10" screenshots and the feature graphic from the store
+              slides, in one edit (all languages go live together).
+
   images      Replace store-listing screenshots for one language: for each given
               --set imageType=file,file,... the existing images of that type are
               deleted and the files uploaded in order. Types not named (e.g.
@@ -30,6 +34,7 @@ Deps (not in the repo; install once):  pip install google-api-python-client goog
 """
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -262,6 +267,66 @@ def cmd_images(args) -> None:
     print(f"Committed listing images for '{args.language}'.")
 
 
+# Play listing language → the store-slide folder under docs/marketing/out ("" = English, at the
+# root). One Spanish set serves both Spanish listings.
+SLIDE_DIRS = {"en-US": "", "es-419": "es", "es-ES": "es", "pt-BR": "pt", "fr-FR": "fr",
+              "de-DE": "de", "ru-RU": "ru", "ja-JP": "ja", "zh-CN": "zh"}
+PLAY_SLIDES = 8  # Play takes at most 8 screenshots per type
+
+
+def listing_plan(listings_dir: str, slides_root: str) -> list[tuple[str, dict, dict]]:
+    """(language, text, {imageType: [files]}) for every play/<language>.json, checked locally."""
+    plan = []
+    for f in sorted(Path(listings_dir).glob("*.json")):
+        lang = f.stem
+        if lang not in SLIDE_DIRS:
+            die(f"{f.name}: no slide folder known for '{lang}' (SLIDE_DIRS)")
+        text = json.loads(f.read_text(encoding="utf-8"))
+        for key, limit in (("title", 30), ("shortDescription", 80), ("fullDescription", 4000)):
+            if not text.get(key) or len(text[key]) > limit:
+                die(f"{f.name}: {key} missing or over {limit} chars")
+        root = Path(slides_root) / SLIDE_DIRS[lang]
+        phone = sorted((root / "play").glob("*.png"))[:PLAY_SLIDES]
+        tablet = sorted((root / "ipad").glob("*.png"))[:PLAY_SLIDES]
+        graphic = root / "play_feature_graphic.png"
+        if len(phone) != PLAY_SLIDES or len(tablet) != PLAY_SLIDES or not graphic.is_file():
+            die(f"{lang}: expected {PLAY_SLIDES} play + {PLAY_SLIDES} ipad slides and a feature "
+                f"graphic under {root}")
+        images = {"phoneScreenshots": phone, "sevenInchScreenshots": phone,
+                  "tenInchScreenshots": tablet, "featureGraphic": [graphic]}
+        plan.append((lang, {k: text[k] for k in ("title", "shortDescription", "fullDescription")},
+                     images))
+    return plan
+
+
+def cmd_listings(args) -> None:
+    from googleapiclient.http import MediaFileUpload
+
+    plan = listing_plan(args.dir, args.slides)
+    for lang, _, images in plan:
+        print(f"{lang}: text + " + ", ".join(f"{t} ×{len(f)}" for t, f in images.items()))
+    if args.dry_run:
+        return
+
+    svc = service(args.key)
+    edit_id = svc.edits().insert(packageName=args.package, body={}).execute()["id"]
+    for lang, text, images in plan:
+        svc.edits().listings().update(packageName=args.package, editId=edit_id, language=lang,
+                                      body={"language": lang, **text}).execute()
+        for image_type, files in images.items():
+            svc.edits().images().deleteall(packageName=args.package, editId=edit_id,
+                                           language=lang, imageType=image_type).execute()
+            for f in files:
+                svc.edits().images().upload(
+                    packageName=args.package, editId=edit_id, language=lang, imageType=image_type,
+                    media_body=MediaFileUpload(str(f), mimetype="image/png"),
+                ).execute(num_retries=3)
+        print(f"  {lang}: staged")
+    # One commit for every language: the listings go live together or not at all.
+    svc.edits().commit(packageName=args.package, editId=edit_id).execute()
+    print(f"Committed {len(plan)} listings.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--package", default=PACKAGE)
@@ -292,6 +357,11 @@ def main() -> None:
     img.add_argument("--set", action="append", required=True, metavar="TYPE=FILE,FILE,...",
                      help="imageType and its replacement files, in display order; repeatable")
 
+    lst = sub.add_parser("listings", help="replace every language's listing text and images")
+    lst.add_argument("--dir", default="distribution/listings/play", help="<language>.json files")
+    lst.add_argument("--slides", default="docs/marketing/out", help="store-slide output root")
+    lst.add_argument("--dry-run", action="store_true", help="check the files and print the plan")
+
     args = parser.parse_args()
     if args.command == "next-code":
         cmd_next_code(args)
@@ -299,6 +369,8 @@ def main() -> None:
         cmd_promote(args)
     elif args.command == "images":
         cmd_images(args)
+    elif args.command == "listings":
+        cmd_listings(args)
     else:
         cmd_publish(args)
 
