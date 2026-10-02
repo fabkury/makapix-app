@@ -31,7 +31,7 @@ class _MyPlayersPageState extends ConsumerState<MyPlayersPage> {
   }
 
   void _toast(String m) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: ClubMessageText(m)));
 
   Future<void> _openRegister() async {
     final l10n = context.l10n;
@@ -342,19 +342,6 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
     super.dispose();
   }
 
-  /// The server answers a failed registration in English prose; the known cases are matched
-  /// by their wording and shown in the app's language (docs/i18n/PLAN.md, L4 server text).
-  String _friendly(String raw) {
-    final l10n = context.l10n;
-    final r = raw.toLowerCase();
-    if (r.contains('invalid') || r.contains('expired') || r.contains('not found')) {
-      return l10n.playersCodeInvalid;
-    }
-    if (r.contains('already registered')) return l10n.playersAlreadyRegistered;
-    if (r.contains('maximum') && r.contains('player')) return l10n.playersMaxReached;
-    return raw;
-  }
-
   Future<void> _submit() async {
     final code = _code.text.trim();
     final name = _name.text.trim();
@@ -372,7 +359,7 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
     } else {
       setState(() {
         _busy = false;
-        _error = _friendly(err);
+        _error = err;
       });
     }
   }
@@ -418,7 +405,7 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
           ),
           if (_error != null) ...[
             const SizedBox(height: 4),
-            Text(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
+            ClubMessageText(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
           ],
           const SizedBox(height: 16),
           FilledButton(

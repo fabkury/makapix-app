@@ -106,7 +106,7 @@ class PagedNotifier<T> extends StateNotifier<PagedState<T>> {
         firstPageCount: reset ? page.items.length : state.firstPageCount,
       );
     } on ClubError catch (e) {
-      state = state.copyWith(loading: false, error: e.message, initialized: true);
+      state = state.copyWith(loading: false, error: e.describe(appL10n.errLoadFailed), initialized: true);
     } catch (_) {
       state = state.copyWith(loading: false, error: appL10n.errLoadFailed, initialized: true);
     }

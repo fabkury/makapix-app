@@ -64,7 +64,9 @@ class PasswordResetController extends StateNotifier<PasswordResetState> {
     } on ClubError catch (e) {
       state = state.copyWith(
           busy: false,
-          error: e.isRateLimited ? appL10n.authTooManyRequests : e.message);
+          error: e.isRateLimited
+              ? appL10n.authTooManyRequests
+              : e.describe(appL10n.authCodeSendFailed));
     }
   }
 
@@ -75,7 +77,7 @@ class PasswordResetController extends StateNotifier<PasswordResetState> {
       await _ref.read(authApiProvider).requestPasswordOtp(state.email);
       state = state.copyWith(busy: false, notice: appL10n.authNewCodeSent);
     } on ClubError catch (e) {
-      state = state.copyWith(busy: false, error: e.message);
+      state = state.copyWith(busy: false, error: e.describe(appL10n.authCodeSendFailed));
     }
   }
 
@@ -98,7 +100,7 @@ class PasswordResetController extends StateNotifier<PasswordResetState> {
           busy: false,
           notice: appL10n.resetDoneNotice);
     } on ClubError catch (e) {
-      state = state.copyWith(busy: false, error: e.message);
+      state = state.copyWith(busy: false, error: e.describe(appL10n.resetFailed));
     }
   }
 }

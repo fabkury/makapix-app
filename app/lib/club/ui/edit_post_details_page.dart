@@ -12,6 +12,7 @@ import '../state/feed_providers.dart';
 import '../state/pmd_providers.dart';
 import '../state/post_providers.dart';
 import '../state/publish_providers.dart';
+import 'widgets/common.dart';
 import 'widgets/mention_field.dart';
 
 /// Owner-only metadata editor for an existing post (`PATCH /post/{id}`):
@@ -101,7 +102,7 @@ class _EditPostDetailsPageState extends ConsumerState<EditPostDetailsPage> {
   }
 
   void _toast(String m) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: ClubMessageText(m)));
 
   bool get _dirty {
     if (_title.text.trim() != _baseTitle) return true;
@@ -139,7 +140,7 @@ class _EditPostDetailsPageState extends ConsumerState<EditPostDetailsPage> {
     } on ClubError catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
-      _toast(e.message);
+      _toast(e.describe(saveFailed));
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);

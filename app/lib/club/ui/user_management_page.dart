@@ -30,7 +30,9 @@ class UserManagementPage extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => ClubErrorRetry(
           message: e is ClubError
-              ? (e.status == 403 ? context.l10n.umdOwnerProtected : e.message)
+              ? (e.status == 403
+                  ? context.l10n.umdOwnerProtected
+                  : e.describe(context.l10n.umdLoadFailed))
               : context.l10n.umdLoadFailed,
           onRetry: () async => ref.invalidate(umdUserProvider(sqid)),
         ),
@@ -57,7 +59,7 @@ class _UmdBody extends ConsumerWidget {
       messenger.showSnackBar(SnackBar(content: Text(done)));
     } on ClubError catch (e) {
       messenger.showSnackBar(
-          SnackBar(content: Text(e.status == 403 ? ownerProtected : e.message)));
+          SnackBar(content: ClubMessageText(e.status == 403 ? ownerProtected : e.describe(failed))));
     } catch (_) {
       messenger.showSnackBar(SnackBar(content: Text(failed)));
     }
@@ -288,7 +290,8 @@ class _UmdBody extends ConsumerWidget {
     try {
       email = await ref.read(moderationApiProvider).revealUserEmail(user.sqid);
     } on ClubError catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      messenger.showSnackBar(
+          SnackBar(content: ClubMessageText(e.describe(l10n.umdRevealFailed))));
       return;
     } catch (_) {
       messenger.showSnackBar(SnackBar(content: Text(l10n.umdRevealFailed)));
@@ -369,7 +372,7 @@ class _ReputationCardState extends ConsumerState<_ReputationCard> {
       messenger.showSnackBar(SnackBar(
           content: Text(l10n.umdRepApplied('${delta > 0 ? '+' : ''}$delta', total))));
     } on ClubError catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      messenger.showSnackBar(SnackBar(content: ClubMessageText(e.describe(l10n.umdRepFailed))));
     } catch (_) {
       messenger.showSnackBar(SnackBar(content: Text(l10n.umdRepFailed)));
     } finally {

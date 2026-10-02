@@ -57,10 +57,11 @@ class SearchApi {
 
   /// Top trending hashtags for the header bar. Server-driven "rotation": the
   /// endpoint returns a random sample of the top-trending tags on a shared 2h
-  /// cache, so the set changes on re-fetch, not on any client timer. Lives under
-  /// the unversioned `/api` root (not `/api/v1`), so it uses [dioRoot].
+  /// cache, so the set changes on re-fetch, not on any client timer. Versioned since
+  /// 2026-10-02: the unversioned root copy is slated for removal on the server
+  /// (messages/0005-localized-text/0002 §7).
   Future<List<String>> topHashtags() => client.guard(() async {
-        final resp = await client.dioRoot.get('/hashtags/top');
+        final resp = await client.dio.get('/hashtags/top');
         return parseTopHashtags(resp.data);
       });
 

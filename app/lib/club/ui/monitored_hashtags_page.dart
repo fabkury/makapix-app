@@ -9,6 +9,7 @@ import '../models/club_error.dart';
 import '../state/api_providers.dart';
 import '../state/auth_controller.dart';
 import '../state/feed_providers.dart';
+import 'widgets/common.dart';
 
 /// Settings → Monitored hashtags: the monitored-hashtag content filter
 /// (`SPEC-CLUB.md` §21). Opt in to seeing posts tagged
@@ -64,7 +65,7 @@ class _MonitoredHashtagsPageState extends ConsumerState<MonitoredHashtagsPage> {
     } on ClubError catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
-      _toast(e.message);
+      _toast(e.describe(l10n.commonSaveChangesFailed));
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -73,7 +74,7 @@ class _MonitoredHashtagsPageState extends ConsumerState<MonitoredHashtagsPage> {
   }
 
   void _toast(String m) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: ClubMessageText(m)));
 
   @override
   Widget build(BuildContext context) {

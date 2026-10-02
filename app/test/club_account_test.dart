@@ -231,7 +231,7 @@ void main() {
 
     test('pending_verification (non-A2 server) falls back to the code step', () async {
       final fake = _FakeAuthApi()
-        ..registerError = ClubError(status: 409, code: 'error', message: 'pending_verification');
+        ..registerError = ClubError.fromBody(409, {'detail': 'pending_verification'});
       final c = _container(fake);
       final ctrl = c.read(registrationControllerProvider.notifier);
 

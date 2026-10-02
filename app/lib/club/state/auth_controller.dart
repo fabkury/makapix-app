@@ -225,7 +225,8 @@ class AuthController extends StateNotifier<AuthState> {
         await session.clear();
         state = const AuthState.signedOut();
       } else {
-        _keepStaleOr(AuthState.failure(e.message), e.message);
+        final msg = e.describe(appL10n.authAccountLoadError);
+        _keepStaleOr(AuthState.failure(msg), msg);
       }
     } catch (_) {
       final msg = appL10n.authAccountLoadError;
@@ -253,7 +254,9 @@ class AuthController extends StateNotifier<AuthState> {
       await _loadMe();
     } on ClubError catch (e) {
       // A plain 401 here is the server's "Invalid email or password." (code unauthorized).
-      final msg = e.code == 'unauthorized' ? appL10n.authWrongCredentials : e.message;
+      final msg = e.code == 'unauthorized'
+          ? appL10n.authWrongCredentials
+          : e.describe(appL10n.authSignInFailed);
       state = AuthState.failure(msg, code: e.code);
     } catch (_) {
       state = AuthState.failure(appL10n.commonUnexpectedError);
@@ -267,7 +270,7 @@ class AuthController extends StateNotifier<AuthState> {
       await session.exchangeAuthCode(res.code, res.verifier);
       await _loadMe();
     } on ClubError catch (e) {
-      state = AuthState.failure(e.message);
+      state = AuthState.failure(e.describe(appL10n.githubFailedRetry));
     } catch (_) {
       state = AuthState.failure(appL10n.commonUnexpectedError);
     }
@@ -294,7 +297,7 @@ class AuthController extends StateNotifier<AuthState> {
       if (e.code == 'apple_canceled') {
         state = const AuthState.signedOut();
       } else {
-        state = AuthState.failure(e.message, code: e.code);
+        state = AuthState.failure(e.describe(appL10n.appleFailed), code: e.code);
       }
     } catch (_) {
       state = AuthState.failure(appL10n.commonUnexpectedError);

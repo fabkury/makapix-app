@@ -8,6 +8,7 @@ import '../models/club_error.dart';
 import '../models/club_user.dart';
 import '../state/api_providers.dart';
 import '../state/auth_controller.dart';
+import 'widgets/common.dart';
 
 /// Settings → Mentions: who may mention this user (`users.mention_policy`,
 /// server message 0004/0002 §4).
@@ -35,7 +36,7 @@ class _MentionsSettingsPageState extends ConsumerState<MentionsSettingsPage> {
   }
 
   void _toast(String m) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: ClubMessageText(m)));
 
   Future<void> _save(MentionPolicy next) async {
     if (next == _policy || _saving) return;
@@ -65,7 +66,7 @@ class _MentionsSettingsPageState extends ConsumerState<MentionsSettingsPage> {
         _policy = previous;
         _saving = false;
       });
-      _toast(e.message);
+      _toast(e.describe(saveFailed));
     } catch (_) {
       if (!mounted) return;
       setState(() {

@@ -83,6 +83,37 @@ String timeAgo(DateTime? t) {
   return l10n.timeAgoYears((d.inDays / 365).floor());
 }
 
+/// An error message whose lines after the first are the server's own text
+/// (`ClubError.describe`): the first line in [style], the rest smaller and muted.
+/// A single-line message is a plain [Text].
+class ClubMessageText extends StatelessWidget {
+  final String text;
+  final TextStyle? style;
+  final TextAlign? textAlign;
+  const ClubMessageText(this.text, {super.key, this.style, this.textAlign});
+
+  @override
+  Widget build(BuildContext context) {
+    final cut = text.indexOf('\n');
+    if (cut < 0) return Text(text, style: style, textAlign: textAlign);
+    final base = DefaultTextStyle.of(context).style.merge(style);
+    final color = base.color ?? Colors.white;
+    return Text.rich(
+      TextSpan(text: text.substring(0, cut), children: [
+        TextSpan(
+          text: text.substring(cut),
+          style: TextStyle(
+            fontSize: (base.fontSize ?? 14) * 0.85,
+            color: color.withValues(alpha: color.a * 0.7),
+          ),
+        ),
+      ]),
+      style: style,
+      textAlign: textAlign,
+    );
+  }
+}
+
 class ClubErrorRetry extends StatelessWidget {
   final String message;
   final Future<void> Function() onRetry;
@@ -94,7 +125,8 @@ class ClubErrorRetry extends StatelessWidget {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const Icon(Icons.cloud_off, size: 40, color: Colors.white30),
             const SizedBox(height: 12),
-            Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white60)),
+            ClubMessageText(message,
+                textAlign: TextAlign.center, style: const TextStyle(color: Colors.white60)),
             const SizedBox(height: 12),
             OutlinedButton(onPressed: onRetry, child: Text(context.l10n.commonRetry)),
           ]),

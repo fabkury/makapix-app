@@ -9,6 +9,7 @@ import 'package:makapix_club/l10n/l10n.dart';
 import '../../state/account_providers.dart';
 import '../../state/auth_controller.dart';
 import '../../state/onboarding_controller.dart';
+import '../widgets/common.dart';
 
 /// The welcome wizard shown once after account creation (gated by
 /// `me.needsWelcome` in [ClubHomePage]). Steps: set your password (only when a
@@ -49,7 +50,7 @@ class _OnboardingWizardState extends ConsumerState<OnboardingWizard> {
       [if (hasPasswordStep) _Step.password, _Step.handle, _Step.profile];
 
   void _toast(String m) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: ClubMessageText(m)));
 
   Future<void> _pickAvatar() async {
     final res = await FilePicker.pickFiles(type: FileType.image, withData: true);

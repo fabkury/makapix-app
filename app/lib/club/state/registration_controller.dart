@@ -96,7 +96,8 @@ class RegistrationController extends StateNotifier<RegistrationState> {
       if (_legacy) await _safeRequestOtp(email);
       state = state.copyWith(step: RegStep.code, busy: false, clearError: true, notice: _codeNotice());
     } on ClubError catch (e) {
-      if (e.status == 409 && e.message.toLowerCase().contains('pending_verification')) {
+      if (e.status == 409 &&
+          (e.serverText ?? '').toLowerCase().contains('pending_verification')) {
         // A non-A2 server (no "resume sign-up") — fall back to the temp-password flow.
         _legacy = true;
         await _safeRequestOtp(email);
@@ -112,7 +113,7 @@ class RegistrationController extends StateNotifier<RegistrationState> {
         onAlreadyExists?.call();
         return;
       }
-      state = state.copyWith(busy: false, error: _friendly(e));
+      state = state.copyWith(busy: false, error: _friendly(e, appL10n.authSignUpFailed));
     }
   }
 
@@ -139,7 +140,7 @@ class RegistrationController extends StateNotifier<RegistrationState> {
       await _ref.read(authApiProvider).requestEmailOtp(state.email);
       state = state.copyWith(busy: false, notice: appL10n.authNewCodeSent);
     } on ClubError catch (e) {
-      state = state.copyWith(busy: false, error: _friendly(e));
+      state = state.copyWith(busy: false, error: _friendly(e, appL10n.authCodeSendFailed));
     }
   }
 
@@ -171,7 +172,7 @@ class RegistrationController extends StateNotifier<RegistrationState> {
         );
       }
     } on ClubError catch (e) {
-      state = state.copyWith(busy: false, error: _friendly(e));
+      state = state.copyWith(busy: false, error: _friendly(e, appL10n.authVerifyFailed));
     }
   }
 
@@ -198,15 +199,15 @@ class RegistrationController extends StateNotifier<RegistrationState> {
       state = state.copyWith(step: RegStep.done, busy: false);
     } on ClubError catch (e) {
       _ref.read(pendingWelcomePasswordProvider.notifier).state = null;
-      state = state.copyWith(busy: false, error: _friendly(e));
+      state = state.copyWith(busy: false, error: _friendly(e, appL10n.authSignInFailed));
     }
   }
 
-  String _friendly(ClubError e) {
+  String _friendly(ClubError e, String headline) {
     if (e.isRateLimited) {
       return appL10n.authTooManyAttempts;
     }
-    return e.message;
+    return e.describe(headline);
   }
 }
 

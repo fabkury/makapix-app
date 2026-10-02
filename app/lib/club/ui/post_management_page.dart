@@ -44,7 +44,7 @@ class _PostManagementPageState extends ConsumerState<PostManagementPage> {
   }
 
   void _toast(String m) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: ClubMessageText(m)));
 
   Future<void> _run(Future<String?> Function() op, {String? ok}) async {
     final err = await op();
@@ -264,7 +264,7 @@ class _PostManagementPageState extends ConsumerState<PostManagementPage> {
           loading: () => const SizedBox(height: 160, child: Center(child: CircularProgressIndicator())),
           error: (e, _) => SizedBox(
             height: 160,
-            child: Center(child: Text(e is ClubError ? e.message : ctx.l10n.pmdLicensesError)),
+            child: Center(child: ClubMessageText(clubErrorText(e, ctx.l10n.pmdLicensesError))),
           ),
           data: (licenses) => ListView(
             shrinkWrap: true,
@@ -386,7 +386,7 @@ class _DownloadsSheet extends ConsumerWidget {
           child: async.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, _) => ClubErrorRetry(
-              message: e is ClubError ? e.message : context.l10n.pmdDownloadsError,
+              message: clubErrorText(e, context.l10n.pmdDownloadsError),
               onRetry: n.refresh,
             ),
             data: (items) => items.isEmpty
@@ -442,7 +442,8 @@ class _BdrTileState extends ConsumerState<_BdrTile> {
       }
     } on ClubError catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: ClubMessageText(e.describe(l10n.downloadFailed))));
       }
     } catch (e) {
       if (mounted) {

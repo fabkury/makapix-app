@@ -54,7 +54,8 @@ Future<void> showDownloadSheet(BuildContext context, WidgetRef ref, {required Po
       messenger.showSnackBar(SnackBar(content: Text(l10n.downloadSaved(fileName))));
     } on ClubError catch (e) {
       messenger.showSnackBar(SnackBar(
-          content: Text(e.status == 404 ? l10n.downloadUnavailable : e.message)));
+          content: ClubMessageText(
+              e.status == 404 ? l10n.downloadUnavailable : e.describe(l10n.downloadFailed))));
     } catch (_) {
       messenger.showSnackBar(SnackBar(content: Text(l10n.downloadFailed)));
     }

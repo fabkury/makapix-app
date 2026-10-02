@@ -271,7 +271,7 @@ class _PostTile extends ConsumerWidget {
     }
     final err = await ref.read(gridLikesProvider.notifier).toggle(post);
     if (err != null && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: ClubMessageText(err)));
     }
   }
 }

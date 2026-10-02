@@ -45,7 +45,9 @@ class VerifyEmailController extends StateNotifier<VerifyEmailState> {
     } on ClubError catch (e) {
       state = state.copyWith(
           busy: false,
-          error: e.isRateLimited ? appL10n.authTooManyRequests : e.message);
+          error: e.isRateLimited
+              ? appL10n.authTooManyRequests
+              : e.describe(appL10n.authCodeSendFailed));
     }
   }
 
@@ -83,7 +85,7 @@ class VerifyEmailController extends StateNotifier<VerifyEmailState> {
       state = state.copyWith(
           busy: false, verified: true, notice: appL10n.authVerifiedCanSignIn);
     } on ClubError catch (e) {
-      state = state.copyWith(busy: false, error: e.message);
+      state = state.copyWith(busy: false, error: e.describe(appL10n.authVerifyFailed));
     }
   }
 }

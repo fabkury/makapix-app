@@ -60,7 +60,7 @@ class ReactionsController extends StateNotifier<AsyncValue<ReactionTotals>> {
       return null;
     } on ClubError catch (e) {
       state = AsyncValue.data(cur); // rollback
-      return e.isBlocked ? blockedInteractionMessage : e.message;
+      return e.isBlocked ? blockedInteractionMessage : e.describe(appL10n.reactionUpdateFailed);
     } catch (_) {
       state = AsyncValue.data(cur);
       return appL10n.reactionUpdateFailed;
@@ -131,7 +131,7 @@ class GridLikesController extends StateNotifier<Map<int, GridLikeState>> {
       return null;
     } on ClubError catch (e) {
       state = {...state, post.id: cur}; // rollback
-      return e.isBlocked ? blockedInteractionMessage : e.message;
+      return e.isBlocked ? blockedInteractionMessage : e.describe(appL10n.reactionUpdateFailed);
     } catch (_) {
       state = {...state, post.id: cur};
       return appL10n.reactionUpdateFailed;
@@ -216,7 +216,7 @@ class CommentsController extends StateNotifier<AsyncValue<List<Comment>>> {
       return null;
     } on ClubError catch (e) {
       await load(); // drop the optimistic comment
-      return e.isBlocked ? blockedInteractionMessage : e.message;
+      return e.isBlocked ? blockedInteractionMessage : e.describe(appL10n.commentPostFailed);
     } catch (_) {
       await load();
       return appL10n.commentPostFailed;
@@ -261,7 +261,7 @@ class CommentsController extends StateNotifier<AsyncValue<List<Comment>>> {
       return null;
     } on ClubError catch (e) {
       await load();
-      return e.message;
+      return e.describe(fallback);
     } catch (_) {
       await load();
       return fallback;

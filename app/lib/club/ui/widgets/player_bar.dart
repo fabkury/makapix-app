@@ -8,6 +8,7 @@ import '../../models/player_device.dart';
 import '../../state/auth_controller.dart';
 import '../../state/player_providers.dart';
 import '../my_players_page.dart';
+import 'common.dart';
 import 'select_player_overlay.dart';
 
 /// Height of the bar's content row (excludes the bottom safe-area inset).
@@ -47,7 +48,7 @@ class PlayerBar extends ConsumerWidget {
       if (!context.mounted) return;
       final msg = err ?? okMessage;
       if (msg != null) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: ClubMessageText(msg)));
       }
     }
 

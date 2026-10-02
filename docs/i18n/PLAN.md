@@ -327,9 +327,25 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   "Wrong email or password."; the handle check writes "available" and "already taken" itself.
   Thread opened: `messages/0005-localized-text/0001-app-localized-text-proposal.md`. Waiting on
   the reply (`0002-server-…`); nothing in it blocks the release.
+- [x] **Server prose under a translated headline**, done 2026-10-02 (decided with the user: the
+  same two-line form in English too). `ClubError` keeps the server's prose as `serverText`;
+  `describe(headline)` puts it under the screen's own headline ("Could not save your
+  profile."), and `message` under one by status class (`srvRefused`, `srvNotAllowed`,
+  `srvNotFound`, `srvServerProblem`). `ClubMessageText` draws the second line smaller and
+  muted; every error toast, banner, and retry panel in the Club uses it. A known code or a lost
+  connection keeps its own message; FastAPI's validation list becomes its `msg` lines; an HTML
+  error page and empty text are dropped; long text is cut at 300 characters. The player
+  registration wording match moved into the provider and reads `serverText`. 18 new strings,
+  reviewed in `review/srv-errors.md`. Tests: `test/club_error_test.dart`.
 - [ ] **Server text, server side** (the thread above) — the original item: proposing codes + params for API error
   `detail`, moderation report-reason labels (`report_reasons[].label`), and any notification text
   the server composes. The app ships without waiting; until the server answers, those stay English.
+  2026-10-02: `0002-app-shipped-ranked-codes-email-locale.md` sent (also committed to the server
+  repo, `docs/localized-text/messages/`, develop `3966c19`): seven declared codes nothing raises,
+  the envelope on the unversioned paths, a tiered list of ~45 codes, keys for badge / quota /
+  download text, and a stored user `locale` for the server's emails (we offered the translated
+  copy). Waiting on `0003-server-…`. When codes land: add them to `ClubError._translatedCode`,
+  then drop the player-registration and `pending_verification` wording matches.
   Server prose found so far (add to this list as batches meet more):
   - `ClubError.message` — the API error `detail`, shown in toasts and banners across the app.
   - `POST /auth/check-handle-availability` → `message` ("Handle is available"), shown under the

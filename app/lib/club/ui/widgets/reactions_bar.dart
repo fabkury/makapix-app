@@ -5,6 +5,7 @@ import '../../models/reactions.dart';
 import '../../state/auth_controller.dart';
 import '../../state/post_providers.dart';
 import '../club_account_page.dart';
+import 'common.dart';
 
 /// The curated 5-emoji reaction row with optimistic toggle.
 class ReactionsBar extends ConsumerWidget {
@@ -32,7 +33,7 @@ class ReactionsBar extends ConsumerWidget {
               }
               final err = await ctrl.toggle(emoji);
               if (err != null && context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: ClubMessageText(err)));
               }
             },
           ),

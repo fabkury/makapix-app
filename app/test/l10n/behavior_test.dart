@@ -53,12 +53,13 @@ void main() {
       await pumpLocalized(tester, const Locale('ru'), const SizedBox());
       final l10n = l10nFor(const Locale('ru'));
       // No usable body from the server: the app's own wording, in Russian.
-      expect(ClubError.fromBody(500, null).message, l10n.commonSomethingWrong);
-      expect(ClubError.fromBody(500, null).message, isNot(contains('Something')));
+      expect(ClubError.fromBody(500, null).message, l10n.srvServerProblem);
+      expect(ClubError.fromBody(500, null).message, isNot(contains('Club ran')));
+      expect(ClubError.fromBody(null, null).message, l10n.commonSomethingWrong);
       expect(blockedInteractionMessage, l10n.errBlockedInteraction);
-      // What the server did say is shown as it came.
+      // What the server did say is shown as it came, under a Russian headline.
       expect(ClubError.fromBody(400, {'detail': 'Handle already taken'}).message,
-          'Handle already taken');
+          '${l10n.srvRefused}\nHandle already taken');
     });
 
     testWidgets('mention picker labels', (tester) async {

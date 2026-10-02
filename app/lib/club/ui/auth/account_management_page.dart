@@ -57,13 +57,14 @@ class _AccountManagementPageState extends ConsumerState<AccountManagementPage> {
   }
 
   void _toast(String m) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: ClubMessageText(m)));
 
   Future<void> _changePassword() async {
     final err = validatePasswordError(_newPw.text);
     if (err != null) return _toast(err);
     if (_newPw.text != _confirmPw.text) return _toast(context.l10n.authPasswordsDontMatch);
     final changed = context.l10n.accountPasswordChanged;
+    final changeFailed = context.l10n.accountPasswordChangeFailed;
     setState(() => _pwBusy = true);
     try {
       await ref.read(clubApiClientProvider).changePassword(_current.text, _newPw.text);
@@ -72,7 +73,7 @@ class _AccountManagementPageState extends ConsumerState<AccountManagementPage> {
       _confirmPw.clear();
       _toast(changed);
     } on ClubError catch (e) {
-      _toast(e.message);
+      _toast(e.describe(changeFailed));
     } finally {
       if (mounted) setState(() => _pwBusy = false);
     }
@@ -105,7 +106,9 @@ class _AccountManagementPageState extends ConsumerState<AccountManagementPage> {
           _handleColor = res.available ? Colors.greenAccent : Colors.redAccent;
         });
       } on ClubError catch (e) {
-        if (mounted) setState(() => _handleMsg = e.message);
+        if (mounted) {
+          setState(() => _handleMsg = e.describe(context.l10n.accountHandleCheckFailed));
+        }
       }
     });
   }
@@ -117,13 +120,14 @@ class _AccountManagementPageState extends ConsumerState<AccountManagementPage> {
     if (err != null) return _toast(err);
     setState(() => _handleBusy = true);
     final updated = context.l10n.accountHandleUpdated;
+    final handleFailed = context.l10n.accountHandleChangeFailed;
     try {
       await ref.read(clubApiClientProvider).changeHandle(handle);
       await ref.read(authControllerProvider.notifier).reloadMe();
       setState(() => _handleMsg = '');
       _toast(updated);
     } on ClubError catch (e) {
-      _toast(e.message);
+      _toast(e.describe(handleFailed));
     } finally {
       if (mounted) setState(() => _handleBusy = false);
     }
@@ -131,12 +135,13 @@ class _AccountManagementPageState extends ConsumerState<AccountManagementPage> {
 
   Future<void> _unlink(AuthIdentity id) async {
     final unlinked = context.l10n.accountUnlinked(_loginLabel(context.l10n, id));
+    final unlinkFailed = context.l10n.accountUnlinkFailed;
     try {
       await ref.read(clubApiClientProvider).unlinkProvider(id.provider, id.id);
       setState(() => _providers = ref.read(clubApiClientProvider).listProviders());
       _toast(unlinked);
     } on ClubError catch (e) {
-      _toast(e.message);
+      _toast(e.describe(unlinkFailed));
     }
   }
 
@@ -220,7 +225,7 @@ class _AccountManagementPageState extends ConsumerState<AccountManagementPage> {
             if (_handleMsg.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 6, left: 4),
-                child: Text(_handleMsg, style: TextStyle(color: _handleColor, fontSize: 12)),
+                child: ClubMessageText(_handleMsg, style: TextStyle(color: _handleColor, fontSize: 12)),
               ),
             const SizedBox(height: 12),
             Align(

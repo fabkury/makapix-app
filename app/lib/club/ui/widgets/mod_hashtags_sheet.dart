@@ -10,6 +10,7 @@ import '../../models/club_error.dart';
 import '../../models/post.dart';
 import '../../state/api_providers.dart';
 import '../../state/post_providers.dart';
+import 'common.dart';
 
 /// Moderator-only "Edit moderator hashtags" sheet (mod-hashtags contract v1).
 /// Full-replace semantics: Save PUTs the whole working set. Callers gate on
@@ -129,7 +130,7 @@ class _ModHashtagsSheetState extends ConsumerState<_ModHashtagsSheet> {
         _saving = false;
         _saveError = switch (e.code) {
           'forbidden' => l10n.modTagsForbidden,
-          'validation_error' => e.message,
+          'validation_error' => e.describe(l10n.commonSaveChangesFailed),
           _ => e.isAuth ? l10n.modTagsSessionExpired : l10n.commonSaveFailedConnection,
         };
       });
@@ -246,7 +247,7 @@ class _ModHashtagsSheetState extends ConsumerState<_ModHashtagsSheet> {
             ),
             if (_saveError != null) ...[
               const SizedBox(height: 10),
-              Text(_saveError!,
+              ClubMessageText(_saveError!,
                   style: TextStyle(fontSize: 13, color: theme.colorScheme.error)),
             ],
             const SizedBox(height: 12),

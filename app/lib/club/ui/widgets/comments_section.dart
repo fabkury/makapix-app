@@ -65,7 +65,7 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
         _replyToHandle = null;
       }
     });
-    if (err != null) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+    if (err != null) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: ClubMessageText(err)));
   }
 
   @override
@@ -227,7 +227,7 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
                     onTap: () async {
                       final err = await notifier.toggleLike(c);
                       if (err != null && mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: ClubMessageText(err)));
                       }
                     },
                     onLongPress: c.likeCount > 0 ? () => _showLikeUsers(c) : null,
@@ -296,7 +296,7 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
 
   void _toast(String? message) {
     if (message != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: ClubMessageText(message)));
     }
   }
 

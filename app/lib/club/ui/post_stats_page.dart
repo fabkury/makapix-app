@@ -43,7 +43,7 @@ class _PostStatsPageState extends ConsumerState<PostStatsPage> {
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => ClubErrorRetry(
-          message: e is ClubError ? e.message : context.l10n.statsLoadError,
+          message: clubErrorText(e, context.l10n.statsLoadError),
           onRetry: ctrl.load,
         ),
         data: (s) => CenteredContent(child: _body(s)),

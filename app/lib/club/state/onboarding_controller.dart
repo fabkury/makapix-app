@@ -63,7 +63,7 @@ class OnboardingController extends StateNotifier<OnboardingState> {
       );
     } on ClubError catch (e) {
       if (_inflight != handle) return;
-      state = state.copyWith(handleCheck: HandleCheck.idle, handleMessage: e.message);
+      state = state.copyWith(handleCheck: HandleCheck.idle, handleMessage: e.describe(appL10n.accountHandleCheckFailed));
     }
   }
 
@@ -126,7 +126,7 @@ class OnboardingController extends StateNotifier<OnboardingState> {
       return null;
     } on ClubError catch (e) {
       if (mounted) state = state.copyWith(busy: false);
-      return e.message;
+      return e.describe(appL10n.commonSaveChangesFailed);
     } catch (_) {
       if (mounted) state = state.copyWith(busy: false);
       return appL10n.commonSomethingWrong;

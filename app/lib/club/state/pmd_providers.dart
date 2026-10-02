@@ -200,7 +200,7 @@ class PmdController extends StateNotifier<PmdState> {
     }
   }
 
-  String _msg(Object e, String fallback) => e is ClubError ? e.message : fallback;
+  String _msg(Object e, String fallback) => clubErrorText(e, fallback);
 }
 
 final pmdListProvider = StateNotifierProvider.autoDispose<PmdController, PmdState>(

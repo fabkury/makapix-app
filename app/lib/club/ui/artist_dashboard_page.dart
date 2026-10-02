@@ -33,7 +33,7 @@ class _ArtistDashboardPageState extends ConsumerState<ArtistDashboardPage> {
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => ClubErrorRetry(
-          message: e is ClubError ? e.message : context.l10n.dashboardLoadError,
+          message: clubErrorText(e, context.l10n.dashboardLoadError),
           onRetry: ctrl.load,
         ),
         data: (d) => CenteredContent(child: _body(d, ctrl)),

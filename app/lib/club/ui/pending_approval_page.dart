@@ -116,7 +116,9 @@ class _PendingApprovalPageState extends ConsumerState<PendingApprovalPage> {
               ? l10n.pendingApproved(p.title.isEmpty ? l10n.untitled : p.title)
               : l10n.pendingRejected)));
     } on ClubError catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      messenger.showSnackBar(SnackBar(
+          content: ClubMessageText(
+              e.describe(approve ? l10n.modApproveFailed : l10n.pendingRejectFailed))));
     } catch (_) {
       messenger.showSnackBar(SnackBar(
           content: Text(approve ? l10n.modApproveFailed : l10n.pendingRejectFailed)));

@@ -73,10 +73,12 @@ release build.
    strings stay English. Where an engine condition reaches the user (a load failure, a
    conformance rejection, the memory-budget refusal), Dart maps a stable code to a message at
    the seam; where the engine returns only prose today, the seam gets a code first (PLAN.md L4).
-2. **Server text.** Anything the server sends as prose — API error `detail`, the moderation
-   report-reason labels, composed notification text — stays English until the server offers
-   codes and parameters the app can translate. Proposal thread: `messages/0005-localized-text/`
-   (PLAN.md L4). App i18n does not wait for it.
+2. **Server text.** Anything the server sends as prose stays English until the server offers
+   codes and parameters the app can translate. A specific error code already shows the app's
+   own message. Other error prose appears as a smaller second line under a translated headline,
+   so every error starts in the user's language (`ClubError.describe`, `ClubMessageText`, in
+   English too). Badge names, quota periods, and server emails stay English. Proposal thread:
+   `messages/0005-localized-text/` (PLAN.md L4). App i18n does not wait for it.
 3. **User-written content**: titles, comments, handles, hashtags, profile text.
 4. **Legal**: Terms of Service and policy pages. Developer surfaces (memlab).
 5. **Brand and technical tokens** — the list is in GLOSSARY.md.

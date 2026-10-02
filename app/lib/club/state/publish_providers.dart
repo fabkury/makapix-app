@@ -80,7 +80,8 @@ class PublishController extends StateNotifier<PublishState> {
           );
       state = PublishState(PublishStatus.success, post: post);
     } on ClubError catch (e) {
-      state = PublishState(PublishStatus.error, error: e.message, errorCode: e.code);
+      state = PublishState(PublishStatus.error,
+          error: e.describe(appL10n.publishUploadFailed), errorCode: e.code);
     } catch (_) {
       state = PublishState(PublishStatus.error, error: appL10n.publishUploadFailed);
     }
@@ -100,7 +101,8 @@ class PublishController extends StateNotifier<PublishState> {
           .replaceArtwork(postId, bytes, filename, provenanceFields: provenanceFields);
       state = PublishState(PublishStatus.success, post: post);
     } on ClubError catch (e) {
-      state = PublishState(PublishStatus.error, error: e.message, errorCode: e.code);
+      state = PublishState(PublishStatus.error,
+          error: e.describe(appL10n.publishReplaceFailed), errorCode: e.code);
     } catch (_) {
       state = PublishState(PublishStatus.error, error: appL10n.publishReplaceFailed);
     }

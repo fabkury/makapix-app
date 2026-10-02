@@ -320,7 +320,7 @@ class PlayerController extends StateNotifier<PlayerState> with WidgetsBindingObs
       await _api.command(sqid, playerId, cmd);
       return null;
     } on ClubError catch (e) {
-      return e.message;
+      return e.describe(appL10n.playersCommandFailed);
     }
   }
 
@@ -335,8 +335,21 @@ class PlayerController extends StateNotifier<PlayerState> with WidgetsBindingObs
       await refresh(); // pull the newly-registered device into the list
       return null;
     } on ClubError catch (e) {
-      return e.message;
+      return _registerError(e);
     }
+  }
+
+  /// The server refuses a registration with English prose and a generic code; the known cases
+  /// are matched by their wording and shown in the user's language (docs/i18n/PLAN.md, L4
+  /// server text) until the server sends codes (messages/0005-localized-text/).
+  String _registerError(ClubError e) {
+    final r = (e.serverText ?? '').toLowerCase();
+    if (r.contains('invalid') || r.contains('expired') || r.contains('not found')) {
+      return appL10n.playersCodeInvalid;
+    }
+    if (r.contains('already registered')) return appL10n.playersAlreadyRegistered;
+    if (r.contains('maximum') && r.contains('player')) return appL10n.playersMaxReached;
+    return e.describe(appL10n.playersRegisterFailed);
   }
 
   Future<String?> rename(String playerId, String name) async {
@@ -350,7 +363,7 @@ class PlayerController extends StateNotifier<PlayerState> with WidgetsBindingObs
       ]);
       return null;
     } on ClubError catch (e) {
-      return e.message;
+      return e.describe(appL10n.playersRenameFailed);
     }
   }
 
@@ -365,7 +378,7 @@ class PlayerController extends StateNotifier<PlayerState> with WidgetsBindingObs
       _applyPlayers(state.players.where((p) => p.id != playerId).toList());
       return null;
     } on ClubError catch (e) {
-      return e.message;
+      return e.describe(appL10n.playersRemoveFailed);
     }
   }
 

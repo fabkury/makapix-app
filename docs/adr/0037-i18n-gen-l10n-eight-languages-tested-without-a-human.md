@@ -70,4 +70,9 @@ seam, and server prose stays English until the server offers codes — both trac
   there. The sweeps run at 1.3× as a separate check (`--dart-define=L10N_TEXT_SCALE=1.3`), where
   an ellipsis is accepted and clipping or overflow is not.
 - *Server text.* The app shows its own message for every specific error code in the server's
-  envelope; generic codes keep the server's prose (`messages/0005-localized-text/`).
+  envelope. Any other server prose is shown, in every language and English too, as a smaller,
+  muted second line under a translated headline: the screen's own ("Could not save your
+  profile.") or one chosen by status class (`ClubError.describe`, `ClubMessageText`). The user
+  always gets a sentence in their language and loses none of the server's explanation; an HTML
+  error page is never shown. The server is asked for codes and an email language in
+  `messages/0005-localized-text/`.

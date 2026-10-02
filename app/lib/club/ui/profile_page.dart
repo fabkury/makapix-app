@@ -106,7 +106,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => ClubErrorRetry(
-          message: e is ClubError ? e.message : context.l10n.profileLoadFailed,
+          message: clubErrorText(e, context.l10n.profileLoadFailed),
           onRetry: () => ref.read(profileProvider(widget.sqid).notifier).load(),
         ),
         data: (p) => _Body(profile: p, scroll: _scroll),
@@ -1106,7 +1106,7 @@ class _FollowButton extends ConsumerWidget {
     }
     final err = await ref.read(profileProvider(sqid).notifier).toggleFollow();
     if (err != null && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: ClubMessageText(err)));
     }
   }
 

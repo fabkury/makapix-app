@@ -234,7 +234,7 @@ class _PublishPageState extends ConsumerState<PublishPage> {
         if (pub.status == PublishStatus.error && pub.error != null)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: Text(pub.error!, style: const TextStyle(color: Colors.redAccent)),
+            child: ClubMessageText(pub.error!, style: const TextStyle(color: Colors.redAccent)),
           ),
         const SizedBox(height: 4),
         if (d.source != null && d.source!.isOwner) ...[

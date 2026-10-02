@@ -20,6 +20,7 @@ import 'auth/verify_email_page.dart';
 import 'edit_profile_page.dart';
 import 'my_players_page.dart';
 import 'my_remixes_page.dart';
+import 'widgets/common.dart';
 
 /// Reachable from the editor AppBar. Renders the sign-in form or the signed-in
 /// account view based on [authControllerProvider]. The app is not login-gated;
@@ -107,7 +108,7 @@ class _SignInFormState extends ConsumerState<_SignInForm> {
                   child: Row(children: [
                     const Icon(Icons.error_outline, color: Colors.redAccent, size: 18),
                     const SizedBox(width: 8),
-                    Expanded(child: Text(auth.error!, style: const TextStyle(fontSize: 13))),
+                    Expanded(child: ClubMessageText(auth.error!, style: const TextStyle(fontSize: 13))),
                   ]),
                 ),
               // An unverified-email login is a dead end without this — route the
@@ -364,7 +365,8 @@ class _EditProfileButtonState extends ConsumerState<_EditProfileButton> {
     } on ClubError catch (e) {
       if (!mounted) return;
       setState(() => _busy = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: ClubMessageText(e.describe(context.l10n.profileLoadError))));
     } catch (_) {
       if (!mounted) return;
       setState(() => _busy = false);

@@ -6,6 +6,7 @@ import 'package:makapix_club/l10n/l10n.dart';
 
 import '../../models/club_error.dart';
 import '../../state/auth_controller.dart';
+import '../widgets/common.dart';
 
 /// Settings → Account → Danger zone: permanently delete the signed-in account
 /// (App Store guideline 5.1.1(v)). Explains what deletion means, requires the
@@ -54,7 +55,8 @@ class _DeleteAccountPageState extends ConsumerState<DeleteAccountPage> {
       Navigator.of(context).popUntil((r) => r.isFirst);
     } on ClubError catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: ClubMessageText(e.describe(context.l10n.accountDeleteFailed))));
       }
     } finally {
       if (mounted) setState(() => _busy = false);

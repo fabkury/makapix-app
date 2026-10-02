@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/common.dart';
+
 /// A red error / neutral notice banner shown above auth forms. Returns null when
 /// there is nothing to show, so callers can drop it straight into a children list
 /// (via a spread or a null-filtering build).
@@ -51,7 +53,7 @@ class _Banner extends StatelessWidget {
         child: Row(children: [
           Icon(icon, color: fg, size: 18),
           const SizedBox(width: 8),
-          Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
+          Expanded(child: ClubMessageText(text, style: const TextStyle(fontSize: 13))),
         ]),
       );
 }

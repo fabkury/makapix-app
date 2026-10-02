@@ -12,6 +12,7 @@ import '../state/api_providers.dart';
 import '../state/auth_controller.dart';
 import '../state/publish_providers.dart';
 import '../state/safety_providers.dart';
+import 'widgets/common.dart';
 import 'widgets/external_links.dart';
 
 /// Full-screen report flow shared by all three entry points (post kebab,
@@ -70,12 +71,15 @@ class _ReportPageState extends ConsumerState<ReportPage> {
       } else if (e.code == 'validation_error' || e.status == 422) {
         setState(() {
           _submitting = false;
-          _error = e.message;
+          _error = e.describe(l10n.reportNotAccepted);
         });
       } else {
+        // "Check your connection" only when the server said nothing of its own.
         setState(() {
           _submitting = false;
-          _error = l10n.reportSendFailed;
+          _error = e.serverText != null
+              ? e.describe(l10n.reportNotAccepted)
+              : l10n.reportSendFailed;
         });
       }
     } catch (_) {
@@ -208,7 +212,7 @@ class _ReportPageState extends ConsumerState<ReportPage> {
         if (_error != null)
           Padding(
             padding: const EdgeInsets.only(top: 4, bottom: 4),
-            child: Text(_error!, style: const TextStyle(color: Colors.redAccent)),
+            child: ClubMessageText(_error!, style: const TextStyle(color: Colors.redAccent)),
           ),
         const SizedBox(height: 8),
         FilledButton(

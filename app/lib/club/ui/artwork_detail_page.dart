@@ -189,7 +189,7 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => ClubErrorRetry(
-        message: e is ClubError ? e.message : context.l10n.artworkLoadError,
+        message: clubErrorText(e, context.l10n.artworkLoadError),
         onRetry: () async => ref.invalidate(postDetailProvider(widget.sqid)),
       ),
       data: (post) => _body(context, post),
@@ -798,7 +798,9 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
       messenger.showSnackBar(SnackBar(
           content: Text(hide ? l10n.artworkHiddenToast : l10n.artworkVisibleToast)));
     } on ClubError catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      messenger.showSnackBar(SnackBar(
+          content: ClubMessageText(
+              e.describe(hide ? l10n.artworkHideFailed : l10n.artworkUnhideFailed))));
     } catch (_) {
       messenger.showSnackBar(SnackBar(
           content: Text(hide ? l10n.artworkHideFailed : l10n.artworkUnhideFailed)));
@@ -832,7 +834,8 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
       messenger.showSnackBar(SnackBar(content: Text(l10n.artworkDeleted)));
       nav.pop(); // close the detail view; the grids refetch without it
     } on ClubError catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      messenger.showSnackBar(
+          SnackBar(content: ClubMessageText(e.describe(l10n.artworkDeleteFailed))));
     } catch (_) {
       messenger.showSnackBar(SnackBar(content: Text(l10n.artworkDeleteFailed)));
     }
@@ -931,7 +934,9 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
       messenger.showSnackBar(
           SnackBar(content: Text(hide ? l10n.modHiddenToast : l10n.artworkVisibleToast)));
     } on ClubError catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      messenger.showSnackBar(SnackBar(
+          content: ClubMessageText(
+              e.describe(hide ? l10n.artworkHideFailed : l10n.artworkUnhideFailed))));
     } catch (_) {
       messenger.showSnackBar(SnackBar(
           content: Text(hide ? l10n.artworkHideFailed : l10n.artworkUnhideFailed)));
@@ -961,7 +966,8 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
       _refreshAfterModAction();
       messenger.showSnackBar(SnackBar(content: Text(l10n.modPromotedToast)));
     } on ClubError catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      messenger.showSnackBar(
+          SnackBar(content: ClubMessageText(e.describe(l10n.modPromoteFailed))));
     } catch (_) {
       messenger.showSnackBar(SnackBar(content: Text(l10n.modPromoteFailed)));
     }
@@ -994,7 +1000,8 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
       _refreshAfterModAction();
       messenger.showSnackBar(SnackBar(content: Text(l10n.modDemotedToast)));
     } on ClubError catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      messenger.showSnackBar(
+          SnackBar(content: ClubMessageText(e.describe(l10n.modDemoteFailed))));
     } catch (_) {
       messenger.showSnackBar(SnackBar(content: Text(l10n.modDemoteFailed)));
     }
@@ -1008,7 +1015,8 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
       _refreshAfterModAction();
       messenger.showSnackBar(SnackBar(content: Text(l10n.modApprovedToast)));
     } on ClubError catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      messenger.showSnackBar(
+          SnackBar(content: ClubMessageText(e.describe(l10n.modApproveFailed))));
     } catch (_) {
       messenger.showSnackBar(SnackBar(content: Text(l10n.modApproveFailed)));
     }
@@ -1055,7 +1063,8 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
       messenger.showSnackBar(SnackBar(content: Text(l10n.modDeletedForeverToast)));
       nav.pop(); // leave the detail view — the post no longer exists
     } on ClubError catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      messenger.showSnackBar(
+          SnackBar(content: ClubMessageText(e.describe(l10n.artworkDeleteFailed))));
     } catch (_) {
       messenger.showSnackBar(SnackBar(content: Text(l10n.artworkDeleteFailed)));
     }
@@ -1085,7 +1094,8 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
       } else if (e.status == 507) {
         messenger.showSnackBar(SnackBar(content: Text(l10n.serverStorageFull)));
       } else {
-        messenger.showSnackBar(SnackBar(content: Text(e.message)));
+        messenger.showSnackBar(
+            SnackBar(content: ClubMessageText(e.describe(l10n.avatarFromPostFailed))));
       }
     } catch (_) {
       messenger.showSnackBar(SnackBar(content: Text(l10n.avatarFromPostFailed)));
@@ -1127,7 +1137,8 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
         messenger.showSnackBar(SnackBar(content: Text(l10n.layersGone)));
         ref.invalidate(postDetailProvider(widget.sqid));
       } else {
-        messenger.showSnackBar(SnackBar(content: Text(e.message)));
+        messenger.showSnackBar(
+            SnackBar(content: ClubMessageText(e.describe(l10n.layersDownloadFailed))));
       }
     } catch (_) {
       messenger.showSnackBar(SnackBar(content: Text(l10n.layersDownloadFailed)));
@@ -1163,7 +1174,8 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
       messenger.showSnackBar(SnackBar(
           content: Text(post.hasMkpx ? l10n.layersReplaced : l10n.layersAttached)));
     } on ClubError catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      messenger.showSnackBar(
+          SnackBar(content: ClubMessageText(e.describe(l10n.layersUploadFailed))));
     } catch (_) {
       messenger.showSnackBar(SnackBar(content: Text(l10n.layersUploadFailed)));
     }
@@ -1189,7 +1201,8 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
       ref.invalidate(postDetailProvider(widget.sqid));
       messenger.showSnackBar(SnackBar(content: Text(l10n.layersRemoved)));
     } on ClubError catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      messenger.showSnackBar(
+          SnackBar(content: ClubMessageText(e.describe(l10n.layersRemoveFailed))));
     } catch (_) {
       messenger.showSnackBar(SnackBar(content: Text(l10n.layersRemoveFailed)));
     }
@@ -1236,7 +1249,7 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
       nav.popUntil((r) => r.isFirst); // surface the editor (app root)
     } catch (e) {
       messenger.showSnackBar(
-          SnackBar(content: Text(e is ClubError ? e.message : l10n.artworkOpenFailed)));
+          SnackBar(content: ClubMessageText(clubErrorText(e, l10n.artworkOpenFailed))));
     }
   }
 }

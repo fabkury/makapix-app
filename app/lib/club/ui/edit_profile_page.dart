@@ -56,7 +56,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   }
 
   void _toast(String m) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: ClubMessageText(m)));
 
   Map<String, String> get _patch => buildProfilePatchFrom(
       currentTagline: _baseTagline, currentBio: _baseBio, tagline: _tagline.text, bio: _bio.text);
@@ -91,7 +91,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     } on ClubError catch (e) {
       if (!mounted) return;
       setState(() => _avatarBusy = false);
-      _toast(e.message);
+      _toast(e.describe(l10n.avatarUploadFailed));
     } catch (_) {
       if (!mounted) return;
       setState(() => _avatarBusy = false);
@@ -126,7 +126,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     } on ClubError catch (e) {
       if (!mounted) return;
       setState(() => _avatarBusy = false);
-      _toast(e.message);
+      _toast(e.describe(l10n.avatarRemoveFailed));
     } catch (_) {
       if (!mounted) return;
       setState(() => _avatarBusy = false);
@@ -156,7 +156,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     } on ClubError catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
-      _toast(e.message);
+      _toast(e.describe(l10n.profileSaveFailed));
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);
