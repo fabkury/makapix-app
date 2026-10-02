@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 
 import '../models/license_option.dart';
 import '../models/post.dart';
+import '../models/replace_result.dart';
 import 'club_api_client.dart';
 
 /// Artwork publishing (`POST /post/upload`) + the license catalog.
@@ -70,16 +71,22 @@ class UploadApi {
   /// [provenanceFields] as on [uploadArtwork]; here `remixed_from` APPENDS
   /// lineage links (existing ones are never removed) and `remixable` is ignored
   /// (that toggle belongs to PATCH /post/{id}).
-  Future<Post> replaceArtwork(int postId, List<int> bytes, String filename,
-          {Map<String, String> provenanceFields = const {}}) =>
+  ///
+  /// [bump] asks the server to move the post back to the top of the feeds
+  /// (feed bump; the server applies its weekly cooldown and, for owners without
+  /// Trust, waits for moderator approval). Always sent, so the app never
+  /// depends on the server's default.
+  Future<ReplaceResult> replaceArtwork(int postId, List<int> bytes, String filename,
+          {required bool bump, Map<String, String> provenanceFields = const {}}) =>
       client.guard(() async {
         final form = FormData.fromMap({
           'image': MultipartFile.fromBytes(bytes, filename: filename),
+          'bump': bump ? 'true' : 'false',
           ...provenanceFields,
         });
         final resp = await client.dio.post('/post/$postId/replace-artwork', data: form);
         final data = (resp.data as Map?)?.cast<String, dynamic>() ?? const {};
         final postJson = (data['post'] as Map?)?.cast<String, dynamic>() ?? data;
-        return Post.fromJson(postJson);
+        return ReplaceResult.fromJson(postJson);
       });
 }

@@ -6,6 +6,7 @@ import '../api/upload_api.dart';
 import '../models/club_error.dart';
 import '../models/license_option.dart';
 import '../models/post.dart';
+import '../models/replace_result.dart';
 import '../models/server_config.dart';
 import 'auth_controller.dart' show clubApiClientProvider;
 
@@ -41,7 +42,11 @@ class PublishState {
   /// The stable server error code ('remix_not_allowed', 'parent_not_found', …)
   /// so the UI can offer targeted remedies; null for transport/unknown errors.
   final String? errorCode;
-  const PublishState(this.status, {this.post, this.error, this.errorCode});
+
+  /// Set when the success was a replace: what happened to the post's place in
+  /// the feeds. Null after a new upload.
+  final ReplaceResult? replaced;
+  const PublishState(this.status, {this.post, this.error, this.errorCode, this.replaced});
 
   /// A lineage refusal (0002 §2): a declared parent is gone or no longer
   /// Remixable. The publish page offers the explicit "publish without the
@@ -92,14 +97,15 @@ class PublishController extends StateNotifier<PublishState> {
     required int postId,
     required List<int> bytes,
     required String filename,
+    required bool bump,
     Map<String, String> provenanceFields = const {},
   }) async {
     state = const PublishState(PublishStatus.uploading);
     try {
-      final post = await ref
+      final result = await ref
           .read(uploadApiProvider)
-          .replaceArtwork(postId, bytes, filename, provenanceFields: provenanceFields);
-      state = PublishState(PublishStatus.success, post: post);
+          .replaceArtwork(postId, bytes, filename, bump: bump, provenanceFields: provenanceFields);
+      state = PublishState(PublishStatus.success, post: result.post, replaced: result);
     } on ClubError catch (e) {
       state = PublishState(PublishStatus.error,
           error: e.describe(appL10n.publishReplaceFailed), errorCode: e.code);

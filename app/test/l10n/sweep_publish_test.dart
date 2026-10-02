@@ -177,6 +177,98 @@ void main() {
     },
   );
 
+  // Feed bump (messages/0006-feed-bump): the confirmation an owner without Trust sees before
+  // replacing, and the result screen in its three informative states.
+  const mine = ClubEditSource(
+      postId: 1, sqid: 'p1', title: 'Sunset Tower', ownerHandle: 'pixel_ada', isOwner: true);
+  FakeBackend replaceBackend(Map<String, Object?> answer) => _backend()
+    ..on('POST', r'/post/1/replace-artwork', (_) => {
+          'message': 'Artwork replaced successfully',
+          'post': {'id': 1, 'public_sqid': 'p1', 'art_url': '', ...answer},
+        });
+  Future<void> tapReplace(WidgetTester tester) async {
+    final button = find.byIcon(Icons.published_with_changes);
+    await tester.scrollUntilVisible(button, 200, scrollable: find.byType(Scrollable).first);
+    await tester.pump();
+    await tester.tap(button);
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+  }
+
+  // The result screen replaced the form: a missed tap or a failed request would sweep the form.
+  Future<void> landed(WidgetTester tester, IconData icon) async {
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(find.byIcon(icon), findsOneWidget);
+    expect(find.byType(SwitchListTile), findsNothing);
+  }
+
+  sweepScreen(
+    'Publish, replacing without Trust (confirmation)',
+    build: () => PublishPage(draft: _draft(layers: false, source: mine)),
+    backend: _backend,
+    prefs: _rulesAccepted,
+    overrides: (b) => clubOverrides(backend: b),
+    allowLatin: _fixture,
+    act: (tester) async {
+      await tapReplace(tester);
+      expect(find.byType(AlertDialog), findsOneWidget);
+    },
+  );
+
+  sweepScreen(
+    'Replaced, sent for review',
+    build: () => PublishPage(draft: _draft(layers: false, source: mine)),
+    backend: () => replaceBackend(
+        {'public_visibility': false, 'bumped': false, 'bump_skipped_reason': 'not_trusted'}),
+    prefs: _rulesAccepted,
+    overrides: (b) => clubOverrides(backend: b),
+    allowLatin: _fixture,
+    act: (tester) async {
+      await tapReplace(tester);
+      await tester.tap(
+          find.descendant(of: find.byType(AlertDialog), matching: find.byType(FilledButton)));
+      await landed(tester, Icons.hourglass_empty);
+    },
+  );
+
+  sweepScreen(
+    'Replaced, back at the top of feeds',
+    build: () => PublishPage(draft: _draft(layers: false, source: mine)),
+    backend: () => replaceBackend({
+      'public_visibility': true,
+      'bumped': true,
+      'bump_available_at': '2026-10-09T12:00:00+00:00',
+    }),
+    prefs: _rulesAccepted,
+    overrides: (b) => clubOverrides(me: fixtureMe(canPostPublic: true), backend: b),
+    allowLatin: _fixture,
+    act: (tester) async {
+      await tapReplace(tester);
+      await landed(tester, Icons.check_circle);
+    },
+  );
+
+  sweepScreen(
+    'Replaced, on the weekly cooldown',
+    build: () => PublishPage(draft: _draft(layers: false, source: mine)),
+    backend: () => replaceBackend({
+      'public_visibility': true,
+      'bumped': false,
+      'bump_skipped_reason': 'cooldown',
+      'bump_available_at': '2026-10-09T12:00:00+00:00',
+    }),
+    prefs: _rulesAccepted,
+    overrides: (b) => clubOverrides(me: fixtureMe(canPostPublic: true), backend: b),
+    allowLatin: _fixture,
+    act: (tester) async {
+      await tapReplace(tester);
+      await landed(tester, Icons.check_circle);
+    },
+  );
+
   sweepScreen(
     'Publish, signed out',
     build: () => PublishPage(draft: _draft()),

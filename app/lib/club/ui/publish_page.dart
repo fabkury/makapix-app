@@ -11,6 +11,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../models/license_option.dart';
 import '../models/mention_markup.dart';
 import '../models/post.dart';
+import '../models/replace_result.dart';
 import '../models/server_config.dart';
 import '../publish/conformance.dart';
 import '../publish/provenance_fields.dart';
@@ -54,6 +55,9 @@ class _PublishPageState extends ConsumerState<PublishPage> {
   // Set only by the user's explicit choice in the lineage-refusal dialog (a declared parent is
   // gone or no longer Remixable): retry the publish without `remixed_from`. Never automatic.
   bool _stripRemixClaim = false;
+  // Replace only: ask the server to move the post back to the top of the feeds (feed bump).
+  // On by default, as the server's own default; turned off for small fixes.
+  bool _bump = true;
   String _appVersion = '';
 
   /// The draft starts as [widget.draft] but the scale-to-nearest remedy can
@@ -107,7 +111,7 @@ class _PublishPageState extends ConsumerState<PublishPage> {
     }
     final pub = ref.watch(publishControllerProvider);
     if (pub.status == PublishStatus.success) {
-      return _Success(post: pub.post);
+      return pub.replaced != null ? _Replaced(result: pub.replaced!) : _Success(post: pub.post);
     }
     final cfg = ref.watch(serverConfigProvider).valueOrNull ?? ClubServerConfig.fallback;
     return Scaffold(
@@ -238,9 +242,16 @@ class _PublishPageState extends ConsumerState<PublishPage> {
           ),
         const SizedBox(height: 4),
         if (d.source != null && d.source!.isOwner) ...[
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(l10n.publishBump),
+            subtitle: Text(l10n.publishBumpSubtitle, style: const TextStyle(fontSize: 12)),
+            value: _bump,
+            onChanged: uploading ? null : (v) => setState(() => _bump = v),
+          ),
           FilledButton.icon(
             style: FilledButton.styleFrom(backgroundColor: const Color(0xFF4080C0)),
-            onPressed: (result.ok && !uploading) ? _replace : null,
+            onPressed: (result.ok && !uploading) ? () => _confirmReplace(canPostPublic) : null,
             icon: const Icon(Icons.published_with_changes),
             label: Text(l10n.publishReplace),
           ),
@@ -364,12 +375,37 @@ class _PublishPageState extends ConsumerState<PublishPage> {
     }
   }
 
+  /// An owner without Trust sends the replacement back to moderation: the post
+  /// leaves public feeds until a moderator approves it (feed bump 0001 §1b).
+  /// Say so before, not after — the post may have been public for months.
+  Future<void> _confirmReplace(bool canPostPublic) async {
+    if (!canPostPublic) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(ctx.l10n.publishReplaceReviewTitle),
+          content: Text(ctx.l10n.publishReplaceReviewBody),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(ctx.l10n.commonCancel)),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(ctx.l10n.publishReplace),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true || !mounted) return;
+    }
+    await _replace();
+  }
+
   Future<void> _replace() async {
     final d = _draft;
     await ref.read(publishControllerProvider.notifier).replace(
           postId: d.source!.postId,
           bytes: d.bytes,
           filename: d.filename,
+          bump: _bump,
           provenanceFields: _provenanceFields(replacing: true),
         );
     if (!mounted) return;
@@ -565,6 +601,70 @@ class _Success extends ConsumerWidget {
                 Navigator.of(context).pop();
               },
               child: Text(context.l10n.publishedBack),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// After a replace: the artwork changed in place; says where the post now
+/// stands — back at the top, waiting for a moderator, or on the weekly
+/// cooldown (feed bump 0001 §3.2).
+class _Replaced extends ConsumerWidget {
+  final ReplaceResult result;
+  const _Replaced({required this.result});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    final sqid = result.post.sqid;
+    final availableAt = result.bumpAvailableAt;
+    final detail = result.pendingReview
+        ? l10n.replacedPendingReview
+        : result.bumped
+            ? l10n.replacedBumped
+            : result.onCooldown && availableAt != null
+                ? l10n.replacedCooldown(availableAt.toLocal())
+                : null;
+    return Scaffold(
+      appBar: AppBar(
+          title: Text(result.pendingReview ? l10n.replacedReviewTitle : l10n.replacedTitle)),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            result.pendingReview
+                ? const Icon(Icons.hourglass_empty, color: Colors.amber, size: 56)
+                : const Icon(Icons.check_circle, color: Color(0xFF00C853), size: 56),
+            const SizedBox(height: 12),
+            Text(l10n.replacedBody,
+                textAlign: TextAlign.center, style: const TextStyle(fontSize: 18)),
+            if (detail != null) ...[
+              const SizedBox(height: 8),
+              Text(detail,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 14, color: Colors.white70)),
+            ],
+            const SizedBox(height: 24),
+            if (sqid.isNotEmpty)
+              FilledButton.icon(
+                onPressed: () {
+                  ref.read(publishControllerProvider.notifier).reset();
+                  Navigator.pushReplacement(
+                      context, MaterialPageRoute(builder: (_) => ArtworkDetailPage(sqid: sqid)));
+                },
+                icon: const Icon(Icons.open_in_new),
+                label: Text(l10n.publishedView),
+              ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () {
+                ref.read(publishControllerProvider.notifier).reset();
+                Navigator.of(context).pop();
+              },
+              child: Text(l10n.publishedBack),
             ),
           ]),
         ),
