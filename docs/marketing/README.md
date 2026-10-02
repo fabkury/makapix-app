@@ -6,12 +6,13 @@ shares). One asset per highlighted feature, plus a hero banner. Style: near-blac
 
 ## Format matrix
 
-Every feature composition is rendered to four canvases:
+Every feature composition is rendered to five canvases:
 
 | Target                | Size (px)   | Notes                                          |
 |-----------------------|-------------|------------------------------------------------|
 | Play Store screenshot | 1080×1920   | 9:16 (Play caps aspect at 2:1), 24-bit, ≤8 MB |
 | App Store screenshot  | 1320×2868   | iPhone 6.9" portrait, scales down              |
+| App Store iPad        | 2064×2752   | 13" iPad Pro portrait (square layouts)         |
 | Social landscape      | 1200×630    | Discord/Reddit/OpenGraph                       |
 | Social square         | 1080×1080   | feeds                                          |
 
@@ -79,6 +80,48 @@ every language (user decision): senna has no real recording, and the slide's eng
 filmstrip carries the point. Shot tooling (adb, per-language scripts) is described in
 `docs/i18n/PLAN.md`, L4.
 
+## Languages (2026-10-02)
+
+The slides exist in all eight app languages. Copy lives in `src/copy/<lang>.json`, one file per
+language with the same keys as `en.json` (the build refuses a file with a key missing). Keys ending
+in `.sub` are sentence-case sublines in the system sans; every other string is drawn in Press
+Start 2P and is written in capitals. A leading `+` marks a highlighted chip. Terms follow the
+app's own ARB strings (tool names, blend modes) and `docs/i18n/GLOSSARY.md`; each language's copy
+was checked by an independent native-level review.
+
+| | outputs |
+|---|---|
+| `en` | every format: `out/<format>/`, `out/play_feature_graphic.png` |
+| es, pt, fr, de, ru, ja, zh | store formats only: `out/<lang>/{play,appstore,ipad}/`, `out/<lang>/play_feature_graphic.png` (`--all-formats` adds social/square) |
+
+Decisions and mechanics:
+
+- **Store formats must fit; social/square only warn.** After each render the page reports any
+  text that wraps a word, overflows its box, or pushes the slide past its height; a store-format
+  misfit fails the build.
+- **Accented capitals.** Press Start 2P draws Ó, Ü, Ё, Й... as a shrunken letter under its mark,
+  which reads as lowercase in a headline. The build (`_lift_accents`) draws the full-size capital
+  and lifts the font's own spacing mark one font pixel above it; Ç and Œ use the font's glyphs.
+  Sublines (`.sub`) are untouched. Languages with lifted accents get a quarter em more chip
+  padding, top and bottom, so a mark never touches a chip border.
+- **Numbers** are written as the store listings write them: 1024 without a separator outside
+  English.
+- **CJK.** Japanese and Chinese headlines and labels use Noto Sans JP / SC (bold, regular style,
+  user decision) after Press Start 2P, which still draws their Latin letters and digits. The build
+  subsets the full fonts to the characters the copy uses into `src/fonts/Noto*-slides.woff2`
+  (committed, ~100-160 KB) and checks coverage. The full fonts are not committed: to change ja/zh
+  copy, put `NotoSansJP.ttf` / `NotoSansSC.ttf` (the variable fonts from github.com/google/fonts,
+  `ofl/notosansjp`, `ofl/notosanssc`) in `src/fonts/cache/` first.
+- **Prices** use each store's currency (R$ 0, 0 €, 0 ₽, ¥0), with a 0.35 em `.gap` span in place
+  of the space, which the monospace font would draw a full cell wide; Spanish says GRATIS
+  because one Spanish set serves both es-419 and es-ES.
+- **Phone crops** come from `shots/<lang>/` (above); `art/crops/<lang>/` is generated and ignored.
+- Chrome renders with `--disable-lcd-text`, so pixel-font edges are grayscale, not color-fringed.
+
+Build one language or slide: `python docs/marketing/src/build.py --lang de [--all-formats] [hero free ...]`
+(from the repo root). Store mapping: Play takes `out/<lang>/play/` + the feature graphic (es
+for both es-419 and es-ES); the App Store takes `appstore/` (6.9" iPhone) and `ipad/` (13" iPad).
+
 ## Pipeline (reproducible)
 
 - `src/engine/*.txt` — mkpx DSL scripts; rendered via `cargo run -p makapix-cli` `render` probes
@@ -91,7 +134,9 @@ filmstrip carries the point. Shot tooling (adb, per-language scripts) is describ
   HTML page per (slide × format) into `src/_build/`, renders each with headless Chrome
   (`--screenshot --window-size=W,H --force-device-scale-factor=1`) into `out/<target>/`,
   then verifies exact pixel dimensions with Pillow and flattens to RGB.
-- `src/fonts/` — Press Start 2P (headlines), bundled with its OFL license.
+- `src/copy/` — the slide text, one JSON file per language (see Languages).
+- `src/fonts/` — Press Start 2P (headlines) and the Noto Sans JP/SC slide subsets, bundled with
+  their OFL licenses (`OFL.txt`, `OFL-NotoSans.txt`); `cache/` (ignored) holds the full CJK fonts.
 - `art/fab/` — Fab's own original published artworks (the generative #cgen pieces), pulled
   from the public API for the hero strip. Fan-art posts are deliberately excluded: no
   third-party game IP may appear in store marketing.

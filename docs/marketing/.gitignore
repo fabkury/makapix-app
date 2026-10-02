@@ -2,3 +2,11 @@ src/_build/
 out/_sheet_*.png
 art/_*
 shots/_*
+src/fonts/cache/
+art/crops/es/
+art/crops/pt/
+art/crops/fr/
+art/crops/de/
+art/crops/ru/
+art/crops/ja/
+art/crops/zh/

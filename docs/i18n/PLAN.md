@@ -23,13 +23,12 @@ are the acceptance test.
 | L3 | Independent translation review (one agent per language), fixes, layout hardening | **done 2026-10-02** |
 | L4 | Seams and periphery, then flip `kTranslationsShipped` | in progress (engine and server text done) |
 
-**Next steps (2026-10-02):** the live pass is done. Left: the store slides per language (they
-need phone shots from the Pixel without the user's own art on screen, and Noto Sans CJK for
-ja/zh headlines), release notes, the App Store listing (blocked on the expired agreement), and
-the flip, which also uploads the eight Play listings (files ready in `docs/i18n/flip/` and
-`distribution/listings/`). Gates on the current code: analyzer clean,
-`flutter test` 7,815 passed, every sweep passes at 1.3×, `flutter test test_engine` 72 of 72 at
-1.0× and at 1.3×.
+**Next steps (2026-10-02):** the live pass and the store slides are done. Left: release notes,
+the App Store listing (blocked on the expired agreement), and the flip, which also uploads the
+eight Play listings and the per-language slides (files ready in `docs/i18n/flip/`,
+`distribution/listings/` and `docs/marketing/out/<lang>/`). Gates on the current code: analyzer
+clean, `flutter test` 7,817 passed, every sweep passes at 1.3×, `flutter test test_engine` 72 of
+72 at 1.0× and at 1.3×.
 
 The lowercase pass (`scan.dart --list --lower`, 239 words) is done: every one is a wire
 value, a menu or tool id, a file format, a font name, or the fallback handle "unknown"
@@ -390,21 +389,19 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   brief `review/BRIEF-listing.md`). App Store blocked on the expired agreement (Findings outside
   i18n). Release notes per language: at the flip. User decision 2026-10-02: all eight Play
   languages go live together at the flip, the corrected English too.
-- [ ] **Store screenshots** per language through the store-slide pipeline. Phone shots done
-  2026-10-02: `docs/marketing/shots/<lang>/`, six per language, all reviewed for third-party IP
-  (table and decisions in `docs/marketing/README.md`). Method: the preview build on the Pixel;
-  `cmd locale set-app-locales` per language; a script per language that drives the editor with
-  `input tap/swipe` (never start a swipe at a screen edge: that is Android's back gesture; never
-  start one on a slider); option-row buttons found by their labels in `uiautomator dump`, the
-  pattern swatch by its green color. The phone's settings were restored afterwards. Left: the
-  slide build per language (`build.py`: per-language copy, the crops above, Noto Sans CJK for
-  ja/zh headlines, no replay phone panel). Original item:
-  (`docs/marketing/`). Depends on two things (found 2026-10-02): the slides embed real phone
-  screenshots (`docs/marketing/shots/`, English UI), so each language needs its own from the
-  live pass on the Pixel; and the headline font, Press Start 2P, has no Japanese or Chinese
-  glyphs, so those two need an OFL pixel font with CJK (candidates to check: DotGothic16,
-  Zpix) or a decision to keep their headlines in a regular font. User decision 2026-10-02:
-  a regular font, Noto Sans CJK (OFL), for the Japanese and Chinese headlines.
+- [x] **Store screenshots** per language (done 2026-10-02): `docs/marketing/out/<lang>/`
+  (Play, App Store iPhone and iPad, feature graphic) from `docs/marketing/src/copy/<lang>.json`;
+  mechanics and decisions in `docs/marketing/README.md`, Languages. Phone shots:
+  `docs/marketing/shots/<lang>/`, six per language, all reviewed for third-party IP. Method: the
+  preview build on the Pixel; `cmd locale set-app-locales` per language; a script per language
+  that drives the editor with `input tap/swipe` (never start a swipe at a screen edge: that is
+  Android's back gesture; never start one on a slider); option-row buttons found by their labels
+  in `uiautomator dump`, the pattern swatch by its green color. User decisions: Noto Sans CJK
+  (regular style) for ja/zh headlines; no replay phone panel. Found while building: Press Start
+  2P draws accented capitals as small letters ("CóDIGO"), so the build lifts the mark above a
+  full-size capital; the fit check now fails any store slide whose text wraps a word or
+  overflows (it caught three latent English defects, fixed); copy reviewed per language by an
+  independent agent, findings applied.
 - [ ] Flip `kTranslationsShipped` to `true`; update README, STATUS.md, CLAUDE.md; release notes.
 
 ## Open questions and risks
@@ -527,6 +524,9 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 
 ## Session log
 
+- **2026-10-02** — Store slides in all eight languages (L4): per-language copy files, Noto Sans
+  JP/SC subsets, lifted accents for Press Start 2P capitals, grayscale text rendering, a fit check
+  that fails store slides, Spanish price as GRATIS (one set serves es-419 and es-ES).
 - **2026-10-02** — Selected option chips showed two check marks ("✓ AA ✔": Material's plus a
   "✔" the editor added to the label). User decisions: keep Material's only; Lock Ratio keeps its
   words when on (it shortened to "Ratio ✔"); the Pencil's pattern swatch shows the same check
