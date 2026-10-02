@@ -489,7 +489,7 @@
   "statsByDevice": "デバイス別の閲覧数",
   "statsByType": "種類別の閲覧数",
   "statsByEmoji": "絵文字別のリアクション",
-  "statsDevice": "{device, select, desktop{パソコン} mobile{モバイル} tablet{タブレット} player{プレーヤー} unknown{不明} other{{device}}}",
+  "statsDevice": "{device, select, desktop{パソコン} mobile{モバイル} tablet{タブレット} player{プレーヤー} unknown{不明} app{アプリ} app_ios{iOS アプリ} app_android{Android アプリ} other{{device}}}",
   "statsColTitle": "タイトル",
   "statsColReactions": "反応",
   "statsColComments": "コメント",

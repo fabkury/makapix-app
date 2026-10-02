@@ -62,6 +62,22 @@ void main() {
     });
   });
 
+  testWidgets('statistics bucket names: known ones translated, new ones shown as sent', (tester) async {
+    await inLocale(tester, 'en', () {
+      expect(statsBucketLabel('app_ios'), 'iOS app');
+      expect(statsBucketLabel('app_android'), 'Android app');
+      expect(statsBucketLabel('desktop'), 'Desktop');
+      expect(statsBucketLabel('smartwatch'), 'Smartwatch');
+      expect(statsViewTypeLabel('impression'), 'In a feed');
+      expect(statsViewTypeLabel('newkind'), 'Newkind');
+    });
+    await tester.pumpWidget(const SizedBox());
+    await inLocale(tester, 'de', () {
+      expect(statsBucketLabel('app_ios'), 'iOS-App');
+      expect(statsBucketLabel('mobile'), 'Mobilgerät');
+    });
+  });
+
   testWidgets("decimals on screen use the language's separator, with no grouping", (tester) async {
     await inLocale(tester, 'en', () {
       expect(fmtFixed(1.25, 2), '1.25');

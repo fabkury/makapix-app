@@ -489,7 +489,7 @@
   "statsByDevice": "Просмотры по устройствам",
   "statsByType": "Просмотры по типам",
   "statsByEmoji": "Реакции по эмодзи",
-  "statsDevice": "{device, select, desktop{Компьютер} mobile{Телефон} tablet{Планшет} player{Плеер} unknown{Неизвестно} other{{device}}}",
+  "statsDevice": "{device, select, desktop{Компьютер} mobile{Телефон} tablet{Планшет} player{Плеер} unknown{Неизвестно} app{Приложение} app_ios{Приложение iOS} app_android{Приложение Android} other{{device}}}",
   "statsColTitle": "Название",
   "statsColReactions": "Реакц.",
   "statsColComments": "Комм.",

@@ -489,7 +489,7 @@
   "statsByDevice": "Vues par appareil",
   "statsByType": "Vues par type",
   "statsByEmoji": "Réactions par emoji",
-  "statsDevice": "{device, select, desktop{Ordinateur} mobile{Mobile} tablet{Tablette} player{Lecteur} unknown{Inconnu} other{{device}}}",
+  "statsDevice": "{device, select, desktop{Ordinateur} mobile{Mobile} tablet{Tablette} player{Lecteur} unknown{Inconnu} app{Application} app_ios{Application iOS} app_android{Application Android} other{{device}}}",
   "statsColTitle": "Titre",
   "statsColReactions": "Réact.",
   "statsColComments": "Comm.",

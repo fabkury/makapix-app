@@ -991,7 +991,7 @@
   "@statsByType": {"description": "Section heading: views broken down by how the artwork was viewed."},
   "statsByEmoji": "Reactions by emoji",
   "@statsByEmoji": {"description": "Section heading: reactions broken down by emoji."},
-  "statsDevice": "{device, select, desktop{Desktop} mobile{Mobile} tablet{Tablet} player{Player} unknown{Unknown} other{{device}}}",
+  "statsDevice": "{device, select, desktop{Desktop} mobile{Mobile} tablet{Tablet} player{Player} unknown{Unknown} app{App} app_ios{iOS app} app_android{Android app} other{{device}}}",
   "@statsDevice": {"description": "A device type in the statistics breakdown. {device} is the server's device id.", "placeholders": {"device": {"type": "String"}}},
   "statsColTitle": "Title",
   "@statsColTitle": {"description": "Column heading in the dashboard's post table: the artwork title."},

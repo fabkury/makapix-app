@@ -489,7 +489,7 @@
   "statsByDevice": "按设备统计浏览量",
   "statsByType": "按类型统计浏览量",
   "statsByEmoji": "按表情统计回应",
-  "statsDevice": "{device, select, desktop{电脑} mobile{手机} tablet{平板} player{播放器} unknown{未知} other{{device}}}",
+  "statsDevice": "{device, select, desktop{电脑} mobile{手机} tablet{平板} player{播放器} unknown{未知} app{应用} app_ios{iOS 应用} app_android{Android 应用} other{{device}}}",
   "statsColTitle": "标题",
   "statsColReactions": "回应",
   "statsColComments": "评论",

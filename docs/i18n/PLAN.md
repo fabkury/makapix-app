@@ -23,11 +23,11 @@ are the acceptance test.
 | L3 | Independent translation review (one agent per language), fixes, layout hardening | **done 2026-10-02** |
 | L4 | Seams and periphery, then flip `kTranslationsShipped` | in progress (engine and server text done) |
 
-**Next steps (2026-10-02):** what is left needs the user or a device: the live pass on the
-Pixel (wireless debugging on; it also produces the per-language phone shots the store slides
-embed) and the App Store agreement; then the store slides (Noto Sans CJK for ja/zh headlines),
-release notes, and the flip, which also uploads the eight Play listings (files ready in
-`docs/i18n/flip/` and `distribution/listings/`). Gates on the current code: analyzer clean,
+**Next steps (2026-10-02):** the live pass is done. Left: the store slides per language (they
+need phone shots from the Pixel without the user's own art on screen, and Noto Sans CJK for
+ja/zh headlines), release notes, the App Store listing (blocked on the expired agreement), and
+the flip, which also uploads the eight Play listings (files ready in `docs/i18n/flip/` and
+`distribution/listings/`). Gates on the current code: analyzer clean,
 `flutter test` 7,815 passed, every sweep passes at 1.3×, `flutter test test_engine` 72 of 72 at
 1.0× and at 1.3×.
 
@@ -367,8 +367,24 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 - [x] Release gates, done 2026-10-02: `flutter gen-l10n` was already a gate (L0); `flutter test
   test_engine` now runs after `flutter test`, building the release DLL first (about 35 min;
   `-SkipGates` skips all gates). CLAUDE.md and `docs/play-release.md` updated.
-- [ ] **Live pass**: Windows build and the Pixel over wireless adb — per language, screenshot the
-  key screens; confirm device-language pickup and the override surviving a restart.
+- [x] **Live pass**, done 2026-10-02. Windows: see the Windows item. Pixel 10 Pro XL (Android
+  17) over wireless adb, a release build with `--dart-define=L10N_PREVIEW=true`:
+  - the app follows the device language (set through Android's per-app language,
+    `adb shell cmd locale set-app-locales club.makapix.app --locales ja`, which is the language
+    the app sees as the device's; the phone's own language list was not touched);
+  - a language chosen in Settings applies live and survives a cold start, against a different
+    device language; "System default" names the device language it follows;
+  - the editor's main screen and ☰ menu in all eight languages: every row-3 tile label fits,
+    menus wrap where needed, the phone's own fonts render every script;
+  - Club menu, Settings, notifications (real server data: plurals, emoji, word order) and the
+    Artist dashboard in several languages.
+  Found and fixed: the statistics showed the device types `app`, `app_ios`, `app_android`
+  (messages/0001-app-device-type) raw as "App_ios", in English too; they are now named in every
+  language (test in `formatting_test.dart`). Still raw by design: country codes (US, VN).
+  Afterwards the phone was put back: per-app language cleared, the app's own language left at
+  System default, and the normal release build reinstalled (1.11.0 from `main`, translations
+  off; the phone had 1.10.0 before). The PC had to be re-paired with the phone first (the
+  phone had forgotten it: `SSLV3_ALERT_CERTIFICATE_UNKNOWN`).
 - [ ] **Store listings**: Play drafted 2026-10-02 in `distribution/listings/play/` (eight
   languages, limits checked; README there), under independent review (`review/listing-<lang>.md`,
   brief `review/BRIEF-listing.md`). App Store blocked on the expired agreement (Findings outside
@@ -503,6 +519,8 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 
 ## Session log
 
+- **2026-10-02** — Live pass on the Pixel (L4): language pickup, override and restart, the
+  editor in all eight languages, real Club data. One fix (statistics device names).
 - **2026-10-02** — Screenshot review (first ~50 sheets) and the store listings. Fixes listed
   under L3. Play listings drafted in eight languages and reviewed (`review/listing-*.md`; no
   high findings, all mediums applied). Two harness detectors added (squeezed and clipped
