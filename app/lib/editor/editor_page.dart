@@ -622,9 +622,9 @@ class _EditorPageState extends ConsumerState<EditorPage>
   String get _symLabel {
     final l10n = context.l10n;
     return switch (_symMode) {
-      1 => '${l10n.mirrorChipH} ✔',
-      2 => '${l10n.mirrorChipV} ✔',
-      3 => '${l10n.mirrorChipBoth} ✔',
+      1 => l10n.mirrorChipH,
+      2 => l10n.mirrorChipV,
+      3 => l10n.mirrorChipBoth,
       _ => l10n.mirrorChip,
     };
   }

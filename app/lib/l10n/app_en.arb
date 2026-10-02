@@ -2000,7 +2000,7 @@
   "optLockRatio": "Lock Ratio",
   "@optLockRatio": {"description": "Tool options row (one line above the palette, scrolls sideways). Keep it short. Chip: lock the width-to-height ratio of the shape or selection."},
   "optRatio": "Ratio",
-  "@optRatio": {"description": "Tool options row (one line above the palette, scrolls sideways). Keep it short. Slider label and the short form of the lock chip while it is on: width-to-height ratio. Shown as \"Ratio 1.00\"."},
+  "@optRatio": {"description": "Tool options row (one line above the palette, scrolls sideways). Keep it short. Slider label: width-to-height ratio. Shown as \"Ratio 1.00\"."},
   "optLinear": "Linear",
   "@optLinear": {"description": "Tool options row (one line above the palette, scrolls sideways). Keep it short. Toggle segment (Gradient): a straight gradient."},
   "optRadial": "Radial",

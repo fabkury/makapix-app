@@ -63,7 +63,7 @@ slides, taken on the Pixel 10 Pro XL with the language-preview build (`L10N_PREV
 
 | file | state | crop it feeds |
 |---|---|---|
-| `hero_senna.png` | editor, @birds' "senna fixed", Pencil | `hero_senna_app` |
+| `hero_senna.png` | editor, @birds' "senna fixed", Pencil, pattern Off | `hero_senna_app` |
 | `row1_pattern.png` | Pencil options row scrolled to its end, pattern On | `row1_pattern` |
 | `patterns_page.png` | Patterns page, first Recent pattern selected | `patterns_page_app` |
 | `select_union.png` | Select tool, Oval + Add (row only; the canvas is senna) | `select_row` |

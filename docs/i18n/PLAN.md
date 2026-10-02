@@ -527,6 +527,11 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 
 ## Session log
 
+- **2026-10-02** — Selected option chips showed two check marks ("✓ AA ✔": Material's plus a
+  "✔" the editor added to the label). User decisions: keep Material's only; Lock Ratio keeps its
+  words when on (it shortened to "Ratio ✔"); the Pencil's pattern swatch shows the same check
+  before its tile; the hero store shot has the pattern Off. Test: `editor_check_mark_test.dart`.
+  Re-shot `hero_senna`, `row1_pattern`, `row1_aa` in all eight languages.
 - **2026-10-02** — Live pass on the Pixel (L4): language pickup, override and restart, the
   editor in all eight languages, real Club data. One fix (statistics device names).
 - **2026-10-02** — Screenshot review (first ~50 sheets) and the store listings. Fixes listed

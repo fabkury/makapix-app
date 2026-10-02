@@ -117,8 +117,8 @@ extension _EditorControls on _EditorPageState {
 
   Widget _buildToolOptions() {
     final l10n = context.l10n;
-    // A chip that is on wears a check after its label.
-    String chk(String s, bool on) => on ? '$s ✔' : s;
+    // A chip that is on shows its state by Material's own check mark and the green fill; the label
+    // is the same words on and off (no second, text check mark).
     // The Layer / Frame scope toggle most tools share.
     final scope = [l10n.optLayer, l10n.optFrame];
     final children = <Widget>[];
@@ -224,7 +224,7 @@ extension _EditorControls on _EditorPageState {
           padding: const EdgeInsets.symmetric(horizontal: 3),
           child: FilterChip(
             selected: _penDown,
-            label: Text(chk(l10n.optHold, _penDown)),
+            label: Text(l10n.optHold),
             selectedColor: const Color(0xFF30A050),
             onSelected: (v) {
               setState(() => _penDown = v);
@@ -261,7 +261,7 @@ extension _EditorControls on _EditorPageState {
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: FilterChip(
           selected: _wrap,
-          label: Text(chk(l10n.optWrap, _wrap)),
+          label: Text(l10n.optWrap),
           selectedColor: const Color(0xFF30A050),
           onSelected: (v) {
             setState(() => _wrap = v);
@@ -291,7 +291,7 @@ extension _EditorControls on _EditorPageState {
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: FilterChip(
           selected: _rulerPinned,
-          label: Text(chk(l10n.optPin, _rulerPinned)),
+          label: Text(l10n.optPin),
           selectedColor: const Color(0xFF30A050),
           onSelected: _hasRuler ? (v) => setState(() => _rulerPinned = v) : null,
         ),
@@ -355,7 +355,7 @@ extension _EditorControls on _EditorPageState {
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: FilterChip(
           selected: _perfect,
-          label: Text(chk(l10n.optPerfect, _perfect)),
+          label: Text(l10n.optPerfect),
           selectedColor: const Color(0xFF30A050),
           onSelected: perfectEnabled
               ? (v) {
@@ -388,7 +388,7 @@ extension _EditorControls on _EditorPageState {
           message: gated ? l10n.optAaGated : '',
           child: FilterChip(
             selected: _aa,
-            label: Text(chk('AA', _aa)), // l10n-ignore: AA is never translated (GLOSSARY)
+            label: Text('AA'), // l10n-ignore: AA is never translated (GLOSSARY)
             selectedColor: const Color(0xFF30A050),
             onSelected: gated
                 ? null
@@ -425,7 +425,7 @@ extension _EditorControls on _EditorPageState {
           padding: const EdgeInsets.symmetric(horizontal: 3),
           child: FilterChip(
             selected: _diagonal,
-            label: Text(chk(l10n.optDiagonal, _diagonal)),
+            label: Text(l10n.optDiagonal),
             selectedColor: const Color(0xFF30A050),
             tooltip: l10n.optDiagonalTip,
             onSelected: (v) {
@@ -452,7 +452,7 @@ extension _EditorControls on _EditorPageState {
           padding: const EdgeInsets.symmetric(horizontal: 3),
           child: FilterChip(
             selected: _fillAllLayers,
-            label: Text(chk(l10n.optAllLayers, _fillAllLayers)),
+            label: Text(l10n.optAllLayers),
             selectedColor: const Color(0xFF30A050),
             onSelected: (v) {
               setState(() => _fillAllLayers = v);
@@ -501,7 +501,7 @@ extension _EditorControls on _EditorPageState {
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: FilterChip(
           selected: _lockRatio,
-          label: Text(_lockRatio ? chk(l10n.optRatio, true) : l10n.optLockRatio),
+          label: Text(l10n.optLockRatio),
           selectedColor: const Color(0xFF30A050),
           onSelected: (v) {
             setState(() => _lockRatio = v);
@@ -533,7 +533,7 @@ extension _EditorControls on _EditorPageState {
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: FilterChip(
           selected: _gradSmooth,
-          label: Text(chk(l10n.optSmoothstep, _gradSmooth)),
+          label: Text(l10n.optSmoothstep),
           selectedColor: const Color(0xFF30A050),
           onSelected: (v) {
             setState(() => _gradSmooth = v);
@@ -661,7 +661,7 @@ extension _EditorControls on _EditorPageState {
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: FilterChip(
           selected: _selLockRatio,
-          label: Text(_selLockRatio ? chk(l10n.optRatio, true) : l10n.optLockRatio),
+          label: Text(l10n.optLockRatio),
           selectedColor: const Color(0xFF30A050),
           onSelected: (v) {
             setState(() => _selLockRatio = v);
@@ -857,7 +857,7 @@ extension _EditorControls on _EditorPageState {
           padding: const EdgeInsets.symmetric(horizontal: 3),
           child: FilterChip(
             selected: _cleanEdge,
-            label: Text(chk('cleanEdge', _cleanEdge)), // l10n-ignore: the algorithm's name
+            label: Text('cleanEdge'), // l10n-ignore: the algorithm's name
             selectedColor: const Color(0xFF30A050),
             onSelected: (v) {
               setState(() => _cleanEdge = v);
@@ -904,7 +904,7 @@ extension _EditorControls on _EditorPageState {
           padding: const EdgeInsets.symmetric(horizontal: 3),
           child: FilterChip(
             selected: _resizeCleanEdge,
-            label: Text(chk('cleanEdge', _resizeCleanEdge)), // l10n-ignore: the algorithm's name
+            label: Text('cleanEdge'), // l10n-ignore: the algorithm's name
             selectedColor: const Color(0xFF30A050),
             onSelected: (v) {
               setState(() => _resizeCleanEdge = v);
@@ -939,7 +939,7 @@ extension _EditorControls on _EditorPageState {
           padding: const EdgeInsets.symmetric(horizontal: 3),
           child: FilterChip(
             selected: _resizeLockRatio,
-            label: Text(chk(l10n.optLock, _resizeLockRatio)),
+            label: Text(l10n.optLock),
             selectedColor: const Color(0xFF30A050),
             onSelected: (v) {
               setState(() => _resizeLockRatio = v);
@@ -1137,7 +1137,7 @@ extension _EditorControls on _EditorPageState {
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: FilterChip(
           selected: _slowDrafts,
-          label: Text(_slowDrafts ? '${context.l10n.optSlow} ✔' : context.l10n.optSlow),
+          label: Text(context.l10n.optSlow),
           tooltip: context.l10n.optSlowTip,
           selectedColor: const Color(0xFF30A050),
           onSelected: (v) => setState(() => _slowDrafts = v),
@@ -1260,7 +1260,7 @@ extension _EditorControls on _EditorPageState {
   void _cycleSymmetry({bool fromKey = false}) {
     _setSymmetry((_symMode + 1) % 4);
     if (fromKey && !_kMirrorTools.contains(_tool)) {
-      _toast(_symOn ? _symLabel.replaceAll(' ✔', '') : context.l10n.mirrorOffToast);
+      _toast(_symOn ? _symLabel : context.l10n.mirrorOffToast);
     }
   }
 
@@ -1463,12 +1463,14 @@ extension _EditorControls on _EditorPageState {
               border: Border.all(color: on ? const Color(0xFF30A050) : Colors.white24),
               borderRadius: BorderRadius.circular(8),
             ),
+            // When on, the same check mark the option chips show, in the same place (before the
+            // content).
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              tileBox,
               if (on) ...[
-                const SizedBox(width: 5),
-                const Text('✔', style: TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w600)),
+                const Icon(Icons.check, size: 18, color: Colors.white),
+                const SizedBox(width: 4),
               ],
+              tileBox,
             ]),
           ),
         ),
