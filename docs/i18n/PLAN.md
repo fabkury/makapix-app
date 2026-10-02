@@ -21,15 +21,16 @@ are the acceptance test.
 | L1 | Club pillar: extract + translate + sweep, batch by batch | **done 2026-10-01** (C1–C9) |
 | L2 | Editor pillar: extract + translate + sweep, batch by batch | **done 2026-10-01** (E0–E8) |
 | L3 | Independent translation review (one agent per language), fixes, layout hardening | **done 2026-10-02** |
-| L4 | Seams and periphery, then flip `kTranslationsShipped` | flipped 2026-10-02; release 1.12.0 in progress |
+| L4 | Seams and periphery, then flip `kTranslationsShipped` | **done 2026-10-02** (1.12.0) |
 
-**Next steps (2026-10-02):** the flip is committed (`kTranslationsShipped = true`, Android
-`locales_config.xml`, iOS `CFBundleLocalizations` + `InfoPlist.strings`, the notes in
-`distribution/whatsnew/`). Left: release 1.12.0 (user decision: straight to production on both
-stores): upload the eight Play listings and their slides **before** the release (Play may refuse
-notes in a language its listing lacks), `release_android.ps1`, then Codemagic → the App Store
-version with nine localizations (`distribution/listings/README.md` maps every field) → review.
-The first Codemagic build is the first real check of the iOS project change; record it here.
+**Status (2026-10-02): shipped in 1.12.0.** Google Play: 1.12.0 (39) rolling out to production,
+with the nine Play listings (text, slides, feature graphics) and release notes in nine languages;
+all gates passed (`flutter test` 7,817, `test_engine` 72/72). App Store: build 32 (Codemagic
+#41, all steps green: the hand-edited Xcode project built and the R2 gate passed) attached to
+1.12.0 with nine localizations (text, What's New, 10 iPhone + 10 iPad screenshots each),
+submitted, WAITING_FOR_REVIEW, releases automatically on approval. Left: watch the review
+verdict; check the iOS permission prompts in a translated language on a device when one is at
+hand (no one has yet).
 
 The lowercase pass (`scan.dart --list --lower`, 239 words) is done: every one is a wire
 value, a menu or tool id, a file format, a font name, or the fallback handle "unknown"
@@ -351,9 +352,10 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   2026-10-02: lands in the same commit as the `kTranslationsShipped` flip, never before — it
   advertises the languages to the system, and a release build would list seven it does not show.
   Done in the flip commit (2026-10-02).
-- [ ] **iOS**: `CFBundleLocalizations` in Info.plist; localized `NSPhotoLibraryUsageDescription` /
+- [x] **iOS**: `CFBundleLocalizations` in Info.plist; localized `NSPhotoLibraryUsageDescription` /
   `NSCameraUsageDescription` (`InfoPlist.strings`). First real check is the next Codemagic build
-  on TestFlight — record the result here. Same rule as Android: in the flip commit. Done in the
+  on TestFlight — record the result here. Result 2026-10-02: Codemagic #41 built and signed the
+  project with the variant group, R2 gate green, App Store build 32 VALID. Same rule as Android: in the flip commit. Done in the
   flip commit (2026-10-02): `app/ios/Runner/<lang>.lproj/InfoPlist.strings` (reviewed,
   `review/infoplist.md`), registered in the Runner target as a variant group by hand (no Xcode
   here), plus `knownRegions`.
@@ -387,7 +389,7 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   System default, and the normal release build reinstalled (1.11.0 from `main`, translations
   off; the phone had 1.10.0 before). The PC had to be re-paired with the phone first (the
   phone had forgotten it: `SSLV3_ALERT_CERTIFICATE_UNKNOWN`).
-- [ ] **Store listings**: Play drafted 2026-10-02 in `distribution/listings/play/` (eight
+- [x] **Store listings**: Play drafted 2026-10-02 in `distribution/listings/play/` (eight
   languages, limits checked; README there), reviewed (`review/listing-<lang>.md`, brief
   `review/BRIEF-listing.md`). App Store drafted 2026-10-02 after the user accepted the new
   agreement: `distribution/listings/appstore/<locale>.json` holds subtitle, promotional text and
@@ -395,7 +397,8 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   and the slides. User decisions 2026-10-02: all languages go live together with 1.12.0, the
   corrected English too; the App Store uses Play's description; subtitle "Pixel art studio &
   community"; evergreen promotional text; the refreshed English slides replace the live ones.
-  Open until uploaded.
+  Uploaded 2026-10-02: Play via `play_publish.py listings` (one edit, nine languages), App Store
+  on the 1.12.0 version.
 - [x] **Release notes** per language (done 2026-10-02): `distribution/whatsnew/`, one file per
   Play listing language (es-419 and es-ES share one text), reviewed per language; they waited in
   `docs/i18n/flip/` until the flip commit. The App Store's What's New takes the same text per
@@ -414,7 +417,8 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   full-size capital; the fit check now fails any store slide whose text wraps a word or
   overflows (it caught three latent English defects, fixed); copy reviewed per language by an
   independent agent, findings applied.
-- [ ] Flip `kTranslationsShipped` to `true`; update README, STATUS.md, CLAUDE.md; release notes.
+- [x] Flip `kTranslationsShipped` to `true`; update README, STATUS.md, CLAUDE.md; release notes
+  (2026-10-02, commit `6662262c`; released as 1.12.0).
 
 ## Open questions and risks
 
@@ -536,6 +540,8 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 
 ## Session log
 
+- **2026-10-02** — Released 1.12.0: Play production (39) with nine listings and notes; App
+  Store build 32 submitted with nine localizations. The workstream's L4 is done.
 - **2026-10-02** — The flip (L4): App Store listing drafted and reviewed in nine locales; the
   flip files moved into place, `kTranslationsShipped = true`, STATUS/README/CLAUDE updated.
 - **2026-10-02** — Release notes for the translations release in all nine Play languages,
