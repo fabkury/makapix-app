@@ -66,11 +66,26 @@ class HandleAvailability {
   final String message;
   const HandleAvailability({required this.handle, required this.available, required this.message});
 
-  factory HandleAvailability.fromJson(Map<String, dynamic> j) => HandleAvailability(
-        handle: (j['handle'] ?? '').toString(),
-        available: j['available'] == true,
-        message: (j['message'] ?? '').toString(),
-      );
+  factory HandleAvailability.fromJson(Map<String, dynamic> j) {
+    final available = j['available'] == true;
+    final raw = (j['message'] ?? '').toString();
+    return HandleAvailability(
+      handle: (j['handle'] ?? '').toString(),
+      available: available,
+      message: _shownMessage(available, raw),
+    );
+  }
+
+  /// The server's verdict in the user's language. Its sentence is English and has three
+  /// shapes: available, taken, or "Invalid handle: …" (format rules the app already checks
+  /// on the device, so rare). English keeps a refusal's own wording; elsewhere an unknown
+  /// refusal reads as a plain "can't be used" (messages/0005-localized-text/).
+  static String _shownMessage(bool available, String raw) {
+    final l = appL10n;
+    if (available) return l.handleAvailable;
+    if (raw.toLowerCase().contains('already taken')) return l.srvHandleTaken;
+    return l.localeName == 'en' && raw.isNotEmpty ? raw : l.handleUnavailable;
+  }
 }
 
 /// One linked authentication method from `GET /auth/providers`.

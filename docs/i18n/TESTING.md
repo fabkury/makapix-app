@@ -52,6 +52,11 @@ flutter test test_engine         # the real editor, in every language
 
 Sizes swept (`kSweepSizes`): 320×568, 360×740, 412×915, 800×1280, 1280×800.
 
+**Large text.** `flutter test test/l10n/ --dart-define=L10N_TEXT_SCALE=1.3` runs every sweep
+with the system font size raised (the Android "large" setting is about 1.3). `pumpLocalized`
+sets the test's text scale and clears it after the test. The default run stays at 1.0; the
+1.3 run is a separate check (see PLAN.md, L3, for what it found and what is accepted).
+
 ## Sweeping a Club or shared screen
 
 ```dart

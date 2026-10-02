@@ -30,7 +30,7 @@ class ClubError implements Exception {
       final err = body['error'];
       if (err is Map) {
         code = (err['code'] ?? code).toString();
-        message = (err['message'] ?? message).toString();
+        message = _translatedCode(code) ?? (err['message'] ?? message).toString();
       } else if (body['detail'] != null) {
         code = 'error';
         message = body['detail'].toString();
@@ -39,6 +39,41 @@ class ClubError implements Exception {
       message = body;
     }
     return ClubError(status: status, code: code, message: message, retryAfter: retryAfter);
+  }
+
+  /// The user's-language message for one of the server's specific error codes (api/app/
+  /// errors.py `ErrorCode`), or null to keep the server's own text. Generic codes
+  /// (bad_request, conflict, not_found, internal_error, …) carry varying server prose and keep
+  /// it (messages/0005-localized-text/).
+  static String? _translatedCode(String code) {
+    final l = appL10n;
+    return switch (code) {
+      'email_not_verified' => l.srvEmailNotVerified,
+      'weak_password' => l.srvWeakPassword,
+      'token_invalid' || 'token_expired' => l.authInvalidCode,
+      'account_banned' => l.srvAccountBanned,
+      'apple_token_invalid' => l.appleFailed,
+      'forbidden_role' || 'not_owner' => l.srvNotAllowed,
+      'handle_taken' => l.srvHandleTaken,
+      'artwork_duplicate' => l.srvArtworkDuplicate,
+      'dimensions_invalid' => l.srvDimensionsInvalid,
+      'file_too_large' => l.srvFileTooLarge,
+      'quota_exceeded' => l.srvQuotaExceeded,
+      'reaction_cap_reached' => l.reactionsLimit,
+      'comment_too_deep' => l.srvCommentTooDeep,
+      'mkpx_invalid' => l.layersNotMkpx,
+      'mkpx_too_large' => l.srvMkpxTooLarge,
+      'remixable_conflicts_with_license' => l.srvLicenseConflict,
+      'not_remixable' => l.layersNotRemixable,
+      'too_many_parents' => l.srvTooManyParents,
+      'parent_not_found' => l.srvParentNotFound,
+      'remix_not_allowed' => l.srvRemixNotAllowed,
+      'lineage_cycle' => l.srvLineageCycle,
+      'blocked' => l.errBlockedInteraction,
+      'block_cap_reached' => l.srvBlockCap,
+      'rate_limited' => l.authTooManyRequests,
+      _ => null,
+    };
   }
 
   factory ClubError.fromDio(DioException e) {

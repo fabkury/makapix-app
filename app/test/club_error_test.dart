@@ -3,13 +3,21 @@ import 'package:makapix_club/club/models/club_error.dart';
 
 void main() {
   group('ClubError.fromBody', () {
-    test('parses the v1 envelope', () {
+    test('parses the v1 envelope; a generic code keeps the server text', () {
       final e = ClubError.fromBody(409, {
-        'error': {'code': 'artwork_duplicate', 'message': 'Already exists.'}
+        'error': {'code': 'conflict', 'message': 'Already exists.'}
       });
       expect(e.status, 409);
-      expect(e.code, 'artwork_duplicate');
+      expect(e.code, 'conflict');
       expect(e.message, 'Already exists.');
+    });
+
+    test("a specific code shows the app message in the user's language", () {
+      final e = ClubError.fromBody(409, {
+        'error': {'code': 'artwork_duplicate', 'message': 'This artwork already exists.'}
+      });
+      expect(e.code, 'artwork_duplicate');
+      expect(e.message, 'This artwork has already been posted.');
     });
 
     test('parses the FastAPI detail shape', () {

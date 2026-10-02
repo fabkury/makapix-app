@@ -252,7 +252,9 @@ class AuthController extends StateNotifier<AuthState> {
       await session.loginPassword(email.trim(), password);
       await _loadMe();
     } on ClubError catch (e) {
-      state = AuthState.failure(e.message, code: e.code);
+      // A plain 401 here is the server's "Invalid email or password." (code unauthorized).
+      final msg = e.code == 'unauthorized' ? appL10n.authWrongCredentials : e.message;
+      state = AuthState.failure(msg, code: e.code);
     } catch (_) {
       state = AuthState.failure(appL10n.commonUnexpectedError);
     }

@@ -150,10 +150,18 @@ void setSurface(WidgetTester tester, Size size) {
 ///
 /// As in the app, the `ProviderScope` sits above the `MaterialApp`, so sheets, dialogs, and
 /// pushed routes see the same providers (and [overrides]) as the screen that opened them.
+/// The system text scale the sweeps run at: 1.0, or the accessibility font size given with
+/// `flutter test --dart-define=L10N_TEXT_SCALE=1.3` (docs/i18n/TESTING.md).
+final double kSweepTextScale = double.parse(const String.fromEnvironment('L10N_TEXT_SCALE', defaultValue: '1.0'));
+
 Future<void> pumpLocalized(WidgetTester tester, Locale locale, Widget child,
     {Size size = const Size(360, 740), List<Override> overrides = const []}) async {
   await loadAppFonts();
   setSurface(tester, size);
+  if (kSweepTextScale != 1.0) {
+    tester.platformDispatcher.textScaleFactorTestValue = kSweepTextScale;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+  }
   await tester.pumpWidget(ProviderScope(overrides: overrides, child: localizedApp(locale, child)));
   await tester.pump();
   addTearDown(debugResetAppL10n);

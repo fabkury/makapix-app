@@ -144,6 +144,18 @@ void main() {
       final h = HandleAvailability.fromJson(
           {'handle': 'pixel', 'available': false, 'message': 'This handle is already taken'});
       expect(h.available, isFalse);
+      expect(h.message, 'That username is already taken.');
+      expect(
+          HandleAvailability.fromJson(
+              {'handle': 'pixel', 'available': true, 'message': 'This handle is available'}).message,
+          'This username is available.');
+      expect(
+          HandleAvailability.fromJson({
+            'handle': 'p',
+            'available': false,
+            'message': 'Invalid handle: Handle must be at least 3 characters'
+          }).message,
+          'Invalid handle: Handle must be at least 3 characters');
     });
 
     test('AuthIdentity label reflects provider + github username', () {

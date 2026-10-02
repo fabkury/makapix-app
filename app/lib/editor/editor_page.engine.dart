@@ -533,8 +533,9 @@ extension _EditorEngine on _EditorPageState {
     // too, and has just been narrated above).
     final seq = (_state['refusal_seq'] as num?)?.toInt() ?? 0;
     if (_refusalSeqSeen >= 0 && seq > _refusalSeqSeen && !memRefused && !_suppressRefusalToast) {
-      // The engine's own sentence, in English (L4: stable codes at the FFI).
-      final reason = (_state['last_refusal'] as String?) ?? context.l10n.engineRefusedFallback;
+      // The engine says why in English; refusal_l10n.dart shows it in the user's language.
+      final raw = _state['last_refusal'] as String?;
+      final reason = raw == null ? context.l10n.engineRefusedFallback : shownRefusal(context.l10n, raw);
       messenger.showSnackBar(SnackBar(content: Text(reason)));
     }
     _refusalSeqSeen = seq;

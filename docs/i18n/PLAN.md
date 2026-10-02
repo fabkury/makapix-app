@@ -20,12 +20,13 @@ are the acceptance test.
 | L0 | Infrastructure, test harness, pilot (Settings, language picker, tool names) | **done 2026-10-01** |
 | L1 | Club pillar: extract + translate + sweep, batch by batch | **done 2026-10-01** (C1–C9) |
 | L2 | Editor pillar: extract + translate + sweep, batch by batch | **done 2026-10-01** (E0–E8) |
-| L3 | Independent translation review (one agent per language), fixes, layout hardening | next |
-| L4 | Seams and periphery, then flip `kTranslationsShipped` | not started |
+| L3 | Independent translation review (one agent per language), fixes, layout hardening | review done; large-text fixes in progress |
+| L4 | Seams and periphery, then flip `kTranslationsShipped` | in progress (engine and server text done) |
 
-**Next steps (2026-10-02):** the rest of L3 (text scale 1.3 sweep, full screenshot review),
-then L4. Gates on the current text: analyzer clean, `flutter test` 7,774 passed,
-`flutter test test_engine` 72 of 72 (the one Russian failure fixed and rerun).
+**Next steps (2026-10-02):** fix the large-text overflows at 360 px and wider (list under L3),
+then the full screenshot review, then the rest of L4. Gates on the current text: analyzer
+clean, `flutter test` 7,778 passed, `flutter test test_engine` 72 of 72 (before the L4 text
+changes; rerun at the next milestone).
 
 The lowercase pass (`scan.dart --list --lower`, 239 words) is done: every one is a wire
 value, a menu or tool id, a file format, a font name, or the fallback handle "unknown"
@@ -254,13 +255,32 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   verb, a tile label abbreviated).
 - [ ] Full screenshot gallery (T6) reviewed per language: every sweep screen.
 - [ ] Layout hardening for whatever the sweeps flag in German and Russian.
-- [ ] Text scale 1.3× sweep on the phone sizes (accessibility font size).
+- [x] Text scale 1.3× sweep, run 2026-10-02 (`--dart-define=L10N_TEXT_SCALE=1.3`, TESTING.md):
+  771 failing screen states of 5,946. Most are ellipsis truncation, the designed fallback; English
+  fails on 35 states too, so this is large-font layout in general, not translation. The 320 px
+  phone at 1.3× is the worst case (408 failures) and is accepted except where a fix is free.
+- [ ] Large-text overflows (content clipped, not ellipsized) at 360 px and wider, all languages:
+  Color dialog with sources and Lineage (every size, English too), Artist dashboard and Post
+  statistics (stat columns), User management (reputation row), Place page (parked line),
+  Welcome and Resolving pages (title), Account management, Dither page end, Keyboard shortcuts
+  (de), Club home and profile moderator menus (ja, ru), Publish (en, es, pt), Frames and Layers
+  pages and their sheets (es, ja, ru), Search tabs (fr, ru), onboarding steps (de, pt), and
+  single screens listed in the 2026-10-02 run output. Rerun the 1.3 sweep after.
 
 ## L4 — Seams, periphery, release
 
-- [ ] **Engine error text at the FFI**: stable codes where `mkpx_run` and the load/import paths
-  return English prose that reaches the user; Dart maps code → message. Inventory first.
-- [ ] **Server text**: open `messages/0005-localized-text/` proposing codes + params for API error
+- [x] **Engine refusal text**, done 2026-10-02, without touching the engine (its state JSON and
+  goldens stay byte-identical): `lib/editor/refusal_l10n.dart` recognizes each of the engine's
+  refusal sentences by pattern and shows the translated message; an unknown sentence shows as
+  is in English and as the generic message elsewhere. `test/refusal_l10n_test.dart` pins the
+  engine's exact sentences, so a reworded engine message fails there first. Load, import, and
+  memory refusals were already translated (`memBlocked`, the file-io toasts).
+- [x] **Server text, app side**, done 2026-10-02: `ClubError` shows the app's own message for
+  every specific server error code (26 codes plus `rate_limited`); email sign-in shows its own
+  "Wrong email or password."; the handle check writes "available" and "already taken" itself.
+  Thread opened: `messages/0005-localized-text/0001-app-localized-text-proposal.md`. Waiting on
+  the reply (`0002-server-…`); nothing in it blocks the release.
+- [ ] **Server text, server side** (the thread above) — the original item: proposing codes + params for API error
   `detail`, moderation report-reason labels (`report_reasons[].label`), and any notification text
   the server composes. The app ships without waiting; until the server answers, those stay English.
   Server prose found so far (add to this list as batches meet more):
@@ -280,10 +300,12 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 - [ ] **Default names stored in documents** ("Layer 1", "Untitled"): decide display-time mapping
   vs. localized-at-creation; ADR.
 - [ ] **Android**: `res/xml/locales_config.xml` + `android:localeConfig` (per-app language in
-  system settings, Android 13+); confirm the app label stays "Makapix Club".
+  system settings, Android 13+); confirm the app label stays "Makapix Club". Decided
+  2026-10-02: lands in the same commit as the `kTranslationsShipped` flip, never before — it
+  advertises the languages to the system, and a release build would list seven it does not show.
 - [ ] **iOS**: `CFBundleLocalizations` in Info.plist; localized `NSPhotoLibraryUsageDescription` /
   `NSCameraUsageDescription` (`InfoPlist.strings`). First real check is the next Codemagic build
-  on TestFlight — record the result here.
+  on TestFlight — record the result here. Same rule as Android: in the flip commit.
 - [ ] **Windows**: smoke-test CJK and Cyrillic rendering in the real build (system font fallback).
 - [ ] **Material's own strings** (date pickers, text-selection menu, back-button tooltip): confirm
   per language in a sweep.
@@ -402,6 +424,11 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   editor was cut off.
 
 ## Session log
+
+- **2026-10-02** — L4 begins. Engine refusals and server error codes now show in the user's
+  language (22 new messages); the server thread `0005-localized-text` is open. The 1.3×
+  large-text sweep ran: 771 of 5,946 states fail, most of them ellipsis or 320 px; the real
+  overflows at 360 px and wider are listed under L3. 7,778 Dart tests pass.
 
 - **2026-10-02** — L3 review: 21 reviewer parts, about 560 findings, about 620 messages
   reworded, two input bugs fixed. The engine-backed suite, run on the pre-review text, passed
