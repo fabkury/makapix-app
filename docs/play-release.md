@@ -21,8 +21,8 @@ ask the Play API for the next free `versionCode` → write it to `app/pubspec.ya
 upload + roll out to the chosen track with notes from every `distribution/whatsnew/whatsnew-<language>` →
 commit `chore(release)`, tag `v<name>+<code>`, push with tags.
 
-Update `distribution/whatsnew/whatsnew-en-US` before each release (≤500 chars; Play's limit). Once the
-app ships in eight languages, the folder also holds one file per Play listing language (`whatsnew-de-DE`,
+Update `distribution/whatsnew/whatsnew-en-US` before each release (≤500 chars; Play's limit). Since 1.12.0
+(eight languages) the folder also holds one file per Play listing language (`whatsnew-de-DE`,
 `whatsnew-es-419`, ...; the file name after `whatsnew-` is the Play language code) and they go up
 together (`play_publish.py publish --notes-dir`). Update them in the same commit as the English file: the
 release script refuses a translation last committed before `whatsnew-en-US`, so last release's notes

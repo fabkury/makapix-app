@@ -24,8 +24,8 @@ coverage; with the git log, the live frontier) · `SPEC.md` / `SPEC-CLUB.md` (in
 references for the two pillars — git-ignored, absent from public checkouts; rewritten 2026-08-16 to
 describe the system as built) · `docs/adr/` (the ADR series — 0007 single-coat strokes, 0008 AA, and 0036 stamp footprints
 define *current* engine behavior) · `docs/memlab/REPORT.md` (measured memory limits — the numbers to design
-against) · `docs/i18n/` (the localization workstream, in progress since 2026-10-01 — `PLAN.md` is the
-live tracker to read first, `TESTING.md` the test layers, `GLOSSARY.md` the terminology; ADR 0037) ·
+against) · `docs/i18n/` (localization: the app ships in eight languages since 1.12.0 — `PLAN.md` is the
+workstream's record and its open items, `TESTING.md` the test layers, `GLOSSARY.md` the terminology; ADR 0037) ·
 `docs/play-release.md` + `docs/ios-release/PLAN.md` (store pipelines) · `messages/` (server ↔ app
 correspondence, one sub-folder per thread, numbered replies — convention in `messages/README.md`; threads
 before 2026-09-09 were `docs/club-server-cr-*.md`, retired to git history 2026-09-16). (The original

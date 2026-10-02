@@ -178,13 +178,14 @@ The editor pillar covers the whole core of SPEC.md (engine, tools, selections, a
 `.mkpx`, FFI, three-row UI) but a handful of SPEC v1.1 items are still open; the Club pillar is complete
 through C3 plus most of C4. Verified against the code 2026-07-26:
 
-**In progress — localization (i18n), since 2026-10-01** (ADR 0037; live tracker `docs/i18n/PLAN.md`): the
+**Localization (i18n) — ✅ shipped in 1.12.0 (2026-10-02)** (ADR 0037; record `docs/i18n/PLAN.md`): the
 whole app in eight languages (en, es, pt-BR, fr, de, ru, ja, zh-Hans), following the device language with
-an override in Settings → Language. L0 is done — gen-l10n wiring, language resolution and picker, the
-i18n test layers (string-file integrity, hardcoded-string scanner, screen sweeps with real font metrics,
-tool-tile fit, screenshots), and `app/test_engine/`, which mounts the real editor against the engine DLL.
-The string extraction (L1 Club, L2 editor) is under way; a release build stays English-only until it is
-complete (`kTranslationsShipped`).
+an override in Settings → Language (and the editor menu; Android 13+ per-app language settings too).
+Built 2026-10-01..02 in four milestones: L0 infrastructure and test layers (string-file integrity,
+hardcoded-string scanner, screen sweeps with real font metrics at 1.0× and 1.3× text, tool-tile fit,
+screenshots, `app/test_engine/` with the real editor against the engine DLL), L1 Club and L2 editor
+extraction, L3 an independent review per language, L4 engine/server text, the live pass on a Pixel,
+store listings, slides and release notes in every language, and the flip (`kTranslationsShipped`).
 
 **Editor — SPEC.md items not yet built:**
 1. ~~**Mirror/symmetry drawing** (SPEC §28.3; pulled into v1 by §26.6)~~ — **✅ implemented 2026-09-05,

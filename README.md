@@ -28,6 +28,9 @@ fast, native app for iOS and Android with a complete animated-pixel-art studio b
 
 And if you just want to draw? Go ahead. **The editor works fully offline, no account needed.**
 
+The app speaks **English, Español, Português (Brasil), Français, Deutsch, Русский, 日本語, and 简体中文**:
+it follows your phone's language, and Settings → Language picks another one.
+
 ## 🎨 Draw
 
 The built-in **Makapix Editor** is a serious tool for making animated pixel art:

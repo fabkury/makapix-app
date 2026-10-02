@@ -1,6 +1,6 @@
 # Review: iOS permission prompts (InfoPlist.strings)
 
-Files: `docs/i18n/flip/ios/<lang>.lproj/InfoPlist.strings` (es, pt-BR, fr, de, ru, ja, zh-Hans).
+Files: `docs/i18n/flip/ios/<lang>.lproj/InfoPlist.strings` (since the flip: `app/ios/Runner/<lang>.lproj/`) (es, pt-BR, fr, de, ru, ja, zh-Hans).
 Syntax checked in all seven: each line is `"KEY" = "value";`, straight double quotes around the
 value, no unescaped straight quote inside (French uses the typographic apostrophe ’), UTF-8.
 Glossary terms (artwork, avatar) and address forms match GLOSSARY.md in every file. In these

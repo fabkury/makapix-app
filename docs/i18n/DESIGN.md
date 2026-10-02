@@ -62,9 +62,10 @@ the app never opens in one language and flips to another. `MakapixApp` feeds the
 **`zh` is Simplified Chinese**, declared as plain `Locale('zh')` (the generator requires a base
 `app_zh.arb` in any case). Traditional would be added as `app_zh_Hant.arb`.
 
-**Release switch:** `kTranslationsShipped`. While the extraction is in progress a release build
-offers English only; debug builds and tests see every language;
-`--dart-define=L10N_PREVIEW=true` shows them in a release build.
+**Release switch:** `kTranslationsShipped`. While the extraction was in progress a release build
+offered English only; it was flipped to `true` at L4 (2026-10-02, release 1.12.0). Debug builds
+and tests always see every language; `--dart-define=L10N_PREVIEW=true` forces them on in a
+release build.
 
 ## 4. What is not translated
 

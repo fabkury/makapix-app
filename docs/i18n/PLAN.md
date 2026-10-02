@@ -21,14 +21,15 @@ are the acceptance test.
 | L1 | Club pillar: extract + translate + sweep, batch by batch | **done 2026-10-01** (C1–C9) |
 | L2 | Editor pillar: extract + translate + sweep, batch by batch | **done 2026-10-01** (E0–E8) |
 | L3 | Independent translation review (one agent per language), fixes, layout hardening | **done 2026-10-02** |
-| L4 | Seams and periphery, then flip `kTranslationsShipped` | in progress (engine and server text done) |
+| L4 | Seams and periphery, then flip `kTranslationsShipped` | flipped 2026-10-02; release 1.12.0 in progress |
 
-**Next steps (2026-10-02):** the live pass, the store slides and the release notes are done.
-Left: the App Store listing (blocked on the expired agreement), and the flip, which also uploads the
-eight Play listings, the per-language slides and the notes (files ready in `docs/i18n/flip/`,
-`distribution/listings/` and `docs/marketing/out/<lang>/`). Gates on the current code: analyzer
-clean, `flutter test` 7,817 passed, every sweep passes at 1.3×, `flutter test test_engine` 72 of
-72 at 1.0× and at 1.3×.
+**Next steps (2026-10-02):** the flip is committed (`kTranslationsShipped = true`, Android
+`locales_config.xml`, iOS `CFBundleLocalizations` + `InfoPlist.strings`, the notes in
+`distribution/whatsnew/`). Left: release 1.12.0 (user decision: straight to production on both
+stores): upload the eight Play listings and their slides **before** the release (Play may refuse
+notes in a language its listing lacks), `release_android.ps1`, then Codemagic → the App Store
+version with nine localizations (`distribution/listings/README.md` maps every field) → review.
+The first Codemagic build is the first real check of the iOS project change; record it here.
 
 The lowercase pass (`scan.dart --list --lower`, 239 words) is done: every one is a wire
 value, a menu or tool id, a file format, a font name, or the fallback handle "unknown"
@@ -345,15 +346,17 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 - [x] **Default names stored in documents**: display-time mapping, done in E4 and completed
   2026-10-02 with the "Import N" layers; recorded in the ADR 0037 amendment. Test:
   `test/layer_names_test.dart`.
-- [ ] **Android**: `res/xml/locales_config.xml` + `android:localeConfig` (per-app language in
+- [x] **Android**: `res/xml/locales_config.xml` + `android:localeConfig` (per-app language in
   system settings, Android 13+); confirm the app label stays "Makapix Club". Decided
   2026-10-02: lands in the same commit as the `kTranslationsShipped` flip, never before — it
   advertises the languages to the system, and a release build would list seven it does not show.
-  The file is ready in `docs/i18n/flip/` (README there says where it goes).
+  Done in the flip commit (2026-10-02).
 - [ ] **iOS**: `CFBundleLocalizations` in Info.plist; localized `NSPhotoLibraryUsageDescription` /
   `NSCameraUsageDescription` (`InfoPlist.strings`). First real check is the next Codemagic build
-  on TestFlight — record the result here. Same rule as Android: in the flip commit. The seven
-  `InfoPlist.strings` are ready in `docs/i18n/flip/ios/` (reviewed, `review/infoplist.md`).
+  on TestFlight — record the result here. Same rule as Android: in the flip commit. Done in the
+  flip commit (2026-10-02): `app/ios/Runner/<lang>.lproj/InfoPlist.strings` (reviewed,
+  `review/infoplist.md`), registered in the Runner target as a variant group by hand (no Xcode
+  here), plus `knownRegions`.
 - [x] **Windows**: smoke-tested 2026-10-02 in the release build (`--dart-define=L10N_PREVIEW=true`):
   Japanese, Chinese, Russian, and German render correctly through the system font fallback
   (Japanese and Chinese each in their own font), and a saved language is applied at launch.
@@ -385,13 +388,18 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   off; the phone had 1.10.0 before). The PC had to be re-paired with the phone first (the
   phone had forgotten it: `SSLV3_ALERT_CERTIFICATE_UNKNOWN`).
 - [ ] **Store listings**: Play drafted 2026-10-02 in `distribution/listings/play/` (eight
-  languages, limits checked; README there), under independent review (`review/listing-<lang>.md`,
-  brief `review/BRIEF-listing.md`). App Store blocked on the expired agreement (Findings outside
-  i18n). User decision 2026-10-02: all eight Play languages go live together at the flip, the
-  corrected English too.
-- [x] **Release notes** per language (done 2026-10-02): `docs/i18n/flip/whatsnew/`, one file per
-  Play listing language, reviewed per language; they move to `distribution/whatsnew/` at the
-  flip (`docs/i18n/flip/README.md`). `play_publish.py --notes-dir` uploads them all;
+  languages, limits checked; README there), reviewed (`review/listing-<lang>.md`, brief
+  `review/BRIEF-listing.md`). App Store drafted 2026-10-02 after the user accepted the new
+  agreement: `distribution/listings/appstore/<locale>.json` holds subtitle, promotional text and
+  keywords (reviewed per language); description, What's New and screenshots are shared with Play
+  and the slides. User decisions 2026-10-02: all languages go live together with 1.12.0, the
+  corrected English too; the App Store uses Play's description; subtitle "Pixel art studio &
+  community"; evergreen promotional text; the refreshed English slides replace the live ones.
+  Open until uploaded.
+- [x] **Release notes** per language (done 2026-10-02): `distribution/whatsnew/`, one file per
+  Play listing language (es-419 and es-ES share one text), reviewed per language; they waited in
+  `docs/i18n/flip/` until the flip commit. The App Store's What's New takes the same text per
+  locale (`distribution/listings/README.md`). `play_publish.py --notes-dir` uploads them all;
   `release_android.ps1` refuses a translation last committed before the English file.
 - [x] **Store screenshots** per language (done 2026-10-02): `docs/marketing/out/<lang>/`
   (Play, App Store iPhone and iPad, feature graphic) from `docs/marketing/src/copy/<lang>.json`;
@@ -528,6 +536,8 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
 
 ## Session log
 
+- **2026-10-02** — The flip (L4): App Store listing drafted and reviewed in nine locales; the
+  flip files moved into place, `kTranslationsShipped = true`, STATUS/README/CLAUDE updated.
 - **2026-10-02** — Release notes for the translations release in all nine Play languages,
   reviewed per language; per-language upload and a stale-translation check in the release tools.
 - **2026-10-02** — Store slides in all eight languages (L4): per-language copy files, Noto Sans

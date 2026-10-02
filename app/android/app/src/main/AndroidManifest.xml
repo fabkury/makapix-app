@@ -9,6 +9,7 @@
          fullBackupContent = API 24-30, dataExtractionRules = API 31+. Keep both in sync. -->
     <application
         android:label="Makapix Club"
+        android:localeConfig="@xml/locales_config"
         android:name="${applicationName}"
         android:usesCleartextTraffic="false"
         android:icon="@mipmap/ic_launcher"

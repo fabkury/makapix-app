@@ -32,11 +32,11 @@ const List<AppLanguage> kAppLanguages = [
 
 const Locale kFallbackLocale = Locale('en');
 
-/// The release switch for the translations. While the string extraction is in progress
-/// (docs/i18n/PLAN.md) a release build ships English only — a half-translated screen is worse
-/// than an English one. Debug builds and tests always see every language, and a release build
-/// can preview them with `--dart-define=L10N_PREVIEW=true`. Flip to `true` at milestone L4.
-const bool kTranslationsShipped = false;
+/// The release switch for the translations. A release build offered English only while the
+/// string extraction was in progress (docs/i18n/PLAN.md) — a half-translated screen is worse
+/// than an English one; flipped at milestone L4 (2026-10-02). Debug builds and tests always see
+/// every language, and `--dart-define=L10N_PREVIEW=true` forces them on in a release build.
+const bool kTranslationsShipped = true;
 
 const bool _preview = bool.fromEnvironment('L10N_PREVIEW');
 
