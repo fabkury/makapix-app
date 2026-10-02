@@ -56,6 +56,29 @@ likenesses** — that rule extends to any screenshot's visible viewport (feed
 shots are cropped above rows containing fan-art; the My Drawings gallery is not
 shown at all). On-slide credit `@handle` is mandatory for community pieces.
 
+## Per-language phone shots (2026-10-02)
+
+`shots/<lang>/` (en, es, pt, fr, de, ru, ja, zh) hold the phone shots for the translated
+slides, taken on the Pixel 10 Pro XL with the language-preview build (`L10N_PREVIEW=true`):
+
+| file | state | crop it feeds |
+|---|---|---|
+| `hero_senna.png` | editor, @birds' "senna fixed", Pencil | `hero_senna_app` |
+| `row1_pattern.png` | Pencil options row scrolled to its end, pattern On | `row1_pattern` |
+| `patterns_page.png` | Patterns page, first Recent pattern selected | `patterns_page_app` |
+| `select_union.png` | Select tool, Oval + Add (row only; the canvas is senna) | `select_row` |
+| `row1_aa.png` | Shape options row scrolled to its end, AA on | `row1_aa` |
+| `club_profile.png` | @Badguy's profile, Gallery tab | replaces `club_feed_new_app` |
+
+Language-free crops stay English-only: `timeline_cozy_row` (frame numbers) and `select_canvas`
+(the selection on the sunset). Decisions: the Club slide shows @Badguy's profile instead of the
+Recommended feed, because the live feed and its trending bar now carry game names and art whose
+origin cannot be verified; `club_profile.png` is stored already cropped to y < 2040, above a
+third row that holds a piece we could not vouch for. The replay slide drops its phone panel in
+every language (user decision): senna has no real recording, and the slide's engine-rendered
+filmstrip carries the point. Shot tooling (adb, per-language scripts) is described in
+`docs/i18n/PLAN.md`, L4.
+
 ## Pipeline (reproducible)
 
 - `src/engine/*.txt` — mkpx DSL scripts; rendered via `cargo run -p makapix-cli` `render` probes

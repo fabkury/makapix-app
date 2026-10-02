@@ -390,7 +390,15 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   brief `review/BRIEF-listing.md`). App Store blocked on the expired agreement (Findings outside
   i18n). Release notes per language: at the flip. User decision 2026-10-02: all eight Play
   languages go live together at the flip, the corrected English too.
-- [ ] **Store screenshots** per language through the store-slide pipeline
+- [ ] **Store screenshots** per language through the store-slide pipeline. Phone shots done
+  2026-10-02: `docs/marketing/shots/<lang>/`, six per language, all reviewed for third-party IP
+  (table and decisions in `docs/marketing/README.md`). Method: the preview build on the Pixel;
+  `cmd locale set-app-locales` per language; a script per language that drives the editor with
+  `input tap/swipe` (never start a swipe at a screen edge: that is Android's back gesture; never
+  start one on a slider); option-row buttons found by their labels in `uiautomator dump`, the
+  pattern swatch by its green color. The phone's settings were restored afterwards. Left: the
+  slide build per language (`build.py`: per-language copy, the crops above, Noto Sans CJK for
+  ja/zh headlines, no replay phone panel). Original item:
   (`docs/marketing/`). Depends on two things (found 2026-10-02): the slides embed real phone
   screenshots (`docs/marketing/shots/`, English UI), so each language needs its own from the
   live pass on the Pixel; and the headline font, Press Start 2P, has no Japanese or Chinese
