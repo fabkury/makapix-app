@@ -207,3 +207,10 @@ after W2.
   rolling nightly had been). The run summary now records source commit and toolchain;
   `FUZZ_WORK` allows a second work tree.
 - 2026-10-03: W1 steps 3-4: the fuzz-burst rule is in `fuzz/README.md` ("When to fuzz"), and `fuzz-day.ps1`/`fuzz-night.ps1` default to all four targets, weighted 45/35/10/10 and scaled to `-Hours`. Steps 1-2 (the long burst on HEAD) follow tonight on the widened harness.
+- 2026-10-03: first long run on the widened harness (`w1main2`, HEAD `94c7b28e`): actions 1.96M
+  execs / 12536 edges, FZ-7 found and fixed (`da89b76b`); webp and import clean for their full
+  budgets. The actions and loader legs ended early because every `-jobs` job stops at its first
+  artifact, and all their other artifacts were harness limits (FINDINGS.md). `run_fuzz.sh` now
+  uses fork mode with `-ignore_*`, a 30 s actions timeout, a 1024 MB loader RSS limit, and runs
+  from a private copy of itself. W1 and W2 stay in progress until the rerun of the actions and
+  loader legs (launched the same day on the fixed engine) is in the run log.

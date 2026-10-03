@@ -21,6 +21,17 @@
 
 set -u
 
+# Run from a private copy. Bash reads a script as it executes, and a run lasts hours: editing
+# this file in the checkout mid-run would shift the byte offset bash resumes from after the
+# fuzzing loop and corrupt the cmin/sync/summary phase (nearly happened 2026-10-03).
+if [[ -z "${RUN_FUZZ_SELF_COPY:-}" ]]; then
+  RUN_FUZZ_REPO="${RUN_FUZZ_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+  SELF_COPY="$(mktemp /tmp/run_fuzz.XXXXXX.sh)"
+  cp "${BASH_SOURCE[0]}" "$SELF_COPY"
+  RUN_FUZZ_SELF_COPY=1 RUN_FUZZ_REPO="$RUN_FUZZ_REPO" exec bash "$SELF_COPY" "$@"
+fi
+trap 'rm -f "$0"' EXIT   # the private copy cleans itself up
+
 # The pinned nightly (fuzzing-review W5): cargo-fuzz needs nightly, and an unpinned one moves
 # under every run. Bump it deliberately (and update the commands in fuzz/README.md); the
 # summary records it so the run log shows which toolchain each run used. FUZZ_TOOLCHAIN
@@ -67,7 +78,7 @@ else
   MINUTES=$FIXED_MIN
 fi
 
-REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+REPO="$RUN_FUZZ_REPO"
 WORK="${FUZZ_WORK:-$HOME/makapix-fuzz}"   # FUZZ_WORK: a second work tree for a parallel run
 STAMP="$(date +%Y%m%d-%H%M)"
 
@@ -145,10 +156,16 @@ done
 
 for T in $TARGETS; do
   [[ $INTERRUPTED == 1 ]] && break
-  # Loader: rss_limit=512 is the Android-allocator-wall oracle (one load = one input).
-  # Actions: the RSS check is process-wide and allocator retention accumulates over
-  # thousands of inputs per worker (false oom-* artifacts, 2026-08-25); a high rss cap
-  # plus malloc_limit=512 keeps the genuine single-allocation-bomb oracle instead.
+  # Fork mode (-fork=N + -ignore_*): a finding is saved as an artifact and fuzzing goes on.
+  # With -workers/-jobs every job stopped for good at its first artifact, so a handful of
+  # findings ended a whole leg early (run w1main2, 2026-10-03: actions ran ~2 h of 5, the
+  # loader ~10 min of 4 h). Fork children are also short-lived, which bounds the
+  # allocator-retention RSS growth behind false oom-* artifacts (2026-08-25 actions,
+  # 2026-10-03 loader).
+  # Loader: rss_limit=1024 is the Android-allocator-wall oracle (scudo's ~1 GiB ceiling,
+  # docs/memlab/REPORT.md; one load = one input). It was 512 until loading the grown corpus
+  # alone reached 487 MB. malloc_limit=512 keeps the single-allocation-bomb oracle.
+  # Actions: a high rss cap plus malloc_limit=512, for the same reason.
   # The loader's max_len must clear the largest boundary seed (a 256x256x16-layer noise
   # document), or libFuzzer silently truncates it out of the corpus. The loader also gets
   # the container dictionary; the actions target's inputs are Arbitrary-decoded, so a
@@ -157,7 +174,7 @@ for T in $TARGETS; do
   TIMEOUT=   # reset per target: a value set for one target must not leak into the next
   case "$T" in
     fuzz_load_mkpx)
-      MAXLEN=4194304; RSSLIM=512;  MALLOCLIM=512
+      MAXLEN=4194304; RSSLIM=1024; MALLOCLIM=512
       DICT=(-dict=fuzz/mkpx.dict)
       ;;
     # Differential encode+decode: each execution does real VP8L compression and a libwebp
@@ -170,6 +187,11 @@ for T in $TARGETS; do
     fuzz_codec_import)
       MAXLEN=65536;   RSSLIM=4096; MALLOCLIM=2048; TIMEOUT=25
       ;;
+    # Actions: a sequence on a 184-px canvas with dozens of layers takes up to ~2 s in a
+    # release build and ~25x that under instrumentation; 30 s keeps those from reading as hangs.
+    fuzz_session_actions)
+      MAXLEN=4096;    RSSLIM=4096; MALLOCLIM=512; TIMEOUT=30
+      ;;
     *)  MAXLEN=4096;  RSSLIM=4096; MALLOCLIM=512 ;;
   esac
   TIMEOUT=${TIMEOUT:-10}
@@ -179,7 +201,8 @@ for T in $TARGETS; do
   echo "== fuzzing $T: $WORKERS workers, $SECS_PER s, max_len=$MAXLEN (log: $(basename "$LOG"))"
   rm -f "$WORK"/fuzz-*.log
   nice -n 19 cargo +"$TOOLCHAIN" fuzz run "$T" "fuzz/corpus/$T" -- \
-    -workers="$WORKERS" -jobs="$WORKERS" -max_total_time="$SECS_PER" \
+    -fork="$WORKERS" -ignore_crashes=1 -ignore_timeouts=1 -ignore_ooms=1 \
+    -max_total_time="$SECS_PER" \
     -rss_limit_mb="$RSSLIM" -malloc_limit_mb="$MALLOCLIM" \
     -timeout="$TIMEOUT" -max_len="$MAXLEN" -print_final_stats=1 "${DICT[@]}" \
     >"$LOG" 2>&1 &
@@ -236,12 +259,15 @@ SUMMARY="$REPO/fuzz/logs/summary-$STAMP-$LABEL.md"
   echo
   echo "Workers: $WORKERS · budget: $MINUTES min · cmin: $CMIN · interrupted: $INTERRUPTED"
   echo
-  echo "Source: ${HEAD_SHA:+committed HEAD $HEAD_SHA}${HEAD_SHA:-working tree at $(git -C "$REPO" -c safe.directory='*' rev-parse --short HEAD)} · toolchain: $TOOLCHAIN"
+  if [[ $FROM_HEAD == 1 ]]; then SOURCE="committed HEAD $HEAD_SHA"
+  else SOURCE="working tree at $(git -C "$REPO" -c safe.directory='*' rev-parse --short HEAD)"; fi
+  echo "Source: $SOURCE · toolchain: $TOOLCHAIN"
   echo
   for T in $TARGETS; do
-    EXECS=$(grep -h 'stat::number_of_executed_units' "$REPO/fuzz/logs/$STAMP-$LABEL-$T".fuzz-*.log 2>/dev/null \
-      | awk '{s+=$NF} END{printf "%d", s}')
-    COV=$(grep -ho 'cov: [0-9]*' "$REPO/fuzz/logs/$STAMP-$LABEL-$T".fuzz-*.log 2>/dev/null \
+    # Fork mode: the parent's status lines read `#<total execs>: cov: <edges> ...`.
+    EXECS=$(grep -aoE '^#[0-9]+:' "$REPO/fuzz/logs/$STAMP-$LABEL-$T.log" 2>/dev/null \
+      | tr -d '#:' | tail -1)
+    COV=$(grep -aho 'cov: [0-9]*' "$REPO/fuzz/logs/$STAMP-$LABEL-$T.log" 2>/dev/null \
       | awk '{if ($2+0 > m) m=$2} END{printf "%d", m}')
     NCRASH=$(wc -w <<<"${CRASH_NEW[$T]}" | tr -d ' ')
     echo "## $T"

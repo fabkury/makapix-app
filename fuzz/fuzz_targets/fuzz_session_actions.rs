@@ -464,7 +464,7 @@ fn side(b: u8) -> u16 {
     match b {
         0..=239 => (b as u16 % 64) + 1,
         240..=254 => 64 + (b as u16 - 239) * 8,
-        255 => 128,
+        255 => 33, // libFuzzer's favorite byte: keep it cheap (one past a tile edge)
     }
 }
 
