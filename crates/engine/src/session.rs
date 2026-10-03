@@ -2110,6 +2110,10 @@ impl Session {
             }
         }
         self.cursor_stroke_end(); // commits an open pen segment the same way
+        // An open selection-mask drag holds a snapshot of the pre-drag mask that becomes its
+        // record's `before`; past a geometry change that snapshot is a mask from the old canvas,
+        // and Undo would restore it onto the new one. Close the drag here like a stroke. [fuzz FZ-6]
+        self.move_selection_commit();
     }
 
     /// Abort the in-progress stroke/drag, discarding its changes WITHOUT recording an undo step.
@@ -6942,6 +6946,79 @@ mod tests {
         assert_eq!(s.doc.content_hash(), painted, "the no-op drag changed nothing");
         assert!(s.doc.undo(), "undo pops the tap, not an empty move record");
         assert_eq!(s.pixel(0, 0, 4, 4), Rgba8::TRANSPARENT, "the tap itself was undone");
+    }
+
+    #[test]
+    fn selection_drag_is_settled_before_geometry_changes() {
+        // [fuzz FZ-6] `MoveSelectionBegin` snapshots the selection mask so the whole drag is one
+        // undo step, and `MoveSelectionCommit` records that snapshot as the step's `before`. The
+        // snapshot was not part of `settle_open_edits`, so it survived a geometry change: crop or
+        // resize the canvas mid-drag, commit, and the record's `before` is a mask from the old
+        // geometry — Undo then puts it on the new canvas (the FZ-2 save guard trips; on release
+        // builds the selection is silently dropped on save). Every structural verb must close the
+        // drag first, exactly as it closes an open stroke. Reduced from the first widened-alphabet
+        // fuzz run (docs/fuzzing/FINDINGS.md FZ-6).
+        let sel = "FillNoise(1)
+SelectTool(SelectRect)
+PointerDown(8,8)
+PointerMove(24,20)
+PointerUp()
+";
+        let tails: &[&str] = &[
+            "MoveSelectionBegin()
+CropToSelection()
+MoveSelectionCommit()",
+            "MoveSelectionBegin()
+MoveSelection(3,2)
+CropToSelection()
+MoveSelectionCommit()",
+            "MoveSelectionBegin()
+MoveSelection(3,2)
+ResizeCanvas(12,40)
+MoveSelectionCommit()",
+            "MoveSelectionBegin()
+MoveSelection(-2,1)
+CropCanvas(2,2,20,20)
+MoveSelectionCommit()",
+            // Undo mid-drag settles first, as it does for a stroke: commit the drag, then pop it.
+            "MoveSelectionBegin()
+MoveSelection(3,2)
+Undo()
+MoveSelectionCommit()",
+        ];
+        let fits = |sess: &Session| {
+            let st = sess.doc.storage();
+            sess.doc.selection.as_ref().is_none_or(|m| m.width() == st.w as u32 && m.height() == st.h as u32)
+        };
+        for tail in tails {
+            let script = format!("{sel}{tail}");
+            let mut sess = Session::new(32, 32);
+            sess.run_script(&script).unwrap();
+            for step in ["Undo()", "Undo()", "Redo()", "Redo()"] {
+                sess.run_script(step).unwrap();
+                assert!(fits(&sess), "selection mask outside storage after {step} for script:
+{script}");
+                let saved = sess.save_bytes();
+                let mut reloaded = Session::empty();
+                reloaded.load_bytes(&saved).unwrap();
+                assert!(reloaded.save_bytes() == saved, "resave not byte-identical after {step} for script:
+{script}");
+            }
+        }
+
+        // The settled drag is one coherent step: Undo restores the pre-drag mask, Redo the moved one.
+        let mut s = Session::new(32, 32);
+        s.run_script(&format!("{sel}MoveSelectionBegin()
+MoveSelection(3,2)")).unwrap();
+        let moved = s.doc.selection.clone();
+        s.run_script("CropToSelection()
+MoveSelectionCommit()
+Undo()").unwrap();
+        assert!(sel_eq(&s.doc.selection, &moved), "undoing the crop restores the moved mask");
+        s.run_script("Undo()").unwrap();
+        assert!(!sel_eq(&s.doc.selection, &moved), "the next undo reverts the drag itself");
+        s.run_script("Redo()").unwrap();
+        assert!(sel_eq(&s.doc.selection, &moved), "redo restores the moved mask");
     }
 
     #[test]

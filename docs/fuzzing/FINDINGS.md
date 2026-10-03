@@ -25,6 +25,8 @@ release gates until the fix lands.
 | 2026-09-05 | 6 workers, 90/45/45 min actions/webp/import, HEAD e56fbf9d, alongside another agent (`--from-head`, loader skipped) | — | 4.59M execs, **7194 edges**, 0 crashes (webp 8.76M/848, import 11.97M/5163, 0 crashes) |
 | 2026-09-05 | 6 workers, 12-h queue (actions 6 h / webp 3 h / import 3 h), HEAD e56fbf9d | — | 15.3M execs, **7207 edges**, **2 crashes** (~4.5 h in) → FZ-5; webp 24.5M/848, import 26.5M/**5180**, 0 crashes; cmin |
 | 2026-09-06 | 14 workers, 4 h, actions only, HEAD 0105c3b6 (FZ-5 fix verification) | — | 22.0M execs, 7206 edges, **0 crashes** |
+| 2026-10-03 | 4 workers, 3 min, actions only, widened alphabet (fuzzing-review W2, `14c19522`), empty corpus | — | 294k execs, **10260 edges**, **1 crash** (~1 min in) → FZ-6 |
+| 2026-10-03 | 4 workers, 5 min, actions only, widened alphabet + FZ-6 fix, empty corpus | — | 407k execs, **10606 edges**, **0 crashes** |
 
 Post-FZ-4, a 30-minute actions soak (4.41M execs) reached a new coverage high for that
 target — 6948 edges, above both the 6947 of the run that found FZ-4 and the 6940 of the
@@ -513,3 +515,58 @@ this triage were that artifact of the probe, not the bug.
 **Artifacts:** `fuzz/artifacts/fuzz_session_actions/crash-1a2439cd…` (shape b, 1026
 bytes) and `crash-39fc4a7b…` (shape a, 399 bytes), reduced with `cargo fuzz tmin` to
 74 and 55 bytes (the DSL above is the reduced form; git-ignored).
+
+---
+
+## FZ-6 — an open selection-mask drag survives a geometry change (FIXED 2026-10-03)
+
+**Found:** 2026-10-03, `fuzz_session_actions`, about a minute into the first smoke run of
+the widened alphabet (fuzzing-review W2: the target had never emitted `MoveSelectionBegin`
+before). One artifact.
+**Oracle:** the FZ-2 save guard (`debug_assert!` in `io::save_to_bytes`: "selection mask
+outside storage at save time (stale geometry)"), reached through oracle 2's Undo.
+**Status:** FIXED 2026-10-03, with the regression test
+`selection_drag_is_settled_before_geometry_changes` (session.rs tests), verified to fail on
+the old code first.
+
+**Root cause.** `MoveSelectionBegin` opens a coalesced selection-mask drag: it snapshots the
+mask into `move_sel_before`, `MoveSelection` steps move the mask in place, and
+`MoveSelectionCommit` records one selection step whose `before` is the snapshot. The
+snapshot was not part of `settle_open_edits`, the chokepoint every structural verb runs to
+close open strokes, layer drags, and pen segments (FZ-1). So it survived a geometry change:
+
+```
+FillNoise(1)
+SelectTool(SelectRect)
+PointerDown(8,8)
+PointerMove(24,20)
+PointerUp()               a 17x13 selection on the 32x32 canvas
+MoveSelectionBegin()      move_sel_before = that mask (32x32 storage)
+CropToSelection()         canvas is now 17x13; the crop clears the selection in its own record
+MoveSelectionCommit()     before (32x32 mask) != current (None) → records a selection step
+Undo()                    restores the 32x32 mask onto the 17x13 canvas
+```
+
+The same holds for `ResizeCanvas` and `CropCanvas`. On a debug build the save guard trips.
+On release the stale mask did not panic (painting, filling, copy/paste, and further crops
+on it were tried); the selection is silently dropped on save, so save→load→resave stops
+being byte-identical — the FZ-2 symptom.
+
+**Reachability:** low. The shell sends `MoveSelectionBegin` at the start of a selection drag
+and `MoveSelectionCommit` at its end (`editor_page.canvas.dart`), so a crop or resize has to
+arrive mid-drag: a journal replay, or a desktop shortcut during a mouse drag.
+
+**Fix:** `settle_open_edits` ends with `move_selection_commit()`, so an open mask drag
+commits before the structural verb snapshots the document, exactly as an open stroke does.
+Undo mid-drag now commits the drag and pops it, matching strokes since FZ-1. The shell's
+own `MoveSelectionCommit` after the drag becomes a no-op in those cases.
+
+**Regression test:** `selection_drag_is_settled_before_geometry_changes` — the reduced
+script plus moved-mask, `ResizeCanvas`, `CropCanvas`, and Undo-mid-drag variants, each
+checked through two Undos and two Redos for a mask that fits the storage and a
+byte-identical resave; then the step structure (undoing the crop restores the moved mask,
+the next Undo reverts the drag, Redo restores it). Not `fuzz_inputs.rs`: the engine panics
+here only through a `debug_assert!`.
+
+**Artifact:** `crash-c507f1b8…` (25 bytes; git-ignored). The script above is the reduced
+form, checked with the debug `mkpx` CLI and `assert.roundtrip.bytes`.
