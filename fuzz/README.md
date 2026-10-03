@@ -21,9 +21,14 @@ covers, what it misses, and the tracker for closing the gaps.
   mutation — what a real attacker does, since CRC-32C is not cryptographic — while
   leaving 1 in 8 mutants unsigned so the reject paths stay covered. With the
   `mkpx.dict` container dictionary and the boundary seeds this reached 2173 edges.
-- **`fuzz_session_actions`** — structure-aware (`arbitrary`): random sequences of valid
-  editor actions rendered to DSL text → `run_script` → compound oracle (no panic; Undo/
-  Redo restores the content hash; save→load round-trip; byte-deterministic resave).
+- **`fuzz_session_actions`** — structure-aware (`arbitrary`): a starting document (blank
+  32×32, a tiny 1–4 px canvas, or a small multi-frame, multi-layer one) plus random
+  sequences of valid editor actions rendered to DSL text → `run_script` → compound oracle
+  (no panic; Undo/Redo restores the content hash; save→load round-trip; byte-deterministic
+  resave). The alphabet covers every parser verb except the `excluded verb:` lines in the
+  target, and `crates/engine/tests/fuzz_alphabet.rs` fails `cargo test` when a parser verb
+  is neither rendered nor excluded, or when the target emits a verb the parser rejects.
+  **A new DSL verb needs a line in the target** (or an exclusion with a reason).
 - **`fuzz_webp_differential`** — our hand-muxed animated WebP (VP8X/ANIM/ANMF with
   changed-rect delta frames) decoded by **libwebp**, Google's C reference, vendored and
   statically linked via `webp-animation`. Because the encoder is lossless and every ANMF
@@ -60,7 +65,9 @@ back. Both scripts take `-Hours`, `-Workers`, and `-Targets` overrides.
 
 1. Reproduce (WSL, in `~/makapix-fuzz`):
    `cargo +nightly fuzz run <target> fuzz/artifacts/<target>/<file>`
-   The `fuzz_session_actions` panic message includes the failing DSL script and hashes.
+   The `fuzz_session_actions` oracle panics include the failing DSL script and hashes.
+   For a panic inside the engine itself (a `debug_assert!`, an overflow), set
+   `MKPX_FUZZ_SCRIPT=1`: the target echoes every line to stderr as it runs.
    **Gotcha:** `RUST_LIBFUZZER_DEBUG_PATH=<file>` makes libfuzzer-sys dump the decoded
    input **without executing the target** — every such run "passes." Never use it to
    test whether an artifact still crashes; use it only to read the decoded input.
