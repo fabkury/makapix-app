@@ -921,7 +921,8 @@ fn prelude(start: Start) -> Vec<String> {
 
 /// Triage aid: with `MKPX_FUZZ_SCRIPT` set, every line is echoed to stderr as it runs, so a
 /// panic inside the engine (a `debug_assert!` at save time, say) still shows the script that
-/// led there. Reproduce an artifact with
+/// led there. A rejected line is followed by `#^ rejected`; drop both for a CLI replay (the
+/// `mkpx` CLI stops at the first script error). Reproduce an artifact with
 /// `MKPX_FUZZ_SCRIPT=1 cargo +nightly-2026-08-25 fuzz run fuzz_session_actions <artifact>`.
 fn echo() -> bool {
     static ECHO: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
@@ -947,6 +948,8 @@ fuzz_target!(|input: Input| {
             if sess.run_script(&line).is_ok() {
                 script.push_str(&line);
                 script.push('\n');
+            } else if echo() {
+                eprintln!("#^ rejected"); // drop it and the line above for a CLI replay
             }
         }
     };

@@ -27,6 +27,7 @@ release gates until the fix lands.
 | 2026-09-06 | 14 workers, 4 h, actions only, HEAD 0105c3b6 (FZ-5 fix verification) | — | 22.0M execs, 7206 edges, **0 crashes** |
 | 2026-10-03 | 4 workers, 3 min, actions only, widened alphabet (fuzzing-review W2, `14c19522`), empty corpus | — | 294k execs, **10260 edges**, **1 crash** (~1 min in) → FZ-6 |
 | 2026-10-03 | 4 workers, 5 min, actions only, widened alphabet + FZ-6 fix, empty corpus | — | 407k execs, **10606 edges**, **0 crashes** |
+| 2026-10-03 | 12 workers, `w1main2`, HEAD `94c7b28e`, 310/241/69/69 min planned. Actions and loader ended after ~2 h and ~10 min: `-jobs` = workers, so every job's first artifact ended it for good (harness flaw) | 13.6k execs, 2445 edges, **11 OOM** — benign (below) | 1.96M execs, **12536 edges**, **1 crash** → FZ-7; **10 timeouts** — benign (below) |
 
 Post-FZ-4, a 30-minute actions soak (4.41M execs) reached a new coverage high for that
 target — 6948 edges, above both the 6947 of the run that found FZ-4 and the 6940 of the
@@ -570,3 +571,69 @@ here only through a `debug_assert!`.
 
 **Artifact:** `crash-c507f1b8…` (25 bytes; git-ignored). The script above is the reduced
 form, checked with the debug `mkpx` CLI and `assert.roundtrip.bytes`.
+
+---
+
+## FZ-7 — Move, Scale, and Rotate selection drafts survive a geometry change (OPEN)
+
+**Found:** 2026-10-03, `fuzz_session_actions`, run `w1main2` (12 workers, HEAD `94c7b28e`,
+which already carries the FZ-6 fix). One artifact.
+**Oracle:** the FZ-2 save guard ("selection mask outside storage at save time (stale
+geometry)"), after oracle 2's Undo.
+**Status:** OPEN — root cause located; the fix is a product decision (below).
+
+**Root cause.** The three transform drafts snapshot geometry-bound state when they open:
+`sel_before` (the selection mask in the current storage geometry), and for the Move draft also
+the float anchors and `bbox` in storage coordinates. The drafts deliberately stay open across
+ordinary edits (the document is untouched until commit, and the commit snapshots the frame it
+finds), so `settle_open_edits` does not close them. A crop or resize changes the storage
+geometry underneath them, and the commit then mixes geometries:
+
+- **Move draft:** the commit paints the floats at the old anchors and sets the selection to the
+  translated old-geometry mask. The save guard trips with no Undo at all.
+- **Scale and Rotate drafts:** the commit records the old-geometry `sel_before` as the step's
+  `before`, so Undo restores it onto the new canvas.
+
+Reduced scripts (debug `mkpx` CLI, `assert.roundtrip.bytes`; `*` = trips the guard):
+
+```
+FillNoise(1); SelectTool(SelectRect); PointerDown(8,8); PointerMove(24,20); PointerUp()
+then:
+* MoveDraftBegin(); MoveDraftMove(2,2); CropToSelection(); MoveDraftCommit()
+* ScaleDraftBegin(); ScaleDraftSet(1500,1500); CropToSelection(); ScaleDraftCommit(); Undo()
+* RotateDraftBegin(); RotateDraftSetAngle(500); CropToSelection(); RotateDraftCommit(); Undo()
+  RotateDraftBegin(); CropToSelection(); RotateDraftCommit()      (identity: commits nothing)
+  Copy(); PasteDraft(); PasteMove(3,3); CropToSelection(); PasteCommit(); Undo()   (passes)
+  any of the drafts + Cancel instead of Commit                      (passes)
+  a layer-mode move draft (no selection) across ResizeCanvas         (passes this oracle)
+```
+
+`ResizeCanvas` behaves like the crop. An Undo that crosses a crop while a draft is open passed.
+The fuzzer's own script reached it through the rotate draft (`RotateDraftBegin` …
+`CropToSelection` … `RotateDraftCommit`, then Undo).
+
+**Reachability:** probable. The shell cancels open drafts when the tool changes
+(`editor_page.engine.dart`), but `CropCanvas` and `ResizeCanvas` run from the canvas menu with
+no draft cancel before them, so a pending Move/Rotate/Resize draft with a selection followed
+by Crop canvas or Resize canvas reaches it. Not verified on a device. Journals replay it too.
+**Consequence on release builds:** no panic (debug-assert only); the selection is wrong or
+silently dropped on save, and a committed Move draft lands its pixels at pre-crop coordinates.
+
+**Fix options (undecided):** (a) geometry-changing verbs cancel open transform drafts, matching
+the shell's cancel-on-tool-change and `crop_canvas` dropping the shape draft; (b) they commit
+the drafts first, as `settle_open_edits` does for strokes and the mask drag. Either way the
+shell should close its own draft UI before Crop canvas / Resize canvas.
+
+**Artifact:** `crash-fc38a386…` (git-ignored).
+
+### Benign artifacts from the same run (triaged 2026-10-03)
+
+- **10 timeouts (actions).** Every one is a 128×128 canvas (`side(255)`, libFuzzer's 0xFF
+  bias again) with `DuplicateLayers` repeated toward the 128-layer cap, then `RotateFrame`.
+  They take 10–60 s under the fuzz build's instrumentation and 0.3–2.4 s in a release build;
+  none hangs. Harness, not engine.
+- **11 OOMs (loader).** Ten are existing corpus entries (264,864 and 986,057 bytes), one a
+  mutant; each runs alone in 75–250 ms without exceeding the limit. Loading the 646-entry
+  corpus into one process already peaks at 487 MB of RSS, so libFuzzer's process-wide
+  `-rss_limit_mb=512` had ~25 MB of headroom — the allocator-retention false-OOM the actions
+  target hit in August, now reached by the grown loader corpus. Harness, not engine.
