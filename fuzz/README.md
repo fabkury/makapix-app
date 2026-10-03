@@ -36,7 +36,7 @@ covers, what it misses, and the tracker for closing the gaps.
   *i* must equal our input frame *i* **exactly** — no tolerance. Catches halved-offset
   mistakes, too-small delta rects, bad chunk lengths, mis-sized canvases. Mechanizes what
   was a one-time manual check ("libwebp-verified lossless", 2026-08-09).
-  Verify the oracle itself with `cargo +nightly run --release --bin webp_check`: it
+  Verify the oracle itself with `cargo +nightly-2026-08-25 run --release --bin webp_check`: it
   proves equality on correct output AND that a frame shifted 2 px (a still-valid
   container) is detected — a differential that cannot fail is not a test.
 - **`fuzz_codec_import`** — the import path *we* own: `codec::decode` → `import_decoded`
@@ -64,14 +64,14 @@ back. Both scripts take `-Hours`, `-Workers`, and `-Targets` overrides.
 ## When a crash artifact appears
 
 1. Reproduce (WSL, in `~/makapix-fuzz`):
-   `cargo +nightly fuzz run <target> fuzz/artifacts/<target>/<file>`
+   `cargo +nightly-2026-08-25 fuzz run <target> fuzz/artifacts/<target>/<file>`
    The `fuzz_session_actions` oracle panics include the failing DSL script and hashes.
    For a panic inside the engine itself (a `debug_assert!`, an overflow), set
    `MKPX_FUZZ_SCRIPT=1`: the target echoes every line to stderr as it runs.
    **Gotcha:** `RUST_LIBFUZZER_DEBUG_PATH=<file>` makes libfuzzer-sys dump the decoded
    input **without executing the target** — every such run "passes." Never use it to
    test whether an artifact still crashes; use it only to read the decoded input.
-2. Minimize: `cargo +nightly fuzz tmin <target> fuzz/artifacts/<target>/<file>`
+2. Minimize: `cargo +nightly-2026-08-25 fuzz tmin <target> fuzz/artifacts/<target>/<file>`
 3. Record the finding in `docs/fuzzing/FINDINGS.md` (the durable ledger — artifacts
    are git-ignored working state). For a *panic* finding, also commit the reproducer as
    a new entry in `crates/engine/tests/fuzz_inputs.rs` (never-panic guard, runs on every
@@ -98,7 +98,7 @@ git-ignored operational output too.
 selection) plus **boundary seeds** that mutation reaches only by luck: a 256×256
 16-layer noise document, 200 duplicate frames (tile-dictionary dedup at scale), and 60
 distinct noise frames (widest legal dictionary index space). It runs automatically when
-the corpus is empty; run it by hand (`cd fuzz && cargo +nightly run --release --bin
+the corpus is empty; run it by hand (`cd fuzz && cargo +nightly-2026-08-25 run --release --bin
 make_seeds`) to top an existing corpus back up.
 
 ## One-time WSL setup
@@ -108,6 +108,26 @@ sudo apt-get update && sudo apt-get install -y build-essential   # needs your pa
 curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly --profile minimal
 source ~/.cargo/env && cargo install cargo-fuzz
 ```
+
+`run_fuzz.sh` installs the pinned nightly (`TOOLCHAIN`, currently `nightly-2026-08-25`)
+on first use. To bump it, change `TOOLCHAIN` there and the `cargo +nightly-…` commands in
+this file, and note the change in the FINDINGS.md run log.
+
+## Toolchain and lockfile
+
+`fuzz/Cargo.lock` is the root `Cargo.lock` plus the fuzz-only crates (`libfuzzer-sys`,
+`arbitrary`, `webp-animation`/libwebp and their build dependencies), so the decoders the
+fuzzer exercises (`image`, `image-webp`, `miniz_oxide`, …) are exactly the shipped
+versions. `crates/engine/tests/fuzz_lockfile.rs` fails `cargo test` when a package the two
+share drifts, and `run_fuzz.sh` builds with `--locked`. After any root lockfile change,
+refresh it (WSL, in a synced work tree):
+
+```bash
+cd fuzz && cp ../Cargo.lock Cargo.lock && cargo +nightly-2026-08-25 metadata --format-version 1 >/dev/null
+```
+
+Cargo keeps every version the root pinned and adds only what the fuzz crate needs; copy
+the result back to the repo's `fuzz/Cargo.lock` and commit it with the root change.
 
 ## Notes
 

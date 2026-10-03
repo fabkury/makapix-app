@@ -21,6 +21,12 @@
 
 set -u
 
+# The pinned nightly (fuzzing-review W5): cargo-fuzz needs nightly, and an unpinned one moves
+# under every run. Bump it deliberately (and update the commands in fuzz/README.md); the
+# summary records it so the run log shows which toolchain each run used. FUZZ_TOOLCHAIN
+# overrides it for a one-off.
+TOOLCHAIN=${FUZZ_TOOLCHAIN:-nightly-2026-08-25}
+
 LABEL=adhoc
 WORKERS=4
 MINUTES=60
@@ -62,13 +68,13 @@ else
 fi
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-WORK="$HOME/makapix-fuzz"
+WORK="${FUZZ_WORK:-$HOME/makapix-fuzz}"   # FUZZ_WORK: a second work tree for a parallel run
 STAMP="$(date +%Y%m%d-%H%M)"
 
 # shellcheck disable=SC1091
 source "$HOME/.cargo/env"
 
-echo "== makapix fuzz: label=$LABEL workers=$WORKERS minutes=$MINUTES cmin=$CMIN from_head=$FROM_HEAD"
+echo "== makapix fuzz: label=$LABEL workers=$WORKERS minutes=$MINUTES cmin=$CMIN from_head=$FROM_HEAD toolchain=$TOOLCHAIN"
 echo "== targets: $(for T in $TARGETS; do printf '%s:%smin ' "$T" "${TMIN[$T]}"; done)"
 echo "== repo: $REPO"
 echo "== work: $WORK"
@@ -103,14 +109,26 @@ for T in $TARGETS; do mkdir -p "$WORK/fuzz/corpus/$T"; done
 
 # ---- Build (and seed the corpus on first run) ---------------------------------------
 cd "$WORK"
+if ! rustup toolchain list | grep -q "^$TOOLCHAIN"; then
+  echo "== installing the pinned toolchain $TOOLCHAIN"
+  rustup toolchain install "$TOOLCHAIN" --profile minimal || { echo "!! toolchain install failed" >&2; exit 2; }
+fi
+# fuzz/Cargo.lock is the root lockfile plus the fuzz-only crates, so the fuzzed decoders are
+# the shipped versions (fuzzing-review W5; crates/engine/tests/fuzz_lockfile.rs keeps the two
+# in step). --locked refuses to re-resolve: a stale lock stops the run instead of silently
+# fuzzing other versions.
+if ! (cd "$WORK/fuzz" && cargo +"$TOOLCHAIN" metadata --locked --format-version 1 >/dev/null); then
+  echo "!! fuzz/Cargo.lock is out of date; refresh it from the root lock (fuzz/README.md)" >&2
+  exit 2
+fi
 echo "== building fuzz targets (nightly)"
-if ! cargo +nightly fuzz build 2>&1 | tail -5; then
+if ! cargo +"$TOOLCHAIN" fuzz build 2>&1 | tail -5; then
   echo "!! cargo fuzz build failed" >&2
   exit 2
 fi
 if [[ -z "$(ls -A "$WORK/fuzz/corpus/fuzz_load_mkpx" 2>/dev/null)" ]]; then
   echo "== corpus empty: generating seeds"
-  (cd "$WORK/fuzz" && cargo +nightly run --release --bin make_seeds)
+  (cd "$WORK/fuzz" && cargo +"$TOOLCHAIN" run --release --bin make_seeds)
 fi
 
 # ---- Run each target for an equal share of the time budget --------------------------
@@ -160,7 +178,7 @@ for T in $TARGETS; do
   LOG="$WORK/fuzz/logs/$STAMP-$LABEL-$T.log"
   echo "== fuzzing $T: $WORKERS workers, $SECS_PER s, max_len=$MAXLEN (log: $(basename "$LOG"))"
   rm -f "$WORK"/fuzz-*.log
-  nice -n 19 cargo +nightly fuzz run "$T" "fuzz/corpus/$T" -- \
+  nice -n 19 cargo +"$TOOLCHAIN" fuzz run "$T" "fuzz/corpus/$T" -- \
     -workers="$WORKERS" -jobs="$WORKERS" -max_total_time="$SECS_PER" \
     -rss_limit_mb="$RSSLIM" -malloc_limit_mb="$MALLOCLIM" \
     -timeout="$TIMEOUT" -max_len="$MAXLEN" -print_final_stats=1 "${DICT[@]}" \
@@ -183,7 +201,7 @@ done
 if [[ $CMIN == 1 && $INTERRUPTED == 0 ]]; then
   for T in $TARGETS; do
     echo "== cmin $T"
-    cargo +nightly fuzz cmin "$T" "fuzz/corpus/$T" \
+    cargo +"$TOOLCHAIN" fuzz cmin "$T" "fuzz/corpus/$T" \
       >"$WORK/fuzz/logs/$STAMP-$LABEL-$T.cmin.log" 2>&1 || echo "!! cmin failed for $T (see log)"
     AFTER[$T]=$(ls "$WORK/fuzz/corpus/$T" 2>/dev/null | wc -l)
   done
@@ -218,6 +236,8 @@ SUMMARY="$REPO/fuzz/logs/summary-$STAMP-$LABEL.md"
   echo
   echo "Workers: $WORKERS · budget: $MINUTES min · cmin: $CMIN · interrupted: $INTERRUPTED"
   echo
+  echo "Source: ${HEAD_SHA:+committed HEAD $HEAD_SHA}${HEAD_SHA:-working tree at $(git -C "$REPO" -c safe.directory='*' rev-parse --short HEAD)} · toolchain: $TOOLCHAIN"
+  echo
   for T in $TARGETS; do
     EXECS=$(grep -h 'stat::number_of_executed_units' "$REPO/fuzz/logs/$STAMP-$LABEL-$T".fuzz-*.log 2>/dev/null \
       | awk '{s+=$NF} END{printf "%d", s}')
@@ -236,8 +256,8 @@ SUMMARY="$REPO/fuzz/logs/summary-$STAMP-$LABEL.md"
     fi
     echo
   done
-  echo "Next steps for a crash: reproduce with \`cargo +nightly fuzz run <target> fuzz/artifacts/<target>/<file>\`,"
-  echo "minimize with \`cargo +nightly fuzz tmin <target> <file>\`, then commit the reproducer as a new entry"
+  echo "Next steps for a crash: reproduce with \`cargo +$TOOLCHAIN fuzz run <target> fuzz/artifacts/<target>/<file>\`,"
+  echo "minimize with \`cargo +$TOOLCHAIN fuzz tmin <target> <file>\`, then commit the reproducer as a new entry"
   echo "in \`crates/engine/tests/fuzz_inputs.rs\` (see fuzz/README.md)."
 } >"$SUMMARY"
 

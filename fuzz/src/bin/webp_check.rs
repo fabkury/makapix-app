@@ -1,6 +1,6 @@
 //! Proves the animated-WebP differential oracle is real and non-vacuous.
 //!
-//! `cargo +nightly run --release --bin webp_check` (from `fuzz/`). Two halves:
+//! `cargo +nightly-2026-08-25 run --release --bin webp_check` (from `fuzz/`). Two halves:
 //!   1. POSITIVE — encode several animations with our hand-written muxer, decode them
 //!      with libwebp (the C reference), and require pixel-exact equality per frame.
 //!      If this fails, the encoder is wrong.

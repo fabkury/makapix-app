@@ -12,11 +12,11 @@ this file tracks the harness work, not the bugs it finds.
 
 | ID | Item | Priority | Effort | Status | Decision | Closed by |
 |---|---|---|---|---|---|---|
-| W1 | Long burst on HEAD; fuzz-burst rule for engine changes and releases | 1 | Low | open | | |
-| W2 | Actions target up to the parser; unrendered-verb test | 2 | Medium | open | | |
+| W1 | Long burst on HEAD; fuzz-burst rule for engine changes and releases | 1 | Low | in progress | accepted 2026-10-03 | |
+| W2 | Actions target up to the parser; unrendered-verb test | 2 | Medium | in progress | accepted 2026-10-03 | `14c19522` (burst pending) |
 | W3 | Stable `cargo test` replays the committed loader corpus | 3 | Low | open | | |
 | W4 | Loader target: compact envelope, META reader, tolerant reload, wider `poke_reads` | 4 | Low | open | | |
-| W5 | Fuzz crate honors the root lockfile; pinned nightly | 5 | Low | open | | |
+| W5 | Fuzz crate honors the root lockfile; pinned nightly | 5 | Low | done | accepted 2026-10-03 | this commit |
 | W6 | Static WebP differential; weak GIF decode-back oracle | 6 | Low | open | | |
 | W7 | New actions oracles: determinism, checkpoint replay, tiny budgets | 7 | Medium | open | | |
 | W8 | Raw-text DSL parser target | 8 | Low | open | | |
@@ -193,3 +193,16 @@ after W2.
 ## Log
 
 - 2026-09-30: review written, plan opened with all items undecided.
+- 2026-10-03: W1, W2, W5 accepted; order W2 → W5 → W1, with a 4-h baseline burst on the old
+  harness at `989f0b1a` running alongside (6 workers, all four targets, `--from-head --cmin`).
+  W2 landed in `14c19522`: every parser verb rendered except `SetMemBudget` (left for W7),
+  weighted sub-enums, per-line execution against the live session (rejected lines no longer
+  truncate a sequence), three starting documents, `MKPX_FUZZ_SCRIPT` echo, and the drift test
+  `crates/engine/tests/fuzz_alphabet.rs` (verified to fail both ways). A 3-minute smoke run
+  reached 10260 edges (old best 7298) and found FZ-6 within a minute; fixed in `a6ecbf26`.
+  W2 stays in progress until the widened alphabet's long burst is in the run log.
+  W5: `fuzz/Cargo.lock` regenerated from the root lock (cargo added 20 fuzz-only packages and
+  changed nothing shared), `crates/engine/tests/fuzz_lockfile.rs` guards it, `run_fuzz.sh`
+  checks it with `--locked` and pins `nightly-2026-08-25` (the same commit, `e7769602`, the
+  rolling nightly had been). The run summary now records source commit and toolchain;
+  `FUZZ_WORK` allows a second work tree.
