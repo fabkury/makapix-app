@@ -455,12 +455,16 @@ fn ints(v: &[u8], n: usize) -> String {
 }
 
 /// A canvas side: usually the cheap 1..=64 band where most interleavings live, occasionally
-/// past it up to the 512 cap (ADR 0021).
+/// 72..=184 (several 32-px tiles past it). Never the 512 cap: under the fuzz build's
+/// instrumentation a few frame rotations of a 512x512 multi-layer document take 30 s, every
+/// such input became a timeout artifact, and libFuzzer's taste for 0xFF made 512 the most
+/// common large size. The cap itself is covered by the loader's boundary seeds and the
+/// engine tests; the interleavings this target hunts behave the same at 184.
 fn side(b: u8) -> u16 {
-    if b < 240 {
-        (b as u16 % 64) + 1
-    } else {
-        64 + (b as u16 - 239) * 28
+    match b {
+        0..=239 => (b as u16 % 64) + 1,
+        240..=254 => 64 + (b as u16 - 239) * 8,
+        255 => 128,
     }
 }
 
