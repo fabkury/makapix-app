@@ -4061,6 +4061,16 @@ impl Session {
         self.move_draft = None;
     }
 
+    /// Discard every open transform draft — move, rotate, scale, and paste — as their Cancel verbs
+    /// do. Used where the drafts' snapshots stop describing the document: a storage-geometry change
+    /// (`exec`, fuzz FZ-7) and a newly loaded document.
+    pub(super) fn cancel_transform_drafts(&mut self) {
+        self.move_draft = None;
+        self.rotate_draft = None;
+        self.scale_draft = None;
+        self.paste_draft = None;
+    }
+
     /// The move draft's bounding rect at its current offset (top-left + size), if one is open — for
     /// the shell to show Commit/Cancel and know a draft is active.
     pub fn move_draft_rect(&self) -> Option<IRect> {
@@ -4345,9 +4355,8 @@ impl Session {
         self.play_cache_dirty = true; // new frames/durations [battery F15]
         self.clipboard = None;
         self.clipboard_gen = self.clipboard_gen.wrapping_add(1); // the swatch cache must drop too
-        self.paste_draft = None;
         self.repeat_record = None; // Repeat does not cross documents (ADR 0017)
-        self.move_draft = None; // a stale draft would reference the previous document's frame [F-29]
+        self.cancel_transform_drafts(); // a stale draft would reference the previous document's frame [F-29]
         self.move_sel_before = None; // drop any half-open selection-move drag
         self.clear_move_group(); // the Move group does not cross documents
     }
@@ -7019,6 +7028,98 @@ Undo()").unwrap();
         assert!(!sel_eq(&s.doc.selection, &moved), "the next undo reverts the drag itself");
         s.run_script("Redo()").unwrap();
         assert!(sel_eq(&s.doc.selection, &moved), "redo restores the moved mask");
+    }
+
+    #[test]
+    fn geometry_changes_cancel_open_transform_drafts() {
+        // [fuzz FZ-7] The Move, Scale, and Rotate drafts snapshot the selection mask (and the Move
+        // draft its anchors) in the storage geometry they opened in, and stay open across ordinary
+        // edits. A crop or resize changed the geometry under them: committing the Move draft put
+        // an old-geometry mask on the new canvas, and undoing a Scale/Rotate commit restored one.
+        // Decision (2026-10-03): a verb that changes the storage geometry cancels every open
+        // transform draft, like the shell's cancel-on-tool-change. Reduced fuzz reproducers
+        // (docs/fuzzing/FINDINGS.md FZ-7), plus an Undo that crosses a crop with a draft open.
+        let sel = "FillNoise(1)
+SelectTool(SelectRect)
+PointerDown(8,8)
+PointerMove(24,20)
+PointerUp()
+";
+        let scripts: &[&str] = &[
+            "MoveDraftBegin()
+MoveDraftMove(2,2)
+CropToSelection()
+MoveDraftCommit()",
+            "ScaleDraftBegin()
+ScaleDraftSet(1500,1500)
+CropToSelection()
+ScaleDraftCommit()",
+            "RotateDraftBegin()
+RotateDraftSetAngle(500)
+CropToSelection()
+RotateDraftCommit()",
+            "Copy()
+PasteDraft()
+PasteMove(3,3)
+CropToSelection()
+PasteCommit()",
+            "MoveDraftBegin()
+MoveDraftMove(2,2)
+ResizeCanvas(12,40)
+MoveDraftCommit()",
+            "RotateDraftBegin()
+RotateDraftSetAngle(500)
+CropCanvas(2,2,20,20)
+RotateDraftCommit()",
+            "CropToSelection()
+SelectAll()
+ScaleDraftBegin()
+ScaleDraftSet(700,700)
+Undo()
+ScaleDraftCommit()",
+        ];
+        let fits = |sess: &Session| {
+            let st = sess.doc.storage();
+            sess.doc.selection.as_ref().is_none_or(|m| m.width() == st.w as u32 && m.height() == st.h as u32)
+        };
+        for tail in scripts {
+            let script = format!("{sel}{tail}");
+            let mut sess = Session::new(32, 32);
+            sess.run_script(&script).unwrap();
+            assert!(fits(&sess), "selection mask outside storage after script:
+{script}");
+            for step in ["Undo()", "Undo()", "Redo()", "Redo()"] {
+                sess.run_script(step).unwrap();
+                assert!(fits(&sess), "selection mask outside storage after {step} for script:
+{script}");
+                let saved = sess.save_bytes();
+                let mut reloaded = Session::empty();
+                reloaded.load_bytes(&saved).unwrap();
+                assert!(reloaded.save_bytes() == saved, "resave not byte-identical after {step} for script:
+{script}");
+            }
+        }
+
+        // The cancel itself: after the crop no draft is open, the commit is a no-op, and the crop
+        // is the only new undo step (undoing it restores the untouched pre-crop document).
+        let mut s = Session::new(32, 32);
+        s.run_script(&format!("{sel}MoveDraftBegin()
+MoveDraftMove(2,2)")).unwrap();
+        let pre_crop = s.doc.content_hash();
+        s.run_script("CropToSelection()").unwrap();
+        assert!(s.move_draft_rect().is_none(), "the crop cancelled the move draft");
+        let cropped = s.doc.content_hash();
+        s.run_script("MoveDraftCommit()").unwrap();
+        assert_eq!(s.doc.content_hash(), cropped, "committing a cancelled draft changes nothing");
+        s.run_script("Undo()").unwrap();
+        assert_eq!(s.doc.content_hash(), pre_crop, "one Undo restores the pre-crop document, unmoved");
+
+        // A draft survives a verb that keeps the geometry (the drafts' normal life is unchanged).
+        let mut s = Session::new(32, 32);
+        s.run_script(&format!("{sel}MoveDraftBegin()
+MoveDraftMove(2,2)
+AddLayer()")).unwrap();
+        assert!(s.move_draft_rect().is_some(), "a same-geometry verb leaves the draft open");
     }
 
     #[test]

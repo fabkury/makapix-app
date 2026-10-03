@@ -268,6 +268,7 @@ impl Session {
         if !matches!(a, AdvanceClock(_)) {
             self.play_cache_dirty = true;
         }
+        let storage_before = self.doc.storage();
         match a {
             NewDocument(w, h) => {
                 // A replayed Journal can contain NewDocument mid-stream; checkpoints taken
@@ -499,6 +500,12 @@ impl Session {
             Pause => self.pause(),
             AdvanceClock(ms) => self.advance_clock_ms(ms),
             SetSeed(n) => self.set_seed(n),
+        }
+        // Any verb that changed the storage geometry (crop, resize, an Undo/Redo across one)
+        // cancels the open transform drafts: their snapshots — the selection mask, anchors and
+        // positions in storage coordinates — belong to the old geometry. [fuzz FZ-7]
+        if self.doc.storage() != storage_before {
+            self.cancel_transform_drafts();
         }
     }
 }

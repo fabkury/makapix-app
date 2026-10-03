@@ -574,13 +574,15 @@ form, checked with the debug `mkpx` CLI and `assert.roundtrip.bytes`.
 
 ---
 
-## FZ-7 — Move, Scale, and Rotate selection drafts survive a geometry change (OPEN)
+## FZ-7 — Move, Scale, and Rotate selection drafts survive a geometry change (FIXED 2026-10-03)
 
 **Found:** 2026-10-03, `fuzz_session_actions`, run `w1main2` (12 workers, HEAD `94c7b28e`,
 which already carries the FZ-6 fix). One artifact.
 **Oracle:** the FZ-2 save guard ("selection mask outside storage at save time (stale
 geometry)"), after oracle 2's Undo.
-**Status:** OPEN — root cause located; the fix is a product decision (below).
+**Status:** FIXED 2026-10-03 (decision: cancel the drafts), with the regression test
+`geometry_changes_cancel_open_transform_drafts` (session.rs tests), verified to fail without
+the fix.
 
 **Root cause.** The three transform drafts snapshot geometry-bound state when they open:
 `sel_before` (the selection mask in the current storage geometry), and for the Move draft also
@@ -619,10 +621,20 @@ by Crop canvas or Resize canvas reaches it. Not verified on a device. Journals r
 **Consequence on release builds:** no panic (debug-assert only); the selection is wrong or
 silently dropped on save, and a committed Move draft lands its pixels at pre-crop coordinates.
 
-**Fix options (undecided):** (a) geometry-changing verbs cancel open transform drafts, matching
-the shell's cancel-on-tool-change and `crop_canvas` dropping the shape draft; (b) they commit
-the drafts first, as `settle_open_edits` does for strokes and the mask drag. Either way the
-shell should close its own draft UI before Crop canvas / Resize canvas.
+**Fix (user decision 2026-10-03: cancel, not commit).** `Session::exec` compares the storage
+size before and after every verb; when it changed (crop, resize, an Undo/Redo across one) it
+calls `cancel_transform_drafts()`, which drops the move, rotate, scale, and paste drafts as
+their Cancel verbs do. The pending transform is discarded and the later Commit is a no-op.
+Drafts still survive verbs that keep the geometry. The shell cancels its own draft UI before
+Crop canvas and Resize canvas (`_cancelTransformDrafts`, shared with the tool-change path),
+so it never offers Commit for a draft the engine dropped. The shell change is covered by
+`flutter analyze` and the Dart suite only; it was not exercised on a device.
+
+**Regression test:** `geometry_changes_cancel_open_transform_drafts` — the scripts above plus
+paste, `ResizeCanvas`, `CropCanvas`, and an Undo crossing a crop with a draft open, each
+checked through two Undos and two Redos for a mask that fits the storage and a byte-identical
+resave; then the cancel itself (no draft after the crop, Commit is a no-op, one Undo restores
+the pre-crop document) and a draft surviving a same-geometry verb.
 
 **Artifact:** `crash-fc38a386…` (git-ignored).
 

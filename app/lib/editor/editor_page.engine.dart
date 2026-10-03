@@ -913,6 +913,39 @@ extension _EditorEngine on _EditorPageState {
     _controlDragDead = false;
   }
 
+  /// Discard every pending transform draft — paste, move, rotate (Angle), resize (Scale) — and
+  /// erase its preview, exactly as the row-1 Cancel buttons do. Called when navigating away
+  /// (`_selectTool`) and before Crop canvas / Resize canvas: a draft holds positions in the old
+  /// canvas geometry, and the engine cancels it on a geometry change anyway (fuzz FZ-7), so the
+  /// UI must not keep offering Commit for it.
+  void _cancelTransformDrafts() {
+    if (_hasPasteDraft) {
+      _send('PasteCancel()');
+      _hasPasteDraft = false;
+      _pasteDragLast = null;
+      _redraw();
+    }
+    if (_hasMoveDraft) {
+      _send('MoveDraftCancel()');
+      _hasMoveDraft = false;
+      _moveDragLast = null;
+      _moveDraftStarted = false;
+      _redraw();
+    }
+    if (_hasRotateDraft) {
+      _send('RotateDraftCancel()');
+      _hasRotateDraft = false;
+      _rotateDragging = false;
+      _redraw();
+    }
+    if (_hasResizeDraft) {
+      _send('ScaleDraftCancel()');
+      _hasResizeDraft = false;
+      _resizeDragging = false;
+      _redraw();
+    }
+  }
+
   void _selectTool(String t) {
     // Select Layer paints a live cyan alpha overlay into the composited image while it is the active
     // engine tool; leaving it must drop the engine off Select Layer and redraw so the shading clears.
@@ -928,35 +961,9 @@ extension _EditorEngine on _EditorPageState {
     if (_hasShapeDraft) _cancelShapeDraft();
     // Likewise, a pending Select Shape draft is discarded (and its ants erased) when leaving the tool.
     if (_hasSelDraft) _cancelSelDraft();
-    // Likewise, a pending paste draft is canceled & erased when leaving the Copy & Paste tool.
-    if (_hasPasteDraft) {
-      _send('PasteCancel()');
-      _hasPasteDraft = false;
-      _pasteDragLast = null;
-      _redraw();
-    }
-    // A pending move draft is discarded when navigating away (same as its row-1 Cancel button).
-    if (_hasMoveDraft) {
-      _send('MoveDraftCancel()');
-      _hasMoveDraft = false;
-      _moveDragLast = null;
-      _moveDraftStarted = false;
-      _redraw();
-    }
-    // A pending rotate (Angle) draft is likewise discarded when leaving the Rotate tool.
-    if (_hasRotateDraft) {
-      _send('RotateDraftCancel()');
-      _hasRotateDraft = false;
-      _rotateDragging = false;
-      _redraw();
-    }
-    // A pending resize (Scale) draft is likewise discarded when leaving the Resize tool.
-    if (_hasResizeDraft) {
-      _send('ScaleDraftCancel()');
-      _hasResizeDraft = false;
-      _resizeDragging = false;
-      _redraw();
-    }
+    // Likewise, pending paste / move / rotate / resize drafts are discarded when navigating away
+    // (same as their row-1 Cancel buttons).
+    _cancelTransformDrafts();
     // A pending HSV / Brightness-Contrast / Levels adjustment (a display-only preview, like the
     // drafts above) is likewise canceled when leaving its tool, so returning starts clean instead
     // of resuming a stale draft — same as the commit-menu's Cancel.

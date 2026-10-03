@@ -844,6 +844,7 @@ extension _EditorFileIo on _EditorPageState {
   /// else the whole canvas; "Trim to content" targets the engine's content bounds; OK issues one
   /// `CropCanvas(x, y, w, h)` verb (one undo step, journaled like any other canvas op).
   Future<void> _cropCanvasPage() async {
+    _cancelTransformDrafts(); // a pending draft cannot survive the geometry change [fuzz FZ-7]
     final w = engine.width, h = engine.height;
     final n = engine.frameCount;
     // `frame_detail` is the per-frame list (`frames` is the count) — the frame sheet reads the same.
@@ -890,6 +891,7 @@ extension _EditorFileIo on _EditorPageState {
   }
 
   Future<void> _resizeCanvasDialog() async {
+    _cancelTransformDrafts(); // a pending draft cannot survive the geometry change [fuzz FZ-7]
     double w = engine.width.toDouble();
     double h = engine.height.toDouble();
     int ax = 1, ay = 1; // anchor cell: 0 = left/top, 1 = center, 2 = right/bottom
