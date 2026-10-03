@@ -51,7 +51,7 @@ covers, what it misses, and the tracker for closing the gaps.
 ```powershell
 ./tools/fuzz/fuzz-day.ps1     # daytime companion: 8 workers, 4 h, quiet-ish, Ctrl+C safe
 ./tools/fuzz/fuzz-night.ps1   # overnight burst: 14 workers, 9 h, cmin + morning summary
-# pick targets explicitly (default is the two engine targets):
+# pick targets explicitly (default: all four, weighted actions 45% / loader 35% / webp 10% / import 10%):
 ./tools/fuzz/fuzz-night.ps1 -Targets "fuzz_webp_differential fuzz_codec_import"
 # weight the budget per target with a `name:minutes` suffix (unsuffixed targets share the rest):
 ./tools/fuzz/fuzz-night.ps1 -Hours 10 -Targets "fuzz_session_actions:240 fuzz_load_mkpx:180 fuzz_webp_differential fuzz_codec_import"
@@ -60,6 +60,22 @@ covers, what it misses, and the tracker for closing the gaps.
 Both print and save a summary (`fuzz/logs/summary-*.md`): executions, coverage, corpus
 growth, and any new crash artifacts. Ctrl+C is safe — corpus and findings still sync
 back. Both scripts take `-Hours`, `-Workers`, and `-Targets` overrides.
+
+## When to fuzz
+
+Edge counts plateau on short runs but long bursts keep paying (FZ-4 and FZ-5 both came
+from runs of several hours), and a target that has not run since an engine change says
+nothing about that change. The rule (fuzzing-review W1):
+
+- **After engine changes:** a burst covering the commits that touch `crates/engine/src/io.rs`,
+  `session*`, `tool*`, `raster.rs`, `import.rs`, or `crates/codec`. A day run is enough for
+  a small change; batch several into one night run.
+- **Before every Play or App Store release:** a night run on the release commit
+  (`--from-head`), all four targets.
+- **After widening a target** (a new verb, a new oracle): a run on that target before the
+  change is called done.
+- Record every run in `docs/fuzzing/FINDINGS.md`'s run log with the commit it fuzzed (the
+  summary's `Source:` line), so the gap since the last run stays visible.
 
 ## When a crash artifact appears
 

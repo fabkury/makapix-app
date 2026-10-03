@@ -206,3 +206,4 @@ after W2.
   checks it with `--locked` and pins `nightly-2026-08-25` (the same commit, `e7769602`, the
   rolling nightly had been). The run summary now records source commit and toolchain;
   `FUZZ_WORK` allows a second work tree.
+- 2026-10-03: W1 steps 3-4: the fuzz-burst rule is in `fuzz/README.md` ("When to fuzz"), and `fuzz-day.ps1`/`fuzz-night.ps1` default to all four targets, weighted 45/35/10/10 and scaled to `-Hours`. Steps 1-2 (the long burst on HEAD) follow tonight on the widened harness.

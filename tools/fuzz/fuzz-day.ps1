@@ -11,7 +11,7 @@
 param(
     [int]$Workers = 8,
     [double]$Hours = 4,
-    [string]$Targets = 'fuzz_load_mkpx fuzz_session_actions',
+    [string]$Targets = '',   # default: all four targets, weighted (below)
     [string]$Distro = 'Ubuntu-24.04'
 )
 
@@ -19,6 +19,12 @@ $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $wslRepo = (wsl -d $Distro -- wslpath -a ($repo -replace '\\', '/')) | Select-Object -First 1
 if (-not $wslRepo) { Write-Error "could not resolve the repo path inside WSL distro '$Distro'"; exit 2 }
 $minutes = [int][math]::Round($Hours * 60)
+# Default to all four targets, weighted toward the two engine targets (the 2026-08-28
+# overnight recipe, scaled to -Hours): actions 45%, loader 35%, webp and import 10% each.
+if (-not $Targets) {
+    $a = [int]($minutes * 0.45); $l = [int]($minutes * 0.35); $o = [int]($minutes * 0.10)
+    $Targets = "fuzz_session_actions:$a fuzz_load_mkpx:$l fuzz_webp_differential:$o fuzz_codec_import:$o"
+}
 
 # Explicitly-typed array, splatted — see the note in fuzz-night.ps1 about why a string
 # must never be splatted into a native command.
