@@ -140,7 +140,7 @@ fi
 # make_seeds writes fixed-name seeds for the loader, the compact-envelope, and the import
 # targets. Run it on first use and whenever the generator changes (a stamp of its source,
 # kept outside the corpora: cmin renames corpus files, so seed names do not survive there).
-SEED_STAMP="$WORK/fuzz/.seeds-stamp"
+SEED_STAMP="$WORK/.seeds-stamp"   # outside fuzz/: the source rsync --delete would remove it
 SEED_SUM=$(sha1sum "$WORK/fuzz/src/bin/make_seeds.rs" | cut -d' ' -f1)
 if [[ "$(cat "$SEED_STAMP" 2>/dev/null)" != "$SEED_SUM" ]]; then
   echo "== generating seeds"
