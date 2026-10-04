@@ -15,13 +15,13 @@ this file tracks the harness work, not the bugs it finds.
 | W1 | Long burst on HEAD; fuzz-burst rule for engine changes and releases | 1 | Low | done | accepted 2026-10-03 | `d7800ae1`, `d3947948`, run `w1rerun` |
 | W2 | Actions target up to the parser; unrendered-verb test | 2 | Medium | done | accepted 2026-10-03 | `14c19522`, run `w1rerun` |
 | W3 | Stable `cargo test` replays the committed loader corpus | 3 | Low | open | | |
-| W4 | Loader target: compact envelope, META reader, tolerant reload, wider `poke_reads` | 4 | Low | in progress | accepted 2026-10-04 | run pending |
+| W4 | Loader target: compact envelope, META reader, tolerant reload, wider `poke_reads` | 4 | Low | done | accepted 2026-10-04 | `79694362`, run `w4w10` |
 | W5 | Fuzz crate honors the root lockfile; pinned nightly | 5 | Low | done | accepted 2026-10-03 | `d29ec02e` |
 | W6 | Static WebP differential; weak GIF decode-back oracle | 6 | Low | open | | |
 | W7 | New actions oracles: determinism, checkpoint replay, tiny budgets | 7 | Medium | open | | |
 | W8 | Raw-text DSL parser target | 8 | Low | open | | |
 | W9 | `cargo fuzz coverage` quarterly; unreached functions logged | 9 | Low | open | | |
-| W10 | Image seeds for import; 512-canvas and 128-layer boundary seeds | 10 | Low | in progress | accepted 2026-10-04 | run pending |
+| W10 | Image seeds for import; 512-canvas and 128-layer boundary seeds | 10 | Low | done | accepted 2026-10-04 | `79694362`, run `w4w10` |
 | R1 | FFI fuzz target (ANALYSIS.md §2.4) | | | rejected | Not worth it: 25 FFI tests, thin unsafe surface, engine targets cover the callees | |
 | R2 | Dart-side fuzzing | | | rejected | ANALYSIS.md §2.5 still holds; failures are caught exceptions | |
 | R3 | GIF palette differential | | | rejected | Prior decision stands; W6's weak oracle is enough | |
@@ -229,3 +229,9 @@ after W2.
   import target (committed, user decision; 11 files start it at 5360 edges, where the grown
   corpus peaked at 5447), compact seeds, and 512-canvas / 128-layer / META loader seeds.
   Day/night defaults now cover five targets (40/30/10/10/10).
+- 2026-10-04: W4 and W10 closed. Run `w4w10`: the envelope target clean over 23.1M executions;
+  the loader's 108 artifacts were one over-strict META oracle (corrected); the image seeds took
+  the import target from 5447 to 10146 edges and found FZ-8 (frame-delay overflow in the codec,
+  fixed). Open observation, not a fuzz finding: `mkpx_compact::open` inflates up to its 512 MiB
+  cap before the loader's 320 MiB budget applies (a 522 KB file suffices) — user decision
+  pending. W3, W6-W9 remain undecided.

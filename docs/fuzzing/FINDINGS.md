@@ -30,6 +30,7 @@ release gates until the fix lands.
 | 2026-10-03 | 12 workers, `w1main2`, HEAD `94c7b28e`, 310/241/69/69 min planned. Actions and loader ended after ~2 h and ~10 min: `-jobs` = workers, so every job's first artifact ended it for good (harness flaw) | 13.6k execs, 2445 edges, **11 OOM** — benign (below) | 1.96M execs, **12536 edges**, **1 crash** → FZ-7; **10 timeouts** — benign (below) |
 | 2026-10-03 | same run `w1main2`, the other two targets (69 min each, full budget) | webp: 28.3M execs, 848 edges, 0 findings | import: 22.7M execs, **5447 edges**, 0 findings |
 | 2026-10-03 | 12 workers, `w1rerun`, HEAD `d3947948` (FZ-6 + FZ-7 fixed; fork mode), actions 5 h + loader 4 h, full budgets, cmin | **10.86M execs**, **2475 edges**, **0 findings** | **5.92M execs**, **13373 edges**, **0 crashes**, 0 timeouts (7 slow-unit notes) |
+| 2026-10-04 | 12 workers, `w4w10`, HEAD `70b55478` (fuzzing-review W4 + W10: widened loader oracles, new `fuzz_mkpx_open`, image seeds), loader 100 min, envelope 70, import 70, full budgets, cmin | 3.72M execs, **3738 edges**, 108 artifacts — all one over-strict harness oracle (below); `fuzz_mkpx_open`: **23.1M execs**, 3781 edges, **0 findings** | import: 11.5M execs, **10146 edges** (was 5447), **7 crashes** → FZ-8 |
 
 Post-FZ-4, a 30-minute actions soak (4.41M execs) reached a new coverage high for that
 target — 6948 edges, above both the 6947 of the run that found FZ-4 and the 6940 of the
@@ -651,3 +652,32 @@ the pre-crop document) and a draft surviving a same-geometry verb.
   corpus into one process already peaks at 487 MB of RSS, so libFuzzer's process-wide
   `-rss_limit_mb=512` had ~25 MB of headroom — the allocator-retention false-OOM the actions
   target hit in August, now reached by the grown loader corpus. Harness, not engine.
+
+---
+
+## FZ-8 — an animated frame delay near `u32::MAX` ms overflows the duration (FIXED 2026-10-04)
+
+**Found:** 2026-10-04, `fuzz_codec_import`, run `w4w10` — the first run with image seeds
+(fuzzing-review W10), which took the target from 5447 to 10146 edges. Seven artifacts, one
+cause.
+**Oracle:** crash (`attempt to multiply with overflow`, the fuzz build's overflow checks).
+**Status:** FIXED 2026-10-04 with the regression test
+`animated_frame_delay_near_u32_max_does_not_overflow` (codec tests; the fuzzer's 139-byte
+animated WebP), verified to fail first.
+
+**Root cause.** `crates/codec/src/lib.rs`, `decode_animated_capped`:
+`duration_us: dur_ms.max(1) * 1000` in `u32`. An animated WebP's ANMF frame duration is 24
+bits of milliseconds (the reproducer carries 0xFD0050 ms, about 4.6 hours), so anything above
+4,294,967 ms overflows. Release builds do not check overflow: the import got a wrapped, wrong
+frame duration (no panic, no memory issue; the engine clamps durations afterwards).
+**Reachability:** any import of a crafted or odd animated file (WebP; GIF and APNG delays are
+16-bit and cannot reach it). **Fix:** `saturating_mul`.
+
+### Harness false positives from the same run (triaged 2026-10-04)
+
+- **108 loader artifacts**, all the new META oracle: "splice_meta_str refused entries
+  read_meta_str returned from the same file". `read_meta_str` returns at the first META
+  chunk, `splice_meta_str` walks every chunk, so a CRC-valid file with a malformed chunk
+  after its META reads but does not splice. The loader rejects those files too, so the
+  refusal is correct; the oracle now demands the splice only of strict-loadable files. All
+  108 pass on the corrected target.

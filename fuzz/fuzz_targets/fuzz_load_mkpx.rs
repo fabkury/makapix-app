@@ -113,8 +113,17 @@ fn poke_meta(data: &[u8], strict: Option<&Session>) {
         return;
     }
     let refs: Vec<(&str, &str)> = entries.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-    let spliced = makapix_engine::io::splice_meta_str(data, &refs)
-        .expect("splice_meta_str refused entries read_meta_str returned from the same file");
+    // The reader returns at the first META chunk; the splicer walks every chunk, so on a
+    // file with a malformed chunk AFTER its META it refuses where the reader succeeded.
+    // That is correct (the loader rejects such a file too) — the splice is only owed on a
+    // file that loads strictly.
+    let spliced = match makapix_engine::io::splice_meta_str(data, &refs) {
+        Ok(s) => s,
+        Err(e) => {
+            assert!(strict.is_none(), "splice_meta_str refused a strict-loadable file: {e:?}");
+            return;
+        }
+    };
     let reread =
         makapix_engine::io::read_meta_str(&spliced).expect("a spliced file failed read_meta_str");
     assert!(reread == entries, "META entries changed across splice + read");

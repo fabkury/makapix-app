@@ -160,7 +160,9 @@ fn decode_animated_capped<'a>(
             rgba: buf.into_raw(),
             w,
             h,
-            duration_us: (dur_ms.max(1) * 1000),
+            // Saturating: a hostile frame delay near u32::MAX ms must not overflow (the engine
+            // clamps the duration on import anyway). [fuzz FZ-8]
+            duration_us: dur_ms.max(1).saturating_mul(1000),
         });
     }
     if out.is_empty() {
@@ -829,6 +831,20 @@ pub fn encode_sprite_sheet(w: u32, h: u32, frames: &[Vec<u8>], cols: u32) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn animated_frame_delay_near_u32_max_does_not_overflow() {
+        // [fuzz FZ-8] An animated WebP whose ANMF frame duration is 0xFD0050 ms (~4.6 hours):
+        // `dur_ms * 1000` overflowed u32 — a panic under overflow checks, a wrapped (wrong)
+        // duration in release. The fuzzer's reproducer, minus the import target's header.
+        let hex = "52494646e20200ff57454250565038580a000000120000000b0000080000414e494d06000000000000000000414e4d46e40000010000000000000b00000800005000fd025650384ccb0000002f0b00021028cd552022021e08410d00000080030000c00700000000025650384cc90000002a08000210cd552022021e7a048f92ea53de6c522966934a0100";
+        let bytes: Vec<u8> =
+            (0..hex.len() / 2).map(|i| u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).unwrap()).collect();
+        // The file is truncated after the first frame, so an error is fine; a panic is not.
+        if let Ok(frames) = decode(&bytes) {
+            assert!(frames.iter().all(|f| f.duration_us >= 1000));
+        }
+    }
 
     #[test]
     fn png_roundtrip_through_codec() {
