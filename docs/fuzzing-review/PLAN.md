@@ -233,5 +233,5 @@ after W2.
   the loader's 108 artifacts were one over-strict META oracle (corrected); the image seeds took
   the import target from 5447 to 10146 edges and found FZ-8 (frame-delay overflow in the codec,
   fixed). Open observation, not a fuzz finding: `mkpx_compact::open` inflates up to its 512 MiB
-  cap before the loader's 320 MiB budget applies (a 522 KB file suffices) — user decision
-  pending. W3, W6-W9 remain undecided.
+  cap before the loader's 320 MiB budget applies (a 522 KB file suffices) — decided the same day:
+  cap lowered to 384 MiB, remainder accepted (FINDINGS.md OBS-1). W3, W6-W9 remain undecided.

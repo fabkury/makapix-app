@@ -73,12 +73,12 @@ px_black="\x00\x00\x00\xff"
 px_white="\xff\xff\xff\xff"
 
 # Compact envelope (crates/codec/src/mkpx_compact.rs, fuzz_mkpx_open): the signature
-# (\x89 M K P Z CR LF SUB), stated-length words around the 512 MiB inflate cap, and the
+# (\x89 M K P Z CR LF SUB), stated-length words around the 384 MiB inflate cap, and the
 # zlib header miniz writes at level 6.
 compact_signature="\x89MKPZ\x0d\x0a\x1a"
 ulen_0="\x00\x00\x00\x00"
-ulen_cap="\x00\x00\x00\x20"
-ulen_cap_plus_1="\x01\x00\x00\x20"
+ulen_cap="\x00\x00\x00\x18"
+ulen_cap_plus_1="\x01\x00\x00\x18"
 zlib_header="\x78\x9c"
 zlib_stored_block="\x78\x01\x01"
 

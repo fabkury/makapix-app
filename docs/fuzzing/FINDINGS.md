@@ -681,3 +681,31 @@ frame duration (no panic, no memory issue; the engine clamps durations afterward
   after its META reads but does not splice. The loader rejects those files too, so the
   refusal is correct; the oracle now demands the splice only of strict-loadable files. All
   108 pass on the corrected target.
+
+---
+
+## OBS-1 — a small compact file can force a large inflate before the loader refuses it (ACCEPTED LIMIT, cap lowered 2026-10-04)
+
+Not a fuzz finding: noticed while building `fuzz_mkpx_open` (W4) and measured by hand, because
+the run's `-max_len` keeps inflations under what the harness could flag.
+
+**What.** `mkpx_compact::open` inflates a compact `.mkpx` up to its stated length under a fixed
+cap before the engine's loader sees a byte. A 522 KB file declaring 512 MiB of zeros was
+accepted and fully inflated (peak RSS 1.6 GB on the workstation, 9 s), then refused by the
+loader. On Club edit/remix the app opens another user's file twice in a row — `mkpx_read_meta`
+and `mkpx_load` both inflate — so a crafted layers upload costs the opener's cap in transient
+memory, twice, on the reader's phone. No crash in the engine, no corruption; on a low-memory
+device the OS may kill the app (not tested on a device). The server's 50 MB upload limit does
+not prevent it.
+
+**Why accepted.** The app already accepts, by design, files that cost about as much: the
+loader's budget admits documents up to 320 MiB of tile payload, and such a document can come
+from a compact file of a few MB. Opening one holds the inflated bytes and the document at once.
+The bomb is therefore not a new class, only a cap above what the loader would ever accept.
+
+**Decision (user, 2026-10-04).** Lower `MAX_INFLATED` from 512 to **384 MiB** (`05a7500e`):
+`MEM_HARD_BUDGET` (320 MiB) plus headroom for chunk overhead, META, palettes, and the selection.
+The opener now refuses nothing the loader could load (a test pins the cap above the budget). The
+remaining spike is the accepted document-size limit itself (`docs/memlab/REPORT.md`). Rejected:
+a smaller cap on the Club path only (new FFI surface, refuses large legitimate posts) and a
+server-side check (possible follow-up; the app must not depend on it either way).
