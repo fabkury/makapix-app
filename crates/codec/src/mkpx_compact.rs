@@ -16,8 +16,13 @@ use makapix_engine::io::SIGNATURE as PLAIN_SIG;
 pub const COMPACT_SIG: [u8; 8] = [0x89, b'M', b'K', b'P', b'Z', 0x0D, 0x0A, 0x1A];
 /// 8-byte signature + `u32` uncompressed length.
 const HEADER_LEN: usize = 12;
-/// Hard cap on the inflated size — a decompression-bomb guard. Any real v10 document is far below.
-const MAX_INFLATED: usize = 512 * 1024 * 1024;
+/// Hard cap on the inflated size — a decompression-bomb guard. The engine's loader refuses any
+/// document whose tile payload exceeds `MEM_HARD_BUDGET` (320 MiB) before materializing a tile,
+/// and the other chunks are small next to the tiles, so no file past this cap could load anyway;
+/// inflating it would only cost memory on the Club edit/remix path, where the bytes are another
+/// user's. The headroom over the budget covers chunk encoding overhead, META, palettes, and the
+/// selection. (Was 512 MiB until 2026-10-04: a 522 KB file could force a 512 MB inflate.)
+const MAX_INFLATED: usize = 384 * 1024 * 1024;
 /// Fixed DEFLATE level; pinned so the compact profile is byte-deterministic for a given build.
 const DEFLATE_LEVEL: u8 = 6;
 
@@ -127,6 +132,21 @@ mod tests {
         let n = compact.len();
         compact[n - 5] ^= 0xFF; // corrupt the deflate stream
         assert!(matches!(open(&compact), Err(CompactError::Corrupt)));
+    }
+
+    #[test]
+    fn declared_length_past_the_cap_is_refused_before_inflating() {
+        // A compact header declaring one byte over the cap is refused by the header check alone:
+        // no inflate happens, so the (tiny, valid) stream after it never runs. The cap must stay
+        // above the engine's hard budget, or the opener would refuse files the loader accepts.
+        assert!(MAX_INFLATED >= makapix_engine::document::MEM_HARD_BUDGET + 16 * 1024 * 1024);
+        let plain = sample_plain();
+        let mut compact = compress(&plain);
+        compact[8..12].copy_from_slice(&((MAX_INFLATED as u32) + 1).to_le_bytes());
+        assert_eq!(open(&compact), Err(CompactError::TooLarge));
+        // At the cap exactly the header passes and the stream's real length is what gets checked.
+        compact[8..12].copy_from_slice(&(MAX_INFLATED as u32).to_le_bytes());
+        assert_eq!(open(&compact), Err(CompactError::Corrupt));
     }
 
     #[test]
