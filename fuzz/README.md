@@ -13,7 +13,10 @@ covers, what it misses, and the tracker for closing the gaps.
 ## Targets
 
 - **`fuzz_load_mkpx`** — raw bytes → strict + tolerant `.mkpx` load → FFI read pokes →
-  round-trip (content hash + byte-identical resave). Runs with `-rss_limit_mb=512` so
+  round-trip (content hash + byte-identical resave). Also: a tolerant-loaded document
+  must save to a strictly loadable file holding the same document, and what
+  `read_meta_str` returns must splice back (`splice_meta_str`) and read back unchanged
+  without altering the document. Runs with `-rss_limit_mb=512` so
   the Android ~1 GiB allocator wall is an oracle on the workstation. Ships a **custom
   CRC re-signing mutator**: the loader verifies a whole-file CRC-32C before touching the
   body, so naive mutants all die at one branch (18.4M executions stuck at 1618 edges).
@@ -29,6 +32,12 @@ covers, what it misses, and the tracker for closing the gaps.
   target, and `crates/engine/tests/fuzz_alphabet.rs` fails `cargo test` when a parser verb
   is neither rendered nor excluded, or when the target emits a verb the parser rejects.
   **A new DSL verb needs a line in the target** (or an exclusion with a reason).
+- **`fuzz_mkpx_open`** — the compact (zipped) `.mkpx` envelope and the path behind it:
+  raw bytes → `mkpx_compact::open` → META read → tolerant load, as on Club edit/remix.
+  Half of its mutations work inside the envelope (open, mutate the plain bytes, re-sign,
+  wrap again), because a mutated zlib stream almost never passes both checksums. Oracles:
+  no panic; `open` returns exactly the stated length; compress → open is exact; an opened
+  document saves to a strictly loadable file. `-malloc_limit_mb` is the bomb oracle.
 - **`fuzz_webp_differential`** — our hand-muxed animated WebP (VP8X/ANIM/ANMF with
   changed-rect delta frames) decoded by **libwebp**, Google's C reference, vendored and
   statically linked via `webp-animation`. Because the encoder is lossless and every ANMF
@@ -51,7 +60,7 @@ covers, what it misses, and the tracker for closing the gaps.
 ```powershell
 ./tools/fuzz/fuzz-day.ps1     # daytime companion: 8 workers, 4 h, quiet-ish, Ctrl+C safe
 ./tools/fuzz/fuzz-night.ps1   # overnight burst: 14 workers, 9 h, cmin + morning summary
-# pick targets explicitly (default: all four, weighted actions 45% / loader 35% / webp 10% / import 10%):
+# pick targets explicitly (default: all five, weighted actions 40% / loader 30% / envelope, webp, import 10% each):
 ./tools/fuzz/fuzz-night.ps1 -Targets "fuzz_webp_differential fuzz_codec_import"
 # weight the budget per target with a `name:minutes` suffix (unsuffixed targets share the rest):
 ./tools/fuzz/fuzz-night.ps1 -Hours 10 -Targets "fuzz_session_actions:240 fuzz_load_mkpx:180 fuzz_webp_differential fuzz_codec_import"
@@ -98,7 +107,8 @@ nothing about that change. The rule (fuzzing-review W1):
 
 ## Corpus policy
 
-**Only `fuzz_load_mkpx`'s corpus is committed, and only entries ≤ 64 KiB**
+**Only `fuzz_load_mkpx`'s corpus is committed (entries ≤ 64 KiB), plus the import
+target's hand-made `seed_*` image files**
 (`CORPUS_COMMIT_MAX` in `run_fuzz.sh`). That one is worth keeping: it encodes hard-won
 CRC-valid container structure, so a fresh machine starts deep inside the parser instead
 of rediscovering the format. The size cap exists because fuzzing the boundary seeds
@@ -110,12 +120,18 @@ locally in minutes, so git is the wrong home for them. The WSL work tree
 (`~/makapix-fuzz`) is the real corpus of record; `fuzz/artifacts/` and `fuzz/logs/` are
 git-ignored operational output too.
 
-`make_seeds` writes format-diverse small seeds (empty / drawing / noise / palette /
-selection) plus **boundary seeds** that mutation reaches only by luck: a 256×256
-16-layer noise document, 200 duplicate frames (tile-dictionary dedup at scale), and 60
-distinct noise frames (widest legal dictionary index space). It runs automatically when
-the corpus is empty; run it by hand (`cd fuzz && cargo +nightly-2026-08-25 run --release --bin
-make_seeds`) to top an existing corpus back up.
+`make_seeds` writes fixed-name seeds for three targets and runs automatically when a
+corpus lacks them (`cd fuzz && cargo +nightly-2026-08-25 run --release --bin make_seeds`
+by hand):
+
+- **loader:** format-diverse small documents (empty / drawing / META / noise / palette /
+  selection) plus **boundary seeds** that mutation reaches only by luck: a 256×256
+  16-layer noise document, 200 duplicate frames, 60 distinct noise frames, a 512×512
+  canvas (the cap), and a 128-layer stack (the cap).
+- **envelope:** the compact form of every loader seed up to 64 KiB.
+- **import:** one small PNG, WebP, animated WebP, GIF, JPEG, BMP, and APNG, each behind
+  the target's 7-byte config header, plus as-layer and crop configs. These are committed
+  (`fuzz/corpus/fuzz_codec_import/seed_*`); eleven seeds start the target at ~5360 edges.
 
 ## One-time WSL setup
 

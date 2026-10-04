@@ -28,6 +28,23 @@ version = "0.10"
 default-features = false
 features = ["static"]
 
+# make_seeds only: encoders for the image seeds the codec crate has no encoder for (JPEG,
+# BMP, APNG). Same crates and versions the codec already locks; nothing here ships.
+[dependencies.image]
+version = "0.25"
+default-features = false
+features = ["png", "jpeg", "bmp"]
+
+[dependencies.png]
+version = "0.18"
+
+[[bin]]
+name = "fuzz_mkpx_open"
+path = "fuzz_targets/fuzz_mkpx_open.rs"
+test = false
+doc = false
+bench = false
+
 [[bin]]
 name = "fuzz_load_mkpx"
 path = "fuzz_targets/fuzz_load_mkpx.rs"

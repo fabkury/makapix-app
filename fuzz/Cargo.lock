@@ -237,9 +237,11 @@ name = "makapix-fuzz"
 version = "0.0.0"
 dependencies = [
  "arbitrary",
+ "image",
  "libfuzzer-sys",
  "makapix-codec",
  "makapix-engine",
+ "png",
  "webp-animation",
 ]
 

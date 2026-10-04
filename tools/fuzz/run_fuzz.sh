@@ -137,9 +137,15 @@ if ! cargo +"$TOOLCHAIN" fuzz build 2>&1 | tail -5; then
   echo "!! cargo fuzz build failed" >&2
   exit 2
 fi
-if [[ -z "$(ls -A "$WORK/fuzz/corpus/fuzz_load_mkpx" 2>/dev/null)" ]]; then
-  echo "== corpus empty: generating seeds"
-  (cd "$WORK/fuzz" && cargo +"$TOOLCHAIN" run --release --bin make_seeds)
+# make_seeds writes fixed-name seeds for the loader, the compact-envelope, and the import
+# targets. Run it on first use and whenever the generator changes (a stamp of its source,
+# kept outside the corpora: cmin renames corpus files, so seed names do not survive there).
+SEED_STAMP="$WORK/fuzz/.seeds-stamp"
+SEED_SUM=$(sha1sum "$WORK/fuzz/src/bin/make_seeds.rs" | cut -d' ' -f1)
+if [[ "$(cat "$SEED_STAMP" 2>/dev/null)" != "$SEED_SUM" ]]; then
+  echo "== generating seeds"
+  (cd "$WORK/fuzz" && cargo +"$TOOLCHAIN" run --release --bin make_seeds | tail -3) \
+    && echo "$SEED_SUM" > "$SEED_STAMP"
 fi
 
 # ---- Run each target for an equal share of the time budget --------------------------
@@ -186,6 +192,13 @@ for T in $TARGETS; do
     # larger than its compressed input, so this one needs allocation headroom.
     fuzz_codec_import)
       MAXLEN=65536;   RSSLIM=4096; MALLOCLIM=2048; TIMEOUT=25
+      ;;
+    # Compact envelope: malloc_limit is the decompression-bomb oracle. A 256 KiB input can
+    # legally inflate to ~260 MB (DEFLATE tops out near 1030:1), so the limit sits above
+    # that; anything past it means the envelope's stated-length bound failed.
+    fuzz_mkpx_open)
+      MAXLEN=262144;  RSSLIM=2048; MALLOCLIM=512
+      DICT=(-dict=fuzz/mkpx.dict)
       ;;
     # Actions: a sequence on a 184-px canvas with dozens of layers takes up to ~2 s in a
     # release build and ~25x that under instrumentation; 30 s keeps those from reading as hangs.

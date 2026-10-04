@@ -35,6 +35,10 @@ fuzz/logs/
 # run) while regenerating locally in minutes, so they stay out of git.
 fuzz/corpus/*
 !fuzz/corpus/fuzz_load_mkpx/
+# The import target's hand-made image seeds are committed too (seeds only, not its corpus).
+!fuzz/corpus/fuzz_codec_import/
+fuzz/corpus/fuzz_codec_import/*
+!fuzz/corpus/fuzz_codec_import/seed_*
 
 # ---- Replay-appraisal lab: generated DSL corpus (rebuilt by gen_replay_script.py) ----
 tools/replaylab/out/

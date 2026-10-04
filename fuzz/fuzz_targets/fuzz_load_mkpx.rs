@@ -8,9 +8,13 @@
 //!   2. Every FFI read path survives whatever state a load leaves behind.
 //!   3. A strict-loadable document must round-trip: save → load → identical content
 //!      hash, and the resave must be byte-identical (the byte-determinism promise).
-//! Run with `-rss_limit_mb=512` (tools/fuzz/run_fuzz.sh does) so the Android ~1 GiB
-//! allocator wall acts as an oracle on the workstation: an allocation bomb that would
-//! SIGABRT a phone shows up here as an RSS-limit finding.
+//!   4. A tolerant-loadable document must save to a file that loads strictly, unchanged.
+//!   5. The META reader survives any bytes, and what it reads splices back and reads
+//!      back unchanged without altering the document (fuzzing-review W4).
+//! The compact envelope has its own target, `fuzz_mkpx_open`.
+//! Run with `-rss_limit_mb=1024 -malloc_limit_mb=512` (tools/fuzz/run_fuzz.sh does) so the
+//! Android ~1 GiB allocator wall acts as an oracle on the workstation: an allocation bomb
+//! that would SIGABRT a phone shows up here as a memory-limit finding.
 
 use libfuzzer_sys::{fuzz_mutator, fuzz_target, fuzzer_mutate};
 use makapix_engine::Session;
@@ -67,14 +71,62 @@ fuzz_mutator!(|data: &mut [u8], size: usize, max_size: usize, seed: u32| {
     new_size
 });
 
-/// Exercise the read paths that cross the FFI, with deliberately stale indices
-/// (same pattern as `crates/engine/tests/fuzz_inputs.rs::poke_reads`).
+/// Exercise the read paths that cross the FFI, with deliberately stale indices and with
+/// valid ones (the idea of `crates/engine/tests/fuzz_inputs.rs::poke_reads`, wider): the
+/// shell calls all of these right after an open, on whatever the load left behind.
 fn poke_reads(sess: &Session) {
     let _ = sess.composite_active_bytes();
     let _ = sess.state_json();
+    let _ = sess.mem_json();
     let _ = sess.pixel(999, 999, 9999, -9999);
-    let _ = sess.layer_hash(999, 999);
-    let _ = sess.frame_hash(999);
+    let _ = sess.save_estimate_bytes();
+    let _ = sess.content_bounds();
+    let _ = sess.bounds_of_selection();
+    let _ = sess.outline_mask();
+    let _ = sess.used_colors(64);
+    let _ = sess.used_colors_sorted_json();
+    let _ = sess.display_bytes(true, true, true);
+    for (f, l) in [(0usize, 0usize), (999, 999)] {
+        let _ = sess.composite_frame_bytes(f);
+        let _ = sess.composite_frame_storage_bytes(f);
+        let _ = sess.frame_thumb_bytes(f, 16, 16);
+        let _ = sess.layer_thumb_bytes(f, l, 16, 16);
+        let _ = sess.layer_thumb_hash(f, l);
+        let _ = sess.layer_rgba_bytes(f, l);
+        let _ = sess.layer_hash(f, l);
+        let _ = sess.frame_hash(f);
+    }
+}
+
+/// `io.rs::MAX_STR`: the longest string `splice_meta_str` accepts.
+const MAX_STR: usize = 4096;
+
+/// The META reader and splicer (`io::read_meta_str` / `io::splice_meta_str`): the Club
+/// edit/remix path reads provenance out of other users' files with the first, and publish
+/// writes it with the second. The reader must survive any bytes; whatever it returns must
+/// splice back into the same file and read back unchanged, without touching the document.
+fn poke_meta(data: &[u8], strict: Option<&Session>) {
+    let Ok(entries) = makapix_engine::io::read_meta_str(data) else { return };
+    // The reader decodes lossily, so invalid UTF-8 can grow a string past the splicer's
+    // cap; the splicer legitimately refuses those.
+    if entries.iter().any(|(k, v)| k.len() > MAX_STR || v.len() > MAX_STR) {
+        return;
+    }
+    let refs: Vec<(&str, &str)> = entries.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    let spliced = makapix_engine::io::splice_meta_str(data, &refs)
+        .expect("splice_meta_str refused entries read_meta_str returned from the same file");
+    let reread =
+        makapix_engine::io::read_meta_str(&spliced).expect("a spliced file failed read_meta_str");
+    assert!(reread == entries, "META entries changed across splice + read");
+    if let Some(strict) = strict {
+        let mut re = Session::empty();
+        assert!(re.load_bytes(&spliced).is_ok(), "a META splice broke a strict-loadable file");
+        assert!(
+            re.doc.content_hash() == strict.doc.content_hash(),
+            "a META splice changed the document"
+        );
+    }
+    let _ = makapix_engine::io::splice_meta_str(data, &[]); // strip
 }
 
 fuzz_target!(|data: &[u8]| {
@@ -82,12 +134,26 @@ fuzz_target!(|data: &[u8]| {
     let mut strict = Session::new(8, 8);
     let strict_ok = strict.load_bytes(data).is_ok();
     poke_reads(&strict);
+    poke_meta(data, strict_ok.then_some(&strict));
 
-    // Tolerant path (the app's open path — repairs what it can, warns).
+    // Tolerant path (the app's open path — repairs what it can, warns). The app then
+    // autosaves what it opened: that save must be a strictly valid file holding the same
+    // document, or the repair loses the drawing on the next open.
     let mut tolerant = Session::new(8, 8);
-    let _ = tolerant.load_bytes_tolerant(data);
+    let tolerant_ok = tolerant.load_bytes_tolerant(data).is_ok();
     poke_reads(&tolerant);
-    let _ = tolerant.save_bytes();
+    let resaved = tolerant.save_bytes();
+    if tolerant_ok {
+        let mut re = Session::empty();
+        assert!(
+            re.load_bytes(&resaved).is_ok(),
+            "the save of a tolerant-loaded document fails a strict load"
+        );
+        assert!(
+            re.doc.content_hash() == tolerant.doc.content_hash(),
+            "tolerant load → save → strict load changed the document"
+        );
+    }
 
     if strict_ok {
         let saved = strict.save_bytes();
