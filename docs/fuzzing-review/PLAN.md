@@ -12,11 +12,11 @@ this file tracks the harness work, not the bugs it finds.
 
 | ID | Item | Priority | Effort | Status | Decision | Closed by |
 |---|---|---|---|---|---|---|
-| W1 | Long burst on HEAD; fuzz-burst rule for engine changes and releases | 1 | Low | in progress | accepted 2026-10-03 | |
-| W2 | Actions target up to the parser; unrendered-verb test | 2 | Medium | in progress | accepted 2026-10-03 | `14c19522` (burst pending) |
+| W1 | Long burst on HEAD; fuzz-burst rule for engine changes and releases | 1 | Low | done | accepted 2026-10-03 | `d7800ae1`, `d3947948`, run `w1rerun` |
+| W2 | Actions target up to the parser; unrendered-verb test | 2 | Medium | done | accepted 2026-10-03 | `14c19522`, run `w1rerun` |
 | W3 | Stable `cargo test` replays the committed loader corpus | 3 | Low | open | | |
 | W4 | Loader target: compact envelope, META reader, tolerant reload, wider `poke_reads` | 4 | Low | open | | |
-| W5 | Fuzz crate honors the root lockfile; pinned nightly | 5 | Low | done | accepted 2026-10-03 | this commit |
+| W5 | Fuzz crate honors the root lockfile; pinned nightly | 5 | Low | done | accepted 2026-10-03 | `d29ec02e` |
 | W6 | Static WebP differential; weak GIF decode-back oracle | 6 | Low | open | | |
 | W7 | New actions oracles: determinism, checkpoint replay, tiny budgets | 7 | Medium | open | | |
 | W8 | Raw-text DSL parser target | 8 | Low | open | | |
@@ -214,3 +214,9 @@ after W2.
   uses fork mode with `-ignore_*`, a 30 s actions timeout, a 1024 MB loader RSS limit, and runs
   from a private copy of itself. W1 and W2 stay in progress until the rerun of the actions and
   loader legs (launched the same day on the fixed engine) is in the run log.
+- 2026-10-04: W1 and W2 closed. Run `w1rerun` (HEAD `d3947948`, 12 workers, fork mode): actions
+  5.92M execs / 13373 edges and loader 10.86M execs / 2475 edges, both for their full budgets,
+  no findings. With `w1main2`'s webp and import legs, all four targets have a clean long run on
+  the current engine. Findings of the campaign so far: FZ-6 (`a6ecbf26`) and FZ-7 (`da89b76b`),
+  both from the widened alphabet. W2 step 5's "loaded seed document" is done as a DSL prelude
+  rather than a committed `.mkpx`. W3, W4, W6-W10 remain undecided.

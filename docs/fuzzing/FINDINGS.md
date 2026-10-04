@@ -29,6 +29,7 @@ release gates until the fix lands.
 | 2026-10-03 | 4 workers, 5 min, actions only, widened alphabet + FZ-6 fix, empty corpus | — | 407k execs, **10606 edges**, **0 crashes** |
 | 2026-10-03 | 12 workers, `w1main2`, HEAD `94c7b28e`, 310/241/69/69 min planned. Actions and loader ended after ~2 h and ~10 min: `-jobs` = workers, so every job's first artifact ended it for good (harness flaw) | 13.6k execs, 2445 edges, **11 OOM** — benign (below) | 1.96M execs, **12536 edges**, **1 crash** → FZ-7; **10 timeouts** — benign (below) |
 | 2026-10-03 | same run `w1main2`, the other two targets (69 min each, full budget) | webp: 28.3M execs, 848 edges, 0 findings | import: 22.7M execs, **5447 edges**, 0 findings |
+| 2026-10-03 | 12 workers, `w1rerun`, HEAD `d3947948` (FZ-6 + FZ-7 fixed; fork mode), actions 5 h + loader 4 h, full budgets, cmin | **10.86M execs**, **2475 edges**, **0 findings** | **5.92M execs**, **13373 edges**, **0 crashes**, 0 timeouts (7 slow-unit notes) |
 
 Post-FZ-4, a 30-minute actions soak (4.41M execs) reached a new coverage high for that
 target — 6948 edges, above both the 6947 of the run that found FZ-4 and the 6940 of the

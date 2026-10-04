@@ -216,7 +216,8 @@ for T in $TARGETS; do
   done
   AFTER[$T]=$(ls "$WORK/fuzz/corpus/$T" 2>/dev/null | wc -l)
   ARTIFACTS_AFTER=$(ls "$WORK/fuzz/artifacts/$T" 2>/dev/null || true)
-  CRASH_NEW[$T]=$(comm -13 <(sort <<<"$ARTIFACTS_BEFORE") <(sort <<<"$ARTIFACTS_AFTER"))
+  # slow-unit-* files are libFuzzer's "this input was slow" notes, not findings.
+  CRASH_NEW[$T]=$(comm -13 <(sort <<<"$ARTIFACTS_BEFORE") <(sort <<<"$ARTIFACTS_AFTER") | grep -v '^slow-unit-' || true)
   echo "== $T done (exit $RC): corpus ${BEFORE[$T]} -> ${AFTER[$T]}, new artifacts: $(wc -w <<<"${CRASH_NEW[$T]}" | tr -d ' ')"
 done
 
