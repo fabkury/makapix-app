@@ -52,6 +52,10 @@ class ClubUser {
   /// predate mentions, which reads as [MentionPolicy.everyone].
   final MentionPolicy mentionPolicy;
 
+  /// The language the server writes this user's emails in (BCP 47; null = English). The app
+  /// keeps it equal to the language it shows (`AuthController.syncLocale`).
+  final String? locale;
+
   ClubUser({
     required this.sub,
     required this.userKey,
@@ -60,6 +64,7 @@ class ClubUser {
     this.email,
     this.approvedHashtags = const [],
     this.mentionPolicy = MentionPolicy.everyone,
+    this.locale,
   });
 
   factory ClubUser.fromJson(Map<String, dynamic> j) => ClubUser(
@@ -71,6 +76,7 @@ class ClubUser {
         approvedHashtags:
             (j['approved_hashtags'] as List?)?.map((e) => e.toString()).toList() ?? const [],
         mentionPolicy: MentionPolicy.fromWire(j['mention_policy']),
+        locale: j['locale'] as String?,
       );
 
   ClubUser copyWith({
@@ -85,6 +91,7 @@ class ClubUser {
         email: email,
         approvedHashtags: approvedHashtags ?? this.approvedHashtags,
         mentionPolicy: mentionPolicy ?? this.mentionPolicy,
+        locale: locale,
       );
 }
 

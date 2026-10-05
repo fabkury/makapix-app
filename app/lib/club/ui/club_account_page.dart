@@ -332,11 +332,17 @@ class _AccountView extends ConsumerWidget {
   }
 
   String _uploadsLine(AppLocalizations l10n, Map u) {
-    final remaining = u['remaining'], limit = u['limit'], window = u['window'];
+    final remaining = (u['remaining'] as num?)?.toInt(), limit = u['limit'], window = u['window'];
     if (remaining != null && limit != null) {
-      // `window` is the server's own name for the quota period, shown as sent.
-      final left = l10n.accountUploadsLeft('$remaining', '$limit');
-      return window != null ? '$left / $window' : left;
+      // The period by `window_seconds`; a period the app has no words for keeps the server's
+      // own name for it (`window`, e.g. "1h").
+      return switch ((u['window_seconds'] as num?)?.toInt()) {
+        3600 => l10n.accountUploadsLeftHour(remaining, '$limit'),
+        86400 => l10n.accountUploadsLeftDay(remaining, '$limit'),
+        _ => window != null
+            ? '${l10n.accountUploadsLeft(remaining, '$limit')} / $window'
+            : l10n.accountUploadsLeft(remaining, '$limit'),
+      };
     }
     return '—';
   }

@@ -66,9 +66,16 @@ class GithubOAuth {
     final cb = Uri.parse(callback);
     final error = cb.queryParameters['error'];
     if (error != null) {
+      // The server's specific reason rides in `error_code` (`email_taken`, `oauth_state_invalid`,
+      // `github_failed`); `error` stays a plain OAuth value (messages/0005-localized-text/0003).
+      final code = cb.queryParameters['error_code'] ?? error;
+      final own = ClubError.translatedCode(code);
+      final prose = cb.queryParameters['error_description'];
       throw ClubError(
-        code: error,
-        message: cb.queryParameters['error_description'] ?? appL10n.githubFailed,
+        code: code,
+        message: own ?? prose ?? appL10n.githubFailed,
+        serverText: own == null ? prose : null,
+        specific: own != null,
       );
     }
     if (cb.queryParameters['state'] != pkce.state) {

@@ -61,6 +61,15 @@ class ClubApiClient {
         handler.next(options);
       },
       onError: (e, handler) async {
+        // A banned or deactivated account is refused on every call (403, never 401): end the
+        // session at the first one, with the reason (messages/0005-localized-text/0003 §1).
+        if (e.response?.statusCode == 403 && session.isSignedIn) {
+          final err = ClubError.fromDio(e);
+          if (err.isAccountBlocked) {
+            await session.clear();
+            session.onSessionInvalidated?.call(err);
+          }
+        }
         final retried = e.requestOptions.extra['__retried'] == true;
         final canRefresh = e.response?.statusCode == 401 &&
             !retried &&
@@ -122,6 +131,11 @@ class ClubApiClient {
 
   /// `POST /auth/change-password`. Also the wizard's "set your password" step
   /// (where `current` is the server-emailed temporary password).
+  /// `PATCH /user/{userKey} {locale}` — the language of this user's emails.
+  Future<void> setLocale(String userKey, String locale) => guard(() async {
+        await dio.patch('/user/${Uri.encodeComponent(userKey)}', data: {'locale': locale});
+      });
+
   Future<void> changePassword(String current, String next) => guard(() async {
         await dio.post('/auth/change-password',
             data: {'current_password': current, 'new_password': next});

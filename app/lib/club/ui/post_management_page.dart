@@ -488,7 +488,7 @@ class _BdrTileState extends ConsumerState<_BdrTile> {
       subtitle: Text([
         if (b.createdAt != null) l10n.pmdRequestedAgo(timeAgo(b.createdAt)),
         if (b.isReady && b.expiresAt != null) _expiresIn(l10n, b.expiresAt!),
-        if (b.errorMessage != null) b.errorMessage!,
+        if (b.failureText != null) b.failureText!,
       ].join(' · ')),
       trailing: b.isReady
           ? (_downloading

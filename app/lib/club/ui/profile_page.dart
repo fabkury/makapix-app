@@ -11,6 +11,7 @@ import '../../editor/gallery/drawing_library_grid.dart';
 import '../../editor/persistence/drawing_store_provider.dart';
 import '../cache/artwork_cache.dart';
 import '../config/club_config.dart';
+import '../models/badge_text.dart';
 import '../models/club_error.dart';
 import '../models/post.dart';
 import '../models/report.dart';
@@ -554,7 +555,7 @@ class _Body extends ConsumerWidget {
                               backgroundColor: Colors.transparent,
                               backgroundImage:
                                   CachedNetworkImageProvider(resolveClubUrl(b.iconUrl16!))),
-                      label: Text(b.label, style: const TextStyle(fontSize: 11)),
+                      label: Text(badgeLabel(b.badge, b.label), style: const TextStyle(fontSize: 11)),
                       visualDensity: VisualDensity.compact,
                     ),
                 ]),

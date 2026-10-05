@@ -41,8 +41,9 @@ class ClubSession {
 
   /// Invoked when the session is invalidated involuntarily — a background refresh failed and the
   /// tokens were cleared. The auth controller listens so the UI flips to signed-out instead of
-  /// rendering as signed-in with no token (a "zombie" session). [audit F-4b]
-  void Function()? onSessionInvalidated;
+  /// rendering as signed-in with no token (a "zombie" session). [audit F-4b] [cause] is set when
+  /// the server refused the account itself (banned or deactivated), so the UI can say why.
+  void Function([ClubError? cause])? onSessionInvalidated;
 
   /// Fired after a successful **interactive** sign-in — i.e. any grant except `refresh_token`
   /// (routine token rotation) and `restore_credential` (Zero-Tap itself, which must not
@@ -177,10 +178,10 @@ class ClubSession {
     try {
       await _grant({'grant_type': 'refresh_token', 'refresh_token': refreshToken});
       return true;
-    } on ClubError {
+    } on ClubError catch (e) {
       await clear();
       // Tell the auth controller the session died under it (it can't observe `clear()`). [F-4b]
-      onSessionInvalidated?.call();
+      onSessionInvalidated?.call(e.isAccountBlocked ? e : null);
       return false;
     }
   }

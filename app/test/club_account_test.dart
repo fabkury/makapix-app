@@ -105,10 +105,12 @@ void main() {
   });
 
   group('ClubError branching for the account flow', () {
-    test('register 409 pending_verification (FastAPI detail envelope)', () {
-      final e = ClubError.fromBody(409, {'detail': 'pending_verification'});
+    test('register 409 pending_verification (its code)', () {
+      final e = ClubError.fromBody(409, {
+        'error': {'code': 'pending_verification', 'message': 'pending_verification'}
+      });
       expect(e.status, 409);
-      expect(e.message.toLowerCase(), contains('pending_verification'));
+      expect(e.code, 'pending_verification');
     });
 
     test('register 409 already-exists', () {
@@ -142,7 +144,7 @@ void main() {
       expect(v.publicSqid, 'k5fNx');
 
       final h = HandleAvailability.fromJson(
-          {'handle': 'pixel', 'available': false, 'message': 'This handle is already taken'});
+          {'handle': 'pixel', 'available': false, 'reason': 'taken', 'message': 'This handle is already taken'});
       expect(h.available, isFalse);
       expect(h.message, 'That username is already taken.');
       expect(
@@ -153,9 +155,10 @@ void main() {
           HandleAvailability.fromJson({
             'handle': 'p',
             'available': false,
+            'reason': 'too_short',
             'message': 'Invalid handle: Handle must be at least 3 characters'
           }).message,
-          'Invalid handle: Handle must be at least 3 characters');
+          'Handle must be at least 3 characters.');
     });
 
     test('AuthIdentity label reflects provider + github username', () {
@@ -231,7 +234,9 @@ void main() {
 
     test('pending_verification (non-A2 server) falls back to the code step', () async {
       final fake = _FakeAuthApi()
-        ..registerError = ClubError.fromBody(409, {'detail': 'pending_verification'});
+        ..registerError = ClubError.fromBody(409, {
+          'error': {'code': 'pending_verification', 'message': 'pending_verification'}
+        });
       final c = _container(fake);
       final ctrl = c.read(registrationControllerProvider.notifier);
 

@@ -6,6 +6,7 @@ import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../config/club_config.dart';
+import '../../models/badge_text.dart';
 import '../../models/user_profile.dart';
 import '../../state/profile_providers.dart';
 import 'common.dart';
@@ -48,6 +49,7 @@ void showBadgesSheet(BuildContext context, {required UserProfile profile}) {
                     itemBuilder: (ctx, i) {
                       final g = granted[i];
                       final d = defs[g.badge]!;
+                      final description = badgeDescription(d.badge, d.description);
                       return ListTile(
                         leading: d.iconUrl64.isEmpty
                             ? const Icon(Icons.shield_outlined, size: 32)
@@ -60,9 +62,9 @@ void showBadgesSheet(BuildContext context, {required UserProfile profile}) {
                                     errorWidget: (_, _, _) =>
                                         const Icon(Icons.shield_outlined, size: 32)),
                               ),
-                        title: Text(d.label),
-                        subtitle: d.description != null && d.description!.isNotEmpty
-                            ? Text(d.description!, style: const TextStyle(fontSize: 12))
+                        title: Text(badgeLabel(d.badge, d.label)),
+                        subtitle: description != null && description.isNotEmpty
+                            ? Text(description, style: const TextStyle(fontSize: 12))
                             : null,
                         trailing: g.grantedAt != null
                             ? Text(timeAgo(g.grantedAt),

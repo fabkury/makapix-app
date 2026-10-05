@@ -337,16 +337,31 @@ Counts are scanner findings on 2026-10-01; the live number per file is in the ba
   error page and empty text are dropped; long text is cut at 300 characters. The player
   registration wording match moved into the provider and reads `serverText`. 18 new strings,
   reviewed in `review/srv-errors.md`. Tests: `test/club_error_test.dart`.
-- [ ] **Server text, server side** (the thread above) — the original item: proposing codes + params for API error
-  `detail`, moderation report-reason labels (`report_reasons[].label`), and any notification text
-  the server composes. The app ships without waiting; until the server answers, those stay English.
-  2026-10-02: `0002-app-shipped-ranked-codes-email-locale.md` sent (also committed to the server
-  repo, `docs/localized-text/messages/`, develop `3966c19`): seven declared codes nothing raises,
-  the envelope on the unversioned paths, a tiered list of ~45 codes, keys for badge / quota /
-  download text, and a stored user `locale` for the server's emails (we offered the translated
-  copy). Waiting on `0003-server-…`. When codes land: add them to `ClubError._translatedCode`,
-  then drop the player-registration and `pending_verification` wording matches.
-  Server prose found so far (add to this list as batches meet more):
+- [x] **Server text, server side** (the thread above), done 2026-10-05. 2026-10-02: `0002` sent
+  (also committed to the server repo, `docs/localized-text/messages/`, develop `3966c19`).
+  2026-10-05: the server took everything (`0003`) and shipped it to prod (`0004`). `0005` sent
+  (server develop `12156ed`): the three emails' copy in seven languages, reviewed in
+  `review/email-copy.md`; `invalid_credentials` kept (the user accepted the 1.12.0 gap); how
+  1.12.0 behaves against the new responses (checked: banned users read the reason until their
+  token expires, then are signed out silently; a full storage quota reads as the upload-limit
+  sentence; moderator ban/hide by sqid now works).
+- [x] **Adopt the server's codes in the app**, done 2026-10-05 for the next release:
+  `ClubError.translatedCode` covers every user-facing code in the server's `ErrorCode`, with
+  `details` (ban end date, size limits, storage use, image size, allowed formats, password and
+  handle reasons, comment / hashtag / download limits) and the code beside `detail` off `/v1`. A
+  403 `account_banned` / `account_deactivated` ends the session at once (the API interceptor,
+  the refresh grant, and `/auth/me`) and the sign-in form says why. The handle check reads
+  `reason`; badges are named by slug (`models/badge_text.dart`); the upload period reads
+  `window_seconds`; download failures read `error_code`; GitHub sign-in reads `error_code=`.
+  `srvQuotaExceeded` now says storage. The wording matches are gone (player registration,
+  `pending_verification`, "already taken"). The app sends `locale` with register and the two
+  code requests, and `PATCH /user {locale}` after sign-in and on every language change
+  (`AuthController.syncLocale`, `appLanguage` in `l10n.dart`). 53 new strings, reviewed in
+  `review/srv-codes.md`. Tests: `test/server_codes_test.dart`.
+- [ ] **Tell the server when the next release has reached users** (thread `0005` §4): they then
+  make the `pending_verification` message human and retire the root `/api/hashtags/top`.
+  Server prose found before 2026-10-05, now all coded or keyed except license titles (proper
+  names) and statistics country codes:
   - `ClubError.message` — the API error `detail`, shown in toasts and banners across the app.
   - `POST /auth/check-handle-availability` → `message` ("Handle is available"), shown under the
     handle field in account management and onboarding.

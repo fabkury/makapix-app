@@ -142,10 +142,15 @@ class AuthController extends StateNotifier<AuthState> {
     //
     // Not awaited: registration must never delay the UI reaching the signed-in state.
     session.onInteractiveSignIn = () => unawaited(restore?.register() ?? Future.value());
+    appLanguage.addListener(syncLocale);
   }
 
-  void _onSessionInvalidated() {
-    if (mounted && state.status != AuthStatus.signedOut) {
+  void _onSessionInvalidated([ClubError? cause]) {
+    if (!mounted) return;
+    if (cause != null) {
+      // Banned or deactivated: say so on the sign-in form instead of a silent sign-out.
+      state = AuthState.failure(cause.message, code: cause.code);
+    } else if (state.status != AuthStatus.signedOut) {
       state = const AuthState.signedOut();
     }
   }
@@ -154,6 +159,7 @@ class AuthController extends StateNotifier<AuthState> {
   void dispose() {
     session.onSessionInvalidated = null;
     session.onInteractiveSignIn = null;
+    appLanguage.removeListener(syncLocale);
     super.dispose();
   }
 
@@ -219,11 +225,15 @@ class AuthController extends StateNotifier<AuthState> {
       // must never delay the signed-in UI.
       unawaited(session.cacheMe(jsonEncode(json)));
       state = AuthState.signedIn(me);
+      syncLocale();
     } on ClubError catch (e) {
       if (e.isAuth) {
         // The server rejected the tokens: the cached identity goes with them (session.clear).
         await session.clear();
         state = const AuthState.signedOut();
+      } else if (e.isAccountBlocked) {
+        await session.clear();
+        state = AuthState.failure(e.message, code: e.code);
       } else {
         final msg = e.describe(appL10n.authAccountLoadError);
         _keepStaleOr(AuthState.failure(msg), msg);
@@ -245,6 +255,24 @@ class AuthController extends StateNotifier<AuthState> {
     } else {
       state = failure;
     }
+  }
+
+  /// The user and tag last sent to the server (`userKey|tag`), so a language is sent once.
+  String? _sentLocale;
+
+  /// Keeps the user's server-side locale (the language of their emails) equal to the
+  /// language the app shows: after every sign-in and whenever the language changes.
+  /// Best-effort and never awaited: a failure is retried at the next sign-in or change.
+  void syncLocale() {
+    final me = state.me;
+    final tag = appLanguageTag();
+    if (!state.isSignedIn || state.stale || me == null || me.user.userKey.isEmpty) return;
+    final sent = '${me.user.userKey}|$tag';
+    if (tag == me.user.locale || sent == _sentLocale) return;
+    _sentLocale = sent;
+    unawaited(api.setLocale(me.user.userKey, tag).catchError((Object _) {
+      if (_sentLocale == sent) _sentLocale = null;
+    }));
   }
 
   Future<void> loginPassword(String email, String password) async {

@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:makapix_club/l10n/l10n.dart';
 
 import '../config/club_config.dart';
 import '../models/account.dart';
@@ -42,14 +43,15 @@ class AuthApi {
   /// unverified collision is `pending_verification` (A2 resumes with 200 instead).
   Future<RegisterResult> register(String email, {String? password}) => _guard(() async {
         final resp = await _dio.post('/auth/register',
-            data: {'email': email, 'password': ?password});
+            data: {'email': email, 'password': ?password, 'locale': appLanguageTag()});
         return RegisterResult.fromJson((resp.data as Map).cast<String, dynamic>());
       });
 
   /// `POST /auth/email-otp/request { email }` — emails a 6-digit verification code
   /// (existence-neutral 200, so callers can't enumerate accounts).
   Future<void> requestEmailOtp(String email) => _guard(() async {
-        await _dio.post('/auth/email-otp/request', data: {'email': email});
+        await _dio.post('/auth/email-otp/request',
+            data: {'email': email, 'locale': appLanguageTag()});
       });
 
   /// `POST /auth/email-otp/verify { email, code }` → marks the email verified.
@@ -62,7 +64,8 @@ class AuthApi {
   /// `POST /auth/password-otp/request { email }` — emails a 6-digit reset code
   /// (existence-neutral 200).
   Future<void> requestPasswordOtp(String email) => _guard(() async {
-        await _dio.post('/auth/password-otp/request', data: {'email': email});
+        await _dio.post('/auth/password-otp/request',
+            data: {'email': email, 'locale': appLanguageTag()});
       });
 
   /// `POST /auth/password-otp/confirm { email, code, new_password }`.

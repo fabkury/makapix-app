@@ -1,3 +1,5 @@
+import 'package:makapix_club/l10n/l10n.dart';
+
 import 'post.dart' show PostFile;
 
 /// Post Management Dashboard models (`/api/pmd/*`, SPEC-CLUB §20).
@@ -119,6 +121,9 @@ class Bdr {
   final DateTime? expiresAt;
   final String? errorMessage;
 
+  /// Why a failed request failed: `user_not_found` | `no_posts` | `internal`.
+  final String? errorCode;
+
   const Bdr({
     required this.id,
     required this.status,
@@ -127,6 +132,7 @@ class Bdr {
     this.completedAt,
     this.expiresAt,
     this.errorMessage,
+    this.errorCode,
   });
 
   bool get isReady => status == 'ready';
@@ -142,7 +148,17 @@ class Bdr {
         completedAt: DateTime.tryParse((j['completed_at'] ?? '').toString()),
         expiresAt: DateTime.tryParse((j['expires_at'] ?? '').toString()),
         errorMessage: j['error_message'] as String?,
+        errorCode: j['error_code'] as String?,
       );
+
+  /// The failure in the user's language; the server's English [errorMessage] only for a reason
+  /// this build does not know.
+  String? get failureText => switch (errorCode) {
+        'no_posts' => appL10n.bdrErrorNoPosts,
+        'user_not_found' => appL10n.bdrErrorUserGone,
+        'internal' => appL10n.bdrErrorInternal,
+        _ => errorMessage,
+      };
 }
 
 /// Result of creating a BDR (`POST /pmd/bdr`).

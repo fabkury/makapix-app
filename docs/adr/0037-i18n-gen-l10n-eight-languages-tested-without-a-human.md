@@ -74,5 +74,7 @@ seam, and server prose stays English until the server offers codes — both trac
   muted second line under a translated headline: the screen's own ("Could not save your
   profile.") or one chosen by status class (`ClubError.describe`, `ClubMessageText`). The user
   always gets a sentence in their language and loses none of the server's explanation; an HTML
-  error page is never shown. The server is asked for codes and an email language in
-  `messages/0005-localized-text/`.
+  error page is never shown. **Amended 2026-10-05:** the server now sends a specific code for
+  every error a user can meet (beside `detail` off `/v1`), keys for the non-error text, and
+  writes its emails in `User.locale`, which the app keeps equal to the language it shows. The
+  app owns the translations, the emails' included (`messages/0005-localized-text/`).

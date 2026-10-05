@@ -59,3 +59,19 @@ String? validateHandleError(String handle) {
   }
   return null;
 }
+
+/// The server's reason for refusing a handle (`handle_invalid` details and the availability
+/// check's `reason`), worded as the device check above words it.
+String handleReasonMessage(String? reason) {
+  final l10n = appL10n;
+  return switch (reason) {
+    'taken' => l10n.srvHandleTaken,
+    'empty' => l10n.handleEmpty,
+    'too_short' => l10n.handleTooShort,
+    'too_long' => l10n.handleTooLong,
+    'bad_edge' => l10n.handleEdgeChars,
+    'bad_char' => l10n.handleBadChars,
+    'no_alnum' => l10n.handleNeedsAlnum,
+    _ => l10n.handleUnavailable,
+  };
+}

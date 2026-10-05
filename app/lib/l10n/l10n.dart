@@ -23,6 +23,18 @@ AppLocalizations _current = _english;
 /// [L10nContext.l10n] instead, so they rebuild when the language changes.
 AppLocalizations get appL10n => _current;
 
+/// The language the app is showing, as a BCP 47 tag for other systems (the Club server's email
+/// language): `en`, `es`, `pt-BR`, `fr`, `de`, `ru`, `ja`, `zh-Hans`.
+String appLanguageTag() => switch (_current.localeName.split('_').first) {
+      'pt' => 'pt-BR', // l10n-ignore: language tag (the app's Portuguese is Brazilian)
+      'zh' => 'zh-Hans', // l10n-ignore: language tag (its Chinese is Simplified)
+      final language => language,
+    };
+
+/// [appLanguageTag], announced when it changes (the user picked another language, or the
+/// device's changed). Code with no [BuildContext] listens here.
+final ValueNotifier<String> appLanguage = ValueNotifier('en');
+
 extension L10nContext on BuildContext {
   /// The strings for this context's locale. Falls back to English under a tree with no
   /// [AppLocalizations] delegate (bare `MaterialApp`s in widget tests).
@@ -42,6 +54,11 @@ class L10nBinding extends StatelessWidget {
     if (l10n != null) {
       _current = l10n;
       Intl.defaultLocale = l10n.localeName;
+      // After the frame: listeners may start work, which must not run inside a build.
+      final tag = appLanguageTag();
+      if (appLanguage.value != tag) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => appLanguage.value = tag);
+      }
     }
     return child;
   }
@@ -58,4 +75,5 @@ String fmtFixed(num value, int digits) =>
 void debugResetAppL10n() {
   _current = _english;
   Intl.defaultLocale = null;
+  appLanguage.value = 'en';
 }

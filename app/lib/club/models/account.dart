@@ -5,6 +5,8 @@ library;
 
 import 'package:makapix_club/l10n/l10n.dart';
 
+import '../auth/account_validators.dart';
+
 /// `POST /auth/register`. With a chosen `password` (A2) the server creates the
 /// account with it and emails a single 6-digit OTP (`verification_method: "otp"`);
 /// without one it generates + emails a random password and a link
@@ -68,23 +70,15 @@ class HandleAvailability {
 
   factory HandleAvailability.fromJson(Map<String, dynamic> j) {
     final available = j['available'] == true;
-    final raw = (j['message'] ?? '').toString();
     return HandleAvailability(
       handle: (j['handle'] ?? '').toString(),
       available: available,
-      message: _shownMessage(available, raw),
+      // The server's `reason` (taken, reserved, or a format rule) in the user's language; its
+      // English `message` is not shown (messages/0005-localized-text/0003 §4).
+      message: available
+          ? appL10n.handleAvailable
+          : handleReasonMessage(j['reason']?.toString()),
     );
-  }
-
-  /// The server's verdict in the user's language. Its sentence is English and has three
-  /// shapes: available, taken, or "Invalid handle: …" (format rules the app already checks
-  /// on the device, so rare). English keeps a refusal's own wording; elsewhere an unknown
-  /// refusal reads as a plain "can't be used" (messages/0005-localized-text/).
-  static String _shownMessage(bool available, String raw) {
-    final l = appL10n;
-    if (available) return l.handleAvailable;
-    if (raw.toLowerCase().contains('already taken')) return l.srvHandleTaken;
-    return l.localeName == 'en' && raw.isNotEmpty ? raw : l.handleUnavailable;
   }
 }
 

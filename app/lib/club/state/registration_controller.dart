@@ -96,8 +96,7 @@ class RegistrationController extends StateNotifier<RegistrationState> {
       if (_legacy) await _safeRequestOtp(email);
       state = state.copyWith(step: RegStep.code, busy: false, clearError: true, notice: _codeNotice());
     } on ClubError catch (e) {
-      if (e.status == 409 &&
-          (e.serverText ?? '').toLowerCase().contains('pending_verification')) {
+      if (e.code == 'pending_verification') {
         // A non-A2 server (no "resume sign-up") — fall back to the temp-password flow.
         _legacy = true;
         await _safeRequestOtp(email);
@@ -108,7 +107,8 @@ class RegistrationController extends StateNotifier<RegistrationState> {
       if (e.status == 409) {
         state = state.copyWith(
           busy: false,
-          error: appL10n.authEmailExists,
+          // `email_taken` may name how the existing account signs in (GitHub, Apple).
+          error: e.code == 'email_taken' ? e.message : appL10n.authEmailExists,
         );
         onAlreadyExists?.call();
         return;

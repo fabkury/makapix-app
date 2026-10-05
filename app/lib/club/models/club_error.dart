@@ -1,7 +1,11 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:intl/intl.dart';
 import 'package:makapix_club/l10n/l10n.dart';
+
+import '../auth/account_validators.dart' show handleReasonMessage;
+import '../ui/widgets/common.dart' show formatFileSize;
 
 /// Shown wherever an interaction is refused with `403 blocked` (ugc-safety §5 /
 /// A8). Direction-neutral by design: a block refuses interactions in **either**
@@ -32,6 +36,9 @@ class ClubError implements Exception {
 
   /// The server's own prose, when the app has no message of its own for [code].
   final String? serverText;
+
+  /// The server's `details` for [code] (limits, dates, reasons), when it sent any.
+  final Map<String, dynamic>? details;
   final Duration? retryAfter;
 
   /// [message] says what went wrong on its own (a known code, a lost connection), so it
@@ -43,6 +50,7 @@ class ClubError implements Exception {
     required this.code,
     required this.message,
     this.serverText,
+    this.details,
     this.retryAfter,
     this.specific = true,
   });
@@ -51,17 +59,23 @@ class ClubError implements Exception {
     // A download (`ResponseType.bytes`) hands its error body over undecoded.
     if (body is List<int>) body = _decodeBytes(body);
     var code = 'unknown';
+    Map<String, dynamic>? details;
     String? own;
     String? prose;
     if (body is Map) {
       final err = body['error'];
       if (err is Map) {
         code = (err['code'] ?? code).toString();
-        own = _translatedCode(code);
+        details = _asMap(err['details']);
+        own = translatedCode(code, details);
         if (own == null) prose = _prose(err['message']);
-      } else if (body['detail'] != null) {
-        code = 'error';
-        prose = _prose(body['detail']);
+      } else if (body['detail'] != null || body['code'] != null) {
+        // Off `/v1` the code rides beside FastAPI's `detail` (messages/0005-localized-text/
+        // 0003 §2); an older server sends `detail` alone.
+        code = body['code']?.toString() ?? 'error';
+        details = _asMap(body['details']);
+        own = translatedCode(code, details);
+        if (own == null) prose = _prose(body['detail']);
       }
     } else if (body is String) {
       prose = _prose(body);
@@ -72,10 +86,14 @@ class ClubError implements Exception {
       code: code,
       message: own ?? (prose == null ? headline : '$headline\n$prose'),
       serverText: prose,
+      details: details,
       retryAfter: retryAfter,
       specific: own != null,
     );
   }
+
+  /// The account itself is refused (banned or deactivated): the session is over.
+  bool get isAccountBlocked => code == 'account_banned' || code == 'account_deactivated';
 
   /// This error under the screen's own [headline] ("Could not save your profile."): the
   /// server's prose on a second line when there is some, else the app's specific message
@@ -126,39 +144,141 @@ class ClubError implements Exception {
     return l.commonSomethingWrong;
   }
 
-  /// The user's-language message for one of the server's specific error codes (api/app/
-  /// errors.py `ErrorCode`), or null to keep the server's own text. Generic codes
-  /// (bad_request, conflict, not_found, internal_error, …) carry varying server prose and keep
-  /// it (messages/0005-localized-text/).
-  static String? _translatedCode(String code) {
+  static Map<String, dynamic>? _asMap(Object? raw) =>
+      raw is Map ? raw.cast<String, dynamic>() : null;
+
+  /// The user's-language message for one of the server's specific error codes (`ErrorCode` in
+  /// the server's `api/app/errors.py`), with the numbers and reasons from its [details], or null
+  /// to keep the server's own text. Generic codes (bad_request, conflict, not_found,
+  /// internal_error, …) carry varying server prose and keep it; so do the provenance codes,
+  /// which only a bug in the app can cause (messages/0005-localized-text/).
+  static String? translatedCode(String code, [Map<String, dynamic>? details]) {
     final l = appL10n;
+    int? number(String key) => (details?[key] as num?)?.toInt();
+    String? text(String key) => details?[key]?.toString();
     return switch (code) {
+      // Signing in and the account
+      'invalid_credentials' => l.authWrongCredentials,
       'email_not_verified' => l.srvEmailNotVerified,
-      'weak_password' => l.srvWeakPassword,
-      'token_invalid' || 'token_expired' => l.authInvalidCode,
-      'account_banned' => l.srvAccountBanned,
+      'account_banned' => _banned(details),
+      'account_deactivated' => l.srvAccountDeactivated,
+      'email_taken' => switch (text('provider')) {
+          'github' => l.srvEmailTakenWith('GitHub'), // l10n-ignore: brand name
+          'apple' => l.srvEmailTakenWith('Apple'), // l10n-ignore: brand name
+          _ => l.authEmailExists,
+        },
+      'pending_verification' => l.srvPendingVerification,
+      'apple_email_missing' => l.srvAppleEmailMissing,
       'apple_token_invalid' => l.appleFailed,
-      'forbidden_role' || 'not_owner' => l.srvNotAllowed,
+      'github_failed' => l.githubFailedRetry,
+      'oauth_state_invalid' => l.srvOauthStateInvalid,
+      'password_login_unsupported' => l.srvPasswordLoginUnsupported,
+      'current_password_incorrect' => l.srvCurrentPasswordWrong,
+      'last_auth_method' => l.srvLastLoginMethod,
+      'weak_password' => switch (text('reason')) {
+          'required' || 'too_short' => l.passwordTooShort,
+          'no_letter' => l.passwordNeedsLetter,
+          'no_digit' => l.passwordNeedsNumber,
+          _ => l.srvWeakPassword,
+        },
+      'token_invalid' || 'token_expired' => l.authInvalidCode,
       'handle_taken' => l.srvHandleTaken,
+      'handle_invalid' => handleReasonMessage(text('reason')),
+      'forbidden_role' || 'not_owner' => l.srvNotAllowed,
+      // Images, uploads, and storage
       'artwork_duplicate' => l.srvArtworkDuplicate,
-      'dimensions_invalid' => l.srvDimensionsInvalid,
-      'file_too_large' => l.srvFileTooLarge,
-      'quota_exceeded' => l.srvQuotaExceeded,
-      'reaction_cap_reached' => l.reactionsLimit,
-      'comment_too_deep' => l.srvCommentTooDeep,
+      'artwork_unchanged' => l.srvArtworkUnchanged,
+      'dimensions_invalid' => number('width') != null && number('height') != null
+          ? l.srvDimensionsInvalidSize('${number('width')}×${number('height')}')
+          : l.srvDimensionsInvalid,
+      'file_too_large' => number('max_bytes') != null
+          ? l.srvFileTooLargeMax(formatFileSize(number('max_bytes')!))
+          : l.srvFileTooLarge,
+      'quota_exceeded' => number('used_bytes') != null && number('limit_bytes') != null
+          ? l.srvQuotaExceededUsage(
+              formatFileSize(number('used_bytes')!), formatFileSize(number('limit_bytes')!))
+          : l.srvQuotaExceeded,
+      'image_empty' => l.srvImageEmpty,
+      'image_format_unsupported' => details?['allowed'] is List
+          ? l.srvImageFormatAllowed([
+              for (final f in details!['allowed'] as List) f.toString().toUpperCase()
+            ].join(', '))
+          : l.srvImageFormat,
+      'image_invalid' => l.srvImageInvalid,
+      'storage_full' => l.serverStorageFull,
+      'storage_unavailable' => l.srvStorageUnavailable,
+      'post_has_no_artwork' => l.srvPostNoArtwork,
       'mkpx_invalid' => l.layersNotMkpx,
       'mkpx_too_large' => l.srvMkpxTooLarge,
+      'mkpx_not_attached' => l.layersGone,
+      'format_not_available' => l.downloadUnavailable,
+      // Posts, remixes, and comments
+      'post_not_found' => l.srvPostNotFound,
+      'post_deleted' => l.srvPostDeleted,
+      'post_not_visible' => l.srvPostNotVisible,
       'remixable_conflicts_with_license' => l.srvLicenseConflict,
       'not_remixable' => l.layersNotRemixable,
       'too_many_parents' => l.srvTooManyParents,
       'parent_not_found' => l.srvParentNotFound,
       'remix_not_allowed' => l.srvRemixNotAllowed,
       'lineage_cycle' => l.srvLineageCycle,
+      'reaction_cap_reached' => l.reactionsLimit,
+      'comment_not_found' => l.srvCommentNotFound,
+      'comment_too_deep' => l.srvCommentTooDeep,
+      'comment_profanity' => l.srvCommentProfanity,
+      'comment_cap_reached' => number('max') != null
+          ? l.srvCommentCapMax('${number('max')}')
+          : l.srvCommentCap,
+      'parent_comment_not_found' => l.srvParentCommentGone,
+      'comment_not_deleted' => l.srvCommentNotDeleted,
+      // People and safety
+      'user_not_found' => l.userNotFound,
       'blocked' => l.errBlockedInteraction,
       'block_cap_reached' => l.srvBlockCap,
+      'owner_protected' => l.umdOwnerProtected,
+      'mod_hashtags_limit' => number('max') != null
+          ? l.srvModTagsLimit('${number('max')}')
+          : l.srvRefused,
+      'hashtag_too_long' => number('max_length') != null
+          ? l.srvHashtagTooLong(number('max_length')!)
+          : l.srvRefused,
+      // Players
+      'player_not_found' => l.srvPlayerNotFound,
+      'player_limit_reached' => l.playersMaxReached,
+      'registration_code_invalid' => l.playersCodeInvalid,
+      'player_already_registered' => l.playersAlreadyRegistered,
+      'unsupported_command' => l.srvPlayerUnsupported,
+      'invalid_value' => l.srvPlayerInvalidValue,
+      // Post Management downloads
+      'posts_not_owned' => l.srvPostsNotOwned,
+      'bdr_daily_limit' => number('limit') != null
+          ? l.srvBdrDailyLimit('${number('limit')}')
+          : l.authTooManyRequests,
+      'bdr_not_ready' => l.srvBdrNotReady,
+      'bdr_expired' => l.srvBdrExpired,
+      'bdr_not_found' => l.srvBdrNotFound,
       'rate_limited' => l.authTooManyRequests,
       _ => null,
     };
+  }
+
+  /// "This account is banned", with the end date when the ban has one. The server marks a
+  /// permanent ban with `permanent: true` and a year-9999 `banned_until`.
+  static String _banned(Map<String, dynamic>? details) {
+    final l = appL10n;
+    final until = DateTime.tryParse(details?['banned_until']?.toString() ?? '');
+    if (details?['permanent'] == true || until == null || until.year >= 9999) {
+      return l.srvAccountBanned;
+    }
+    final local = until.toLocal();
+    String date;
+    try {
+      date = DateFormat.yMMMd(l.localeName).format(local);
+    } catch (_) {
+      // Date names load with the app's localizations; before them, the numeric form.
+      date = local.toIso8601String().substring(0, 10);
+    }
+    return l.srvAccountBannedUntil(date);
   }
 
   factory ClubError.fromDio(DioException e) {
