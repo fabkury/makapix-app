@@ -1,0 +1,27 @@
+# Review: store release notes 1.12.1 (whatsnew)
+
+All eight texts are within the 500-character limit (en 373, es 416, pt 407, fr 456, de 444, ru 403, ja 184, zh 127). All three facts are present in every language; placeholders do not apply. Terms match the glossary and the ARB messages (publishBump, replacedBumped, replacedPendingReview, editorMenu) in every language.
+
+| lang | severity | problem | current (excerpt) | proposed (full replacement sentence or note) |
+|---|---|---|---|---|
+| fr | medium | Ambiguous pronoun: "elle" right after "l'app" (feminine) reads as the app moving up, not the post. | et l'app indique quand elle pourra remonter ou si la nouvelle œuvre doit être validée par un modérateur. | Un nouvel interrupteur permet de l'éviter pour les petites corrections, et l'application indique quand la publication pourra remonter ou si la nouvelle œuvre doit être validée par un modérateur. |
+| es | medium | Ambiguous subject: "podrá subir" follows "la app te dice", so the app reads as what moves up. | y la app te dice cuándo podrá subir de nuevo o si la nueva obra necesita la revisión de un moderador. | Un nuevo interruptor te permite evitarlo en correcciones pequeñas, y la app te avisa cuándo podrá volver a subir la publicación o si la nueva obra necesita la revisión de un moderador. |
+| de | medium | "lässt dich das … auslassen" is a calque of "lets you skip"; a German release note would say "kannst du … ausschalten" (the switch's own subtitle says "ausschalten"). | Ein neuer Schalter lässt dich das bei kleinen Korrekturen auslassen, | Mit einem neuen Schalter kannst du das bei kleinen Korrekturen ausschalten, und die App sagt dir, wann der Beitrag wieder nach oben rücken kann oder ob ein Moderator das neue Werk erst freigeben muss. |
+| en | low | "(once a week)" can read as a weekly automatic event; the rule is a cap, per post (publishBumpSubtitle: "Once a week per post"). The ja text already says "up to". | can show as new in the feeds again (once a week). | Replace an artwork and its post can show as new in the feeds again (at most once a week). |
+| es | low | Same cap as en; the ARB says "Una vez por semana por publicación". | (una vez por semana) | Al sustituir una obra, la publicación puede volver a mostrarse como nueva en los feeds (como máximo una vez por semana). |
+| pt | low | Same cap as en. | (uma vez por semana) | Ao substituir uma arte, a publicação pode voltar a aparecer como nova nos feeds (no máximo uma vez por semana). |
+| fr | low | Same cap as en; also "de nouveau … comme nouvelle" repeats "nouveau". | la publication peut de nouveau s'afficher comme nouvelle dans les fils (une fois par semaine). | Quand vous remplacez une œuvre, la publication peut réapparaître comme nouvelle dans les fils (une fois par semaine au maximum). |
+| de | low | Same cap as en; the ARB says "Einmal pro Woche je Beitrag". | (einmal pro Woche) | Wenn du ein Werk ersetzt, kann der Beitrag wieder als neu in den Feeds erscheinen (höchstens einmal pro Woche). |
+| ru | low | Same cap as en (the ARB says "Не чаще раза в неделю"); also the opening "При замене работы" first reads as "when changing jobs" until the sentence goes on. | При замене работы публикацию снова можно показать как новую в лентах (раз в неделю). | Если заменить работу в публикации, её снова можно показать как новую в лентах (не чаще раза в неделю). |
+| zh | low | Same cap as en; the ARB (publishBumpSubtitle) says 每周最多一次. | （每周一次） | 替换作品后，帖子可以再次在动态中显示为新帖（每周最多一次）。 |
+| ja | low | The fix line ends in a bare noun phrase ("…問題") while the rest of the text is です／ます; Japanese release notes write a fix as "…問題を修正しました". | 修正：エディターの ☰ メニューの幅が広すぎる問題。 | エディターの ☰ メニューの幅が広すぎる問題を修正しました。 |
+| fr | low | Style drift from the 1.12.0 store notes, which used "L’application" and typographic apostrophes (’); this text uses "l'app" and straight ('). Either is fine on its own; the store page should be consistent. | l'app indique · s'afficher · l'éviter | Use "l'application" (as in the ARB, e.g. "Mettez l'application à jour") and the same apostrophe as the 1.12.0 notes (’) throughout. |
+
+## Systemic notes
+
+- **The weekly limit is a cap, per post.** The English "(once a week)" is carried into seven languages as a plain frequency, which can read as "every week". Only Japanese (週1回まで) says "up to". Saying "at most" in each language matches the in-app switch subtitle (publishBumpSubtitle), which already says it in every ARB.
+- **Who moves up must be explicit.** English avoids the problem by saying "the post"; es and fr drop the noun and leave a verb or pronoun that attaches to "the app" ("la app te dice cuándo podrá subir", "l'app indique quand elle pourra remonter"). de, ru, and zh name the post and read correctly; pt's "ela" resolves to "a publicação" because "o app" is masculine.
+- **Terminology is consistent with the app**: post, artwork, feed, moderator, and Club follow the glossary in every language (ru writes "Makapix Club", per the bare-Club rule); the switch's behavior and the two outcome messages (replacedBumped, replacedPendingReview) are described in the same words the ARBs use. No term needs changing.
+- **Tone** matches the 1.12.0 notes in every language (short paragraphs, "Fixed:" / "Corregido:" / "Behoben:" / "Исправлено:" / 修复 line at the end), except the Japanese fix line, which should be a full ます sentence like the rest of the Japanese text.
+
+**Applied 2026-10-05:** all twelve findings.
