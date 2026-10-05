@@ -195,9 +195,12 @@ extension _EditorTimeline on _EditorPageState {
         child: Row(children: [
           Icon(icon, size: 18),
           const SizedBox(width: 12),
-          // The label wraps rather than overflow the menu (long translations, large fonts).
-          Flexible(child: Text(label)),
-          if (submenu) ...[const Spacer(), const Icon(Icons.chevron_right, size: 18, color: Colors.white54)],
+          // The label wraps rather than overflow the menu (long translations, large fonts), and
+          // takes the row's spare width so a submenu's chevron sits at the right edge. It must be
+          // the row's ONLY flexible child: with a Spacer beside it (as 2026-10-01 had) the menu
+          // sizes itself to twice the label's width and each chevron floats mid-row.
+          Expanded(child: Text(label)),
+          if (submenu) const Icon(Icons.chevron_right, size: 18, color: Colors.white54),
         ]),
       );
 

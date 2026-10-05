@@ -81,6 +81,20 @@ void main() {
 
         await openMenu();
         await check('menu');
+        // The five submenu chevrons share the menu's right edge. A Spacer beside the flexible
+        // label (2026-10-01 to 10-05) sized the menu to twice its labels and floated each
+        // chevron mid-row, right after its own label.
+        final items = find.byWidgetPredicate((w) => w is PopupMenuItem);
+        final chevrons = find.descendant(of: items, matching: find.byIcon(Icons.chevron_right));
+        final rights = [
+          for (var i = 0; i < chevrons.evaluate().length; i++) tester.getRect(chevrons.at(i)).right
+        ];
+        final menuRight = tester.getRect(items.first).right;
+        if (rights.length != 5 ||
+            rights.any((r) => (r - rights.first).abs() > 0.5 || menuRight - r > 32)) {
+          problems.add('menu: the submenu chevrons are not at the right edge '
+              '(chevrons end at $rights, the menu at $menuRight)');
+        }
         await dismiss();
 
         // The five submenus, each a bottom sheet.
