@@ -1752,5 +1752,7 @@
   "badgeRoots": "Wurzeln",
   "badgeRootsDesc": "Mitglied der ersten Stunde",
   "badgeTopContributor": "Top-Mitwirkender",
-  "badgeTopContributorDesc": "100 oder mehr Werke veröffentlicht"
+  "badgeTopContributorDesc": "100 oder mehr Werke veröffentlicht",
+  "publishBumpAvailableOn": "Ab {date} kann dieser Beitrag wieder als neu erscheinen. Bis dahin behält er beim Ersetzen seinen Platz in den Feeds.",
+  "publishBumpAvailableOnReview": "Der Beitrag rückt nach oben, wenn ein Moderator das neue Werk freigibt – sofern das am {date} oder später geschieht."
 }

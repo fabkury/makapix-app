@@ -1752,5 +1752,7 @@
   "badgeRoots": "Racines",
   "badgeRootsDesc": "Membre fondateur de la communauté",
   "badgeTopContributor": "Grand contributeur",
-  "badgeTopContributorDesc": "A publié au moins 100 œuvres"
+  "badgeTopContributorDesc": "A publié au moins 100 œuvres",
+  "publishBumpAvailableOn": "Cette publication pourra de nouveau s'afficher comme nouvelle le {date}. D'ici là, la remplacer ne change pas sa place dans les fils.",
+  "publishBumpAvailableOnReview": "La publication remontera quand un modérateur approuvera la nouvelle œuvre, si cette approbation a lieu le {date} ou après."
 }

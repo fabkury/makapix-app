@@ -603,6 +603,7 @@ extension _EditorFileIo on _EditorPageState {
         ownerHandle: req.sourceOwnerHandle,
         isOwner: req.isOwner,
         hasMkpx: req.sourceHasMkpx,
+        listedAt: req.sourceListedAt,
       );
     });
     _refreshState();

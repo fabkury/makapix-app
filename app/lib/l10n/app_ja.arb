@@ -664,7 +664,7 @@
   "replacedBody": "作品を置き換えました。",
   "replacedBumped": "投稿がフィードの先頭に戻りました。",
   "replacedPendingReview": "モデレーターが新しい作品を承認するまで、投稿は公開フィードに表示されません。",
-  "replacedCooldown": "今回は表示位置は変わりません。{date} 以降、再び新着として表示できます。",
+  "replacedCooldown": "今回は表示位置は変わりません。{date}以降、再び新着として表示できます。",
   "publishUploadFailed": "アップロードに失敗しました。もう一度お試しください。",
   "publishReplaceFailed": "置き換えに失敗しました。もう一度お試しください。",
   "editDetailsTitle": "詳細を編集",
@@ -1752,5 +1752,7 @@
   "badgeRoots": "ルーツ",
   "badgeRootsDesc": "コミュニティの初期メンバー",
   "badgeTopContributor": "トップコントリビューター",
-  "badgeTopContributorDesc": "100点以上の作品を投稿"
+  "badgeTopContributorDesc": "100点以上の作品を投稿",
+  "publishBumpAvailableOn": "{date}以降、この投稿を再び新着として表示できます。それまでは、置き換えてもフィード内の位置は変わりません。",
+  "publishBumpAvailableOnReview": "モデレーターが新しい作品を承認したとき、それが{date}以降であれば投稿がフィードの先頭に移動します。"
 }

@@ -1,5 +1,18 @@
 import 'post.dart';
 
+/// The server's feed-bump limit: a post moves up at most once per this long, counted from
+/// its `listed_at` (messages/0006-feed-bump, 0001 §1c).
+const Duration kBumpCooldown = Duration(days: 7);
+
+/// When a replace can next move the post up: [listedAt] plus [kBumpCooldown], or null when
+/// that has already passed (a replace now can move it) or [listedAt] is unknown. A hint: after
+/// a replace the server's `bump_available_at` is authoritative (0004 §1).
+DateTime? nextBumpAt(DateTime? listedAt, {DateTime? now}) {
+  if (listedAt == null) return null;
+  final next = listedAt.add(kBumpCooldown);
+  return next.isAfter(now ?? DateTime.now()) ? next : null;
+}
+
 /// The answer to `POST /post/{id}/replace-artwork`: the updated post plus what
 /// happened to its place in the feeds (messages/0006-feed-bump, 0001 §2).
 ///

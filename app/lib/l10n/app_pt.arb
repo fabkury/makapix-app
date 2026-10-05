@@ -1752,5 +1752,7 @@
   "badgeRoots": "Raízes",
   "badgeRootsDesc": "Membro original da comunidade",
   "badgeTopContributor": "Grande colaborador",
-  "badgeTopContributorDesc": "Publicou 100 artes ou mais"
+  "badgeTopContributorDesc": "Publicou 100 artes ou mais",
+  "publishBumpAvailableOn": "Esta publicação poderá aparecer como nova novamente em {date}. Até lá, substituí-la não muda seu lugar nos feeds.",
+  "publishBumpAvailableOnReview": "A publicação sobe quando um moderador aprovar a nova arte, se isso acontecer em {date} ou depois."
 }

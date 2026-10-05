@@ -22,6 +22,9 @@ class ClubEditRequest {
   /// "replacing drops the layers file" warning at publish time).
   final bool sourceHasMkpx;
 
+  /// The source post's `listed_at` (feed bump): when it can show as new again.
+  final DateTime? sourceListedAt;
+
   const ClubEditRequest({
     required this.bytes,
     required this.width,
@@ -33,6 +36,7 @@ class ClubEditRequest {
     required this.isOwner,
     this.isMkpx = false,
     this.sourceHasMkpx = false,
+    this.sourceListedAt,
   });
 }
 
@@ -46,6 +50,10 @@ class ClubEditSource {
   final bool isOwner;
   final bool hasMkpx;
 
+  /// When the post was last placed at the top of the feeds; with the weekly limit, it says
+  /// when a replace can show it as new again (feed bump). Null when unknown.
+  final DateTime? listedAt;
+
   const ClubEditSource({
     required this.postId,
     required this.sqid,
@@ -53,5 +61,6 @@ class ClubEditSource {
     required this.ownerHandle,
     required this.isOwner,
     this.hasMkpx = false,
+    this.listedAt,
   });
 }

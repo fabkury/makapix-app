@@ -245,7 +245,8 @@ class _PublishPageState extends ConsumerState<PublishPage> {
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: Text(l10n.publishBump),
-            subtitle: Text(l10n.publishBumpSubtitle, style: const TextStyle(fontSize: 12)),
+            subtitle: Text(_bumpSubtitle(l10n, d.source!.listedAt, canPostPublic),
+                style: const TextStyle(fontSize: 12)),
             value: _bump,
             onChanged: uploading ? null : (v) => setState(() => _bump = v),
           ),
@@ -378,6 +379,17 @@ class _PublishPageState extends ConsumerState<PublishPage> {
   /// An owner without Trust sends the replacement back to moderation: the post
   /// leaves public feeds until a moderator approves it (feed bump 0001 §1b).
   /// Say so before, not after — the post may have been public for months.
+  /// Under the switch: the weekly limit, or, while it holds, the day the post can show as new
+  /// again (from `listed_at`, feed bump 0004 §1). For an owner without Trust the move happens
+  /// at a moderator's approval, so the date is the earliest that approval can move it.
+  String _bumpSubtitle(AppLocalizations l10n, DateTime? listedAt, bool canPostPublic) {
+    final next = nextBumpAt(listedAt);
+    if (next == null) return l10n.publishBumpSubtitle;
+    return canPostPublic
+        ? l10n.publishBumpAvailableOn(next.toLocal())
+        : l10n.publishBumpAvailableOnReview(next.toLocal());
+  }
+
   Future<void> _confirmReplace(bool canPostPublic) async {
     if (!canPostPublic) {
       final proceed = await showDialog<bool>(

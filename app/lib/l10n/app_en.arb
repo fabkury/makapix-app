@@ -3518,5 +3518,9 @@
   "badgeTopContributor": "Top Contributor",
   "@badgeTopContributor": {"description": "A badge's name, shown on profiles under the username and in the badges sheet (the Club's own award)."},
   "badgeTopContributorDesc": "Posted 100+ artworks",
-  "@badgeTopContributorDesc": {"description": "What the badge is for, shown under its name in the badges sheet."}
+  "@badgeTopContributorDesc": {"description": "What the badge is for, shown under its name in the badges sheet."},
+  "publishBumpAvailableOn": "This post can show as new again on {date}. Until then, replacing it keeps its place in the feeds.",
+  "@publishBumpAvailableOn": {"description": "Under the \"Show as new in feeds\" switch, for an artist with Trust, while the weekly limit holds: {date} = the day the post can move back to the top of the feeds again.", "placeholders": {"date": {"type": "DateTime", "format": "yMMMd"}}},
+  "publishBumpAvailableOnReview": "The post moves up when a moderator approves the replacement, if that's on or after {date}.",
+  "@publishBumpAvailableOnReview": {"description": "Under the \"Show as new in feeds\" switch, for an artist without Trust (the replacement goes to a moderator first), while the weekly limit holds: the post moves up at the moderator's approval only if that approval comes on or after {date}.", "placeholders": {"date": {"type": "DateTime", "format": "yMMMd"}}}
 }

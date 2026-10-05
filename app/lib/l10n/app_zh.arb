@@ -664,7 +664,7 @@
   "replacedBody": "作品已替换。",
   "replacedBumped": "你的帖子已回到动态顶部。",
   "replacedPendingReview": "在管理员批准新作品之前，你的帖子不会出现在公开动态中。",
-  "replacedCooldown": "这次位置不变。{date} 起可再次显示为新帖。",
+  "replacedCooldown": "这次位置不变。{date}起可再次显示为新帖。",
   "publishUploadFailed": "上传失败，请重试。",
   "publishReplaceFailed": "替换失败，请重试。",
   "editDetailsTitle": "编辑详情",
@@ -1752,5 +1752,7 @@
   "badgeRoots": "元老",
   "badgeRootsDesc": "社区的初始成员",
   "badgeTopContributor": "杰出贡献者",
-  "badgeTopContributorDesc": "已发布 100 件以上作品"
+  "badgeTopContributorDesc": "已发布 100 件以上作品",
+  "publishBumpAvailableOn": "{date}起可再次将此帖子显示为新帖。在此之前，替换后它在动态中的位置不变。",
+  "publishBumpAvailableOnReview": "管理员批准新作品时，若批准日期在 {date}或之后，帖子会移到动态顶部。"
 }

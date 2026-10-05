@@ -21,15 +21,20 @@ import 'l10n/l10n_test_support.dart';
 final Uint8List _png = base64Decode(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
 
-PublishDraft _replaceDraft() => PublishDraft(
+PublishDraft _replaceDraft({DateTime? listedAt}) => PublishDraft(
       bytes: _png,
       format: 'webp',
       filename: 'art.webp',
       width: 64,
       height: 64,
       frameCount: 1,
-      source: const ClubEditSource(
-          postId: 1, sqid: 'p1', title: 'Sunset Tower', ownerHandle: 'pixel_ada', isOwner: true),
+      source: ClubEditSource(
+          postId: 1,
+          sqid: 'p1',
+          title: 'Sunset Tower',
+          ownerHandle: 'pixel_ada',
+          isOwner: true,
+          listedAt: listedAt),
       mkpxBytes: null,
     );
 
@@ -73,10 +78,10 @@ FakeBackend _backend(_Replaces seen, Map<String, dynamic> answer) => fixtureBack
 AppLocalizations get _en => l10nFor(const Locale('en'));
 
 Future<void> _open(WidgetTester tester, _Replaces seen,
-    {bool trusted = true, Map<String, dynamic>? answer}) async {
+    {bool trusted = true, Map<String, dynamic>? answer, DateTime? listedAt}) async {
   SharedPreferences.setMockInitialValues(const {kRulesPrefKey: kRulesVersion});
   final backend = _backend(seen, answer ?? _answer());
-  await pumpLocalized(tester, const Locale('en'), PublishPage(draft: _replaceDraft()),
+  await pumpLocalized(tester, const Locale('en'), PublishPage(draft: _replaceDraft(listedAt: listedAt)),
       overrides: clubOverrides(me: fixtureMe(canPostPublic: trusted), backend: backend));
   for (var i = 0; i < 4; i++) {
     await tester.pump(const Duration(milliseconds: 50));
@@ -124,6 +129,59 @@ void main() {
       expect(read(true).pendingReview, isFalse);
       // A server from before the feed bump sends no such field: nothing to report.
       expect(read(null).pendingReview, isFalse);
+    });
+  });
+
+  group('the next bump date (listed_at, 0004 §1)', () {
+    final now = DateTime.utc(2026, 10, 5, 12);
+    test('a week after the listing, or null once that has passed', () {
+      expect(nextBumpAt(null, now: now), isNull);
+      expect(nextBumpAt(DateTime.utc(2026, 10, 1), now: now), DateTime.utc(2026, 10, 8));
+      expect(nextBumpAt(DateTime.utc(2026, 9, 28, 12), now: now), isNull, reason: 'exactly due');
+      expect(nextBumpAt(DateTime.utc(2026, 9, 1), now: now), isNull);
+    });
+
+    test('Post reads listed_at', () {
+      final post = ReplaceResult.fromJson({
+        ...(_answer()['post'] as Map<String, dynamic>),
+        'listed_at': '2026-10-01T00:00:00+00:00',
+      }).post;
+      expect(post.listedAt, DateTime.utc(2026, 10, 1));
+    });
+
+    String subtitle(WidgetTester tester) {
+      final tile = tester.widget<SwitchListTile>(
+          find.widgetWithText(SwitchListTile, _en.publishBump));
+      return (tile.subtitle! as Text).data!;
+    }
+
+    testWidgets('no listing date: the weekly rule', (tester) async {
+      await _open(tester, _Replaces());
+      await _reveal(tester, find.text(_en.publishBump));
+      expect(subtitle(tester), _en.publishBumpSubtitle);
+    });
+
+    testWidgets('bumped recently: the date it can move up again', (tester) async {
+      final listed = DateTime.now().subtract(const Duration(days: 2));
+      await _open(tester, _Replaces(), listedAt: listed);
+      await _reveal(tester, find.text(_en.publishBump));
+      expect(subtitle(tester),
+          _en.publishBumpAvailableOn(listed.add(kBumpCooldown).toLocal()));
+    });
+
+    testWidgets('without Trust the date is checked at approval', (tester) async {
+      final listed = DateTime.now().subtract(const Duration(days: 2));
+      await _open(tester, _Replaces(), trusted: false, listedAt: listed);
+      await _reveal(tester, find.text(_en.publishBump));
+      expect(subtitle(tester),
+          _en.publishBumpAvailableOnReview(listed.add(kBumpCooldown).toLocal()));
+    });
+
+    testWidgets('the week has passed: the weekly rule again', (tester) async {
+      await _open(tester, _Replaces(),
+          listedAt: DateTime.now().subtract(const Duration(days: 30)));
+      await _reveal(tester, find.text(_en.publishBump));
+      expect(subtitle(tester), _en.publishBumpSubtitle);
     });
   });
 

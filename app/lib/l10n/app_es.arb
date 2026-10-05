@@ -1752,5 +1752,7 @@
   "badgeRoots": "Raíces",
   "badgeRootsDesc": "Miembro original de la comunidad",
   "badgeTopContributor": "Gran colaborador",
-  "badgeTopContributorDesc": "Publicó 100 obras o más"
+  "badgeTopContributorDesc": "Publicó 100 obras o más",
+  "publishBumpAvailableOn": "Esta publicación podrá mostrarse de nuevo como nueva el {date}. Hasta entonces, sustituirla no cambia su lugar en los feeds.",
+  "publishBumpAvailableOnReview": "La publicación subirá cuando un moderador apruebe la nueva obra, si eso ocurre el {date} o después."
 }

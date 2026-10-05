@@ -1,0 +1,18 @@
+# Translation review: bump-date (publishBumpAvailableOn, publishBumpAvailableOnReview)
+
+| lang | key | severity | problem | current | proposed |
+|---|---|---|---|---|---|
+| es | publishBumpAvailableOn | medium | Inconsistent verb: every neighbor in the replace flow uses *sustituir* (publishReplace "Sustituir el original", publishReplaceDropsLayers "Al sustituir", replacedBody "Obra sustituida"); *reemplazar* belongs to the editor's Replace color. | Hasta entonces, reemplazarla no cambia su lugar en los feeds. | Hasta entonces, sustituirla no cambia su lugar en los feeds. |
+| fr | publishBumpAvailableOnReview | low | "si c'est le {date} ou après" is spoken register and leaves "c'" vague; the date condition reads better with a named subject. | La publication remontera quand un modérateur approuvera la nouvelle œuvre, si c'est le {date} ou après. | La publication remontera quand un modérateur approuvera la nouvelle œuvre, si cette approbation a lieu le {date} ou après. |
+| ja | publishBumpAvailableOn | medium | Inconsistent verb: the replace flow uses 置き換える everywhere (publishReplace, publishReplaceDropsLayers, replacedBody); 差し替える is a second word for the same action. Also the space after {date}: the date is "2026年10月12日", numeric and ending in a kanji, so "2026年10月12日 以降" shows a stray space (the glossary spaces only name-like placeholders). | {date} 以降、この投稿を再び新着として表示できます。それまでは、差し替えてもフィード内の位置は変わりません。 | {date}以降、この投稿を再び新着として表示できます。それまでは、置き換えてもフィード内の位置は変わりません。 |
+| ja | publishBumpAvailableOnReview | low | Spaces around the numeric date placeholder ("それが 2026年10月12日 以降"); 先頭 is unanchored where the neighbors say フィードの先頭 (publishBumpSubtitle, replacedBumped). | モデレーターが新しい作品を承認したとき、それが {date} 以降であれば投稿が先頭に移動します。 | モデレーターが新しい作品を承認したとき、それが{date}以降であれば投稿がフィードの先頭に移動します。 |
+| zh | publishBumpAvailableOn | low | Space between the date and 起: the date ends in 日, so "2026年10月12日 起" puts a space between two Chinese characters (the half-width space is only for Latin letters and digits). | {date} 起可再次将此帖子显示为新帖。在此之前，替换后它在动态中的位置不变。 | {date}起可再次将此帖子显示为新帖。在此之前，替换后它在动态中的位置不变。 |
+| zh | publishBumpAvailableOnReview | low | Same trailing space ("12日 或之后"); 移到顶部 is unanchored where publishBumpSubtitle says 移到动态顶部; "如果是在" leaves the subject of the date condition implicit. | 管理员批准新作品时，如果是在 {date} 或之后，帖子会移到顶部。 | 管理员批准新作品时，若批准日期在 {date}或之后，帖子会移到动态顶部。 |
+
+## Systemic notes
+
+- **Date placeholder spacing in ja and zh.** The localized date is numeric and ends in 日, so it takes no space after it (ja: no space on either side, as for a numeric placeholder with its counter; zh: a space only where it touches a Chinese character before its leading digit). The neighbor `replacedCooldown` has the same stray space ("{date} 以降", "{date} 起") and should be fixed together with these two.
+- **One verb for "replace" per language in the replace flow.** es (*reemplazar* vs. *sustituir*) and ja (差し替える vs. 置き換える) drift from the neighbors in the first string; the other languages match (pt *substituir*, fr *remplacer*, de *ersetzen*, ru *замена*, zh 替换).
+- **Meaning checks pass everywhere.** All seven render the first string as "from {date} on it can show as new; until then replacing keeps its place", and the second as "moves up at approval only if the approval is on or after {date}", with "the new artwork" matching `replacedPendingReview`. The "show as new" phrasing matches `publishBump` / `replacedCooldown` in every language; feed, post, artwork, and moderator follow the glossary. All strings fit a two- or three-line subtitle.
+
+**Applied 2026-10-05:** all six findings, and the same date spacing in `replacedCooldown` (ja, zh).

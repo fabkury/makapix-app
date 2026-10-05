@@ -205,6 +205,35 @@ void main() {
     expect(find.byType(SwitchListTile), findsNothing);
   }
 
+  // The switch while the weekly limit holds (listed_at, 0004 §1): the date it can move up again,
+  // worded for an owner with and without Trust.
+  final bumpedThisWeek = ClubEditSource(
+      postId: 1,
+      sqid: 'p1',
+      title: 'Sunset Tower',
+      ownerHandle: 'pixel_ada',
+      isOwner: true,
+      listedAt: DateTime.now().subtract(const Duration(days: 2)));
+  Future<void> showSwitch(WidgetTester tester) async {
+    // The switch sits right above the Replace button, at the end of the lazily built form.
+    await tester.scrollUntilVisible(find.byIcon(Icons.published_with_changes), 200,
+        scrollable: find.byType(Scrollable).first);
+    await tester.pump();
+    expect(find.byType(SwitchListTile), findsWidgets);
+  }
+
+  for (final trusted in [true, false]) {
+    sweepScreen(
+      'Publish, replacing a post that moved up this week (${trusted ? 'Trust' : 'no Trust'})',
+      build: () => PublishPage(draft: _draft(layers: false, source: bumpedThisWeek)),
+      backend: _backend,
+      prefs: _rulesAccepted,
+      overrides: (b) => clubOverrides(me: fixtureMe(canPostPublic: trusted), backend: b),
+      allowLatin: _fixture,
+      act: showSwitch,
+    );
+  }
+
   sweepScreen(
     'Publish, replacing without Trust (confirmation)',
     build: () => PublishPage(draft: _draft(layers: false, source: mine)),

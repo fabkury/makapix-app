@@ -1123,6 +1123,7 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
         isOwner: mySub != null && mySub == post.owner.sqid,
         isMkpx: true,
         sourceHasMkpx: true,
+        sourceListedAt: post.listedAt,
       );
       nav.popUntil((r) => r.isFirst); // surface the editor (app root)
     } on ClubError catch (e) {
@@ -1245,6 +1246,7 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
         sourceOwnerHandle: post.owner.handle,
         isOwner: mySub != null && mySub == post.owner.sqid,
         sourceHasMkpx: post.hasMkpx,
+        sourceListedAt: post.listedAt,
       );
       nav.popUntil((r) => r.isFirst); // surface the editor (app root)
     } catch (e) {

@@ -30,6 +30,11 @@ class Post {
   final bool transparencyActual;
   final bool alphaActual;
   final DateTime? createdAt;
+
+  /// When the post was last placed at the top of the date-sorted feeds (the key they sort
+  /// on): `created_at` until a replace or a first approval moves it up (feed bump,
+  /// messages/0006-feed-bump/0004). Null from a server before it.
+  final DateTime? listedAt;
   final bool promoted;
   final String? promotedCategory;
   final PostOwner owner;
@@ -77,6 +82,7 @@ class Post {
     required this.transparencyActual,
     required this.alphaActual,
     required this.createdAt,
+    this.listedAt,
     required this.promoted,
     required this.promotedCategory,
     required this.owner,
@@ -129,6 +135,7 @@ class Post {
         transparencyActual: j['transparency_actual'] == true,
         alphaActual: j['alpha_actual'] == true,
         createdAt: DateTime.tryParse((j['created_at'] ?? '').toString()),
+        listedAt: DateTime.tryParse((j['listed_at'] ?? '').toString()),
         promoted: j['promoted'] == true,
         promotedCategory: j['promoted_category'] as String?,
         owner: PostOwner.fromJson(((j['owner'] as Map?) ?? const {}).cast<String, dynamic>()),
