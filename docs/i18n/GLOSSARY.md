@@ -85,6 +85,8 @@ label must not be longer than the full name, and no two tools may share one.
 | community rules | normas de la comunidad | regras da comunidade | règles de la communauté | Community-Regeln | правила сообщества | コミュニティルール | 社区规则 |
 | Contribute (open the editor from the Club) | contribuir | contribuir | contribuer | beitragen | создать | 作品を描く | 创作 |
 | player (a Makapix display device) | reproductor | player | lecteur | Player | плеер | プレーヤー | 播放器 |
+| view (a deliberate look at an artwork, 👁) | vista | visualização | vue | Aufruf | просмотр | 閲覧 | 浏览 |
+| impression (a playback on a player, 📺; never summed with views) | impresión | impressão | impression | Impression | показ | 再生 | 展示 |
 | badge | insignia | insígnia | badge | Abzeichen | значок | バッジ | 徽章 |
 | 6-digit code | código de 6 dígitos | código de 6 dígitos | code à 6 chiffres | 6-stelliger Code | 6-значный код | 6桁のコード | 6 位验证码 |
 | temporary password | contraseña temporal | senha temporária | mot de passe temporaire | temporäres Passwort | временный пароль | 仮パスワード | 临时密码 |
