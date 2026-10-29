@@ -20,6 +20,7 @@ class PmdPostItem {
   final int reactionCount;
   final int commentCount;
   final int viewCount;
+  final int impressionCount; // lifetime playback exposure; never summed with viewCount (D17)
   final String? licenseIdentifier; // e.g. "CC-BY-4.0"; null = all rights reserved
 
   const PmdPostItem({
@@ -37,6 +38,7 @@ class PmdPostItem {
     required this.reactionCount,
     required this.commentCount,
     required this.viewCount,
+    this.impressionCount = 0,
     this.licenseIdentifier,
   });
 
@@ -71,6 +73,7 @@ class PmdPostItem {
         reactionCount: reactionCount,
         commentCount: commentCount,
         viewCount: viewCount,
+        impressionCount: impressionCount,
         licenseIdentifier: clearLicense ? null : (licenseIdentifier ?? this.licenseIdentifier),
       );
 
@@ -92,6 +95,7 @@ class PmdPostItem {
         reactionCount: (j['reaction_count'] as num?)?.toInt() ?? 0,
         commentCount: (j['comment_count'] as num?)?.toInt() ?? 0,
         viewCount: (j['view_count'] as num?)?.toInt() ?? 0,
+        impressionCount: (j['impression_count'] as num?)?.toInt() ?? 0,
         licenseIdentifier: j['license_identifier'] as String?,
       );
 }

@@ -51,6 +51,7 @@ void main() {
         'total_posts': 12,
         'total_views': 3400,
         'unique_viewers': 900,
+        'total_impressions': 560,
         'views_by_country': {'US': 200, 'BR': 150},
         'views_by_device': {'mobile': 220, 'desktop': 130},
         'total_reactions': 80,
@@ -58,6 +59,7 @@ void main() {
         'total_comments': 14,
         'total_views_authenticated': 1200,
         'unique_viewers_authenticated': 400,
+        'total_impressions_authenticated': 210,
         'views_by_country_authenticated': {'US': 100},
         'views_by_device_authenticated': {'mobile': 90},
         'total_reactions_authenticated': 40,
@@ -75,10 +77,12 @@ void main() {
           'created_at': '2026-01-01T00:00:00Z',
           'total_views': 100,
           'unique_viewers': 60,
+          'total_impressions': 30,
           'total_reactions': 5,
           'total_comments': 2,
           'total_views_authenticated': 40,
           'unique_viewers_authenticated': 25,
+          'total_impressions_authenticated': 9,
           'total_reactions_authenticated': 3,
           'total_comments_authenticated': 1,
         },
@@ -97,6 +101,9 @@ void main() {
       expect(s.views(false), 3400);
       expect(s.views(true), 1200);
       expect(s.uniques(false), 900);
+      // Impressions ride the same toggle and stay a separate figure from views.
+      expect(s.impressions(false), 560);
+      expect(s.impressions(true), 210);
       expect(s.reactions(true), 40);
       expect(s.countries(false)['US'], 200);
       expect(s.countries(true)['US'], 100);
@@ -111,6 +118,8 @@ void main() {
       expect(p.sqid, 'p1');
       expect(p.views(false), 100);
       expect(p.views(true), 40);
+      expect(p.impressions(false), 30);
+      expect(p.impressions(true), 9);
       expect(p.reactions(false), 5);
       expect(p.comments(true), 1);
     });
@@ -118,6 +127,7 @@ void main() {
     test('tolerates missing maps and fields', () {
       final d = ArtistDashboard.fromJson({'artist_stats': {}, 'posts': []});
       expect(d.stats.views(false), 0);
+      expect(d.stats.impressions(true), 0); // a server before artwork-views D17
       expect(d.stats.viewsByCountry, isEmpty);
       expect(d.posts, isEmpty);
       expect(d.page, 1);
@@ -139,6 +149,7 @@ void main() {
         'reaction_count': 4,
         'comment_count': 1,
         'view_count': 99,
+        'impression_count': 17,
         'license_identifier': 'CC-BY-4.0',
         'files': [
           {'format': 'webp', 'file_bytes': 1000, 'is_native': false},
@@ -146,6 +157,9 @@ void main() {
         ],
       });
       expect(p.id, 7);
+      expect(p.viewCount, 99);
+      expect(p.impressionCount, 17);
+      expect(p.copyWith(hiddenByUser: false).impressionCount, 17);
       expect(p.hiddenByUser, isTrue);
       expect(p.format, 'gif');
       expect(p.fileBytes, 2048);

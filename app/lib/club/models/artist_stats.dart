@@ -15,6 +15,7 @@ class ArtistStats {
   // All viewers
   final int totalViews;
   final int uniqueViewers;
+  final int totalImpressions; // playback exposure (never summed with views; server D17)
   final Map<String, int> viewsByCountry; // ISO 3166-1 alpha-2 → count (top 10)
   final Map<String, int> viewsByDevice; // desktop/mobile/tablet/player
   final int totalReactions;
@@ -23,6 +24,7 @@ class ArtistStats {
   // Authenticated-only twins
   final int totalViewsAuthenticated;
   final int uniqueViewersAuthenticated;
+  final int totalImpressionsAuthenticated;
   final Map<String, int> viewsByCountryAuthenticated;
   final Map<String, int> viewsByDeviceAuthenticated;
   final int totalReactionsAuthenticated;
@@ -36,6 +38,7 @@ class ArtistStats {
     required this.totalPosts,
     required this.totalViews,
     required this.uniqueViewers,
+    this.totalImpressions = 0,
     required this.viewsByCountry,
     required this.viewsByDevice,
     required this.totalReactions,
@@ -43,6 +46,7 @@ class ArtistStats {
     required this.totalComments,
     required this.totalViewsAuthenticated,
     required this.uniqueViewersAuthenticated,
+    this.totalImpressionsAuthenticated = 0,
     required this.viewsByCountryAuthenticated,
     required this.viewsByDeviceAuthenticated,
     required this.totalReactionsAuthenticated,
@@ -55,6 +59,8 @@ class ArtistStats {
 
   int views(bool authedOnly) => authedOnly ? totalViewsAuthenticated : totalViews;
   int uniques(bool authedOnly) => authedOnly ? uniqueViewersAuthenticated : uniqueViewers;
+  int impressions(bool authedOnly) =>
+      authedOnly ? totalImpressionsAuthenticated : totalImpressions;
   int reactions(bool authedOnly) => authedOnly ? totalReactionsAuthenticated : totalReactions;
   int comments(bool authedOnly) => authedOnly ? totalCommentsAuthenticated : totalComments;
   Map<String, int> countries(bool authedOnly) =>
@@ -68,6 +74,7 @@ class ArtistStats {
         totalPosts: (j['total_posts'] as num?)?.toInt() ?? 0,
         totalViews: (j['total_views'] as num?)?.toInt() ?? 0,
         uniqueViewers: (j['unique_viewers'] as num?)?.toInt() ?? 0,
+        totalImpressions: (j['total_impressions'] as num?)?.toInt() ?? 0,
         viewsByCountry: _intMap(j['views_by_country']),
         viewsByDevice: _intMap(j['views_by_device']),
         totalReactions: (j['total_reactions'] as num?)?.toInt() ?? 0,
@@ -75,6 +82,8 @@ class ArtistStats {
         totalComments: (j['total_comments'] as num?)?.toInt() ?? 0,
         totalViewsAuthenticated: (j['total_views_authenticated'] as num?)?.toInt() ?? 0,
         uniqueViewersAuthenticated: (j['unique_viewers_authenticated'] as num?)?.toInt() ?? 0,
+        totalImpressionsAuthenticated:
+            (j['total_impressions_authenticated'] as num?)?.toInt() ?? 0,
         viewsByCountryAuthenticated: _intMap(j['views_by_country_authenticated']),
         viewsByDeviceAuthenticated: _intMap(j['views_by_device_authenticated']),
         totalReactionsAuthenticated: (j['total_reactions_authenticated'] as num?)?.toInt() ?? 0,
@@ -93,10 +102,12 @@ class PostStatsListItem {
   final DateTime? createdAt;
   final int totalViews;
   final int uniqueViewers;
+  final int totalImpressions;
   final int totalReactions;
   final int totalComments;
   final int totalViewsAuthenticated;
   final int uniqueViewersAuthenticated;
+  final int totalImpressionsAuthenticated;
   final int totalReactionsAuthenticated;
   final int totalCommentsAuthenticated;
 
@@ -107,15 +118,19 @@ class PostStatsListItem {
     this.createdAt,
     required this.totalViews,
     required this.uniqueViewers,
+    this.totalImpressions = 0,
     required this.totalReactions,
     required this.totalComments,
     required this.totalViewsAuthenticated,
     required this.uniqueViewersAuthenticated,
+    this.totalImpressionsAuthenticated = 0,
     required this.totalReactionsAuthenticated,
     required this.totalCommentsAuthenticated,
   });
 
   int views(bool authedOnly) => authedOnly ? totalViewsAuthenticated : totalViews;
+  int impressions(bool authedOnly) =>
+      authedOnly ? totalImpressionsAuthenticated : totalImpressions;
   int reactions(bool authedOnly) => authedOnly ? totalReactionsAuthenticated : totalReactions;
   int comments(bool authedOnly) => authedOnly ? totalCommentsAuthenticated : totalComments;
 
@@ -126,10 +141,13 @@ class PostStatsListItem {
         createdAt: DateTime.tryParse((j['created_at'] ?? '').toString()),
         totalViews: (j['total_views'] as num?)?.toInt() ?? 0,
         uniqueViewers: (j['unique_viewers'] as num?)?.toInt() ?? 0,
+        totalImpressions: (j['total_impressions'] as num?)?.toInt() ?? 0,
         totalReactions: (j['total_reactions'] as num?)?.toInt() ?? 0,
         totalComments: (j['total_comments'] as num?)?.toInt() ?? 0,
         totalViewsAuthenticated: (j['total_views_authenticated'] as num?)?.toInt() ?? 0,
         uniqueViewersAuthenticated: (j['unique_viewers_authenticated'] as num?)?.toInt() ?? 0,
+        totalImpressionsAuthenticated:
+            (j['total_impressions_authenticated'] as num?)?.toInt() ?? 0,
         totalReactionsAuthenticated: (j['total_reactions_authenticated'] as num?)?.toInt() ?? 0,
         totalCommentsAuthenticated: (j['total_comments_authenticated'] as num?)?.toInt() ?? 0,
       );

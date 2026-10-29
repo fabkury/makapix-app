@@ -58,6 +58,7 @@ class _ArtistDashboardPageState extends ConsumerState<ArtistDashboardPage> {
         Wrap(spacing: 8, runSpacing: 8, children: [
           _stat(l10n.statPosts, s.totalPosts),
           _stat(l10n.statViews, s.views(_authOnly)),
+          _stat(l10n.statImpressions, s.impressions(_authOnly)),
           _stat(l10n.statUnique, s.uniques(_authOnly)),
           _stat(l10n.statReactions, s.reactions(_authOnly)),
           _stat(l10n.statComments, s.comments(_authOnly)),
@@ -131,6 +132,7 @@ class _ArtistDashboardPageState extends ConsumerState<ArtistDashboardPage> {
               child: Text(context.l10n.statsColTitle,
                   style: const TextStyle(color: Colors.white54, fontSize: 12))),
           _MetricHead(context.l10n.statsColViews),
+          _MetricHead(context.l10n.statsColImpressions),
           _MetricHead(context.l10n.statsColReactions),
           _MetricHead(context.l10n.statsColComments),
         ]),
@@ -153,6 +155,7 @@ class _ArtistDashboardPageState extends ConsumerState<ArtistDashboardPage> {
               ]),
             ),
             _metric(p.views(_authOnly)),
+            _metric(p.impressions(_authOnly)),
             _metric(p.reactions(_authOnly)),
             _metric(p.comments(_authOnly)),
           ]),

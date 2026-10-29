@@ -58,11 +58,16 @@ class ProfileStats {
   final int totalPosts;
   final int totalReactionsReceived;
   final int totalViews;
+
+  /// Lifetime Impressions summed over the visible posts (`total_impressions`, server
+  /// artwork-views D17). A separate figure from [totalViews], never summed with it.
+  final int totalImpressions;
   final int followerCount;
   const ProfileStats({
     this.totalPosts = 0,
     this.totalReactionsReceived = 0,
     this.totalViews = 0,
+    this.totalImpressions = 0,
     this.followerCount = 0,
   });
 
@@ -70,6 +75,7 @@ class ProfileStats {
         totalPosts: (j['total_posts'] as num?)?.toInt() ?? 0,
         totalReactionsReceived: (j['total_reactions_received'] as num?)?.toInt() ?? 0,
         totalViews: (j['total_views'] as num?)?.toInt() ?? 0,
+        totalImpressions: (j['total_impressions'] as num?)?.toInt() ?? 0,
         followerCount: (j['follower_count'] as num?)?.toInt() ?? 0,
       );
 
@@ -77,6 +83,7 @@ class ProfileStats {
         totalPosts: totalPosts,
         totalReactionsReceived: totalReactionsReceived,
         totalViews: totalViews,
+        totalImpressions: totalImpressions,
         followerCount: followerCount ?? this.followerCount,
       );
 }

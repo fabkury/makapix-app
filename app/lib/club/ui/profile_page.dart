@@ -650,6 +650,9 @@ class _Body extends ConsumerWidget {
       Flexible(
           child: _stat(context, context.l10n.statReactions, p.stats.totalReactionsReceived)),
       Flexible(child: _stat(context, context.l10n.statViews, p.stats.totalViews)),
+      // Impressions beside Views, as on the website's profile row: separate figures, never
+      // summed (server artwork-views D17).
+      Flexible(child: _stat(context, context.l10n.statImpressions, p.stats.totalImpressions)),
     ]);
     if (!p.isOwnProfile) return row;
     return Tooltip(

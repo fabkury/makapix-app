@@ -152,28 +152,40 @@ void main() {
     });
   });
 
+  group('Post counts', () {
+    test('view_count and impression_count are separate; both default to 0', () {
+      final p = Post.fromJson({'id': 1, 'view_count': 12, 'impression_count': 340});
+      expect(p.viewCount, 12);
+      expect(p.impressionCount, 340);
+      final old = Post.fromJson({'id': 2, 'view_count': 12}); // a server before D17
+      expect(old.impressionCount, 0);
+    });
+  });
+
   group('PostStats.fromJson', () {
     test('parses dual metrics, breakdowns, and the daily trend', () {
       final s = PostStats.fromJson({
         'post_id': 7,
         'total_views': 100,
         'unique_viewers': 40,
+        'total_impressions': 300,
         'views_by_country': {'US': 60, 'BR': 40},
         'views_by_device': {'mobile': 70, 'desktop': 30},
         'views_by_type': {'intentional': 90, 'listing': 10},
         'daily_views': [
-          {'date': '2026-07-28', 'views': 5, 'unique_viewers': 3},
+          {'date': '2026-07-28', 'views': 5, 'unique_viewers': 3, 'impressions': 40},
         ],
         'total_reactions': 12,
         'reactions_by_emoji': {'👍': 8, '❤️': 4},
         'total_comments': 3,
         'total_views_authenticated': 50,
         'unique_viewers_authenticated': 20,
+        'total_impressions_authenticated': 120,
         'views_by_country_authenticated': {'US': 50},
         'views_by_device_authenticated': {'mobile': 50},
         'views_by_type_authenticated': {'intentional': 50},
         'daily_views_authenticated': [
-          {'date': '2026-07-28', 'views': 2, 'unique_viewers': 1},
+          {'date': '2026-07-28', 'views': 2, 'unique_viewers': 1, 'impressions': 12},
         ],
         'total_reactions_authenticated': 6,
         'reactions_by_emoji_authenticated': {'👍': 6},
@@ -188,6 +200,11 @@ void main() {
       expect(s.countries(true), {'US': 50});
       expect(s.daily(false).single.views, 5);
       expect(s.daily(true).single.uniqueViewers, 1);
+      // Impressions: a separate figure and series (server artwork-views D17), same toggle.
+      expect(s.impressions(false), 300);
+      expect(s.impressions(true), 120);
+      expect(s.daily(false).single.impressions, 40);
+      expect(s.daily(true).single.impressions, 12);
       expect(s.emoji(true), {'👍': 6});
       expect(s.computedAt, isNotNull);
       expect(s.firstViewAt, isNull);

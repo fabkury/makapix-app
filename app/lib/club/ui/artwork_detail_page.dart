@@ -336,63 +336,84 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
     ];
   }
 
-  /// Above the artwork: owner (avatar + handle + tagline) on the left; views, reactions, comments
-  /// counts and the share button on the right. Tapping the owner opens their profile; tapping the
-  /// reactions count opens the Reactions page; tapping the comments count scrolls down to the comments.
+  /// Above the artwork: owner (avatar + handle + tagline) on the left; views, impressions,
+  /// reactions, comments counts and the share button on the right. Tapping the owner opens their
+  /// profile; tapping the reactions count opens the Reactions page; tapping the comments count
+  /// scrolls down to the comments. Four count clusters beside the owner need a wide header, so on
+  /// a phone the counts sit on their own line under the owner (since 2026-10-29, when Impressions
+  /// joined Views).
   Widget _header(BuildContext context, Post post, String base, int reactionTotal, int commentTotal) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
-      child: Row(children: [
-        Expanded(
-          child: InkWell(
-            onTap: () => Navigator.push(
-                context, MaterialPageRoute(builder: (_) => ProfilePage(sqid: post.owner.sqid))),
-            child: Row(children: [
-              HandleAvatar(url: post.owner.avatarUrl, handle: post.owner.handle, radius: 18),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(post.owner.handle,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w600)),
-                      if (post.owner.tagline != null && post.owner.tagline!.isNotEmpty)
-                        Text(post.owner.tagline!,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 12, color: Colors.white54)),
-                    ]),
-              ),
-            ]),
+    final owner = Expanded(
+      child: InkWell(
+        onTap: () => Navigator.push(
+            context, MaterialPageRoute(builder: (_) => ProfilePage(sqid: post.owner.sqid))),
+        child: Row(children: [
+          HandleAvatar(url: post.owner.avatarUrl, handle: post.owner.handle, radius: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(post.owner.handle,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                  if (post.owner.tagline != null && post.owner.tagline!.isNotEmpty)
+                    Text(post.owner.tagline!,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12, color: Colors.white54)),
+                ]),
           ),
-        ),
-        _stat(Icons.visibility_outlined, post.viewCount),
-        _stat(Icons.bolt, reactionTotal,
-            onTap: () => Navigator.push(
-                context, MaterialPageRoute(builder: (_) => ReactionsPage(post: post)))),
-        _stat(Icons.mode_comment_outlined, commentTotal, onTap: _scrollToComments),
-        // Tap shares the pixels (+ URL caption); long-press copies just the link.
-        GestureDetector(
-          onLongPress: () {
-            Clipboard.setData(ClipboardData(text: '$base/p/${post.sqid}'));
-            ScaffoldMessenger.of(context)
-                .showSnackBar(SnackBar(content: Text(context.l10n.linkCopiedShort)));
-          },
-          child: IconButton(
-            icon: const Icon(Icons.share),
-            tooltip: context.l10n.artworkShareTooltip,
-            visualDensity: VisualDensity.compact,
-            onPressed: () => _shareArtwork(context, post, base),
-          ),
-        ),
-      ]),
+        ]),
+      ),
     );
+    final counts = <Widget>[
+      // Views (deliberate looks) and Impressions (playback exposure on players) side by side,
+      // as the website shows them; separate figures, never summed (server artwork-views D17).
+      _stat(Icons.visibility_outlined, post.viewCount, tooltip: context.l10n.statViews),
+      _stat(Icons.tv_outlined, post.impressionCount, tooltip: context.l10n.statImpressions),
+      _stat(Icons.bolt, reactionTotal,
+          onTap: () => Navigator.push(
+              context, MaterialPageRoute(builder: (_) => ReactionsPage(post: post)))),
+      _stat(Icons.mode_comment_outlined, commentTotal, onTap: _scrollToComments),
+    ];
+    // Tap shares the pixels (+ URL caption); long-press copies just the link.
+    final share = GestureDetector(
+      onLongPress: () {
+        Clipboard.setData(ClipboardData(text: '$base/p/${post.sqid}'));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(context.l10n.linkCopiedShort)));
+      },
+      child: IconButton(
+        icon: const Icon(Icons.share),
+        tooltip: context.l10n.artworkShareTooltip,
+        visualDensity: VisualDensity.compact,
+        onPressed: () => _shareArtwork(context, post, base),
+      ),
+    );
+    return LayoutBuilder(builder: (context, constraints) {
+      // Owner (avatar + a readable handle) + four clusters with five-digit counts + share ≈ 420 px.
+      final oneLine = constraints.maxWidth >= 440;
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+        child: oneLine
+            ? Row(children: [owner, ...counts, share])
+            : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [owner, share]),
+                // Under the avatar, flush with the left edge of the counts' own padding.
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Row(children: counts),
+                ),
+              ]),
+      );
+    });
   }
 
-  // One icon + count cluster in the header (optionally tappable).
-  Widget _stat(IconData icon, int value, {VoidCallback? onTap}) {
-    final child = Padding(
+  // One icon + count cluster in the header (optionally tappable; [tooltip] names a figure whose
+  // icon alone does not say what it counts, such as Impressions).
+  Widget _stat(IconData icon, int value, {VoidCallback? onTap, String? tooltip}) {
+    Widget child = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon, size: 18, color: Colors.white60),
@@ -400,6 +421,7 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
         Text('$value', style: const TextStyle(fontSize: 13, color: Colors.white70)),
       ]),
     );
+    if (tooltip != null) child = Tooltip(message: tooltip, child: child);
     return onTap == null
         ? child
         : InkWell(onTap: onTap, borderRadius: BorderRadius.circular(6), child: child);

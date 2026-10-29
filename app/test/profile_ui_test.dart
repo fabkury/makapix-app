@@ -58,6 +58,7 @@ UserProfile _profile({required bool own}) => UserProfile(
           totalPosts: 3,
           totalReactionsReceived: 999,
           totalViews: 1234567,
+          totalImpressions: 42,
           followerCount: 12345),
       isFollowing: false,
       isOwnProfile: own,
@@ -162,11 +163,12 @@ void main() {
 
       expect(find.text('@PixelFab'), findsOneWidget); // app bar title
       expect(find.text('PixelFab'), findsOneWidget); // header name row
-      // Compact stats: Posts / Followers / Reactions / Views, plus the rep pill.
+      // Compact stats: Posts / Followers / Reactions / Views / Impressions, plus the rep pill.
       expect(find.text('3'), findsOneWidget);
       expect(find.text('12.3k'), findsOneWidget);
       expect(find.text('999'), findsOneWidget);
       expect(find.text('1.2M'), findsOneWidget);
+      expect(find.text('42'), findsOneWidget);
       expect(find.text('500'), findsOneWidget);
       expect(find.text('example.com'), findsOneWidget); // website link, scheme stripped
       expect(find.text('Edit profile'), findsOneWidget);

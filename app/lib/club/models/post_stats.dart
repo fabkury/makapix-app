@@ -9,17 +9,24 @@ Map<String, int> _intMap(dynamic v) {
   return out;
 }
 
-/// One day of the 30-day views trend.
+/// One day of the 30-day trend: deduped Views and, since the server's artwork-views D17
+/// (2026-10-29), undeduped Impressions — two series, never summed.
 class DailyViews {
   final String date; // ISO YYYY-MM-DD
   final int views;
   final int uniqueViewers;
-  const DailyViews({required this.date, required this.views, required this.uniqueViewers});
+  final int impressions;
+  const DailyViews(
+      {required this.date,
+      required this.views,
+      required this.uniqueViewers,
+      this.impressions = 0});
 
   factory DailyViews.fromJson(Map<String, dynamic> j) => DailyViews(
         date: (j['date'] ?? '').toString(),
         views: (j['views'] as num?)?.toInt() ?? 0,
         uniqueViewers: (j['unique_viewers'] as num?)?.toInt() ?? 0,
+        impressions: (j['impressions'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -28,9 +35,10 @@ class PostStats {
   // All viewers
   final int totalViews;
   final int uniqueViewers; // 7-day window server-side
+  final int totalImpressions; // playback exposure (never summed with views; server D17)
   final Map<String, int> viewsByCountry;
   final Map<String, int> viewsByDevice;
-  final Map<String, int> viewsByType; // intentional/listing/search/…
+  final Map<String, int> viewsByType; // canonical view/impression (older: intentional/listing/…)
   final List<DailyViews> dailyViews; // last 30 days
   final int totalReactions;
   final Map<String, int> reactionsByEmoji;
@@ -38,6 +46,7 @@ class PostStats {
   // Authenticated-only twins
   final int totalViewsAuthenticated;
   final int uniqueViewersAuthenticated;
+  final int totalImpressionsAuthenticated;
   final Map<String, int> viewsByCountryAuthenticated;
   final Map<String, int> viewsByDeviceAuthenticated;
   final Map<String, int> viewsByTypeAuthenticated;
@@ -54,6 +63,7 @@ class PostStats {
     required this.postId,
     required this.totalViews,
     required this.uniqueViewers,
+    this.totalImpressions = 0,
     required this.viewsByCountry,
     required this.viewsByDevice,
     required this.viewsByType,
@@ -63,6 +73,7 @@ class PostStats {
     required this.totalComments,
     required this.totalViewsAuthenticated,
     required this.uniqueViewersAuthenticated,
+    this.totalImpressionsAuthenticated = 0,
     required this.viewsByCountryAuthenticated,
     required this.viewsByDeviceAuthenticated,
     required this.viewsByTypeAuthenticated,
@@ -77,6 +88,8 @@ class PostStats {
 
   int views(bool authedOnly) => authedOnly ? totalViewsAuthenticated : totalViews;
   int uniques(bool authedOnly) => authedOnly ? uniqueViewersAuthenticated : uniqueViewers;
+  int impressions(bool authedOnly) =>
+      authedOnly ? totalImpressionsAuthenticated : totalImpressions;
   int reactions(bool authedOnly) => authedOnly ? totalReactionsAuthenticated : totalReactions;
   int comments(bool authedOnly) => authedOnly ? totalCommentsAuthenticated : totalComments;
   Map<String, int> countries(bool authedOnly) =>
@@ -99,6 +112,7 @@ class PostStats {
         postId: (j['post_id'] as num?)?.toInt() ?? 0,
         totalViews: (j['total_views'] as num?)?.toInt() ?? 0,
         uniqueViewers: (j['unique_viewers'] as num?)?.toInt() ?? 0,
+        totalImpressions: (j['total_impressions'] as num?)?.toInt() ?? 0,
         viewsByCountry: _intMap(j['views_by_country']),
         viewsByDevice: _intMap(j['views_by_device']),
         viewsByType: _intMap(j['views_by_type']),
@@ -108,6 +122,8 @@ class PostStats {
         totalComments: (j['total_comments'] as num?)?.toInt() ?? 0,
         totalViewsAuthenticated: (j['total_views_authenticated'] as num?)?.toInt() ?? 0,
         uniqueViewersAuthenticated: (j['unique_viewers_authenticated'] as num?)?.toInt() ?? 0,
+        totalImpressionsAuthenticated:
+            (j['total_impressions_authenticated'] as num?)?.toInt() ?? 0,
         viewsByCountryAuthenticated: _intMap(j['views_by_country_authenticated']),
         viewsByDeviceAuthenticated: _intMap(j['views_by_device_authenticated']),
         viewsByTypeAuthenticated: _intMap(j['views_by_type_authenticated']),

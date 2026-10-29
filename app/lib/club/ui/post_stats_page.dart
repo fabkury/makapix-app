@@ -72,11 +72,16 @@ class _PostStatsPageState extends ConsumerState<PostStatsPage> {
         const SizedBox(height: 4),
         Wrap(spacing: 8, runSpacing: 8, children: [
           _stat(l10n.statViews, s.views(_authOnly)),
+          _stat(l10n.statImpressions, s.impressions(_authOnly)),
           _stat(l10n.statUnique7d, s.uniques(_authOnly)),
           _stat(l10n.statReactions, s.reactions(_authOnly)),
           _stat(l10n.statComments, s.comments(_authOnly)),
         ]),
-        if (daily.isNotEmpty) _dailyChart(daily),
+        // Views and Impressions are separate series (server artwork-views D2/D17): two charts,
+        // never one stacked bar, so nothing reads as their sum.
+        if (daily.isNotEmpty) _dailyChart(l10n.statsDailyViews, daily, (d) => d.views),
+        if (daily.isNotEmpty)
+          _dailyChart(l10n.statsDailyImpressions, daily, (d) => d.impressions),
         _breakdown(l10n.statsByCountry, s.countries(_authOnly)),
         _breakdown(l10n.statsByDevice, s.devices(_authOnly), label: statsBucketLabel),
         _breakdown(l10n.statsByType, s.types(_authOnly), label: statsViewTypeLabel),
@@ -90,20 +95,19 @@ class _PostStatsPageState extends ConsumerState<PostStatsPage> {
     );
   }
 
-  /// The last-30-days trend as a compact bar strip (weekends dimmed, like the
-  /// website's chart). Bars scale to the visible maximum.
-  Widget _dailyChart(List<DailyViews> daily) {
-    final maxViews = daily.fold<int>(0, (m, d) => d.views > m ? d.views : m);
+  /// A last-30-days trend as a compact bar strip (weekends dimmed, like the
+  /// website's chart): one series of [daily], picked by [value]. Bars scale to the
+  /// visible maximum.
+  Widget _dailyChart(String title, List<DailyViews> daily, int Function(DailyViews) value) {
+    final maxValue = daily.fold<int>(0, (m, d) => value(d) > m ? value(d) : m);
     final primary = Theme.of(context).colorScheme.primary;
     return Padding(
       padding: const EdgeInsets.only(top: 16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Expanded(
-              child: Text(context.l10n.statsDailyViews,
-                  style: Theme.of(context).textTheme.titleSmall)),
-          if (maxViews > 0)
-            Text(context.l10n.statsMax(maxViews),
+          Expanded(child: Text(title, style: Theme.of(context).textTheme.titleSmall)),
+          if (maxValue > 0)
+            Text(context.l10n.statsMax(maxValue),
                 style: const TextStyle(fontSize: 11, color: Colors.white38)),
         ]),
         const SizedBox(height: 8),
@@ -115,10 +119,10 @@ class _PostStatsPageState extends ConsumerState<PostStatsPage> {
               for (final d in daily) ...[
                 Expanded(
                   child: Tooltip(
-                    message: '${d.date}: ${d.views}',
+                    message: '${d.date}: ${value(d)}',
                     child: FractionallySizedBox(
                       heightFactor:
-                          maxViews == 0 ? 0 : (d.views / maxViews).clamp(0.0, 1.0),
+                          maxValue == 0 ? 0 : (value(d) / maxValue).clamp(0.0, 1.0),
                       alignment: Alignment.bottomCenter,
                       child: Container(
                         decoration: BoxDecoration(

@@ -165,6 +165,7 @@ class _PostManagementPageState extends ConsumerState<PostManagementPage> {
                 [
                   timeAgo(p.createdAt),
                   context.l10n.pmdViews(p.viewCount, compactCount(p.viewCount)),
+                  context.l10n.pmdImpressions(p.impressionCount, compactCount(p.impressionCount)),
                   context.l10n.pmdReactions(p.reactionCount, compactCount(p.reactionCount)),
                   p.licenseIdentifier ?? context.l10n.pmdNoLicenseShort,
                 ].join(' · '),

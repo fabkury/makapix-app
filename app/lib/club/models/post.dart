@@ -41,6 +41,11 @@ class Post {
   final int reactionCount;
   final int commentCount;
   final int viewCount;
+
+  /// Lifetime Impressions: passive playback exposure on a player or the web player, undeduped
+  /// (`impression_count`, server artwork-views D17). Never summed with [viewCount]; shown
+  /// beside it. Zero from a server before 2026-10-29.
+  final int impressionCount;
   final bool userHasLiked;
   final List<PostFile> files;
   final License? license;
@@ -89,6 +94,7 @@ class Post {
     required this.reactionCount,
     required this.commentCount,
     this.viewCount = 0,
+    this.impressionCount = 0,
     required this.userHasLiked,
     required this.files,
     required this.license,
@@ -142,6 +148,7 @@ class Post {
         reactionCount: (j['reaction_count'] as num?)?.toInt() ?? 0,
         commentCount: (j['comment_count'] as num?)?.toInt() ?? 0,
         viewCount: (j['view_count'] as num?)?.toInt() ?? 0,
+        impressionCount: (j['impression_count'] as num?)?.toInt() ?? 0,
         userHasLiked: j['user_has_liked'] == true,
         files: (j['files'] as List?)
                 ?.map((e) => PostFile.fromJson((e as Map).cast<String, dynamic>()))
