@@ -162,6 +162,19 @@ void main() {
       expect(a.replies.first.id, 'b');
     });
 
+    test('nests a reply to a reply (the server allows depth 2)', () {
+      final tree = Comment.assembleTree([
+        Comment.fromJson({'id': 'a', 'parent_id': null, 'depth': 0, 'body': 'root'}),
+        Comment.fromJson({'id': 'b', 'parent_id': 'a', 'depth': 1, 'body': 'reply'}),
+        Comment.fromJson({'id': 'c', 'parent_id': 'b', 'depth': 2, 'body': 'reply to reply'}),
+        Comment.fromJson({'id': 'd', 'parent_id': 'b', 'depth': 2, 'body': 'another'}),
+      ]);
+      expect(tree.single.id, 'a');
+      final b = tree.single.replies.single;
+      expect(b.id, 'b');
+      expect(b.replies.map((c) => c.id), ['c', 'd']);
+    });
+
     test('parses anonymous vs authored (flat author_* fields, as the server sends)', () {
       final anon = Comment.fromJson({'id': '1', 'body': 'hi', 'author_handle': null});
       expect(anon.isAnonymous, isTrue);

@@ -196,7 +196,7 @@ class CommentsController extends StateNotifier<AsyncValue<List<Comment>>> {
       final optimistic = Comment(
         id: 'pending-${DateTime.now().microsecondsSinceEpoch}',
         parentId: parentId,
-        depth: parentId == null ? 0 : 1,
+        depth: parentId == null ? 0 : (_depthOf(cur, parentId) ?? 0) + 1,
         // The plain rendering is what every other reader gets; the markup rides
         // alongside so the optimistic tile links exactly like the reloaded one.
         body: plainFromMarkup(body, handles: MentionRef.handlesOf(mentions)),
@@ -270,7 +270,24 @@ class CommentsController extends StateNotifier<AsyncValue<List<Comment>>> {
 
   static List<Comment> _withAppended(List<Comment> tree, Comment c, String? parentId) {
     if (parentId == null) return [...tree, c];
-    return [for (final t in tree) t.id == parentId ? t.withReplies([...t.replies, c]) : t];
+    return [
+      for (final t in tree)
+        t.id == parentId
+            ? t.withReplies([...t.replies, c])
+            : t.replies.isEmpty
+                ? t
+                : t.withReplies(_withAppended(t.replies, c, parentId)),
+    ];
+  }
+
+  /// Depth of the comment with [id] in [tree], or null when it is not there.
+  static int? _depthOf(List<Comment> tree, String id, [int depth = 0]) {
+    for (final c in tree) {
+      if (c.id == id) return depth;
+      final d = _depthOf(c.replies, id, depth + 1);
+      if (d != null) return d;
+    }
+    return null;
   }
 
   static List<Comment> _withDeleted(List<Comment> tree, String id) =>

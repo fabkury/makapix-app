@@ -148,9 +148,14 @@ class Comment {
         replies: r,
       );
 
-  /// Assemble a flat list (each with `parentId`) into a depth-≤2 tree: top-level
-  /// comments in order, each carrying its direct replies. Replies whose parent is
-  /// missing are promoted to top-level so nothing is dropped.
+  /// Deepest level the server accepts: a top-level comment is depth 0, so a
+  /// thread is comment → reply → reply-to-the-reply, and nothing below that.
+  static const int maxDepth = 2;
+
+  /// Assemble a flat list (each with `parentId`) into a tree: top-level comments
+  /// in order, each carrying its replies, which carry theirs (the server caps
+  /// depth at [maxDepth]). Replies whose parent is missing are promoted to
+  /// top-level so nothing is dropped.
   static List<Comment> assembleTree(List<Comment> flat) {
     final ids = {for (final c in flat) c.id};
     final childrenOf = <String, List<Comment>>{};
@@ -163,6 +168,10 @@ class Comment {
         roots.add(c);
       }
     }
-    return [for (final r in roots) r.withReplies(childrenOf[r.id] ?? const [])];
+    // `remove` rather than a lookup: each comment is attached exactly once, so
+    // a malformed parent cycle cannot recurse forever.
+    Comment attach(Comment c) =>
+        c.withReplies([for (final r in childrenOf.remove(c.id) ?? const <Comment>[]) attach(r)]);
+    return [for (final r in roots) attach(r)];
   }
 }

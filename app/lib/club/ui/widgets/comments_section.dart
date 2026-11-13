@@ -17,7 +17,7 @@ import 'common.dart';
 import 'mention_field.dart';
 import 'mention_text.dart';
 
-/// Threaded comments (depth ≤2) with a composer, likes, reply, and delete-own.
+/// Threaded comments (comment → reply → reply, depth 0–2) with a composer, likes, reply, and delete-own.
 class CommentsSection extends ConsumerStatefulWidget {
   final int postId;
   const CommentsSection({super.key, required this.postId});
@@ -232,7 +232,9 @@ class _CommentsSectionState extends ConsumerState<CommentsSection> {
                     },
                     onLongPress: c.likeCount > 0 ? () => _showLikeUsers(c) : null,
                     active: c.likedByMe),
-                if (depth == 0)
+                // The server refuses a reply below Comment.maxDepth, so the
+                // deepest level offers none.
+                if (depth < Comment.maxDepth)
                   _miniBtn(Icons.reply, l10n.commentsReply, onTap: () => setState(() {
                         _replyTo = c.id;
                         _replyToHandle = c.author?.handle ?? l10n.commentsGuest;
