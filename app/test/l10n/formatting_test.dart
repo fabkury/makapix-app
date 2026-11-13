@@ -68,7 +68,7 @@ void main() {
       expect(statsBucketLabel('app_android'), 'Android app');
       expect(statsBucketLabel('desktop'), 'Desktop');
       expect(statsBucketLabel('smartwatch'), 'Smartwatch');
-      expect(statsViewTypeLabel('impression'), 'In a feed');
+      expect(statsViewTypeLabel('impression'), 'Played on a player');
       expect(statsViewTypeLabel('newkind'), 'Newkind');
     });
     await tester.pumpWidget(const SizedBox());

@@ -149,7 +149,8 @@ class _ArtistDashboardPageState extends ConsumerState<ArtistDashboardPage> {
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(p.title.isEmpty ? context.l10n.untitledParens : p.title,
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                    // Two lines: four metric columns leave the title ~72 px on a 320 px phone.
+                    maxLines: 2, overflow: TextOverflow.ellipsis),
                 Text(timeAgo(p.createdAt),
                     style: const TextStyle(color: Colors.white38, fontSize: 11)),
               ]),

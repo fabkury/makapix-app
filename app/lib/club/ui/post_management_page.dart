@@ -170,7 +170,8 @@ class _PostManagementPageState extends ConsumerState<PostManagementPage> {
                   p.licenseIdentifier ?? context.l10n.pmdNoLicenseShort,
                 ].join(' · '),
                 style: const TextStyle(color: Colors.white54, fontSize: 12),
-                maxLines: 2,
+                // Three lines: with Impressions the longer languages need them on a 320 px phone.
+                maxLines: 3,
                 overflow: TextOverflow.ellipsis,
               ),
             ]),
