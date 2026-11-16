@@ -1783,6 +1783,7 @@ mod tests {
 
     #[test]
     fn ffi_timelapse_frame_rgba_exact() {
+        let _guard = EXPORT_TEST_LOCK.lock().unwrap(); // the overlay slot is process-wide
         // 2×2 known pixels, scale 2, padded onto 8×8 over an opaque background.
         let p = mkpx_new(2, 2);
         run_ok(p, "SelectTool(Pencil); SetBrushSize(1); SetPrimaryColor(#FF0000FF)\nTap(0,0)");
@@ -1808,6 +1809,7 @@ mod tests {
 
     #[test]
     fn ffi_timelapse_frame_checker_under_artwork_only() {
+        let _guard = EXPORT_TEST_LOCK.lock().unwrap(); // the overlay slot is process-wide
         // 2×2 canvas, one red pixel, scale 2 → cell = (2·5+2)/4 = 3 output px. Content
         // (4×4) centered at (2,2) on 8×8; the checker anchors at the content's top-left.
         let p = mkpx_new(2, 2);
@@ -1833,6 +1835,7 @@ mod tests {
 
     #[test]
     fn ffi_timelapse_frame_i420_shape() {
+        let _guard = EXPORT_TEST_LOCK.lock().unwrap(); // the overlay slot is process-wide
         let p = mkpx_new(2, 2);
         // All-black canvas (fill with an opaque black stroke covering both tiles' pixels).
         run_ok(p, "SelectTool(Pencil); SetBrushSize(4); SetPrimaryColor(#000000FF)\nStroke([(0,0),(1,1)])");
@@ -1849,6 +1852,7 @@ mod tests {
 
     #[test]
     fn ffi_timelapse_overlay_blits_and_clears() {
+        let _guard = EXPORT_TEST_LOCK.lock().unwrap(); // the overlay slot is process-wide
         let p = mkpx_new(2, 2);
         let mut len = 0u64;
         // A 1×1 opaque white overlay at (0,0).
