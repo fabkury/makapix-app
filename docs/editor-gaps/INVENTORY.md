@@ -14,7 +14,7 @@ workflow). Sources are listed at the end.
 
 - **Editor only, no server changes.** Nothing here needs `makapix.club` or the Club API to change.
 - **Animator territory excluded.** Scenes, stage, props, tweens, keys, camera moves belong to the
-  `animator` branch (`docs/animator/`), not to the editor.
+  Animator pillar (`docs/animator/`; code archived at the tag `archive/animator`), not to the editor.
 - **Engine doctrine respected.** No runtime deps in `crates/engine`, integer-exact determinism,
   8-bit premultiplied RGBA, the four memory budgets, `panic = "abort"`. Ideas that strain a rule are
   kept and **flagged**, not dropped.
@@ -494,7 +494,7 @@ needs a settings home.
 | Browser / WebAssembly build | Analyzed only | `docs/web-build/ANALYSIS.md` |
 | Battery phases 3–4 + Gate B | Parked | `docs/battery/RECOMMENDATIONS.md` |
 | In-RAM compression of inactive frames | Deferred by decision | `STATUS.md` |
-| Animator pillar (scenes, tweens, camera) | Lives on the `animator` branch | `docs/animator/` |
+| Animator pillar (scenes, tweens, camera) | Parked; code archived at the tag `archive/animator` (branch retired 2026-11-16) | `docs/animator/` |
 | Playlists, cloud sync of drawings, anything server-side | Out of scope for this list | `SPEC-CLUB.md` |
 
 ---

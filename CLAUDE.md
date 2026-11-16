@@ -15,8 +15,9 @@ server; this app does not depend on it. Two pillars share one Flutter binary:
 
 **`CONTEXT.md` is the terminology authority** — read it before writing docs or user-facing text. Short
 version: *Makapix Club* = the product (website **and** this app); *Makapix Editor* = the editor feature
-**inside** this app, not a separate product; a third pillar, *Makapix Animator*, lives on the unmerged
-`animator` branch. Don't conflate them.
+**inside** this app, not a separate product; a third pillar, *Makapix Animator*, is parked: its
+code is not on `main` but archived at the git tag `archive/animator` (the `animator` branch was retired
+2026-11-16). Don't conflate them.
 
 **Doc map:** `README.md` (end-user landing; images in `docs/media/`) · `CONTEXT.md` (domain model +
 terminology) · `docs/BUILDING.md` (build-from-source + developer doc map) · `STATUS.md` (feature
