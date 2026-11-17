@@ -20,7 +20,7 @@
 
 use super::Session;
 use crate::color::Rgba8;
-use crate::document::{Document, Frame, Layer, DEFAULT_DURATION_US, MAX_FRAMES, MAX_LAYERS};
+use crate::document::{BlendMode, Document, Frame, Layer, DEFAULT_DURATION_US, MAX_FRAMES, MAX_LAYERS};
 use crate::tool;
 
 /// A canonical frame set: strictly ascending, deduplicated, never empty, every index below
@@ -544,6 +544,84 @@ impl Session {
         });
     }
 
+    // ---- collapsing a frame's stack (ADR 0038) ----
+
+    /// Flatten every member to ONE layer that looks exactly like the frame did: the compositor's
+    /// own result over the whole storage (blend modes and opacities baked in, parked gutter
+    /// pixels kept), hidden layers discarded. The survivor is the lowest visible layer (the
+    /// bottom layer when none is visible): it keeps its id and name and becomes visible,
+    /// unlocked-as-it-was, Normal, opacity 255. A member with a single layer is left alone.
+    pub fn flatten_frames(&mut self, set: &FrameSet) {
+        self.collapse_frames("FlattenFrames", set, true);
+    }
+
+    /// Merge every member's VISIBLE layers into one, in the lowest visible layer's slot — the
+    /// same bake as [`Session::flatten_frames`], but hidden layers stay where they are, untouched.
+    /// A member with fewer than two visible layers is left alone.
+    pub fn merge_visible(&mut self, set: &FrameSet) {
+        self.collapse_frames("MergeVisible", set, false);
+    }
+
+    /// The shared body of `FlattenFrames` (`discard_hidden`) and `MergeVisible`. Members the verb
+    /// has nothing to do on are skipped; when none is left the verb is a no-op with no record.
+    /// Refused as a whole when a layer the verb would merge or discard is locked (locks protect,
+    /// as in `MergeLayers`); a locked HIDDEN layer does not stop `MergeVisible`, which leaves it
+    /// alone. The frame's active layer keeps its identity when it survives, else the merged layer
+    /// becomes active.
+    fn collapse_frames(&mut self, verb: &str, set: &FrameSet, discard_hidden: bool) {
+        if !self.frame_set_ok(verb, set) {
+            return;
+        }
+        let members: Vec<usize> = set
+            .indices()
+            .iter()
+            .copied()
+            .filter(|&j| {
+                let f = &self.doc.frames[j];
+                if discard_hidden {
+                    f.layers.len() >= 2
+                } else {
+                    f.layers.iter().filter(|l| l.visible).count() >= 2
+                }
+            })
+            .collect();
+        if members.is_empty() {
+            return;
+        }
+        let locked =
+            |f: &Frame| f.layers.iter().any(|l| l.locked && (discard_hidden || l.visible));
+        if let Some(&j) = members.iter().find(|&&j| locked(&self.doc.frames[j])) {
+            self.refuse(&format!("{}: frame {} has a locked layer — unlock it first", verb, j + 1));
+            return;
+        }
+        let rect = self.doc.storage_rect();
+        let active_layer_before = self.doc.active_frame().active_layer().id;
+        self.edit_doc("collapse_frames", |s| {
+            for &j in &members {
+                let f = &mut s.doc.frames[j];
+                let flat = crate::render::composite_frame(f, rect);
+                let active_id = f.layers[f.active_layer].id;
+                let keep = f.layers.iter().position(|l| l.visible).unwrap_or(0);
+                let survivor = f.layers[keep].id;
+                let l = &mut f.layers[keep];
+                l.pixels = flat;
+                l.visible = true;
+                l.opacity = 255;
+                l.blend = BlendMode::Normal;
+                f.layers.retain(|l| l.id == survivor || (!discard_hidden && !l.visible));
+                f.active_layer = f
+                    .layers
+                    .iter()
+                    .position(|l| l.id == active_id)
+                    .or_else(|| f.layers.iter().position(|l| l.id == survivor))
+                    .unwrap_or(0);
+            }
+        });
+        if self.doc.active_frame().active_layer().id != active_layer_before {
+            self.clear_move_group(); // the active layer was merged away
+        }
+    }
+
     /// `(frame, layer)` of every member's topmost layer named `name` for which `differs` holds.
     fn differing_hits(&self, set: &FrameSet, name: &str, differs: impl Fn(&Layer) -> bool) -> Vec<(usize, usize)> {
         set.indices()
@@ -1010,5 +1088,139 @@ mod tests {
         assert_eq!(a.doc.content_hash(), b.doc.content_hash());
         assert_eq!(a.refusal_state().0, b.refusal_state().0);
         assert_eq!(a.refusal_state().0, 2, "two refusals: out of range, cover-all");
+    }
+
+    // ---- collapsing a frame's stack (ADR 0038) ----
+
+    /// Frame 0 of a 2-frame roll with a four-layer stack that exercises every bake: a
+    /// half-opacity bottom, a Multiply layer, a hidden layer with pixels, a plain top.
+    fn stacked() -> Session {
+        let mut s = roll(2);
+        s.run_script(
+            "RenameLayer(0, Base)\nSetLayerOpacity(0, 128)\n\
+             AddLayer()\nRenameLayer(1, Shade)\nSetLayerBlend(1, Multiply)\nTap(0, 0)\nTap(3, 3)\n\
+             AddLayer()\nRenameLayer(2, Guide)\nTap(5, 5)\nSetLayerVisible(2, false)\n\
+             AddLayer()\nRenameLayer(3, Ink)\nTap(7, 7)\nSetLayerOpacity(3, 200)",
+        )
+        .unwrap();
+        s
+    }
+
+    fn look(s: &Session, frame: usize) -> crate::util::Hash {
+        crate::render::composite_frame(&s.doc.frames[frame], s.doc.storage_rect()).content_hash()
+    }
+
+    #[test]
+    fn flatten_keeps_the_look_and_leaves_one_plain_layer() {
+        let mut s = stacked();
+        let before = look(&s, 0);
+        let base = s.doc.frames[0].layers[0].id;
+        let n = undo_len(&s);
+        s.run_script("FlattenFrames(0)").unwrap();
+        let f = &s.doc.frames[0];
+        assert_eq!(f.layers.len(), 1, "one layer left, the hidden Guide discarded");
+        let l = &f.layers[0];
+        assert_eq!((l.id, l.name.as_str()), (base, "Base"), "the bottom layer survives");
+        assert_eq!((l.visible, l.locked, l.opacity, l.blend), (true, false, 255, BlendMode::Normal));
+        assert_eq!(look(&s, 0), before, "the frame looks exactly as it did");
+        assert_eq!(f.active_layer, 0);
+        assert_eq!(undo_len(&s), n + 1, "one undo step");
+        assert!(s.assert_undo_restores());
+    }
+
+    #[test]
+    fn merge_visible_keeps_hidden_layers_in_place() {
+        let mut s = stacked();
+        let before = look(&s, 0);
+        let (base, guide) = (s.doc.frames[0].layers[0].id, s.doc.frames[0].layers[2].id);
+        let guide_pixels = s.doc.frames[0].layers[2].pixels.content_hash();
+        s.run_script("SetActiveLayer(2)\nMergeVisible(0)").unwrap();
+        let f = &s.doc.frames[0];
+        assert_eq!(f.layers.iter().map(|l| l.id).collect::<Vec<_>>(), vec![base, guide]);
+        assert_eq!(f.layers[0].name, "Base");
+        assert_eq!((f.layers[0].opacity, f.layers[0].blend), (255, BlendMode::Normal));
+        assert!(!f.layers[1].visible, "the hidden layer stays hidden");
+        assert_eq!(f.layers[1].pixels.content_hash(), guide_pixels, "and untouched");
+        assert_eq!(f.active_layer, 1, "the active (hidden) layer keeps its identity");
+        assert_eq!(look(&s, 0), before);
+        assert!(s.assert_undo_restores());
+    }
+
+    #[test]
+    fn merge_visible_survivor_is_the_lowest_visible_layer_and_takes_the_active_target() {
+        let mut s = stacked();
+        // Hide the bottom: the lowest visible layer is now Shade, above a hidden Base.
+        s.run_script("SetLayerVisible(0, false)\nSetActiveLayer(3)").unwrap();
+        let before = look(&s, 0);
+        let (base, shade, guide) =
+            (s.doc.frames[0].layers[0].id, s.doc.frames[0].layers[1].id, s.doc.frames[0].layers[2].id);
+        s.run_script("MergeVisible(0)").unwrap();
+        let f = &s.doc.frames[0];
+        assert_eq!(f.layers.iter().map(|l| l.id).collect::<Vec<_>>(), vec![base, shade, guide]);
+        assert_eq!(f.layers[1].name, "Shade");
+        assert_eq!(f.active_layer, 1, "the merged-away active layer hands over to the survivor");
+        assert_eq!(look(&s, 0), before);
+    }
+
+    #[test]
+    fn collapse_skips_frames_with_nothing_to_do_and_records_nothing_when_all_skip() {
+        let mut s = stacked();
+        // Frame 1 has one layer: nothing to flatten or merge there.
+        let n = undo_len(&s);
+        let (seq, _) = s.refusal_state();
+        s.run_script("FlattenFrames(1)\nMergeVisible(1)").unwrap();
+        assert_eq!(undo_len(&s), n, "a no-op records nothing");
+        assert_eq!(s.refusal_state().0, seq, "and is not a refusal");
+        // One visible layer plus a hidden one: Merge visible skips it, Flatten does not.
+        s.run_script("SetActiveFrame(1)\nAddLayer()\nSetLayerVisible(1, false)\nSetActiveFrame(0)").unwrap();
+        let n = undo_len(&s);
+        s.run_script("MergeVisible(1)").unwrap();
+        assert_eq!(undo_len(&s), n);
+        // A set mixing both: only frame 0 changes, in one record.
+        let frame1 = s.doc.frames[1].content_hash();
+        s.run_script("MergeVisible(0-1)").unwrap();
+        assert_eq!(undo_len(&s), n + 1);
+        assert_eq!(s.doc.frames[0].layers.len(), 2);
+        assert_eq!(s.doc.frames[1].content_hash(), frame1);
+        s.run_script("FlattenFrames(0-1)").unwrap();
+        assert_eq!((s.doc.frames[0].layers.len(), s.doc.frames[1].layers.len()), (1, 1));
+        assert_eq!(undo_len(&s), n + 2, "the whole set is one undo step");
+    }
+
+    #[test]
+    fn collapse_refuses_the_whole_set_on_a_locked_layer() {
+        let mut s = stacked();
+        s.run_script("SetActiveFrame(1)\nAddLayer()\nSetActiveFrame(0)\nSetLayerLocked(2, true)").unwrap();
+        let before = s.doc.content_hash();
+        let n = undo_len(&s);
+        // The locked layer is hidden: Flatten would discard it, so Flatten refuses...
+        s.run_script("FlattenFrames(0-1)").unwrap();
+        assert_eq!(s.refusal_state().1.unwrap(), "FlattenFrames: frame 1 has a locked layer — unlock it first");
+        assert_eq!((s.doc.content_hash(), undo_len(&s)), (before, n), "nothing changed anywhere");
+        // ...while Merge visible leaves hidden layers alone and goes through.
+        s.run_script("MergeVisible(0-1)").unwrap();
+        assert_eq!(s.doc.frames[0].layers.len(), 2);
+        assert!(s.doc.frames[0].layers[1].locked);
+        s.run_script("Undo()").unwrap();
+        // A locked VISIBLE layer refuses Merge visible too.
+        s.run_script("SetLayerLocked(3, true)").unwrap();
+        let before = s.doc.content_hash();
+        s.run_script("MergeVisible(0-1)").unwrap();
+        assert_eq!(s.refusal_state().1.unwrap(), "MergeVisible: frame 1 has a locked layer — unlock it first");
+        assert_eq!(s.doc.content_hash(), before);
+        // Out of range refuses like every frame-set verb.
+        s.run_script("FlattenFrames(0-9)").unwrap();
+        assert!(s.refusal_state().1.unwrap().contains("out of range"));
+    }
+
+    #[test]
+    fn flatten_with_every_layer_hidden_leaves_a_blank_layer() {
+        let mut s = stacked();
+        s.run_script("SetLayerVisible(0, false)\nSetLayerVisible(1, false)\nSetLayerVisible(3, false)").unwrap();
+        s.run_script("FlattenFrames(0)").unwrap();
+        let f = &s.doc.frames[0];
+        assert_eq!(f.layers.len(), 1);
+        assert_eq!(f.layers[0].name, "Base");
+        assert!(f.layers[0].pixels.is_empty() && f.layers[0].visible);
     }
 }

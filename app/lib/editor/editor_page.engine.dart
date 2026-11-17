@@ -753,6 +753,9 @@ extension _EditorEngine on _EditorPageState {
     'RemoveLayersNamed',
     'SetLayersVisibleNamed',
     'SetLayersLockedNamed',
+    // Collapsing a frame's stack (ADR 0038): layers of the Draft's frame may vanish.
+    'FlattenFrames',
+    'MergeVisible',
   };
   // l10n-ignore-end
 

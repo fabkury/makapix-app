@@ -32,6 +32,12 @@ class LayerInfo {
   final int presentTiles;
 }
 
+/// Whether Flatten has anything to do on a frame with these layers: two or more (ADR 0038).
+bool canFlattenLayers(List<LayerInfo> layers) => layers.length >= 2;
+
+/// Whether Merge visible has anything to do: two or more visible layers (ADR 0038).
+bool canMergeVisibleLayers(List<LayerInfo> layers) => layers.where((l) => l.visible).length >= 2;
+
 /// One frame, as `frame_detail` reports it. The [id] is the engine's stable frame identity:
 /// the page's selection is held by id, never by index (ADR 0013 / 0031).
 class FrameInfo {

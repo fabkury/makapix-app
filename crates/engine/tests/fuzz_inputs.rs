@@ -80,6 +80,8 @@ fn known_adversarial_scripts_never_panic() {
         "RotateFrames(0,255)\nFlipFramesH(0)\nFlipFramesV(0)\nInvertFrames(0)\nReverseFrames(0)",
         "RemoveLayersNamed(0, Layer 1)\nRemoveLayersNamed(0, Layer 1)\nSetLayersVisibleNamed(0,1,)\nSetLayersLockedNamed(0,0,)",
         "InsertBlankFrames(0, sideways)\nInsertBlankFrames(0)\nInsertBlankFrames(0, BEFORE)\nCopyLayerToFrames(0)",
+        // ADR 0038: collapsing a stack, twice over, with a hidden layer, and past the roll.
+        "AddLayer()\nSetLayerVisible(0, false)\nMergeVisible(0)\nFlattenFrames(0)\nFlattenFrames(0)\nMergeVisible(0-9)",
         "RemoveFrames()\nRemoveFrames(1-0)\nRemoveFrames(0-99999999999999999999)\nRemoveFrames(0,1)\nSetFrameDurations(0)",
         // ADR 0033 layer-set batch verbs: the same hostility over the active frame's stack.
         "RemoveLayers(0)\nRemoveLayers(0-127)\nDuplicateLayers(0-127)\nMergeLayers(0-127)\nMergeLayers(0 5)",
@@ -107,7 +109,7 @@ fn random_dsl_never_panics() {
         "RemoveFrames", "DuplicateFrames", "RepeatFramesAfter", "InsertBlankFrames", "ShiftFrames",
         "ReverseFrames", "SetFrameDurations", "ScaleFrameDurations", "FlipFramesH", "FlipFramesV",
         "RotateFrames", "InvertFrames", "CopyLayerToFrames", "RemoveLayersNamed",
-        "SetLayersVisibleNamed", "SetLayersLockedNamed",
+        "SetLayersVisibleNamed", "SetLayersLockedNamed", "FlattenFrames", "MergeVisible",
         // ADR 0033 layer-set batch verbs.
         "RemoveLayers", "DuplicateLayers", "MergeLayers", "ShiftLayers", "ReverseLayers",
         "InsertBlankLayers", "SetLayersVisible", "SetLayersLocked", "SetLayersOpacity", "SetLayersBlend",

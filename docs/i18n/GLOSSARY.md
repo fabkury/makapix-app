@@ -187,6 +187,7 @@ More editor terms (Frames and Layers pages):
 | Move group | grupo de movimiento | grupo de movimento | groupe de déplacement | Bewegungsgruppe | группа перемещения | 移動グループ | 移动组 |
 | shift (move items one position) | desplazar | deslocar | décaler | versetzen | сдвиг | ずらす | 移位 |
 | merge (layers) | combinar | mesclar | fusionner | vereinen | объединить | 結合 | 合并 |
+| flatten (all layers of a frame into one; the paint programs' "Flatten image") | acoplar | achatar | aplatir | reduzieren | свести | 統合 | 拼合 |
 | off-canvas (kept outside the canvas) | fuera del lienzo | fora da tela | hors toile | außerhalb | за холстом | キャンバス外 | 画布外 |
 | active (the layer you draw on) | activa | ativa | actif | aktiv | активный | アクティブ | 当前图层 |
 | duration (of a frame) | duración | duração | durée | Dauer | длительность | 表示時間 | 时长 |

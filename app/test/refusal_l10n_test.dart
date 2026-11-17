@@ -20,6 +20,8 @@ const _engineSentences = [
   'MergeLayers: 1 selected layer is locked — unlock it first',
   'FlipLayersH: 3 selected layers are locked — unlock them first',
   'MergeLayers: the selection has a gap — Merge needs one contiguous run',
+  'FlattenFrames: frame 4 has a locked layer — unlock it first',
+  'MergeVisible: frame 12 has a locked layer — unlock it first',
   'edit exceeds the document memory budget',
   'frame change exceeds the document memory budget',
   "'DuplicateFrames' exceeds the document memory budget",
@@ -41,6 +43,7 @@ void main() {
     final en = l10nFor(const Locale('en'));
     expect(shownRefusal(en, _engineSentences[0]), 'Frame 9 is beyond the last frame (5)');
     expect(shownRefusal(en, _engineSentences[9]), '3 selected layers are locked. Unlock them first.');
+    expect(shownRefusal(en, _engineSentences[12]), 'Frame 12 has a locked layer. Unlock it first.');
   });
 
   test('an unknown sentence: as is in English, the generic message elsewhere', () {

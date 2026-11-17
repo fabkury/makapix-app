@@ -277,6 +277,18 @@ extension _EditorSheets on _EditorPageState {
           });
         }
 
+        // Merge visible / Flatten frame on the active frame. The sheet follows the layer it
+        // was showing when that layer survives, else the frame's active layer (the merged one).
+        void collapse(String verb) {
+          final id = l['id'];
+          _clearLayerGroup(); // the engine drops its group when the active layer is merged away
+          _act('$verb(${engine.activeFrame})');
+          final now = _layerList();
+          final at = now.indexWhere((x) => (x as Map)['id'] == id);
+          setS(() => cur = at >= 0 ? at : _activeLayerIndex().clamp(0, now.length - 1));
+          WidgetsBinding.instance.addPostFrameCallback((_) => showCur());
+        }
+
         if (!stripScrolledIn) {
           stripScrolledIn = true; // open already scrolled to the pressed layer's tile
           WidgetsBinding.instance.addPostFrameCallback((_) => showCur(animate: false));
@@ -467,6 +479,17 @@ extension _EditorSheets on _EditorPageState {
                   }
                 : null),
           ]),
+          const SizedBox(height: 8),
+          // The whole frame's stack (ADR 0038): the visible layers into one, or every layer
+          // into one. Enabled while there is something to merge; a locked layer in the way is
+          // the engine's refusal, shown as a toast.
+          // l10n-ignore-start: engine verbs
+          _sheetBtnRow([
+            _sheetBtn(Icons.call_merge, ctx.l10n.layerMergeVisible,
+                layers.where((x) => (x as Map)['visible'] == true).length >= 2 ? () => collapse('MergeVisible') : null),
+            _sheetBtn(Icons.compress, ctx.l10n.frameFlatten, count >= 2 ? () => collapse('FlattenFrames') : null),
+          ]),
+          // l10n-ignore-end
           _sheetSection(ctx.l10n.commonCreate),
           _sheetBtnRow([
             _sheetBtn(Icons.control_point_duplicate, ctx.l10n.commonDuplicate, () {
@@ -582,6 +605,7 @@ extension _EditorSheets on _EditorPageState {
         final frames = (_state['frame_detail'] as List?) ?? [];
         final us = cur < frames.length ? (((frames[cur]['duration_us'] as num?) ?? 100000).toInt()) : 100000;
         final ms = us / 1000.0;
+        final frameLayers = cur < frames.length ? ((frames[cur]['layers'] as List?) ?? const []) : const [];
 
         final hash = engine.frameHash(cur);
         final cached = _frameThumbs[cur];
@@ -644,6 +668,24 @@ extension _EditorSheets on _EditorPageState {
                 if (engine.frameCount > count) cur++;
               });
             }),
+          ]),
+          // This frame's layers (ADR 0038): the visible ones into one, or every layer into one.
+          _sheetSection(ctx.l10n.sectionLayers),
+          _sheetBtnRow([
+            _sheetBtn(Icons.call_merge, ctx.l10n.layerMergeVisible, frameLayers.where((x) => (x as Map)['visible'] == true).length >= 2
+                ? () {
+                    if (cur == engine.activeFrame) _clearLayerGroup();
+                    _act('MergeVisible($cur)');
+                    setS(() {});
+                  }
+                : null),
+            _sheetBtn(Icons.compress, ctx.l10n.frameFlatten, frameLayers.length >= 2
+                ? () {
+                    if (cur == engine.activeFrame) _clearLayerGroup();
+                    _act('FlattenFrames($cur)');
+                    setS(() {});
+                  }
+                : null),
           ]),
           const SizedBox(height: 8),
           const Divider(height: 1),

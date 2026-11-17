@@ -67,6 +67,16 @@ class CopyLayerOp extends FramesOp {
   const CopyLayerOp();
 }
 
+/// Every layer of each member into one that looks the same; hidden layers discarded (ADR 0038).
+class FlattenOp extends FramesOp {
+  const FlattenOp();
+}
+
+/// The visible layers of each member into one; hidden layers stay (ADR 0038).
+class MergeVisibleOp extends FramesOp {
+  const MergeVisibleOp();
+}
+
 class RemoveLayerNamedOp extends FramesOp {
   const RemoveLayerNamedOp();
 }
@@ -97,6 +107,8 @@ String dslForOp(FramesOp op, List<int> indices, {String? layerName, int? delta, 
     RotateOp(:final quarters) => frameSetDsl('RotateFrames', indices, ['$quarters']),
     InvertOp() => frameSetDsl('InvertFrames', indices),
     CopyLayerOp() => frameSetDsl('CopyLayerToFrames', indices),
+    FlattenOp() => frameSetDsl('FlattenFrames', indices),
+    MergeVisibleOp() => frameSetDsl('MergeVisible', indices),
     RemoveLayerNamedOp() => frameSetDsl('RemoveLayersNamed', indices, [name]),
     SetLayersVisibleOp(:final visible) => frameSetDsl('SetLayersVisibleNamed', indices, [visible ? '1' : '0', name]),
     SetLayersLockedOp(:final locked) => frameSetDsl('SetLayersLockedNamed', indices, [locked ? '1' : '0', name]),
@@ -106,6 +118,8 @@ String dslForOp(FramesOp op, List<int> indices, {String? layerName, int? delta, 
 /// Whether [op] rewrites pixels (its thumbnails must regenerate afterwards).
 bool opChangesContent(FramesOp op) => switch (op) {
       FlipOp() || RotateOp() || InvertOp() || CopyLayerOp() || RemoveLayerNamedOp() || SetLayersVisibleOp() => true,
+      // The look is unchanged, but the frame's content hash is not: its thumbnail re-keys.
+      FlattenOp() || MergeVisibleOp() => true,
       _ => false,
     };
 
@@ -124,6 +138,8 @@ Future<FramesOp?> showFramesMoreSheet(
   required int retainedBytes,
   required bool anyTargetAtLayerCap,
   required bool hasLayerNames,
+  required bool canFlatten,
+  required bool canMergeVisible,
 }) {
   final n = selectedCount;
   return showAppSheet<FramesOp>(
@@ -173,6 +189,10 @@ Future<FramesOp?> showFramesMoreSheet(
               _section(l.sectionLayers),
               _row(Icons.layers, l.framesCopyActiveLayer, anyTargetAtLayerCap ? l.framesAtLayerCap(kMaxLayers) : null,
                   anyTargetAtLayerCap ? null : () => pick(const CopyLayerOp())),
+              _row(Icons.call_merge, l.framesMergeVisible, canMergeVisible ? l.framesMergeVisibleSub : l.framesNothingToMerge,
+                  canMergeVisible ? () => pick(const MergeVisibleOp()) : null),
+              _row(Icons.compress, l.framesFlatten, canFlatten ? l.framesFlattenSub : l.framesNothingToMerge,
+                  canFlatten ? () => pick(const FlattenOp()) : null),
               _row(Icons.layers_clear, l.framesRemoveLayerNamed, hasLayerNames ? null : l.framesNoLayers, hasLayerNames ? () => pick(const RemoveLayerNamedOp()) : null),
               _row(Icons.visibility, l.framesShowLayerNamed, null, hasLayerNames ? () => pick(const SetLayersVisibleOp(visible: true)) : null),
               _row(Icons.visibility_off, l.framesHideLayerNamed, null, hasLayerNames ? () => pick(const SetLayersVisibleOp(visible: false)) : null),

@@ -115,7 +115,7 @@ architecture cheaply. Any one of them is a sensible next feature.
 | B21 | **Gradient stop positions UI** (engine has them) | L | M | S–M | S | Aseprite |
 | B22 | **Left-handed / mirrored layout** | M | M | S–M | S | Pixaki, Pixquare, Resprite |
 | B23 | **Canvas view rotation** (two-finger, opt-in; 90° steps on desktop) | M | M | M | S | Pixaki, Pixquare, Procreate, Pixel Studio |
-| B24 | **Merge visible / flatten frame** · **move a layer to another frame** | L | M | S | E | Aseprite, Lospec, Pixelorama |
+| B24 | **Merge visible / flatten frame** (shipped 2026-11-17, ADR 0038) · **move a layer to another frame** | L | M | S | E | Aseprite, Lospec, Pixelorama |
 
 ### Tier C — small nice-to-haves
 

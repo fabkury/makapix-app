@@ -279,6 +279,8 @@ class _FramesPageState extends State<FramesPage> {
       retainedBytes: retainedPayloadBytes(_frames, idx),
       anyTargetAtLayerCap: idx.any((i) => _frames[i].layers.length >= kMaxLayers),
       hasLayerNames: layerNameHits(_frames, idx).isNotEmpty,
+      canFlatten: idx.any((i) => canFlattenLayers(_frames[i].layers)),
+      canMergeVisible: idx.any((i) => canMergeVisibleLayers(_frames[i].layers)),
     );
     if (op == null || !mounted) return;
     await _applyOp(op, idx);
@@ -310,6 +312,13 @@ class _FramesPageState extends State<FramesPage> {
         _runBatch(dslForOp(op, idx), _BatchKind.structural);
       case FlipOp() || RotateOp() || InvertOp() || CopyLayerOp():
         _runBatch(dslForOp(op, idx), _BatchKind.content);
+      case FlattenOp():
+        // The frames the verb has work on; the rest of the set is skipped (ADR 0038).
+        final n = idx.where((i) => canFlattenLayers(_frames[i].layers)).length;
+        _runBatch(dslForOp(op, idx), _BatchKind.content, report: context.l10n.framesFlattened(n));
+      case MergeVisibleOp():
+        final n = idx.where((i) => canMergeVisibleLayers(_frames[i].layers)).length;
+        _runBatch(dslForOp(op, idx), _BatchKind.content, report: context.l10n.framesMergedVisible(n));
       case RemoveLayerNamedOp() || SetLayersVisibleOp() || SetLayersLockedOp():
         final title = switch (op) {
           RemoveLayerNamedOp() => context.l10n.framesRemoveLayerNamed,

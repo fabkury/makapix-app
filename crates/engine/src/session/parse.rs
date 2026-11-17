@@ -58,6 +58,9 @@ pub enum Action {
     RemoveLayersNamed(FrameSet, String),
     SetLayersVisibleNamed(FrameSet, bool, String),
     SetLayersLockedNamed(FrameSet, bool, String),
+    /// Collapse each member's stack (ADR 0038): every layer into one, or only the visible ones.
+    FlattenFrames(FrameSet),
+    MergeVisible(FrameSet),
     /// Layer-set batch verbs (ADR 0033): one `LayerSet` over the active frame's stack (`0-3 7`,
     /// 0-based bottom-first), one undo record each, all-or-nothing (`session/layers.rs`).
     RemoveLayers(LayerSet),
@@ -320,6 +323,8 @@ impl Session {
             InvertFrames(s) => self.map_frames(&s, crate::color::invert),
             CopyLayerToFrames(s) => self.copy_layer_to_frames(&s),
             RemoveLayersNamed(s, name) => self.remove_layers_named(&s, &name),
+            FlattenFrames(s) => self.flatten_frames(&s),
+            MergeVisible(s) => self.merge_visible(&s),
             RemoveLayers(s) => self.remove_layers(&s),
             DuplicateLayers(s) => self.duplicate_layers(&s),
             MergeLayers(s) => self.merge_layers(&s),
@@ -744,6 +749,8 @@ fn parse_line(line: &str) -> Result<Action, String> {
         "RotateFrames" => RotateFrames(seta(0)?, u8a(1)?),
         "InvertFrames" => InvertFrames(seta(0)?),
         "CopyLayerToFrames" => CopyLayerToFrames(seta(0)?),
+        "FlattenFrames" => FlattenFrames(seta(0)?),
+        "MergeVisible" => MergeVisible(seta(0)?),
         "RemoveLayersNamed" => {
             // set, then the rest is the (free-text) name — the RenameLayer rule, commas allowed.
             let (set, rest) = inner.split_once(',').ok_or("RemoveLayersNamed needs set, name")?;

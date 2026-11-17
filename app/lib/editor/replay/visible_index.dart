@@ -111,6 +111,9 @@ const Set<String> _kAlwaysEvent = {
   'ReverseFrames', 'SetFrameDurations', 'ScaleFrameDurations', 'FlipFramesH', 'FlipFramesV',
   'RotateFrames', 'InvertFrames', 'CopyLayerToFrames', 'RemoveLayersNamed',
   'SetLayersVisibleNamed', 'SetLayersLockedNamed',
+  // Collapsing a frame's stack (ADR 0038): the look does not change, but the stack the
+  // viewer's layer strip shows does, so each is a beat.
+  'FlattenFrames', 'MergeVisible',
   // Layer-set batch verbs (ADR 0033): one beat each, the property verbs included — a batch is
   // a deliberate act on the stack (unlike the single SetLayerOpacity/Visible/Locked/Blend).
   'RemoveLayers', 'DuplicateLayers', 'MergeLayers', 'ShiftLayers', 'ReverseLayers',

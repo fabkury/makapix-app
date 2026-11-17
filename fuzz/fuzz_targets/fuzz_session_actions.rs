@@ -253,6 +253,9 @@ enum FrameAct {
     SetLayersVisibleNamed(Set, bool, Name),
     SetLayersLockedNamed(Set, bool, Name),
     DuplicateLayerToFrames(Vec<u8>),
+    // Collapsing a frame's stack (ADR 0038).
+    FlattenFrames(Set),
+    MergeVisible(Set),
 }
 
 #[derive(Arbitrary, Debug)]
@@ -593,6 +596,8 @@ fn render(act: &Act, sess: &Session, out: &mut Vec<String>) {
                 l(format!("RotateFrames({},{})", set(*s, frames), q))
             }
             FrameAct::InvertFrames(s) => l(format!("InvertFrames({})", set(*s, frames))),
+            FrameAct::FlattenFrames(s) => l(format!("FlattenFrames({})", set(*s, frames))),
+            FrameAct::MergeVisible(s) => l(format!("MergeVisible({})", set(*s, frames))),
             FrameAct::CopyLayerToFrames(s) => {
                 l(format!("CopyLayerToFrames({})", set(*s, frames)))
             }

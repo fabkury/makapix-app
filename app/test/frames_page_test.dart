@@ -33,6 +33,8 @@ void main() {
       expect(dslForOp(const RotateOp(3), idx), 'RotateFrames(0-2 5, 3)');
       expect(dslForOp(const InvertOp(), idx), 'InvertFrames(0-2 5)');
       expect(dslForOp(const CopyLayerOp(), idx), 'CopyLayerToFrames(0-2 5)');
+      expect(dslForOp(const FlattenOp(), idx), 'FlattenFrames(0-2 5)');
+      expect(dslForOp(const MergeVisibleOp(), idx), 'MergeVisible(0-2 5)');
       expect(dslForOp(const RemoveLayerNamedOp(), idx, layerName: 'Sky, dawn'), 'RemoveLayersNamed(0-2 5, Sky, dawn)');
       expect(dslForOp(const SetLayersVisibleOp(visible: false), idx, layerName: 'A;B\n'), 'SetLayersVisibleNamed(0-2 5, 0, A B)');
       expect(dslForOp(const SetLayersLockedOp(locked: true), idx, layerName: 'A'), 'SetLayersLockedNamed(0-2 5, 1, A)');
@@ -320,6 +322,55 @@ void main() {
         await tester.pump();
       });
       expect(host.thumbRequests, greaterThan(before), reason: 'the flipped frames re-thumbnail');
+    });
+
+    testWidgets('More → Flatten and Merge visible layers send one verb and report the frames changed',
+        (tester) async {
+      // Frame 1 has one layer (nothing to do there); frames 2 and 3 have a hidden layer on top
+      // of two visible ones.
+      final host = FakeFramesHost([
+        FrameInfo(id: 100, layers: const [LayerInfo(name: 'A')]),
+        for (var i = 1; i < 3; i++)
+          FrameInfo(id: 100 + i, layers: const [
+            LayerInfo(name: 'A'),
+            LayerInfo(name: 'B'),
+            LayerInfo(name: 'Guide', visible: false),
+          ]),
+      ]);
+      await pumpFramesPage(tester, host);
+      Future<void> more(String row) async {
+        await tester.tap(find.text('More'));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text(row));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(row));
+        await tester.pumpAndSettle();
+      }
+
+      await tester.tap(tile(1));
+      await tester.tap(tile(2));
+      await tester.tap(tile(3));
+      await tester.pump();
+      await more('Merge visible layers');
+      expect(host.scripts, ['MergeVisible(0-2)']);
+      expect(find.text('Merged the visible layers of 2 frames'), findsOneWidget);
+      await more('Flatten');
+      expect(host.scripts.last, 'FlattenFrames(0-2)');
+      expect(find.text('Flattened 2 frames'), findsOneWidget);
+
+      // Only the one-layer frame selected: both rows are disabled and say why.
+      await tester.tap(tile(2));
+      await tester.tap(tile(3));
+      await tester.pump();
+      final sent = host.scripts.length;
+      await tester.tap(find.text('More'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Flatten'));
+      await tester.pumpAndSettle();
+      expect(find.text('No selected frame has layers to merge'), findsNWidgets(2));
+      await tester.tap(find.text('Flatten'));
+      await tester.pumpAndSettle();
+      expect(host.scripts.length, sent, reason: 'a disabled row sends nothing');
     });
 
     testWidgets('More shows the memory note above 64 MiB and the rotate note on a non-square canvas', (tester) async {

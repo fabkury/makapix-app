@@ -30,6 +30,8 @@ final List<_Rule> _rules = [
   (RegExp(r'^\w+: (\d+) selected layers? (?:is|are) locked — unlock (?:it|them) first$'),
       (l, m) => l.layersLockedFirst(int.parse(m[1]!))),
   (RegExp(r'^MergeLayers: the selection has a gap'), (l, m) => l.layersMergeGap),
+  (RegExp(r'^\w+: frame (\d+) has a locked layer — unlock it first$'),
+      (l, m) => l.refuseLockedLayerInFrame(int.parse(m[1]!))),
   (RegExp(r'exceeds the document memory budget$'), (l, m) => l.memBlocked),
 ];
 
