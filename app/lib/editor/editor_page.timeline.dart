@@ -46,9 +46,9 @@ extension _EditorTimeline on _EditorPageState {
         vertical ? (46.0 * s * th / tw).clamp(28.0 * s, 84.0 * s) + 12 : (46.0 * s * tw / th).clamp(28.0 * s, 84.0 * s);
     _filmTileExtent = tileMain + 10; // container (tileMain + 6) + 2+2 main-axis margins, both axes
     final strip = GestureDetector(
-      // Long-press (or right-click) the empty area near the frames → "Add animation frame"
-      // (the thumbnails keep their own long-press/right-click menu, which wins as the deeper
-      // gesture).
+      // Long-press (or right-click) the empty area near the frames → the Add frame / Duplicate
+      // frame sheet, the same one the + button's hold opens (the thumbnails keep their own
+      // long-press/right-click menu, which wins as the deeper gesture).
       behavior: HitTestBehavior.translucent,
       onLongPress: _addFrameMenu,
       onSecondaryTap: _addFrameMenu,
@@ -117,14 +117,8 @@ extension _EditorTimeline on _EditorPageState {
       Container(width: vertical ? null : 1, height: vertical ? 1 : null, color: Colors.black26),
       Expanded(child: strip),
       Container(width: vertical ? null : 1, height: vertical ? 1 : null, color: Colors.black26),
-      IconButton(
-          iconSize: 20,
-          tooltip: context.l10n.editorAddFrame,
-          onPressed: () {
-            _clearLayerGroup();
-            _act('AddFrameAt(${engine.activeFrame + 1})'); // right after the active frame, not at the end
-          },
-          icon: const Icon(Icons.add_box)),
+      // Tap adds a blank frame; hold (or right-click) offers Add frame / Duplicate frame.
+      _addButton(tooltip: context.l10n.editorAddFrame, onTap: _addFrame, onHold: _addFrameMenu),
       // The Frames page (ADR 0031) is reached from the frame sheet, ☰ → Frames…, and Shift+T;
       // its former ⊞ button here was dropped 2026-09-14 to give the strip its width back.
     ];
@@ -161,9 +155,28 @@ extension _EditorTimeline on _EditorPageState {
     }
   }
 
-  // Long-pressing the empty film-strip area surfaces the "Add animation frame" option (same action
-  // as the + button at the end of the strip: a blank frame right after the active one).
-  void _addFrameMenu() {
+  // The + button of the frame strip and of the layer strip. A tap adds; a hold (or a desktop
+  // right-click, the app's long-press convention) opens the Add / Duplicate sheet. The tooltip is
+  // hover-only (manual trigger): a Tooltip's own long-press would win the gesture over the hold.
+  Widget _addButton({required String tooltip, required VoidCallback onTap, required VoidCallback onHold}) {
+    return Tooltip(
+      message: tooltip,
+      triggerMode: TooltipTriggerMode.manual,
+      child: GestureDetector(
+        onLongPress: onHold,
+        onSecondaryTap: onHold,
+        child: IconButton(iconSize: 20, onPressed: onTap, icon: const Icon(Icons.add_box)),
+      ),
+    );
+  }
+
+  // The sheet behind a held + button: add a blank one, or duplicate the current one.
+  void _addOrDuplicateSheet({
+    required String addLabel,
+    required VoidCallback onAdd,
+    required String duplicateLabel,
+    required VoidCallback onDuplicate,
+  }) {
     if (_playing) _pause();
     showAppSheet(
       context: context,
@@ -171,15 +184,63 @@ extension _EditorTimeline on _EditorPageState {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ListTile(
             leading: const Icon(Icons.add_box_outlined),
-            title: Text(ctx.l10n.editorAddAnimationFrame),
+            title: Text(addLabel),
             onTap: () {
               Navigator.pop(ctx);
-              _clearLayerGroup();
-              _act('AddFrameAt(${engine.activeFrame + 1})');
+              onAdd();
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.control_point_duplicate),
+            title: Text(duplicateLabel),
+            onTap: () {
+              Navigator.pop(ctx);
+              onDuplicate();
             },
           ),
         ]),
       ),
+    );
+  }
+
+  // A blank frame right after the active one (not at the end of the roll).
+  void _addFrame() {
+    _clearLayerGroup();
+    _act('AddFrameAt(${engine.activeFrame + 1})');
+  }
+
+  // Holding the frame strip's + button, or long-pressing the strip's empty area: Add frame (what
+  // a tap on + does) or Duplicate frame (a copy of the active frame, right after it).
+  void _addFrameMenu() {
+    _addOrDuplicateSheet(
+      addLabel: context.l10n.editorAddFrame,
+      onAdd: _addFrame,
+      duplicateLabel: context.l10n.cmdDuplicateFrame,
+      onDuplicate: () {
+        _clearLayerGroup(); // a different frame becomes active
+        _act('DuplicateFrame(${engine.activeFrame})');
+      },
+    );
+  }
+
+  // A blank layer just above the active one (not at the top of the stack), like the layer
+  // sheet's "New layer above".
+  void _addLayer() {
+    _clearLayerGroup(); // focus moves to the new layer; the engine resets its group too
+    _act('AddLayerAt(${_activeLayerIndex() + 1})');
+  }
+
+  // Holding the layer strip's + button: Add layer (what a tap on + does) or Duplicate layer (a
+  // copy of the active layer, right above it).
+  void _addLayerMenu() {
+    _addOrDuplicateSheet(
+      addLabel: context.l10n.editorAddLayer,
+      onAdd: _addLayer,
+      duplicateLabel: context.l10n.editorDuplicateLayer,
+      onDuplicate: () {
+        _clearLayerGroup(); // focus moves to the copy; the engine resets its group too
+        _act('DuplicateLayer(${_activeLayerIndex()})');
+      },
     );
   }
 
@@ -499,8 +560,8 @@ extension _EditorTimeline on _EditorPageState {
 
   // Layers film-strip (mirrors the frame film-roll): each tile shows just that layer on a
   // checkerboard (transparent) background. Horizontal band in portrait, vertical strip right of
-  // the canvas in landscape. "Add layer" is the leading item; duplicate and the other per-layer
-  // actions live in the long-press menu.
+  // the canvas in landscape. "Add layer" is the leading item (hold it for Duplicate layer); the
+  // other per-layer actions live in each tile's long-press menu.
   Widget _buildLayers(List<dynamic> layers, {Axis axis = Axis.horizontal}) {
     final vertical = axis == Axis.vertical;
     final frames = (_state['frame_detail'] as List?);
@@ -518,16 +579,8 @@ extension _EditorTimeline on _EditorPageState {
       width: vertical ? 56 * s : null,
       color: const Color(0xFF1A1C1F),
       child: Flex(direction: vertical ? Axis.vertical : Axis.horizontal, children: [
-        IconButton(
-            iconSize: 20,
-            tooltip: context.l10n.editorAddLayer,
-            onPressed: () {
-              _clearLayerGroup(); // focus moves to the new layer; the engine resets its group too
-              // Insert just above the active layer (not at the top of the stack), like the
-              // long-press menu's "New layer above".
-              _act('AddLayerAt(${activeLayer + 1})');
-            },
-            icon: const Icon(Icons.add_box)),
+        // Tap adds a blank layer; hold (or right-click) offers Add layer / Duplicate layer.
+        _addButton(tooltip: context.l10n.editorAddLayer, onTap: _addLayer, onHold: _addLayerMenu),
         Container(width: vertical ? null : 1, height: vertical ? 1 : null, color: Colors.black26),
         Expanded(
           child: StripScroller(

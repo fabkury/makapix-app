@@ -153,6 +153,16 @@ void main() {
         await check('frame sheet');
         await dismiss();
 
+        // Holding a strip's + button: the Add / Duplicate sheet, for frames and for layers.
+        await tester.longPress(find.byTooltip(l.editorAddFrame));
+        await settleReal(tester, rounds: 9);
+        await check('add frame sheet');
+        await dismiss();
+        await tester.longPress(find.byTooltip(l.editorAddLayer));
+        await settleReal(tester, rounds: 9);
+        await check('add layer sheet');
+        await dismiss();
+
         // The frame sheet's duration dialog.
         await tester.longPress(find.text('1').first);
         await settleReal(tester, rounds: 9);
@@ -236,6 +246,12 @@ void main() {
         await tester.ensureVisible(find.byIcon(Icons.replay).last);
         await tester.pump();
         await tester.tap(find.byIcon(Icons.replay).last);
+        // Watch replay saves the drawing first. When the periodic autosave has not yet picked
+        // up the layer added above, that is a real save and takes a second or so — so wait
+        // for the page itself, not for a fixed time.
+        for (var i = 0; i < 80 && find.byType(ReplayPage).evaluate().isEmpty; i++) {
+          await settleReal(tester, rounds: 1);
+        }
         await settleReal(tester, rounds: 20);
         if (find.byType(ReplayPage).evaluate().isNotEmpty) {
           if (find.byIcon(Icons.pause).evaluate().isNotEmpty) {
