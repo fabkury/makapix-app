@@ -73,7 +73,11 @@ extension _EditorToolgrid on _EditorPageState {
     final isDragged = dsl == _dragTool;
     // A GlobalKey so the dragged tile's State (and its ongoing drag) survives being re-parented
     // between the top and bottom Rows as the live preview reflows. Also used to read its bounds.
-    final key = GlobalObjectKey('toolslot_$dsl');
+    // It is cached per tool (_toolSlotKeys), never built here: until 2026-11-17 this was
+    // GlobalObjectKey('toolslot_$dsl'), which compares by identity, and an interpolated string
+    // is a new object on every build — so every rebuild remounted every tile, the drag's
+    // onDragEnd never fired, and no reorder was ever committed or saved.
+    final key = _toolSlotKeys.putIfAbsent(dsl, () => GlobalKey(debugLabel: 'toolslot_$dsl'));
     return DragTarget<String>(
       key: key,
       onWillAcceptWithDetails: (d) => d.data != dsl,

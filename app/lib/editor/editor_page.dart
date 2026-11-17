@@ -583,6 +583,10 @@ class _EditorPageState extends ConsumerState<EditorPage>
   bool _layersRoomyRows = false;
   String? _dragTool; // tool dsl being long-press-dragged in row-3 (null = not dragging)
   int? _dropIndex; // live insertion index among the non-dragged tools (for drag preview)
+  // One GlobalKey per row-3 tile, created once and kept for the page's life. The key must be the
+  // SAME object on every build: the dragged tile's Draggable has to stay mounted for the whole
+  // drag, because Flutter skips onDragEnd — which commits the reorder — on an unmounted one.
+  final Map<String, GlobalKey> _toolSlotKeys = {};
   // film-roll frame thumbnails (cached, invalidated by per-frame content hash)
   final Map<int, ThumbCache> _frameThumbs = {};
   final Set<int> _thumbInFlight = {};
