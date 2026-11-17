@@ -1172,7 +1172,7 @@
   "layerMergeVisible": "Mesclar visíveis",
   "frameFlatten": "Achatar quadro",
   "framesFlatten": "Achatar",
-  "framesFlattenSub": "Todas as camadas em uma. As camadas ocultas são descartadas",
+  "framesFlattenSub": "Todas as camadas em uma só. As camadas ocultas são descartadas",
   "framesMergeVisible": "Mesclar camadas visíveis",
   "framesMergeVisibleSub": "As camadas ocultas ficam como estão",
   "framesNothingToMerge": "Nenhum quadro selecionado tem camadas para mesclar",

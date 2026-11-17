@@ -1177,7 +1177,7 @@
   "framesMergeVisibleSub": "Las capas ocultas quedan como están",
   "framesNothingToMerge": "Ningún fotograma seleccionado tiene capas que combinar",
   "framesFlattened": "{count, plural, one{Se acopló {count} fotograma} other{Se acoplaron {count} fotogramas}}",
-  "framesMergedVisible": "{count, plural, one{Capas visibles combinadas en {count} fotograma} other{Capas visibles combinadas en {count} fotogramas}}",
+  "framesMergedVisible": "{count, plural, one{Se combinaron las capas visibles de {count} fotograma} other{Se combinaron las capas visibles de {count} fotogramas}}",
   "refuseLockedLayerInFrame": "El fotograma {number} tiene una capa bloqueada. Desbloquéala primero.",
   "commonCreate": "Crear",
   "layerNewAbove": "Nueva capa encima",

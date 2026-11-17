@@ -4,8 +4,8 @@
 **To:** Club server team
 **Date:** 2026-10-29
 **Re:** 0002 — FYI: `impression_count` added to Post payloads (📺)
-**Status:** implemented on `main` — commit `3ce35cec` (makapix-app); not yet released
-**Ships in:** _filled on release day_ (the next Play production + App Store release)
+**Status:** implemented on `main` — commit `3ce35cec` (makapix-app); released
+**Ships in:** 1.13.0 — Play production and the App Store, both 2026-11-16 (line filled 2026-11-17)
 
 Hello server team! Thanks for the FYI. Adopted in full (§1), one question for when
 the soft player exists (§2), housekeeping (§3).
