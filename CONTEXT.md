@@ -151,6 +151,36 @@ never moves where the artist is editing (ADR 0012). The Animator's Playhead is a
 thing: the current moment in Scene time.
 _Avoid_: current frame (ambiguous with the Active target), play cursor
 
+### Text vocabulary (Editor)
+
+Designed 2026-11-19; the Text tool is not built yet.
+
+**Text Draft**:
+Typed words shown on the canvas in one Font and not yet committed: the fifth Draft family. It
+dies like any Draft, but the Text tool remembers its words, so the next Text Draft starts with
+them. Commit turns it into ordinary pixels on the Active target; it is never text again.
+_Avoid_: text layer, text object, text box (it has no height limit), label
+
+**Wrap width**:
+The optional width at which a Text Draft breaks its lines. The Draft grows downward and never
+hides text. A tap starts a Text Draft without one; a drag starts one with it.
+_Avoid_: text box, area text, point text (there is one kind of Text Draft)
+
+**Font**:
+One bundled bitmap typeface at its one Native size, as one row of the font picker. Each language
+form of a CJK face is its own Font.
+_Avoid_: typeface, family, font size (there is no such setting)
+
+**Native size**:
+The single pixel height a Font is drawn at. Text is never scaled while it is a Draft; the artist
+resizes the committed pixels instead.
+_Avoid_: font size, point size, scale
+
+**Missing-glyph marker**:
+The hollow box a Text Draft shows in place of a character its Font cannot draw. A warning only:
+commit leaves a blank space there and never writes the box.
+_Avoid_: tofu (in UI copy), fallback glyph, placeholder
+
 ### Animator vocabulary
 
 **Scene**:
