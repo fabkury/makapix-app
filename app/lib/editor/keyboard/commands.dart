@@ -76,6 +76,7 @@ const toolCommandIds = <String, String>{
   'Line': 'tool.line',
   'Shape': 'tool.shape',
   'Ruler': 'tool.ruler',
+  'Text': 'tool.text',
   'Dodge': 'tool.dodge',
   'Burn': 'tool.burn',
   'Eyedropper': 'tool.pick',

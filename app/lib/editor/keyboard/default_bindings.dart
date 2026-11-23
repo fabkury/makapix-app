@@ -43,6 +43,8 @@ BindingTable defaultBindings() {
     'tool.line': [c(LogicalKeyboardKey.keyL)],
     'tool.shape': [c(LogicalKeyboardKey.keyU)],
     'tool.ruler': [c(LogicalKeyboardKey.keyK)],
+    // T and Shift+T were taken long before the Text tool (ADR 0039); Shift+A reads as "Aa".
+    'tool.text': [s(LogicalKeyboardKey.keyA)],
     'tool.dodge': [c(LogicalKeyboardKey.keyO)],
     'tool.burn': [s(LogicalKeyboardKey.keyO)],
     'tool.pick': [c(LogicalKeyboardKey.keyI)],

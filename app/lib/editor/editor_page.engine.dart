@@ -922,6 +922,9 @@ extension _EditorEngine on _EditorPageState {
   /// canvas geometry, and the engine cancels it on a geometry change anyway (fuzz FZ-7), so the
   /// UI must not keep offering Commit for it.
   void _cancelTransformDrafts() {
+    // A Text Draft's box is a canvas position too; the engine drops its mask preview on a
+    // geometry change like the other drafts.
+    if (_text != null) _cancelText();
     if (_hasPasteDraft) {
       _send('PasteCancel()');
       _hasPasteDraft = false;
@@ -962,6 +965,8 @@ extension _EditorEngine on _EditorPageState {
     // Navigating away mid-draft (changing tools) cancels the pending figure and erases its preview
     // — same as the row-1 Cancel button (this also redraws, so the outline doesn't linger).
     if (_hasShapeDraft) _cancelShapeDraft();
+    // A Text Draft dies with its tool like every Draft (ADR 0011); the words are remembered.
+    if (_text != null) _cancelText();
     // Likewise, a pending Select Shape draft is discarded (and its ants erased) when leaving the tool.
     if (_hasSelDraft) _cancelSelDraft();
     // Likewise, pending paste / move / rotate / resize drafts are discarded when navigating away
@@ -996,8 +1001,8 @@ extension _EditorEngine on _EditorPageState {
     } else if (t == 'SelectShape') {
       // 'SelectShape' is a shell grouping over the engine's SelectRect/SelectEllipse/SelectFree.
       _send('SelectTool(${selectShapeEngineTool(_selShapeKind)})');
-    } else if (t != 'Ruler') {
-      _send('SelectTool($t)'); // Ruler is a pure overlay; no engine draw tool
+    } else if (t != 'Ruler' && t != 'Text') {
+      _send('SelectTool($t)'); // Ruler and Text have no engine draw tool (Text stamps a mask)
     } else if (leavingSelectLayer) {
       _send('SelectTool(Move)'); // Ruler sends no draw tool — clear the Select Layer overlay
     }
@@ -1049,7 +1054,7 @@ extension _EditorEngine on _EditorPageState {
   // groups, Play, Ruler) that have no engine draw tool. Resolves the shell groupings ('Shape',
   // 'SelectShape') to the concrete engine tool their mode toggle points at.
   String? get _engineToolName {
-    if (_transformTools.contains(_tool) || _tool == 'PlayPause' || _tool == 'Ruler') return null;
+    if (_transformTools.contains(_tool) || _tool == 'PlayPause' || _tool == 'Ruler' || _tool == 'Text') return null;
     if (_tool == 'Shape') return _shapeKind;
     if (_tool == 'Airbrush') return _airbrushMode;
     if (_tool == 'SelectShape') return selectShapeEngineTool(_selShapeKind);
@@ -1222,9 +1227,9 @@ extension _EditorEngine on _EditorPageState {
     if (_tool == 'Gradient') {
       // The gradient's first color IS the primary, so re-push the stops (refreshes a draft too).
       _sendGradientStops();
-    } else if (_hasShapeDraft) {
-      // A pending figure draft (Line/Rect/Ellipse) is drawn in the primary color — refresh its
-      // preview now instead of waiting for the next drag.
+    } else if (_hasShapeDraft || _text != null) {
+      // A pending figure draft (Line/Rect/Ellipse) or Text Draft is drawn in the primary color —
+      // refresh its preview now instead of waiting for the next drag.
       _redraw();
     }
   }

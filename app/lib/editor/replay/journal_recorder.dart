@@ -250,7 +250,12 @@ class JournalRecorder {
     return t == 'Play()' ||
         t == 'Pause()' ||
         t.startsWith('AdvanceClock(') ||
-        t.startsWith('SetLayerOpacityPreview(');
+        t.startsWith('SetLayerOpacityPreview(') ||
+        // The Text Draft's preview (ADR 0039): a whole mask per keystroke, invisible in a
+        // Replay. The commit is one self-contained `MaskStamp`, which IS recorded.
+        t.startsWith('MaskDraft(') ||
+        t.startsWith('MaskDraftMove(') ||
+        t == 'MaskDraftCancel()';
   }
 
   /// Close the current chapter and open the next, anchored on [baseBytes]. The header is

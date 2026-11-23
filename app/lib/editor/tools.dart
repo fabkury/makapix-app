@@ -44,6 +44,9 @@ const tools = <ToolDef>[
   ToolDef.custom('Line', MpxIcons.line),
   ToolDef('Shape', Icons.category_outlined),
   ToolDef('Ruler', Icons.straighten),
+  // Text (ADR 0039): a shell-only tool. The canvas places and moves a Text Draft; the words
+  // are typed in a docked field, and the engine only ever stamps the mask they become.
+  ToolDef('Text', Icons.text_fields),
   ToolDef('Dodge', Icons.light_mode),
   ToolDef('Burn', Icons.dark_mode),
   ToolDef.custom('Eyedropper', MpxIcons.pick),

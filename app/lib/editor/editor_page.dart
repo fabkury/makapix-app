@@ -55,6 +55,10 @@ import 'patterns/pattern_tile.dart';
 import 'patterns/patterns_catalog.dart';
 import 'patterns/patterns_page.dart';
 import 'tap_again.dart';
+import 'text/font_picker_page.dart';
+import 'text/pixel_font.dart';
+import 'text/text_draft_painter.dart';
+import 'text/text_layout.dart';
 import 'keyboard/bindings_store.dart';
 import 'keyboard/cheat_sheet.dart';
 import 'keyboard/commands.dart';
@@ -101,6 +105,7 @@ part 'editor_page.replay.dart';
 part 'editor_page.keyboard.dart';
 part 'editor_page.frames.dart';
 part 'editor_page.layers.dart';
+part 'editor_page.text.dart';
 
 const double _kMinZoom = 0.25, _kMaxZoom = 32.0;
 // One mouse-wheel notch zooms by this factor. The notch delta is what the Windows embedder
@@ -151,11 +156,13 @@ const _kBrushSizeTools = {'Pencil', 'Brush', 'Airbrush', 'Eraser', 'Dodge', 'Bur
 const _kDefaultBrushSize = {'Airbrush': 8, 'Eraser': 6};
 // The tools a pattern gates (ADR 0025). The Gradient has its own Bayer dither instead and never
 // reads the pattern; every other tool paints ungated.
-const _kPatternTools = {'Pencil', 'Brush', 'Eraser', 'Bucket'}; // l10n-ignore: tool ids
+// Text joined with the Text tool (ADR 0039): its mask stamp reads the pattern too.
+const _kPatternTools = {'Pencil', 'Brush', 'Eraser', 'Bucket', 'Text'}; // l10n-ignore: tool ids
 // The tools whose writes mirror under Symmetry (ADR 0026) — the ones that show the Mirror chip.
 // Gradient, Move/Paste, the selections, Eyedropper, Ruler, the adjustments, and the transforms
 // never mirror (design decision 2026-09-04).
-const _kMirrorTools = {'Pencil', 'Brush', 'Eraser', 'Airbrush', 'Dodge', 'Burn', 'Bucket', 'Line', 'Shape'}; // l10n-ignore: tool ids
+// A committed text mirrors as well (ADR 0039, user decision 2026-11-19).
+const _kMirrorTools = {'Pencil', 'Brush', 'Eraser', 'Airbrush', 'Dodge', 'Burn', 'Bucket', 'Line', 'Shape', 'Text'}; // l10n-ignore: tool ids
 
 class EditorPage extends ConsumerStatefulWidget {
   const EditorPage({super.key});
@@ -696,6 +703,29 @@ class _EditorPageState extends ConsumerState<EditorPage>
   bool _hasPasteDraft = false;
   Offset? _pasteDragLast; // last canvas position while dragging the paste draft
 
+  // ---- The Text tool (ADR 0039; editor_page.text.dart). 'Text' is a shell-only tool id: the
+  // engine never hears of it, only of the 1-bit mask a laid-out text becomes. `_text` is the
+  // open Text Draft (shell state, like the Select marquee: the engine holds just its preview
+  // mask). The Font and the typography settings persist editor-wide; the words live in a
+  // top-level memory that outlasts this State (see _textWordsMemory).
+  bool get _isTextTool => _tool == 'Text';
+  PixelFontLibrary? _fontLib; // null until the bundled fonts have loaded
+  String? _textFontId;
+  PixelFont? _textFont;
+  TextAlignX _textAlign = TextAlignX.left;
+  int _textLetterSp = 0, _textLineSp = 0;
+  List<String> _textRecents = const [];
+  final TextEditingController _textCtrl = TextEditingController();
+  final FocusNode _textFocus = FocusNode(debugLabel: 'text-draft');
+  _TextDraft? _text;
+  String _textLaidOut = ''; // the words the Draft's layout was last built from
+  int? _textLastWrap; // the Wrap width the Wrap chip restores
+  // Active canvas gesture: 0 none · 1 starting a Draft (a tap, or a drag sweeping its box) ·
+  // 2 moving the Draft · 3 dragging the Wrap-width handle.
+  int _textDrag = 0;
+  bool _textMoved = false;
+  Offset? _textDownPos, _textDragNow; // screen positions of the gesture's start and its latest move
+
   // Move tool draft: dragging the selected pixels (or the layer/move-group, with no selection) lifts
   // them into a relocatable, semi-transparently washed draft, committed via row-1. The draft begins
   // on the first drag MOVEMENT (a tap does nothing). `_hasMoveDraft` comes from the engine state JSON
@@ -751,6 +781,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
       (_isDraftTool && _hasShapeDraft) ||
       (_isSelDraftTool && _hasSelDraft) ||
       (_isCopyPaste && _hasPasteDraft) ||
+      (_isTextTool && _text != null) ||
       (_tool == 'Move' && _hasMoveDraft) ||
       (_tool == 'Rotate' && _hasRotateDraft) ||
       (_tool == 'Resize' && _hasResizeDraft) ||
@@ -782,6 +813,8 @@ class _EditorPageState extends ConsumerState<EditorPage>
     // are actually on screen (a selection/eraser outline, the cursor footprint, or a
     // selection draft). [audit][battery F2]
     _loadToolOrder();
+    _textCtrl.addListener(_onTextChanged);
+    _initTextTool();
     try {
       engine = Engine(64, 64);
       _send('SelectTool(Pencil)');
@@ -884,6 +917,8 @@ class _EditorPageState extends ConsumerState<EditorPage>
     _optionsRowCtrl.dispose();
     _paletteStripCtrl.dispose();
     _toolGridCtrl.dispose();
+    _textCtrl.dispose();
+    _textFocus.dispose();
     if (_engineReady) engine.dispose();
     super.dispose();
   }
@@ -956,6 +991,10 @@ class _EditorPageState extends ConsumerState<EditorPage>
     // inset is handled by the tooltip band. The body arrangement follows the viewport aspect —
     // a pure function of size, so desktop resizes and iPad Split View behave like rotations.
     final landscape = editorUsesLandscape(MediaQuery.sizeOf(context));
+    // While the on-screen keyboard is up for a Text Draft, the strips that are not needed to
+    // type step aside so the canvas keeps the room the keyboard took; closing the keyboard
+    // brings them back with the Draft still open (docs/text-tool/DESIGN.md "Typing").
+    final typing = _text != null && MediaQuery.viewInsetsOf(context).bottom > 0;
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -963,7 +1002,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
           access: _keyboardHost,
           commands: _keyboardCommands,
           bindings: _keyboardBindings,
-          child: landscape ? _buildLandscapeBody(layers) : _buildPortraitBody(layers),
+          child: landscape ? _buildLandscapeBody(layers, typing: typing) : _buildPortraitBody(layers, typing: typing),
         ),
       ),
     );
@@ -984,24 +1023,27 @@ class _EditorPageState extends ConsumerState<EditorPage>
     );
   }
 
-  Widget _buildPortraitBody(List<dynamic> layers) {
+  Widget _buildPortraitBody(List<dynamic> layers, {bool typing = false}) {
     return Column(
       children: [
-        _buildFilmRoll(), // frame film-strip + ☰ menu — the topmost area
+        if (!typing) _buildFilmRoll(), // frame film-strip + ☰ menu — the topmost area
         Expanded(child: _buildCanvasStack()),
         const Divider(height: 1),
-        _buildLayers(layers), // layers film-strip, directly above the tool options
+        if (!typing) _buildLayers(layers), // layers film-strip, directly above the tool options
         _buildToolOptions(), // row-1
-        _buildPalette(), // row-2
-        _buildToolBar(), // row-3 (also holds the pinned Undo/Redo and the Onion toggle)
-        _buildTooltipBand(context),
+        if (_text != null) _buildTextBar(), // the Text Draft's field, right above the keyboard
+        if (!typing) ...[
+          _buildPalette(), // row-2
+          _buildToolBar(), // row-3 (also holds the pinned Undo/Redo and the Onion toggle)
+          _buildTooltipBand(context),
+        ],
       ],
     );
   }
 
   // Landscape: the horizontal bands become vertical panels flanking the canvas —
   // frames · palette | canvas / tool options / tooltip | layers · tools.
-  Widget _buildLandscapeBody(List<dynamic> layers) {
+  Widget _buildLandscapeBody(List<dynamic> layers, {bool typing = false}) {
     return Row(
       children: [
         _buildFilmRoll(axis: Axis.vertical), // frames + ☰ menu, outermost left
@@ -1012,7 +1054,8 @@ class _EditorPageState extends ConsumerState<EditorPage>
               Expanded(child: _buildCanvasStack()),
               const Divider(height: 1),
               _buildToolOptions(), // row-1 stays horizontal, under the canvas
-              _buildTooltipBand(context, compact: true),
+              if (_text != null) _buildTextBar(),
+              if (!typing) _buildTooltipBand(context, compact: true),
             ],
           ),
         ),

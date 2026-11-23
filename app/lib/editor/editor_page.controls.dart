@@ -585,6 +585,8 @@ extension _EditorControls on _EditorPageState {
         ));
       }
     }
+    // The Text tool's own controls come before the shared Pattern and Mirror ones.
+    if (_isTextTool) _buildTextOptions(children);
     // The Pattern swatch (ADR 0025) rides at the END of row-1 for the four gated tools, and the
     // Gradient's Dither swatch likewise (a user placement decision, 2026-09-03).
     if (_kPatternTools.contains(_tool) || _tool == 'Gradient') {

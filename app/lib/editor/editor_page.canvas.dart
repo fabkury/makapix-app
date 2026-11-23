@@ -113,8 +113,13 @@ extension _EditorCanvas on _EditorPageState {
         _selMenuButton(Icons.close, context.l10n.commonCancel, _cancelActiveDraft,
             color: const Color(0xFFB03A3A), iconColor: Colors.white),
         const SizedBox(width: 3),
-        _selMenuButton(Icons.check, context.l10n.draftCommit, _commitActiveDraft,
-            color: const Color(0xFF30A050), iconColor: Colors.white),
+        Stack(clipBehavior: Clip.none, children: [
+          _selMenuButton(Icons.check, context.l10n.draftCommit, _commitActiveDraft,
+              color: const Color(0xFF30A050), iconColor: Colors.white),
+          // A Text Draft with Missing-glyph markers: committing leaves those characters blank.
+          if (_isTextTool && (_text?.layout.missing.isNotEmpty ?? false))
+            const Positioned(right: 0, top: 0, child: _AmberDot()),
+        ]),
       ]),
     );
   }
@@ -126,6 +131,8 @@ extension _EditorCanvas on _EditorPageState {
       _commitShape();
     } else if (_isSelDraftTool && _hasSelDraft) {
       _commitSelDraft();
+    } else if (_isTextTool && _text != null) {
+      _commitText();
     } else if (_isCopyPaste && _hasPasteDraft) {
       _act('PasteCommit()');
     } else if (_tool == 'Move' && _hasMoveDraft) {
@@ -148,6 +155,8 @@ extension _EditorCanvas on _EditorPageState {
       _cancelShapeDraft();
     } else if (_isSelDraftTool && _hasSelDraft) {
       _cancelSelDraft();
+    } else if (_isTextTool && _text != null) {
+      _cancelText();
     } else if (_isCopyPaste && _hasPasteDraft) {
       _act('PasteCancel()');
     } else if (_tool == 'Move' && _hasMoveDraft) {
@@ -382,6 +391,7 @@ extension _EditorCanvas on _EditorPageState {
                     size: Size.infinite,
                   ),
                 ],
+                if (_isTextTool) ..._textOverlays(vScale, vOff),
                 if (_isRuler && _hasRuler)
                   // measurement line + endpoint coords + length (never drawn to the canvas);
                   // in Angle mode a second arm A→C plus the angle at the vertex
@@ -504,6 +514,10 @@ extension _EditorCanvas on _EditorPageState {
       _beginRuler(pos, box);
       return;
     }
+    if (_isTextTool) {
+      _beginText(pos, box);
+      return;
+    }
     if (_isDraftTool) {
       _beginShape(pos, box);
       return;
@@ -577,6 +591,10 @@ extension _EditorCanvas on _EditorPageState {
     }
     if (_isRuler) {
       _continueRuler(pos, box);
+      return;
+    }
+    if (_isTextTool) {
+      _continueText(pos, box);
       return;
     }
     if (_isDraftTool) {
@@ -685,6 +703,10 @@ extension _EditorCanvas on _EditorPageState {
     if (_isRuler) {
       _rulerDrag = 0;
       setState(() {});
+      return;
+    }
+    if (_isTextTool) {
+      _endText(_lastCanvasBox);
       return;
     }
     if (_isDraftTool) {
@@ -821,6 +843,10 @@ extension _EditorCanvas on _EditorPageState {
     if (_isRuler) {
       _rulerDrag = 0; // a second finger interrupted; keep the measurement as-is
       setState(() {});
+      return;
+    }
+    if (_isTextTool) {
+      _cancelTextGesture();
       return;
     }
     if (_isCopyPaste) {

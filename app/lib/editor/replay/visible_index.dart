@@ -96,6 +96,7 @@ const Set<String> _kAlwaysEvent = {
   'Rotate', 'RotateFrame', 'RotateLayer', 'ScaleFrame', 'ScaleLayer',
   // Draft commits + adjustment applies (the moment pixels land).
   'ShapeCommit', 'PasteCommit', 'MoveDraftCommit', 'RotateDraftCommit', 'ScaleDraftCommit',
+  'MaskStamp',
   'ApplyHsvShift', 'ApplyBrightnessContrast', 'ApplyLevels',
   // Clipboard / selected-pixel operations.
   'Cut', 'Paste', 'PasteToFrame', 'FillSelection', 'ClearSelection',
@@ -244,6 +245,7 @@ int _classify(String verb, String tool, bool penHeld) {
     'MoveSelection', 'MoveSelectionBegin', 'MoveSelectionCommit',
     'ShapeSet', 'ShapeCancel',
     'PasteDraft', 'PasteMove', 'PasteCancel', 'Copy',
+    'MaskDraft', 'MaskDraftMove', 'MaskDraftCancel',
     'MoveDraftBegin', 'MoveDraftMove', 'MoveDraftCancel',
     'RotateDraftBegin', 'RotateDraftBeginFrame', 'RotateDraftSetAngle', 'RotateDraftMove',
     'RotateDraftCancel',

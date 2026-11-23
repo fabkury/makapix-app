@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:makapix_club/editor/editor_page.dart';
+import 'package:makapix_club/editor/text/pixel_font.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../test/l10n/club_fixtures.dart';
@@ -58,13 +59,15 @@ String describeException(Object err) {
 }
 
 /// Pumps the real editor in [locale] on a [size] screen and waits for its first drawing.
-Future<void> pumpEditor(
+/// Returns the temp folder its drawings (and their journals) are written to.
+Future<Directory> pumpEditor(
   WidgetTester tester,
   Locale locale, {
   Size size = const Size(412, 915),
   Map<String, Object> prefs = const {},
 }) async {
   SharedPreferences.setMockInitialValues(prefs);
+  PixelFontLibrary.debugResetShared(); // a future from the previous test's zone would never complete
   final dir = fakeAppDirs(tester);
   await pumpLocalized(
     tester,
@@ -81,6 +84,7 @@ Future<void> pumpEditor(
     if (dir.listSync(recursive: true).any((f) => f.path.endsWith('.mkpx'))) break;
   }
   await settleReal(tester, rounds: 4);
+  return dir;
 }
 
 /// Unmounts the editor and lets its teardown (final autosave, journal drain) finish, so no

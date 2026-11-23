@@ -22,6 +22,7 @@ const Map<String, (_Msg short, _Msg name)> _names = {
   'Line': (_lineShort, _line),
   'Shape': (_shapeShort, _shape),
   'Ruler': (_rulerShort, _ruler),
+  'Text': (_textShort, _text),
   'Dodge': (_dodgeShort, _dodge),
   'Burn': (_burnShort, _burn),
   'Eyedropper': (_pickShort, _pick),
@@ -58,6 +59,7 @@ const Map<String, _Msg> _tips = {
   'Line': _tipLine,
   'Shape': _tipShape,
   'Ruler': _tipRuler,
+  'Text': _tipText,
   'Dodge': _tipDodge,
   'Burn': _tipBurn,
   'Eyedropper': _tipEyedropper,
@@ -88,6 +90,7 @@ String _tipGradient(AppLocalizations l) => l.tipGradient;
 String _tipLine(AppLocalizations l) => l.tipLine;
 String _tipShape(AppLocalizations l) => l.tipShape;
 String _tipRuler(AppLocalizations l) => l.tipRuler;
+String _tipText(AppLocalizations l) => l.tipText;
 String _tipDodge(AppLocalizations l) => l.tipDodge;
 String _tipBurn(AppLocalizations l) => l.tipBurn;
 String _tipEyedropper(AppLocalizations l) => l.tipEyedropper;
@@ -143,6 +146,8 @@ String _lineShort(AppLocalizations l) => l.toolLineShort;
 String _shape(AppLocalizations l) => l.toolShape;
 String _shapeShort(AppLocalizations l) => l.toolShapeShort;
 String _ruler(AppLocalizations l) => l.toolRuler;
+String _text(AppLocalizations l) => l.toolText;
+String _textShort(AppLocalizations l) => l.toolTextShort;
 String _rulerShort(AppLocalizations l) => l.toolRulerShort;
 String _dodge(AppLocalizations l) => l.toolDodge;
 String _dodgeShort(AppLocalizations l) => l.toolDodgeShort;
