@@ -27,6 +27,7 @@ describe the system as built) · `docs/adr/` (the ADR series — 0007 single-coa
 define *current* engine behavior) · `docs/memlab/REPORT.md` (measured memory limits — the numbers to design
 against) · `docs/i18n/` (localization: the app ships in eight languages since 1.12.0 — `PLAN.md` is the
 workstream's record and its open items, `TESTING.md` the test layers, `GLOSSARY.md` the terminology; ADR 0037) ·
+`docs/text-tool/DESIGN.md` + `tools/fonts/` (the Text tool and its bundled bitmap fonts, ADR 0039) ·
 `docs/play-release.md` + `docs/ios-release/PLAN.md` (store pipelines) · `messages/` (server ↔ app
 correspondence, one sub-folder per thread, numbered replies — convention in `messages/README.md`; threads
 before 2026-09-09 were `docs/club-server-cr-*.md`, retired to git history 2026-09-16). (The original
@@ -188,10 +189,11 @@ the network** (ADR 0035): the Club home never blocks on `/auth/me` — installs 
 signed-in from the cached identity (`AuthState.stale` until revalidated) and the residual `loading`
 state renders `ClubResolvingPage`, not a spinner. There is no persistent pillar-switching chrome.
 
-- **Editor UI** (`app/lib/editor/`): `editor_page.dart` + its **nine** part files
-  (`editor_page.{canvas,controls,engine,fileio,persistence,replay,sheets,timeline,toolgrid}.dart`) — the
+- **Editor UI** (`app/lib/editor/`): `editor_page.dart` + its part files
+  (`editor_page.{canvas,controls,engine,fileio,frames,keyboard,layers,persistence,replay,sheets,text,timeline,toolgrid}.dart`) — the
   three-row UI (tool options · palette · tools) over canvas/timeline/layers · `tools.dart` (tool catalog) ·
-  `palette_page.dart` + `palette_io.dart` · `gallery/` (local drawings) · `persistence/` (autosave +
+  `palette_page.dart` + `palette_io.dart` · `text/` (the Text tool: bitmap font reader, whole-pixel
+  layout, font picker; with `editor_page.text.dart`, ADR 0039) · `gallery/` (local drawings) · `persistence/` (autosave +
   drawing store) · **`replay/`** (the journal/Watch-replay/timelapse subsystem — append-only action
   journal with torn-line repair, MP4/GIF/WebP timelapse export; it rides the engine checkpoint FFI) ·
   `dialogs/` · `widgets/painters.dart` · generated icon painters (`makapix_icons.g.dart`; pipeline in

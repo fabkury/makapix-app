@@ -153,8 +153,6 @@ _Avoid_: current frame (ambiguous with the Active target), play cursor
 
 ### Text vocabulary (Editor)
 
-Designed 2026-11-19; the Text tool is not built yet.
-
 **Text Draft**:
 Typed words shown on the canvas in one Font and not yet committed: the fifth Draft family. It
 dies like any Draft, but the Text tool remembers its words, so the next Text Draft starts with

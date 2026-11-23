@@ -1524,6 +1524,7 @@ extension _EditorControls on _EditorPageState {
         });
     }
     _send(_patternDsl);
+    if (_text != null) _redraw(full: false, refetchSelection: false); // an open Text Draft previews through it
     _persistPattern();
   }
 
@@ -1550,6 +1551,7 @@ extension _EditorControls on _EditorPageState {
     }
     setState(() => _patternOn[_tool] = !(_patternOn[_tool] ?? false));
     _send(_patternDsl);
+    if (_text != null) _redraw(full: false, refetchSelection: false); // an open Text Draft previews through it
     _persistPattern();
   }
 

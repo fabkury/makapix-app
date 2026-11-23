@@ -1,13 +1,50 @@
 # The Text tool — design
 
 **Decided 2026-11-19** in a research session and a design interview (every decision below is the
-user's unless marked as an assumption). **Not implemented.** Doctrine: ADR 0039 (shell fonts and
+user's unless marked as an assumption). **Implemented 2026-11-23** (see "As built"). Doctrine: ADR 0039 (shell fonts and
 an engine mask stamp) and ADR 0040 (text is repeatable). Vocabulary: `CONTEXT.md`, "Text
 vocabulary". Inventory item B13.
 
 The artist picks a Font, taps or drags on the canvas, types into a real text field, and sees a
 Text Draft on the canvas. Commit turns it into ordinary pixels. There are no text layers and
 nothing in `.mkpx` changes.
+
+## As built (2026-11-23)
+
+Where the implementation differs from, or adds to, the decisions below. None of these was put
+to the user as a question; each is flagged so it can be reversed.
+
+- **Glyph data is 3.1 MB, not the 2 MB estimated** (VEXED 0.7 MB with its kerning tables, Fusion
+  Pixel 2.4 MB). It is compressed inside the APK and the IPA.
+- **No Journal epoch bump** (ADR 0040 explains why none is needed).
+- **A line is measured by its ink**, not by its last glyph's advance, so right-aligned and
+  centered text is flush with the box edge instead of one side bearing short of it.
+- **A tap marks the left edge of the first line, level with the middle of its capitals**, so the
+  words appear beside the finger. A dragged box starts exactly at the drag's top-left corner.
+- **The preview is exact**, with no "draft" wash: tiny text has to stay readable. The box outline
+  (dashed while it follows the text, solid with a Wrap width) is what marks it as a Draft.
+- **The pattern follows the existing per-tool On/Off rule** (ADR 0025): the Text tool has its own
+  switch, Off until the artist turns it on, so a pattern left on for the Brush does not gate
+  text. Symmetry stays one global setting, as it is for every mirroring tool.
+- **While the on-screen keyboard is up, the frame strip, the layer strip, the palette, the tool
+  grid and the help band are hidden**; the options row and the text field stay. Closing the
+  keyboard brings them back with the Draft still open.
+- **On a hidden or locked layer** the Draft still shows what is typed (painted plainly over the
+  canvas), and a commit is refused with a message; the Draft stays open.
+- **A commit with no ink** (empty text, only spaces, or only missing characters) closes the Draft
+  and stamps nothing.
+- **The Missing-glyph markers are a shell overlay**: they are not mirrored under symmetry.
+- **The words are remembered for the app session**, including across a switch to Club and back;
+  they are not saved to disk.
+- **Shortcut:** Shift+A selects the tool (T and Shift+T were taken).
+- **Korean:** the app has no Korean translation, so the first font is never a Korean one; the
+  picker lists the Korean form under each CJK size like the other three.
+- **Limits:** 2,000 characters; a mask side of 1,536 px (larger ink is cut).
+- **Tests:** `crates/engine/src/session/mask.rs` (the stamp), `app/test/text_layout_test.dart`
+  (fonts and layout against the real assets), `app/test_engine/editor_text_tool_test.dart` (the
+  tool on the real editor, including "one commit, one journal line").
+- **Not yet done:** a pass on a phone for the keyboard behavior and IME composition (the largest
+  risk below), and the store release notes.
 
 ## Fonts
 
@@ -132,7 +169,7 @@ Each was offered and declined for v1:
 - Loading the artist's own font files.
 - Vertical CJK text, right-to-left scripts, emoji.
 
-## Implementation outline (assumptions, to be confirmed when work starts)
+## Implementation outline (as planned; "As built" above is the record)
 
 1. **Font pipeline** in `tools/fonts/`: VEXED TTFs and Fusion BDFs to one compact binary format
    plus a manifest (name, height, scripts, credit), written to Flutter assets.

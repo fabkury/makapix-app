@@ -1,6 +1,10 @@
 # Text is shell-side fonts and a generic engine mask stamp
 
-**Decided 2026-11-19** in a design interview (the choices are the user's). **Not implemented yet.**
+**Decided 2026-11-19** in a design interview (the choices are the user's). **Implemented 2026-11-23.**
+Engine: `crates/engine/src/session/mask.rs` (`MaskDraft`, `MaskDraftMove`, `MaskDraftCancel`,
+`MaskStamp`). Shell: `app/lib/editor/text/` and `app/lib/editor/editor_page.text.dart`; the journal
+filter is `JournalRecorder._isPlaybackVerb`. Fonts: `tools/fonts/build_fonts.py` →
+`app/assets/pixel_fonts/`.
 Vocabulary (Text Draft, Wrap width, Font, Native size, Missing-glyph marker) is in `CONTEXT.md`;
 every product decision is in `docs/text-tool/DESIGN.md`. This is inventory item B13
 (`docs/editor-gaps/INVENTORY.md`), and it retires the "no text tool" non-goal.

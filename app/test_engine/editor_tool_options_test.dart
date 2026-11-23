@@ -25,7 +25,8 @@ final _band = find.byKey(const ValueKey('editor-help-band'));
 
 // Latin text that is right in every language: the AA chip, the cleanEdge algorithm, the HSV
 // letters, single-letter axis labels, and pattern names (extracted in batch E5).
-const _allowLatin = <Pattern>['cleanEdge'];
+// A font's name is a proper noun (the Text tool's font button, ADR 0039).
+const _allowLatin = <Pattern>['cleanEdge', 'Everyday Standard', 'Fusion Pixel'];
 
 void main() {
   for (final locale in allLocales) {

@@ -118,11 +118,11 @@ defaults tables; only the editing UI is 6.B. Migration table keyed by version, D
 
 ## 3. The catalog (v1 command ids)
 
-- **Tools (26):** `tool.pencil`, `tool.brush`, `tool.airbrush`, `tool.eraser`, `tool.fill`,
+- **Tools (27; `tool.text` added 2026-11-23 with the Text tool, ADR 0039):** `tool.pencil`, `tool.brush`, `tool.airbrush`, `tool.eraser`, `tool.fill`,
   `tool.gradient`, `tool.line`, `tool.shape`, `tool.ruler`, `tool.dodge`, `tool.burn`,
   `tool.pick`, `tool.move`, `tool.copyPaste`, `tool.select`, `tool.selectColor`,
   `tool.selectLayer`, `tool.hsv`, `tool.brightness`, `tool.levels`, `tool.flip`, `tool.rotate`,
-  `tool.resize`, `tool.invert`, `tool.play`, `tool.onion`
+  `tool.resize`, `tool.invert`, `tool.play`, `tool.onion`, `tool.text`
 - **Edit:** `edit.undo`, `edit.redo`, `edit.copy`, `edit.paste`, `edit.selectAll`,
   `edit.deselect`
 - **Draft:** `draft.commit`, `draft.cancel` (the core four are these two + undo/redo)
@@ -141,7 +141,7 @@ Primary = ⌘ (iPad) / Ctrl (elsewhere). Letters are unmodified logical keys.
 
 | Category | Command → Chord |
 | --- | --- |
-| Tools | Pencil **P** · Brush **B** · Airbrush **A** · Eraser **E** · Fill **G** · Gradient **⇧G** · Line **L** · Shape **U** · Ruler **K** · Dodge **O** · Burn **⇧O** · Pick **I** · Move **V** · Copy **C** · Select **M** · Sel Color **W** · Sel Lyr **⇧W** · HSV **H** · Bright **⇧H** · Levels **⇧L** · Flip **F** · Rotate **R** · Resize **⇧R** · Invert **Primary+I** · Play tool **⇧P** · Onion **N** |
+| Tools | Pencil **P** · Brush **B** · Airbrush **A** · Eraser **E** · Fill **G** · Gradient **⇧G** · Line **L** · Shape **U** · Ruler **K** · Text **⇧A** · Dodge **O** · Burn **⇧O** · Pick **I** · Move **V** · Copy **C** · Select **M** · Sel Color **W** · Sel Lyr **⇧W** · HSV **H** · Bright **⇧H** · Levels **⇧L** · Flip **F** · Rotate **R** · Resize **⇧R** · Invert **Primary+I** · Play tool **⇧P** · Onion **N** |
 | Edit | Undo **Primary+Z** · Redo **⇧Primary+Z** (alias **Primary+Y**) · Copy **Primary+C** · Paste **Primary+V** · Select all **Primary+A** · Deselect **Primary+D** |
 | Draft | Commit **Enter** · Cancel **Esc** |
 | Frames | Prev **,** · Next **.** · Add **⇧N** · Duplicate **⇧D** · Delete **Primary+Backspace** |
