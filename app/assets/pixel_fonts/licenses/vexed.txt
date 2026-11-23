@@ -1,0 +1,6 @@
+Pixel fonts by VEXED (https://v3x3d.itch.io/).
+Licensed under Creative Commons Attribution 4.0 International (CC BY 4.0):
+https://creativecommons.org/licenses/by/4.0/
+
+Changes: each family's regular font was converted from its TrueType outlines to 1-bit
+bitmap glyph data for the Makapix Club app. The designs are unchanged.

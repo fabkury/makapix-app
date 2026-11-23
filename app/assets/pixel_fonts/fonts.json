@@ -1,0 +1,934 @@
+{
+ "version": 1,
+ "credits": {
+  "vexed": "VEXED (v3x3d.itch.io), CC BY 4.0, converted to bitmap data",
+  "fusion": "TakWolf and contributors (github.com/TakWolf/fusion-pixel-font), SIL OFL 1.1, converted to bitmap data"
+ },
+ "fonts": [
+  {
+   "id": "vexed.everyday_tiny",
+   "name": "Everyday Tiny",
+   "px": 4,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_everyday_tiny.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.tiny_talk",
+   "name": "Tiny Talk",
+   "px": 4,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_tiny_talk.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.direct_message",
+   "name": "Direct Message",
+   "px": 5,
+   "scripts": [
+    "latin",
+    "cyrillic"
+   ],
+   "files": [
+    "vexed_direct_message.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.everyday_slight",
+   "name": "Everyday Slight",
+   "px": 5,
+   "scripts": [
+    "latin",
+    "cyrillic"
+   ],
+   "files": [
+    "vexed_everyday_slight.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.micro_chat",
+   "name": "Micro Chat",
+   "px": 5,
+   "scripts": [
+    "latin",
+    "cyrillic"
+   ],
+   "files": [
+    "vexed_micro_chat.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.student_scribbles",
+   "name": "Student Scribbles",
+   "px": 5,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_student_scribbles.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.capital_hill",
+   "name": "Capital Hill",
+   "px": 6,
+   "scripts": [
+    "latin",
+    "cyrillic"
+   ],
+   "files": [
+    "vexed_capital_hill.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.everyday_standard",
+   "name": "Everyday Standard",
+   "px": 6,
+   "scripts": [
+    "latin",
+    "cyrillic"
+   ],
+   "files": [
+    "vexed_everyday_standard.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.arcade_cabinet",
+   "name": "Arcade Cabinet",
+   "px": 7,
+   "scripts": [
+    "latin",
+    "cyrillic"
+   ],
+   "files": [
+    "vexed_arcade_cabinet.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.everyday_typical",
+   "name": "Everyday Typical",
+   "px": 7,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_everyday_typical.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.jive_talking",
+   "name": "Jive Talking",
+   "px": 7,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_jive_talking.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.robotic_rancor",
+   "name": "Robotic Rancor",
+   "px": 7,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_robotic_rancor.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.short_story",
+   "name": "Short Story",
+   "px": 7,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_short_story.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.simple_script",
+   "name": "Simple Script",
+   "px": 7,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_simple_script.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.strong_man",
+   "name": "Strong Man",
+   "px": 7,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_strong_man.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.company_contract",
+   "name": "Company Contract",
+   "px": 8,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_company_contract.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.curly_girly",
+   "name": "Curly Girly",
+   "px": 8,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_curly_girly.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.empty_windows",
+   "name": "Empty Windows",
+   "px": 8,
+   "scripts": [
+    "latin",
+    "cyrillic"
+   ],
+   "files": [
+    "vexed_empty_windows.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.gentry_society",
+   "name": "Gentry Society",
+   "px": 8,
+   "scripts": [
+    "latin",
+    "cyrillic"
+   ],
+   "files": [
+    "vexed_gentry_society.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.king_speak",
+   "name": "King Speak",
+   "px": 8,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_king_speak.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.noble_blabber",
+   "name": "Noble Blabber",
+   "px": 8,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_noble_blabber.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.plump_prose",
+   "name": "Plump Prose",
+   "px": 8,
+   "scripts": [
+    "latin",
+    "cyrillic"
+   ],
+   "files": [
+    "vexed_plump_prose.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.slim_fit",
+   "name": "Slim Fit",
+   "px": 8,
+   "scripts": [
+    "latin",
+    "cyrillic"
+   ],
+   "files": [
+    "vexed_slim_fit.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.willow_branch",
+   "name": "Willow Branch",
+   "px": 8,
+   "scripts": [
+    "latin",
+    "cyrillic"
+   ],
+   "files": [
+    "vexed_willow_branch.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "fusion.8.ja",
+   "name": "Fusion Pixel 8 · 日本語",
+   "px": 8,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "ja",
+   "files": [
+    "fusion_8_ja.mkf",
+    "fusion_8_base.mkf"
+   ],
+   "source": "fusion"
+  },
+  {
+   "id": "fusion.8.zh-Hans",
+   "name": "Fusion Pixel 8 · 简体中文",
+   "px": 8,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "zh-Hans",
+   "files": [
+    "fusion_8_zh_hans.mkf",
+    "fusion_8_base.mkf"
+   ],
+   "source": "fusion"
+  },
+  {
+   "id": "fusion.8.zh-Hant",
+   "name": "Fusion Pixel 8 · 繁體中文",
+   "px": 8,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "zh-Hant",
+   "files": [
+    "fusion_8_zh_hant.mkf",
+    "fusion_8_base.mkf"
+   ],
+   "source": "fusion"
+  },
+  {
+   "id": "fusion.8.ko",
+   "name": "Fusion Pixel 8 · 한국어",
+   "px": 8,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "ko",
+   "files": [
+    "fusion_8_ko.mkf",
+    "fusion_8_base.mkf"
+   ],
+   "source": "fusion"
+  },
+  {
+   "id": "vexed.everyday_ample",
+   "name": "Everyday Ample",
+   "px": 9,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_everyday_ample.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.high_birth",
+   "name": "High Birth",
+   "px": 9,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_high_birth.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.military_march",
+   "name": "Military March",
+   "px": 9,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_military_march.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.outward_bound",
+   "name": "Outward Bound",
+   "px": 9,
+   "scripts": [
+    "latin",
+    "cyrillic"
+   ],
+   "files": [
+    "vexed_outward_bound.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.fabled_font",
+   "name": "Fabled Font",
+   "px": 10,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_fabled_font.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.soulful_serif",
+   "name": "Soulful Serif",
+   "px": 10,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_soulful_serif.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.tomorrow_night",
+   "name": "Tomorrow Night",
+   "px": 10,
+   "scripts": [
+    "latin",
+    "cyrillic"
+   ],
+   "files": [
+    "vexed_tomorrow_night.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "fusion.10.ja",
+   "name": "Fusion Pixel 10 · 日本語",
+   "px": 10,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "ja",
+   "files": [
+    "fusion_10_ja.mkf",
+    "fusion_10_base.mkf"
+   ],
+   "source": "fusion"
+  },
+  {
+   "id": "fusion.10.zh-Hans",
+   "name": "Fusion Pixel 10 · 简体中文",
+   "px": 10,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "zh-Hans",
+   "files": [
+    "fusion_10_zh_hans.mkf",
+    "fusion_10_base.mkf"
+   ],
+   "source": "fusion"
+  },
+  {
+   "id": "fusion.10.zh-Hant",
+   "name": "Fusion Pixel 10 · 繁體中文",
+   "px": 10,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "zh-Hant",
+   "files": [
+    "fusion_10_zh_hant.mkf",
+    "fusion_10_base.mkf"
+   ],
+   "source": "fusion"
+  },
+  {
+   "id": "fusion.10.ko",
+   "name": "Fusion Pixel 10 · 한국어",
+   "px": 10,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "ko",
+   "files": [
+    "fusion_10_ko.mkf",
+    "fusion_10_base.mkf"
+   ],
+   "source": "fusion"
+  },
+  {
+   "id": "vexed.cyber_time",
+   "name": "Cyber Time",
+   "px": 11,
+   "scripts": [
+    "latin",
+    "cyrillic"
+   ],
+   "files": [
+    "vexed_cyber_time.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.everyday_vast",
+   "name": "Everyday Vast",
+   "px": 11,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_everyday_vast.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "fusion.12.ja",
+   "name": "Fusion Pixel 12 · 日本語",
+   "px": 12,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "ja",
+   "files": [
+    "fusion_12_ja.mkf",
+    "fusion_12_base.mkf"
+   ],
+   "source": "fusion"
+  },
+  {
+   "id": "fusion.12.zh-Hans",
+   "name": "Fusion Pixel 12 · 简体中文",
+   "px": 12,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "zh-Hans",
+   "files": [
+    "fusion_12_zh_hans.mkf",
+    "fusion_12_base.mkf"
+   ],
+   "source": "fusion"
+  },
+  {
+   "id": "fusion.12.zh-Hant",
+   "name": "Fusion Pixel 12 · 繁體中文",
+   "px": 12,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "zh-Hant",
+   "files": [
+    "fusion_12_zh_hant.mkf",
+    "fusion_12_base.mkf"
+   ],
+   "source": "fusion"
+  },
+  {
+   "id": "fusion.12.ko",
+   "name": "Fusion Pixel 12 · 한국어",
+   "px": 12,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "ko",
+   "files": [
+    "fusion_12_ko.mkf",
+    "fusion_12_base.mkf"
+   ],
+   "source": "fusion"
+  },
+  {
+   "id": "vexed.logic_loop",
+   "name": "Logic Loop",
+   "px": 13,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_logic_loop.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.scrambled_eggs",
+   "name": "Scrambled Eggs",
+   "px": 14,
+   "scripts": [
+    "latin",
+    "cyrillic"
+   ],
+   "files": [
+    "vexed_scrambled_eggs.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.whacky_joe",
+   "name": "Whacky Joe",
+   "px": 14,
+   "scripts": [
+    "latin",
+    "cyrillic"
+   ],
+   "files": [
+    "vexed_whacky_joe.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.endless_love",
+   "name": "Endless Love",
+   "px": 15,
+   "scripts": [
+    "latin",
+    "cyrillic"
+   ],
+   "files": [
+    "vexed_endless_love.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.formal_future",
+   "name": "Formal Future",
+   "px": 15,
+   "scripts": [
+    "latin",
+    "cyrillic"
+   ],
+   "files": [
+    "vexed_formal_future.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.punk_digital",
+   "name": "Punk Digital",
+   "px": 15,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_punk_digital.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.queens_quill",
+   "name": "Queens Quill",
+   "px": 15,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_queens_quill.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.border_basic",
+   "name": "Border Basic",
+   "px": 16,
+   "scripts": [
+    "latin",
+    "cyrillic"
+   ],
+   "files": [
+    "vexed_border_basic.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.cowboy_western",
+   "name": "Cowboy Western",
+   "px": 16,
+   "scripts": [
+    "latin",
+    "cyrillic"
+   ],
+   "files": [
+    "vexed_cowboy_western.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.doodly_dialect",
+   "name": "Doodly Dialect",
+   "px": 16,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_doodly_dialect.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.font_fantasy",
+   "name": "Font Fantasy",
+   "px": 16,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_font_fantasy.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.haunted_house",
+   "name": "Haunted House",
+   "px": 16,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_haunted_house.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.royal_decree",
+   "name": "Royal Decree",
+   "px": 16,
+   "scripts": [
+    "latin",
+    "cyrillic"
+   ],
+   "files": [
+    "vexed_royal_decree.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.simply_social",
+   "name": "Simply Social",
+   "px": 16,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_simply_social.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.space_contract",
+   "name": "Space Contract",
+   "px": 16,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_space_contract.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.bubbly_bold",
+   "name": "Bubbly Bold",
+   "px": 17,
+   "scripts": [
+    "latin",
+    "cyrillic"
+   ],
+   "files": [
+    "vexed_bubbly_bold.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.extra_thick",
+   "name": "Extra Thick",
+   "px": 17,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_extra_thick.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.skulls_n_bones",
+   "name": "Skulls 'N Bones",
+   "px": 17,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_skulls_n_bones.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.plain_print",
+   "name": "Plain Print",
+   "px": 18,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_plain_print.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.digital_display",
+   "name": "Digital Display",
+   "px": 19,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_digital_display.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.party_pack",
+   "name": "Party Pack",
+   "px": 22,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_party_pack.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.retro_future",
+   "name": "Retro Future",
+   "px": 23,
+   "scripts": [
+    "latin",
+    "cyrillic"
+   ],
+   "files": [
+    "vexed_retro_future.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.disco_party",
+   "name": "Disco Party",
+   "px": 24,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_disco_party.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.pixel_promise",
+   "name": "Pixel Promise",
+   "px": 24,
+   "scripts": [
+    "latin",
+    "cyrillic"
+   ],
+   "files": [
+    "vexed_pixel_promise.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.modern_macro",
+   "name": "Modern Macro",
+   "px": 25,
+   "scripts": [
+    "latin",
+    "cyrillic"
+   ],
+   "files": [
+    "vexed_modern_macro.mkf"
+   ],
+   "source": "vexed"
+  },
+  {
+   "id": "vexed.megabit_monolith",
+   "name": "Megabit Monolith",
+   "px": 28,
+   "scripts": [
+    "latin"
+   ],
+   "files": [
+    "vexed_megabit_monolith.mkf"
+   ],
+   "source": "vexed"
+  }
+ ]
+}

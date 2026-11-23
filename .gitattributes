@@ -5,3 +5,6 @@
 # any line-ending normalization corrupts them.
 fuzz/corpus/** binary
 *.mkpx binary
+
+# The Text tool's bitmap fonts are binary glyph data.
+*.mkf binary

@@ -115,6 +115,10 @@ flutter:
     - assets/palettes/
     - assets/icons/icon.png
     - assets/icons/wordmark.png
+    # The Text tool's bitmap fonts (ADR 0039): converted glyph data, the manifest, and the
+    # font licenses. Built by tools/fonts/build_fonts.py; the source fonts are not in the repo.
+    - assets/pixel_fonts/
+    - assets/pixel_fonts/licenses/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
