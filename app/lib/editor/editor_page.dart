@@ -725,6 +725,15 @@ class _EditorPageState extends ConsumerState<EditorPage>
   int _textDrag = 0;
   bool _textMoved = false;
   Offset? _textDownPos, _textDragNow; // screen positions of the gesture's start and its latest move
+  // The keyboard-up layout (see build): the strips under the text field give their room to the
+  // keyboard. `_belowTextBarKey` wraps those strips so their height can be read back; the latch
+  // holds the layout from the moment the rising keyboard is taller than them until the falling
+  // keyboard is shorter again, whether or not the Draft is still open.
+  final GlobalKey _belowTextBarKey = GlobalKey(debugLabel: 'strips below the text bar');
+  double? _belowTextBarH;
+  bool _belowMeasuredInLandscape = false;
+  bool _typingLatch = false, _wasTyping = false;
+  double? _normalCanvasH; // the canvas box's height in the ordinary layout
 
   // Move tool draft: dragging the selected pixels (or the layer/move-group, with no selection) lifts
   // them into a relocatable, semi-transparently washed draft, committed via row-1. The draft begins
@@ -991,18 +1000,51 @@ class _EditorPageState extends ConsumerState<EditorPage>
     // inset is handled by the tooltip band. The body arrangement follows the viewport aspect —
     // a pure function of size, so desktop resizes and iPad Split View behave like rotations.
     final landscape = editorUsesLandscape(MediaQuery.sizeOf(context));
-    // While the on-screen keyboard is up for a Text Draft, the strips that are not needed to
-    // type step aside so the canvas keeps the room the keyboard took; closing the keyboard
-    // brings them back with the Draft still open (docs/text-tool/DESIGN.md "Typing").
-    final typing = _text != null && MediaQuery.viewInsetsOf(context).bottom > 0;
+    // While the on-screen keyboard is up for a Text Draft, the strips under the text field give
+    // their room to the keyboard; closing the keyboard brings them back with the Draft still
+    // open (docs/text-tool/DESIGN.md "Typing").
+    //
+    // The canvas is drawn to fit its box, so any jump in the box's height is a visible zoom.
+    // The swap is therefore made at the one moment it changes nothing: when the keyboard is
+    // exactly as tall as the strips it replaces. Below that height the keyboard simply slides
+    // over them (the Scaffold no longer resizes for it); above it, the strips are gone and the
+    // layout is padded by the keyboard's height. The canvas box then only ever shrinks or grows
+    // smoothly with the keyboard — it never collapses and springs back, which is what a commit
+    // used to do: the Draft closed, every strip returned at once while the keyboard was still
+    // up, and the canvas was squeezed to a sliver for the length of the keyboard's exit.
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+    final strips = _belowTextBarKey.currentContext?.findRenderObject();
+    if (strips is RenderBox && strips.hasSize && strips.size.height > 0) {
+      _belowTextBarH = strips.size.height;
+      _belowMeasuredInLandscape = landscape;
+    }
+    final below = (_belowTextBarH != null && _belowMeasuredInLandscape == landscape)
+        ? _belowTextBarH!
+        : (landscape ? 32.0 : 220.0); // before the first measurement: a typical height
+    if (keyboard <= below) {
+      _typingLatch = false;
+    } else if (_text != null) {
+      _typingLatch = true;
+    }
+    final typing = _typingLatch;
+    if (!typing && !_wasTyping && keyboard == 0 && _text == null && _lastCanvasBox != null) {
+      _normalCanvasH = _lastCanvasBox!.height;
+    }
+    _wasTyping = typing;
+    // On a short screen the keyboard would leave the canvas almost no room: there, and only
+    // there, the frame and layer strips step aside too (one jump, instead of an unusable canvas).
+    final tight = typing && !landscape && (_normalCanvasH ?? 400) + below - keyboard - 56 < 180;
     return Scaffold(
+      resizeToAvoidBottomInset: false, // the keyboard-up layout above does this by hand
       body: SafeArea(
         bottom: false,
         child: EditorKeyboard(
           access: _keyboardHost,
           commands: _keyboardCommands,
           bindings: _keyboardBindings,
-          child: landscape ? _buildLandscapeBody(layers, typing: typing) : _buildPortraitBody(layers, typing: typing),
+          child: landscape
+              ? _buildLandscapeBody(layers, keyboard: typing ? keyboard : null)
+              : _buildPortraitBody(layers, keyboard: typing ? keyboard : null, tight: tight),
         ),
       ),
     );
@@ -1023,27 +1065,32 @@ class _EditorPageState extends ConsumerState<EditorPage>
     );
   }
 
-  Widget _buildPortraitBody(List<dynamic> layers, {bool typing = false}) {
+  // [keyboard] non-null = the keyboard-up layout (see build): its height replaces the strips
+  // under the text field. [tight] also drops the frame and layer strips (short screens only).
+  Widget _buildPortraitBody(List<dynamic> layers, {double? keyboard, bool tight = false}) {
     return Column(
       children: [
-        if (!typing) _buildFilmRoll(), // frame film-strip + ☰ menu — the topmost area
+        if (!tight) _buildFilmRoll(), // frame film-strip + ☰ menu — the topmost area
         Expanded(child: _buildCanvasStack()),
         const Divider(height: 1),
-        if (!typing) _buildLayers(layers), // layers film-strip, directly above the tool options
+        if (!tight) _buildLayers(layers), // layers film-strip, directly above the tool options
         _buildToolOptions(), // row-1
         if (_text != null) _buildTextBar(), // the Text Draft's field, right above the keyboard
-        if (!typing) ...[
-          _buildPalette(), // row-2
-          _buildToolBar(), // row-3 (also holds the pinned Undo/Redo and the Onion toggle)
-          _buildTooltipBand(context),
-        ],
+        if (keyboard != null)
+          SizedBox(height: keyboard)
+        else
+          Column(key: _belowTextBarKey, mainAxisSize: MainAxisSize.min, children: [
+            _buildPalette(), // row-2
+            _buildToolBar(), // row-3 (also holds the pinned Undo/Redo and the Onion toggle)
+            _buildTooltipBand(context),
+          ]),
       ],
     );
   }
 
   // Landscape: the horizontal bands become vertical panels flanking the canvas —
   // frames · palette | canvas / tool options / tooltip | layers · tools.
-  Widget _buildLandscapeBody(List<dynamic> layers, {bool typing = false}) {
+  Widget _buildLandscapeBody(List<dynamic> layers, {double? keyboard}) {
     return Row(
       children: [
         _buildFilmRoll(axis: Axis.vertical), // frames + ☰ menu, outermost left
@@ -1055,7 +1102,10 @@ class _EditorPageState extends ConsumerState<EditorPage>
               const Divider(height: 1),
               _buildToolOptions(), // row-1 stays horizontal, under the canvas
               if (_text != null) _buildTextBar(),
-              if (!typing) _buildTooltipBand(context, compact: true),
+              if (keyboard != null)
+                SizedBox(height: keyboard)
+              else
+                KeyedSubtree(key: _belowTextBarKey, child: _buildTooltipBand(context, compact: true)),
             ],
           ),
         ),

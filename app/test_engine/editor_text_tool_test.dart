@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:makapix_club/editor/widgets/painters.dart';
 import 'package:makapix_club/editor/widgets/tool_tile.dart';
 
 import 'editor_harness.dart';
@@ -151,6 +152,54 @@ void main() {
     await tester.tap(row);
     await settleReal(tester, rounds: 4);
     expect(find.descendant(of: button, matching: find.textContaining('Tiny Talk')), findsOneWidget);
+    await closeEditor(tester);
+  });
+
+  // Reported 2026-11-23: on commit the canvas zoomed out to a sliver and back. The Draft closed,
+  // every strip returned at once while the keyboard was still up, and the canvas box collapsed
+  // for the length of the keyboard's exit. The canvas is drawn to fit its box, so its height is
+  // the zoom: it must never dip while the keyboard leaves.
+  testWidgets('the canvas never collapses while the keyboard closes after a commit', (tester) async {
+    await pumpEditor(tester, const Locale('en'));
+    final canvas = find.byWidgetPredicate((w) => w is CustomPaint && w.painter is CanvasPainter);
+    double canvasHeight() => tester.getSize(canvas).height;
+    Future<void> keyboard(double h) async {
+      tester.view.viewInsets = FakeViewPadding(bottom: h);
+      await tester.pump();
+      await tester.pump();
+    }
+
+    addTearDown(tester.view.resetViewInsets);
+    await _selectText(tester);
+    final normal = canvasHeight();
+    await _openDraft(tester, () => tester.tapAt(_onCanvas));
+    await tester.enterText(_field, 'Hi');
+    await settleReal(tester, rounds: 1);
+
+    // The keyboard rises: the canvas only ever gets smaller, and the field stays above it.
+    var last = canvasHeight();
+    for (var h = 0.0; h <= 340; h += 20) {
+      await keyboard(h);
+      expect(canvasHeight(), lessThanOrEqualTo(last + 0.5), reason: 'keyboard rising at $h');
+      last = canvasHeight();
+      expect(tester.getRect(_field).bottom, lessThanOrEqualTo(915 - h + 0.5), reason: 'the field is hidden at $h');
+    }
+    final typing = canvasHeight();
+    expect(typing, greaterThan(150), reason: 'the canvas keeps a usable height while typing');
+
+    await tester.tap(_commit);
+    await tester.pump();
+    await tester.pump();
+    // The keyboard is still fully up for a few frames after the commit, then slides away.
+    expect(canvasHeight(), greaterThanOrEqualTo(typing - 0.5), reason: 'the commit itself collapsed the canvas');
+    last = canvasHeight();
+    for (var h = 340.0; h >= 0; h -= 20) {
+      await keyboard(h);
+      expect(canvasHeight(), greaterThanOrEqualTo(last - 0.5), reason: 'keyboard falling at $h');
+      last = canvasHeight();
+    }
+    await settleReal(tester, rounds: 2);
+    expect(canvasHeight(), closeTo(normal, 0.5), reason: 'the ordinary layout is back');
     await closeEditor(tester);
   });
 }

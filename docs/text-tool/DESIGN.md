@@ -26,9 +26,13 @@ to the user as a question; each is flagged so it can be reversed.
 - **The pattern follows the existing per-tool On/Off rule** (ADR 0025): the Text tool has its own
   switch, Off until the artist turns it on, so a pattern left on for the Brush does not gate
   text. Symmetry stays one global setting, as it is for every mirroring tool.
-- **While the on-screen keyboard is up, the frame strip, the layer strip, the palette, the tool
-  grid and the help band are hidden**; the options row and the text field stay. Closing the
-  keyboard brings them back with the Draft still open.
+- **While the on-screen keyboard is up, the palette, the tool grid and the help band give their
+  room to it**; the frame strip, the layer strip, the options row and the text field stay. The
+  swap happens at the moment the keyboard is exactly as tall as those strips, so the canvas only
+  shrinks and grows smoothly with the keyboard. (First build, fixed 2026-11-23 after the user's
+  report: every strip was hidden while the Draft was open and returned the instant it closed, so
+  on commit the canvas was squeezed to a sliver until the keyboard finished leaving.) On a short
+  screen, where the canvas would be left under 180 px, the frame and layer strips step aside too.
 - **On a hidden or locked layer** the Draft still shows what is typed (painted plainly over the
   canvas), and a commit is refused with a message; the Draft stays open.
 - **A commit with no ink** (empty text, only spaces, or only missing characters) closes the Draft
