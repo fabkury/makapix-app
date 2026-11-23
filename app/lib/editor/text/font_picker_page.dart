@@ -19,6 +19,9 @@ String fontSampleText(String text, PixelFontEntry entry) {
   return runes.length <= 32 ? line : String.fromCharCodes(runes.take(32));
 }
 
+/// Logical pixels per font pixel in a row's sample.
+const double kFontSampleScale = 2;
+
 class FontPickerPage extends StatefulWidget {
   const FontPickerPage({
     super.key,
@@ -161,9 +164,9 @@ class _FontPickerPageState extends State<FontPickerPage> {
   Widget _row(BuildContext context, PixelFontEntry e, {required bool dimmed}) {
     final font = widget.library.peek(e.id)!;
     final layout = layoutText(fontSampleText(widget.text, e), font);
-    // Whole-number magnification only: a pixel font shown at 1.5× is no longer that font. Small
-    // fonts are doubled or tripled so the row is readable; big ones stay 1:1.
-    final scale = (30 / font.lineHeight).floor().clamp(1, 4).toDouble();
+    // Every row is drawn at the same whole-number magnification, so the list shows the fonts'
+    // true relative sizes: the one fact a pixel artist is choosing by.
+    const scale = kFontSampleScale;
     final selected = e.id == widget.currentId;
     return Material(
       color: selected ? const Color(0xFF24382A) : Colors.transparent,

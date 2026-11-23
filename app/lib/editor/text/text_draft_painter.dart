@@ -16,6 +16,7 @@ class TextDraftPainter extends CustomPainter {
     required this.box,
     required this.markers,
     required this.wrapped,
+    required this.handleDy,
     required this.scale,
     required this.off,
   });
@@ -28,21 +29,30 @@ class TextDraftPainter extends CustomPainter {
 
   /// Whether the box has a Wrap width (a solid edge) or follows the text (a dashed one).
   final bool wrapped;
+
+  /// How far below the box's top the handle sits, in canvas pixels: the middle of the FIRST
+  /// line, so a tall wrapped text keeps its handle where the artist started, on screen.
+  final double handleDy;
   final double scale;
   final Offset off;
 
   /// The radius of the Wrap-width handle, and the screen-space slop a finger gets around it.
   static const double handleRadius = 7, handleSlop = 22;
 
+  /// The outline is drawn this many screen pixels outside the box, so it never covers ink that
+  /// touches the box's edge.
+  static const double outlineGap = 2;
+
   /// The handle's center in screen space — shared with the drag hit-test.
-  static Offset handleCenter(Rect box, double scale, Offset off) =>
-      Offset(off.dx + box.right * scale, off.dy + (box.top + box.height / 2) * scale);
+  static Offset handleCenter(Rect box, double handleDy, double scale, Offset off) =>
+      Offset(off.dx + box.right * scale + outlineGap, off.dy + (box.top + handleDy) * scale);
 
   @override
   void paint(Canvas canvas, Size size) {
     if (scale <= 0) return;
     final r = Rect.fromLTRB(
-        off.dx + box.left * scale, off.dy + box.top * scale, off.dx + box.right * scale, off.dy + box.bottom * scale);
+            off.dx + box.left * scale, off.dy + box.top * scale, off.dx + box.right * scale, off.dy + box.bottom * scale)
+        .inflate(outlineGap);
     final halo = Paint()
       ..color = Colors.black54
       ..style = PaintingStyle.stroke
@@ -73,7 +83,7 @@ class TextDraftPainter extends CustomPainter {
       canvas.drawRect(mr, amberHalo);
       canvas.drawRect(mr, amber);
     }
-    final c = handleCenter(box, scale, off);
+    final c = handleCenter(box, handleDy, scale, off);
     canvas.drawCircle(c, handleRadius, Paint()..color = Colors.black);
     canvas.drawCircle(c, handleRadius - 1.5, Paint()..color = const Color(0xFF4DA3FF));
     canvas.drawCircle(c, 2, Paint()..color = Colors.white);
@@ -99,7 +109,12 @@ class TextDraftPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(TextDraftPainter old) =>
-      old.box != box || old.markers != markers || old.wrapped != wrapped || old.scale != scale || old.off != off;
+      old.box != box ||
+      old.markers != markers ||
+      old.wrapped != wrapped ||
+      old.handleDy != handleDy ||
+      old.scale != scale ||
+      old.off != off;
 }
 
 /// The rectangle a drag is sweeping out before any Text Draft exists (a drag starts a Text

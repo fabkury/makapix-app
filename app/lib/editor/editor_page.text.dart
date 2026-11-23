@@ -287,6 +287,12 @@ extension _EditorText on _EditorPageState {
     return Rect.fromLTWH(d.x.toDouble(), d.y.toDouble(), w.toDouble(), d.layout.boxHeight.toDouble());
   }
 
+  /// The Wrap-width handle rides the middle of the first line (canvas pixels below the box top).
+  double get _textHandleDy {
+    final font = _textFont;
+    return font == null ? 4 : (font.ascent + font.descent) / 2;
+  }
+
   List<Rect> _textMarkerRects(_TextDraft d) => [
         for (final m in d.layout.missing)
           Rect.fromLTWH((d.x + m.x).toDouble(), (d.y + m.y).toDouble(), m.w.toDouble(), m.h.toDouble()),
@@ -303,6 +309,7 @@ extension _EditorText on _EditorPageState {
             box: _textBoxRect(d),
             markers: _textMarkerRects(d),
             wrapped: d.wrap != null,
+            handleDy: _textHandleDy,
             scale: vScale,
             off: vOff,
           ),
@@ -328,7 +335,7 @@ extension _EditorText on _EditorPageState {
       return;
     }
     final (scale, off) = _view(box);
-    final handle = TextDraftPainter.handleCenter(_textBoxRect(d), scale, off);
+    final handle = TextDraftPainter.handleCenter(_textBoxRect(d), _textHandleDy, scale, off);
     if ((pos - handle).distance <= TextDraftPainter.handleSlop) {
       _textDrag = 3;
       return;
