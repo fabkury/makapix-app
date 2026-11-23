@@ -1790,5 +1790,7 @@
   "fontFilterCyrillic": "Cirílico",
   "fontFilterCjk": "CJK",
   "fontPickerCannotDraw": "No pueden dibujar este texto",
-  "fontPickerLoadFailed": "No se pudieron cargar las fuentes."
+  "fontPickerLoadFailed": "No se pudieron cargar las fuentes.",
+  "optPickReturn": "Volver",
+  "optPickReturnTip": "Tras elegir un color, vuelve a la última herramienta de pintura"
 }

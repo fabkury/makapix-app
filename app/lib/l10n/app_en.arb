@@ -3594,5 +3594,9 @@
   "fontPickerCannotDraw": "Cannot draw this text",
   "@fontPickerCannotDraw": {"description": "Font picker: heading above the fonts that lack some character of the text the artist typed. Describes the fonts listed under it."},
   "fontPickerLoadFailed": "The fonts could not be loaded.",
-  "@fontPickerLoadFailed": {"description": "Font picker: shown in place of the list when the bundled fonts cannot be read."}
+  "@fontPickerLoadFailed": {"description": "Font picker: shown in place of the list when the bundled fonts cannot be read."},
+  "optPickReturn": "Return",
+  "@optPickReturn": {"description": "Tool options row (one line above the palette, scrolls sideways). Keep it short. Color picker chip: when on, picking a color switches back to the paint tool the artist used last (Pencil, Brush, Fill...)."},
+  "optPickReturnTip": "After a pick, go back to the last paint tool",
+  "@optPickReturnTip": {"description": "Tool options row (one line above the palette, scrolls sideways). Keep it short. Tooltip of the Color picker's Return chip."}
 }

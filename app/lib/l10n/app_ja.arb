@@ -1790,5 +1790,7 @@
   "fontFilterCyrillic": "キリル文字",
   "fontFilterCjk": "日中韓",
   "fontPickerCannotDraw": "このテキストを表示できないフォント",
-  "fontPickerLoadFailed": "フォントを読み込めませんでした。"
+  "fontPickerLoadFailed": "フォントを読み込めませんでした。",
+  "optPickReturn": "戻る",
+  "optPickReturnTip": "色を取ったあと、最後に使った描画ツールに戻ります"
 }

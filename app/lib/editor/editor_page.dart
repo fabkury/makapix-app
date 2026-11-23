@@ -121,6 +121,7 @@ const _kLayersRoomyRowsPref = 'editor.layersRoomyRows_v1'; // the Layers page's 
 const _kCurrentDrawing = 'editor.currentDrawingId'; // last-open library drawing (silent restore)
 const _kShareFormatPref = 'editor.shareFormat_v1'; // last-used Share format for animations (GIF/WebP)
 const _kExportStillFormatPref = 'editor.exportStillFormat_v1'; // last-used frame/layer export format (PNG/WebP)
+const _kPickReturnPref = 'editor.pickReturn_v1'; // the Color picker's Return chip (2026-11-23), persisted
 const _kAaPref = 'editor.aa_v1'; // the shared AA (anti-alias) toggle (ADR 0008), persisted across restarts
 // The Gradient tool's extra colors (#RRGGBBAA list) and color count: a tool setting, not an
 // artwork fact, so it is one editor-wide preference (like AA) rather than per drawing — and it
@@ -158,6 +159,10 @@ const _kDefaultBrushSize = {'Airbrush': 8, 'Eraser': 6};
 // reads the pattern; every other tool paints ungated.
 // Text joined with the Text tool (ADR 0039): its mask stamp reads the pattern too.
 const _kPatternTools = {'Pencil', 'Brush', 'Eraser', 'Bucket', 'Text'}; // l10n-ignore: tool ids
+// The tools that paint with the primary color: what the Color picker returns to after a pick
+// (its Return chip, user decision 2026-11-23). Eraser, Dodge/Burn, Move, the selections and the
+// adjustments are not here: none of them can use the color that was just picked.
+const _kPaintTools = {'Pencil', 'Brush', 'Airbrush', 'Bucket', 'Line', 'Shape', 'Gradient', 'Text'}; // l10n-ignore: tool ids
 // The tools whose writes mirror under Symmetry (ADR 0026) — the ones that show the Mirror chip.
 // Gradient, Move/Paste, the selections, Eyedropper, Ruler, the adjustments, and the transforms
 // never mirror (design decision 2026-09-04).
@@ -282,6 +287,11 @@ class _EditorPageState extends ConsumerState<EditorPage>
   int _symMode = 0;
   int? _symAx, _symAy;
   bool _movingAxis = false;
+  // The Color picker's Return chip: after a pick, go back to the last paint tool, so the picked
+  // color can be used at once. On by default, persisted (_kPickReturnPref). `_lastPaintTool` is
+  // the most recently selected member of _kPaintTools (session-only; Pencil until one is chosen).
+  bool _pickReturn = true;
+  String _lastPaintTool = 'Pencil'; // l10n-ignore: tool id
   bool _eyedropLayer = false; // Eyedropper source: false = composited frame (default), true = active layer's raw pixels
   bool _selColorLayer = false; // Select Color source: false = composited frame (default), true = active layer's raw pixels
   bool _copyLayer = true; // Copy source: true = active layer's raw pixels (default), false = composited frame; session-only
@@ -729,7 +739,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   // keyboard. `_belowTextBarKey` wraps those strips so their height can be read back; the latch
   // holds the layout from the moment the rising keyboard is taller than them until the falling
   // keyboard is shorter again, whether or not the Draft is still open.
-  final GlobalKey _belowTextBarKey = GlobalKey(debugLabel: 'strips below the text bar');
+  final GlobalKey _belowTextBarKey = GlobalKey();
   double? _belowTextBarH;
   bool _belowMeasuredInLandscape = false;
   bool _typingLatch = false, _wasTyping = false;

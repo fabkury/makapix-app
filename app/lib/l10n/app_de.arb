@@ -1790,5 +1790,7 @@
   "fontFilterCyrillic": "Kyrillisch",
   "fontFilterCjk": "CJK",
   "fontPickerCannotDraw": "Können diesen Text nicht darstellen",
-  "fontPickerLoadFailed": "Die Schriften konnten nicht geladen werden."
+  "fontPickerLoadFailed": "Die Schriften konnten nicht geladen werden.",
+  "optPickReturn": "Zurück",
+  "optPickReturnTip": "Nach dem Aufnehmen zum zuletzt benutzten Malwerkzeug zurückkehren"
 }

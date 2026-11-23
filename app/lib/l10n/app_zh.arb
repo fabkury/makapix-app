@@ -1790,5 +1790,7 @@
   "fontFilterCyrillic": "西里尔文",
   "fontFilterCjk": "中日韩",
   "fontPickerCannotDraw": "无法绘制这段文字",
-  "fontPickerLoadFailed": "无法加载字体。"
+  "fontPickerLoadFailed": "无法加载字体。",
+  "optPickReturn": "返回",
+  "optPickReturnTip": "取色后回到上次使用的绘画工具"
 }

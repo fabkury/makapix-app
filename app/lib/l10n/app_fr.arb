@@ -1790,5 +1790,7 @@
   "fontFilterCyrillic": "Cyrillique",
   "fontFilterCjk": "CJK",
   "fontPickerCannotDraw": "Ne peuvent pas afficher ce texte",
-  "fontPickerLoadFailed": "Impossible de charger les polices."
+  "fontPickerLoadFailed": "Impossible de charger les polices.",
+  "optPickReturn": "Retour",
+  "optPickReturnTip": "Après le prélèvement, revenir au dernier outil de dessin"
 }

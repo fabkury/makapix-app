@@ -750,6 +750,8 @@ extension _EditorCanvas on _EditorPageState {
     _send('PointerUp()');
     _refreshState();
     _redraw();
+    // A pick ends when the finger lifts (a drag keeps sampling until then): go back to painting.
+    _returnFromPick();
   }
 
   // ---- Move-axis drag (ADR 0026) ---------------------------------------------------------------

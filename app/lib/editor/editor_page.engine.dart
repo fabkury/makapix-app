@@ -18,6 +18,7 @@ extension _EditorEngine on _EditorPageState {
       final pinned3 = prefs.getString(_prefsPinnedThirdKey);
       final hiddenSaved = prefs.getStringList(_prefsHiddenKey);
       final aa = prefs.getBool(_kAaPref) ?? false;
+      final pickReturn = prefs.getBool(_kPickReturnPref) ?? true;
       final gradSaved = prefs.getStringList(_kGradExtraPref);
       final gradCount = prefs.getInt(_kGradCountPref);
       final patSaved = prefs.getString(_kPatternPref);
@@ -42,6 +43,7 @@ extension _EditorEngine on _EditorPageState {
           if (framesColumns != null) _framesColumns = framesColumns.clamp(kFramesMinColumns, kFramesMaxColumns);
           if (layersRoomy != null) _layersRoomyRows = layersRoomy;
           _threeRowPref = threeRow;
+          _pickReturn = pickReturn;
           // validate against the catalog — a stale/removed dsl in old prefs falls back to the default
           if (pinned3 != null && tools.any((t) => t.dsl == pinned3)) _pinnedThirdTool = pinned3;
           // Unknown dsl dropped, an all-hidden set discarded (the one-visible floor), new tools
@@ -139,6 +141,21 @@ extension _EditorEngine on _EditorPageState {
       await prefs.setStringList(_kGradExtraPref, [for (final c in _gradExtra) _hex(c)]);
       await prefs.setInt(_kGradCountPref, _gradCount);
     } catch (_) {}
+  }
+
+  Future<void> _persistPickReturn() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kPickReturnPref, _pickReturn);
+    } catch (_) {}
+  }
+
+  /// The Color picker's Return chip: a finished pick goes back to the last paint tool. Not
+  /// while the hold-S spring owns the tool (it restores its own previous tool on release), and
+  /// only from the picker itself.
+  void _returnFromPick() {
+    if (!_pickReturn || _tool != 'Eyedropper' || _holdPickPrevTool != null) return;
+    _selectTool(_lastPaintTool);
   }
 
   Future<void> _persistAa() async {
@@ -982,6 +999,7 @@ extension _EditorEngine on _EditorPageState {
     // tool is active — unless pinned, when a simplified echo stays — and reappears on return);
     // clear it with the Ruler's row-1 "Clear" button.
     _rulerDrag = 0;
+    if (_kPaintTools.contains(t)) _lastPaintTool = t; // where a color pick returns to
     setState(() => _tool = t);
     if (_transformTools.contains(t) || t == 'PlayPause') {
       // UI-only group (the transform groups and the Play tool): no engine draw-tool change — the

@@ -164,7 +164,7 @@ extension _EditorControls on _EditorPageState {
           padding: const EdgeInsets.symmetric(horizontal: 3),
           child: ElevatedButton.icon(
             style: ElevatedButton.styleFrom(minimumSize: const Size(0, 34), backgroundColor: const Color(0xFF4080C0)),
-            onPressed: () { _send('EyedropCursor()'); _refreshState(); _redraw(); },
+            onPressed: () { _send('EyedropCursor()'); _refreshState(); _redraw(); _returnFromPick(); },
             icon: const MakapixIcon(MpxIcons.pick, size: 16),
             label: Text(l10n.optPick),
           ),
@@ -345,6 +345,21 @@ extension _EditorControls on _EditorPageState {
         setState(() => _eyedropLayer = i == 1);
         _send('SetEyedropSource(${_eyedropLayer ? 'Layer' : 'Frame'})');
       }));
+      // Return: after a pick, go back to the last paint tool so the color can be used at once.
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: FilterChip(
+          key: const ValueKey('pick-return-chip'),
+          selected: _pickReturn,
+          label: Text(l10n.optPickReturn),
+          tooltip: l10n.optPickReturnTip,
+          selectedColor: const Color(0xFF30A050),
+          onSelected: (v) {
+            setState(() => _pickReturn = v);
+            _persistPickReturn();
+          },
+        ),
+      ));
     }
     if (_tool == 'Pencil') {
       // Pixel-perfect: drop the redundant "corner double" pixels as a 1px stroke turns, keeping the
