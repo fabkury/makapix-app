@@ -1132,7 +1132,7 @@
   "menuView": "表示",
   "menuKeyboard": "キーボード",
   "menuLanguage": "言語…",
-  "menuGoToClub": "Club へ移動",
+  "menuExitToClub": "終了して Club へ",
   "menuShare": "共有…",
   "fileNew": "新規",
   "fileMyDrawings": "マイイラスト",

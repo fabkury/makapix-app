@@ -249,7 +249,7 @@ extension _EditorTimeline on _EditorPageState {
   // glance and its own pages: artwork name (tap to rename) + canvas size + frame count, then
   // Frames… / Layers… / Watch replay. Below the divider, five grouped submenus (Social / File /
   // Import & export / Canvas / View) open as bottom sheets — matching the frame/layer/palette menus —
-  // so the list stays short; the Club actions (Go to Club / Post to Club / Share…) live in Social.
+  // so the list stays short; the Club actions (Exit to Club / Post to Club / Share…) live in Social.
   PopupMenuItem<String> _menuRow(String value, IconData icon, String label, {bool submenu = false}) =>
       PopupMenuItem<String>(
         value: value,
@@ -308,12 +308,22 @@ extension _EditorTimeline on _EditorPageState {
         // The editor is reachable without ever opening the Club's Settings, so the language
         // choice has its own entry here. Hidden while the app ships one language.
         if (availableLanguages.length > 1) _menuRow('language', Icons.language, l10n.menuLanguage),
+        // The way out, last and on its own: users reported the Social submenu's entry hard to
+        // find (2026-11-23). Same action, same name, two places.
+        const PopupMenuDivider(),
+        _menuRow('exit', Icons.logout, l10n.menuExitToClub),
       ],
     );
   }
 
+  // Leave the editor for the Club pillar (the shell switches; the drawing is autosaved).
+  void _exitToClub() => ref.read(openClubProvider.notifier).state++;
+
   void _onEditorMenu(String v) {
     switch (v) {
+      case 'exit':
+        _exitToClub();
+        break;
       case 'rename':
         _renameCurrentDrawing();
         break;
@@ -382,7 +392,7 @@ extension _EditorTimeline on _EditorPageState {
   // The Club-facing actions: leave for the Club pillar, publish this drawing, or hand it to another
   // app. The system share sheet is a mobile concept; desktop users export to a file instead.
   void _socialMenu() => _editorSubMenu(context.l10n.menuSocial, (ctx) => [
-        _sheetItem(ctx, Icons.public, ctx.l10n.menuGoToClub, () => ref.read(openClubProvider.notifier).state++),
+        _sheetItem(ctx, Icons.public, ctx.l10n.menuExitToClub, _exitToClub),
         _sheetItem(ctx, Icons.cloud_upload_outlined, ctx.l10n.publishTitle, _postToClub),
         if (Platform.isAndroid || Platform.isIOS) _sheetItem(ctx, Icons.share, ctx.l10n.menuShare, _share),
       ]);
@@ -401,7 +411,7 @@ extension _EditorTimeline on _EditorPageState {
         _sheetItem(ctx, Icons.layers_outlined, ctx.l10n.ioExportLayer, _exportLayer),
         _sheetItem(ctx, Icons.gif_box_outlined, ctx.l10n.ioExportAnimation('GIF'), _exportGif), // l10n-ignore: format name
         _sheetItem(ctx, Icons.animation, ctx.l10n.ioExportAnimation('WebP'), _exportWebp), // l10n-ignore: format name
-        // Post to Club lives in the Social submenu, beside Go to Club.
+        // Post to Club lives in the Social submenu, beside Exit to Club.
       ]);
 
   // Whole-canvas operations (all frames + layers). The Rotate/Flip *tools* act on the active layer

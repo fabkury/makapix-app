@@ -1132,7 +1132,7 @@
   "menuView": "Affichage",
   "menuKeyboard": "Clavier",
   "menuLanguage": "Langue…",
-  "menuGoToClub": "Aller au Club",
+  "menuExitToClub": "Quitter vers le Club",
   "menuShare": "Partager…",
   "fileNew": "Nouveau",
   "fileMyDrawings": "Mes dessins",
