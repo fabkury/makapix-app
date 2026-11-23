@@ -1771,7 +1771,7 @@
   "publishBumpAvailableOnReview": "La publicación subirá cuando un moderador apruebe la nueva obra, si eso ocurre el {date} o después.",
   "toolText": "Texto",
   "toolTextShort": "Texto",
-  "tipText": "Toca para colocar texto o arrastra un cuadro para ajustarlo. Arrastra el texto para moverlo.",
+  "tipText": "Toca para colocar texto o arrastra un cuadro para ajustarlo al ancho. Arrastra el texto para moverlo.",
   "optTextFont": "Fuente",
   "optTextAlignLeft": "Alinear a la izquierda",
   "optTextAlignCenter": "Centrar",
@@ -1779,7 +1779,7 @@
   "optTextLetter": "Letras",
   "optTextLine": "Líneas",
   "optTextWrap": "Ajuste",
-  "optTextWrapTip": "Corta las líneas al ancho del cuadro. Arrastra el tirador del cuadro para fijarlo.",
+  "optTextWrapTip": "Corta las líneas al ancho del cuadro. Arrastra el control del cuadro para fijarlo.",
   "textFieldHint": "Escribe aquí",
   "textClear": "Borrar texto",
   "textCommitMissing": "Confirmar. Los caracteres que esta fuente no tiene quedan en blanco.",
@@ -1792,5 +1792,5 @@
   "fontPickerCannotDraw": "No pueden dibujar este texto",
   "fontPickerLoadFailed": "No se pudieron cargar las fuentes.",
   "optPickReturn": "Volver",
-  "optPickReturnTip": "Tras elegir un color, vuelve a la última herramienta de pintura"
+  "optPickReturnTip": "Tras tomar un color, vuelve a la última herramienta de pintura"
 }

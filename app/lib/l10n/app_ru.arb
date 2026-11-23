@@ -1789,7 +1789,7 @@
   "fontFilterLatin": "Латиница",
   "fontFilterCyrillic": "Кириллица",
   "fontFilterCjk": "CJK",
-  "fontPickerCannotDraw": "Не могут отобразить этот текст",
+  "fontPickerCannotDraw": "Не подходят для этого текста",
   "fontPickerLoadFailed": "Не удалось загрузить шрифты.",
   "optPickReturn": "Возврат",
   "optPickReturnTip": "После выбора цвета вернуться к последнему инструменту рисования"

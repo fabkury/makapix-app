@@ -1783,7 +1783,7 @@
   "textFieldHint": "ここに入力",
   "textClear": "テキストをクリア",
   "textCommitMissing": "確定。このフォントにない文字は空白になります。",
-  "textLayerLocked": "このレイヤーは非表示かロックされています",
+  "textLayerLocked": "このレイヤーは非表示またはロック中です",
   "fontPickerTitle": "フォント",
   "fontPickerRecent": "最近使用",
   "fontFilterLatin": "ラテン文字",
@@ -1791,6 +1791,6 @@
   "fontFilterCjk": "日中韓",
   "fontPickerCannotDraw": "このテキストを表示できないフォント",
   "fontPickerLoadFailed": "フォントを読み込めませんでした。",
-  "optPickReturn": "戻る",
-  "optPickReturnTip": "色を取ったあと、最後に使った描画ツールに戻ります"
+  "optPickReturn": "自動で戻る",
+  "optPickReturnTip": "色を取得したあと、最後に使った描画ツールに戻ります"
 }
