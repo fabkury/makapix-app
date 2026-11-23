@@ -1,6 +1,7 @@
 //! Action-script DSL: parsing (`name(args)` lines) and execution against a `Session`
 //! (SPEC §9). The same DSL drives the CLI harness, unit tests, and recorded sessions.
 
+use super::mask::BitMask;
 use super::{FrameSet, LayerSet, ReplaceScope, Session};
 use crate::color::Rgba8;
 use crate::document::{BlendMode, LoopMode};
@@ -173,6 +174,13 @@ pub enum Action {
     PasteMove(i32, i32),
     PasteCommit,
     PasteCancel,
+    /// The mask draft (ADR 0039): open/replace at canvas (x, y), nudge, discard. A display-only
+    /// preview the shell never journals.
+    MaskDraft(i32, i32, BitMask),
+    MaskDraftMove(i32, i32),
+    MaskDraftCancel,
+    /// Stamp a 1-bit mask at canvas (x, y) in the primary color: self-contained, one undo step.
+    MaskStamp(i32, i32, BitMask),
     MoveDraftBegin,
     MoveDraftMove(i32, i32),
     MoveDraftCommit,
@@ -427,6 +435,10 @@ impl Session {
             PasteMove(dx, dy) => self.paste_move(dx, dy),
             PasteCommit => self.paste_commit(),
             PasteCancel => self.paste_cancel(),
+            MaskDraft(x, y, mask) => self.mask_draft_set(x, y, mask),
+            MaskDraftMove(dx, dy) => self.mask_draft_move(dx, dy),
+            MaskDraftCancel => self.mask_draft_cancel(),
+            MaskStamp(x, y, mask) => self.mask_stamp(x, y, mask),
             MoveDraftBegin => self.move_draft_begin(),
             MoveDraftMove(dx, dy) => self.move_draft_move(dx, dy),
             MoveDraftCommit => self.move_draft_commit(),
@@ -654,6 +666,10 @@ fn parse_line(line: &str) -> Result<Action, String> {
     };
     let u32a = |k: usize| -> Result<u32, String> {
         args.get(k).ok_or(format!("missing arg {}", k))?.parse().map_err(|_| format!("bad u32 {}", k))
+    };
+    // A 1-bit mask (ADR 0039): three arguments from `k` — w, h, hexbits.
+    let maska = |k: usize| -> Result<BitMask, String> {
+        BitMask::parse(u32a(k)?, u32a(k + 1)?, args.get(k + 2).copied().ok_or("mask needs w, h, hexbits")?)
     };
     // A frame set is one whitespace-separated argument (ADR 0031); an empty one is an error.
     let seta = |k: usize| -> Result<FrameSet, String> { FrameSet::parse(args.get(k).copied().unwrap_or("")) };
@@ -969,6 +985,10 @@ fn parse_line(line: &str) -> Result<Action, String> {
         "PasteMove" => PasteMove(i32a(0)?, i32a(1)?),
         "PasteCommit" => PasteCommit,
         "PasteCancel" => PasteCancel,
+        "MaskDraft" => MaskDraft(i32a(0)?, i32a(1)?, maska(2)?),
+        "MaskDraftMove" => MaskDraftMove(i32a(0)?, i32a(1)?),
+        "MaskDraftCancel" => MaskDraftCancel,
+        "MaskStamp" => MaskStamp(i32a(0)?, i32a(1)?, maska(2)?),
         "MoveDraftBegin" => MoveDraftBegin,
         "MoveDraftMove" => MoveDraftMove(i32a(0)?, i32a(1)?),
         "MoveDraftCommit" => MoveDraftCommit,

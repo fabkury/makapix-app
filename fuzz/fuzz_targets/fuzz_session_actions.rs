@@ -203,6 +203,10 @@ enum DraftAct {
     PasteMove(i8, i8),
     PasteCommit,
     PasteCancel,
+    MaskDraft(i8, i8, u8, u8, [u8; 4]),
+    MaskDraftMove(i8, i8),
+    MaskDraftCancel,
+    MaskStamp(i8, i8, u8, u8, [u8; 4]),
     MoveDraftBegin,
     MoveDraftMove(i8, i8),
     MoveDraftCommit,
@@ -435,6 +439,19 @@ fn idx(b: u8, n: usize) -> usize {
     }
 }
 
+/// `w,h,hexbits` for a small canonical mask (ADR 0039): 1..=8 wide, 1..=4 tall, the bits
+/// trimmed to `w*h` so the parser accepts every one.
+fn mask_args(w: u8, h: u8, bits: &[u8; 4]) -> String {
+    let (w, h) = (1 + w as usize % 8, 1 + h as usize % 4);
+    let n = (w * h).div_ceil(8);
+    let mut hex = String::new();
+    for (k, b) in bits.iter().take(n).enumerate() {
+        let live = (w * h - k * 8).min(8);
+        hex.push_str(&format!("{:02x}", if live == 8 { *b } else { b & ((1u8 << live) - 1) }));
+    }
+    format!("{},{},{}", w, h, hex)
+}
+
 fn set(s: Set, n: usize) -> String {
     let lo = idx(s.0, n);
     let hi = lo + (s.1 % 4) as usize;
@@ -532,6 +549,10 @@ fn render(act: &Act, sess: &Session, out: &mut Vec<String>) {
             DraftAct::PasteMove(dx, dy) => l(format!("PasteMove({},{})", dx, dy)),
             DraftAct::PasteCommit => l("PasteCommit()".into()),
             DraftAct::PasteCancel => l("PasteCancel()".into()),
+            DraftAct::MaskDraft(x, y, w, h, bits) => l(format!("MaskDraft({},{},{})", x, y, mask_args(*w, *h, bits))),
+            DraftAct::MaskDraftMove(dx, dy) => l(format!("MaskDraftMove({},{})", dx, dy)),
+            DraftAct::MaskDraftCancel => l("MaskDraftCancel()".into()),
+            DraftAct::MaskStamp(x, y, w, h, bits) => l(format!("MaskStamp({},{},{})", x, y, mask_args(*w, *h, bits))),
             DraftAct::MoveDraftBegin => l("MoveDraftBegin()".into()),
             DraftAct::MoveDraftMove(dx, dy) => l(format!("MoveDraftMove({},{})", dx, dy)),
             DraftAct::MoveDraftCommit => l("MoveDraftCommit()".into()),

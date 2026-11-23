@@ -21,6 +21,7 @@ mod canvas; // flip/rotate/resize/crop — extracted impl Session block [audit F
 mod checkpoint; // replay checkpoints (Journal scrubbing) — same private-state seam as canvas
 mod frames; // frame-set batch verbs (ADR 0031) — same seam
 mod layers; // layer-set batch verbs (ADR 0033) — same seam
+mod mask; // the mask stamp and its unjournaled draft (ADR 0039) — same seam
 mod parse;
 pub use checkpoint::{CHECKPOINT_BYTE_BUDGET, MAX_CHECKPOINTS};
 pub use frames::FrameSet;
@@ -206,6 +207,10 @@ enum RepeatOp {
     ReplaceColor { from: Rgba8, to: Rgba8, scope: ReplaceScope, tolerance: u8 },
     /// An Outline (2026-09-04 rider): color, side, corners, and width frozen; the layer is live.
     Outline { color: Rgba8, inside: bool, square: bool, width: u8 },
+    /// A mask stamp (ADR 0040): the mask, its CANVAS position, and the primary color at the
+    /// commit. Symmetry, the pattern, and the selection are deliberately NOT frozen — a repeated
+    /// stamp takes the ones in force at Repeat time (user decision).
+    Mask { mask: mask::BitMask, pos: Point, color: Rgba8 },
 }
 
 /// The scope of a `ReplaceColor`: the active layer, every editable layer of the active frame, or
@@ -254,6 +259,7 @@ impl RepeatOp {
             RepeatOp::Bucket { .. } => "Fill",
             RepeatOp::ReplaceColor { .. } => "Replace color",
             RepeatOp::Outline { .. } => "Outline",
+            RepeatOp::Mask { .. } => "Stamp",
         }
     }
 }
@@ -430,6 +436,9 @@ pub struct Session {
     // transparently and movable until committed (Copy & Paste tool). Editor state, not undoable
     // until commit.
     paste_draft: Option<(RgbaBuffer, Point)>,
+    /// The open mask draft (ADR 0039): a display-only preview of a mask the shell may stamp.
+    /// Never journaled, so it is outside checkpoints and `is_quiescent`. See `session/mask.rs`.
+    mask_draft: Option<mask::MaskDraft>,
     rng: SeededRng,
     clock: VirtualClock,
     playing: bool,
@@ -524,6 +533,7 @@ impl Session {
             clipboard: None,
             clipboard_gen: 0,
             paste_draft: None,
+            mask_draft: None,
             rng: SeededRng::default(),
             clock: VirtualClock::default(),
             playing: false,
@@ -779,7 +789,8 @@ impl Session {
         // gradient draft/drag renders as a display-only preview: composite a clone of the active
         // frame with it applied (the document is untouched until Commit).
         let preview = self
-            .move_draft_preview_frame()
+            .mask_draft_preview_frame()
+            .or_else(|| self.move_draft_preview_frame())
             .or_else(|| self.rotate_draft_preview_frame())
             .or_else(|| self.scale_draft_preview_frame())
             .or_else(|| self.hsv_preview_frame())
@@ -792,6 +803,7 @@ impl Session {
         // dimmed) for the overscan view. [perf: storage-sized checker fill — optimize if it bites]
         let mut buf = render::render_display(frame, self.doc.storage_rect(), &ov);
         self.draw_tool_preview(&mut buf);
+        self.mask_draft_paint_raw(&mut buf); // only on an uneditable layer (see session/mask.rs)
         if self.settings.overscan_view {
             self.dim_gutter(&mut buf); // darken the off-canvas gutter so the canvas stands out
             buf.to_rgba_bytes()
@@ -1226,7 +1238,7 @@ impl Session {
         let st = self.doc.storage();
         let og = self.doc.origin();
         let extra = format!(
-            ",\"has_clipboard\":{},\"clipboard_gen\":{},\"clipboard_size\":{},\"paste\":{},\"move_draft\":{},\"rotate_draft\":{},\"scale_draft\":{},\"storage\":[{},{}],\"origin\":[{},{}],\"overscan\":{},\"can_repeat\":{},\"repeat_label\":{},\"symmetry\":\"{}\"",
+            ",\"has_clipboard\":{},\"clipboard_gen\":{},\"clipboard_size\":{},\"paste\":{},\"move_draft\":{},\"rotate_draft\":{},\"scale_draft\":{},\"mask_draft\":{},\"storage\":[{},{}],\"origin\":[{},{}],\"overscan\":{},\"can_repeat\":{},\"repeat_label\":{},\"symmetry\":\"{}\"",
             self.clipboard.is_some(),
             self.clipboard_gen,
             match self.clipboard_size() {
@@ -1237,6 +1249,7 @@ impl Session {
             rect(self.move_draft_rect()),
             rotate_draft,
             scale_draft,
+            rect(self.mask_draft_rect()),
             st.w,
             st.h,
             og.x,
@@ -3004,6 +3017,12 @@ impl Session {
             }
             RepeatOp::ReplaceColor { from, to, scope, tolerance } => self.replace_color(from, to, scope, tolerance),
             RepeatOp::Outline { color, inside, square, width } => self.outline(color, inside, square, width),
+            RepeatOp::Mask { mask, pos, color } => {
+                if !self.active_editable() {
+                    return;
+                }
+                self.stamp_mask_recorded(&mask, pos, color);
+            }
         }
     }
 
@@ -4069,6 +4088,7 @@ impl Session {
         self.rotate_draft = None;
         self.scale_draft = None;
         self.paste_draft = None;
+        self.mask_draft = None;
     }
 
     /// The move draft's bounding rect at its current offset (top-left + size), if one is open — for
