@@ -104,7 +104,7 @@ architecture cheaply. Any one of them is a sensible next feature.
 | B10 | **Stylus support**: (a) finger/pen roles + palm rejection ("only draw with pen") — S; (b) pressure → size/opacity dynamics — M | M | H | S / M | S / E J | Pixquare, Pixel Studio, Procreate, Resprite, Aseprite, Pixelorama, PMNG |
 | B11 | **Custom brushes** (capture the selection as a stamp; flip/rotate) | M | H | L | E J | Aseprite, PMNG, LibreSprite, Resprite, Pixquare, Pixel Studio |
 | B12 | **Clipping mask** (layer clips to the alpha of the layer below) | M | H | M | E D | Pixelorama, Pixaki, Resprite, Pixquare, Pixilart, Dotpict |
-| B13 | **Text tool** (bundled pixel fonts, laid out in Dart, stamped by the engine as a mask) — **IMPLEMENTED 2026-11-23** (ADR 0039, ADR 0040, `docs/text-tool/DESIGN.md`), unreleased | M | M | M | S J | Aseprite, Pixelorama, GraphicsGale, PMNG, Resprite, Pixquare, Pixel Studio |
+| B13 | **Text tool** (bundled pixel fonts, laid out in Dart, stamped by the engine as a mask) — **IMPLEMENTED 2026-11-23** (ADR 0039, ADR 0040, `docs/text-tool/DESIGN.md`), shipped in 1.14.0 | M | M | M | S J | Aseprite, Pixelorama, GraphicsGale, PMNG, Resprite, Pixquare, Pixel Studio |
 | B14 | **Preferences screen** (default canvas, grid/onion defaults, checker, theme, haptics, confirm-destructive, autosave interval, left-handed) | M | M | M | S | every desktop tool; Pixaki, Pixquare |
 | B15 | **Line angle snap** chip (0/45/90 + isometric 26.57° + 30°) for touch — Shift-constrain exists only with a keyboard | M | H | S | S | Pixaki (isometric lock), Pixquare (perfect angle), PMNG |
 | B16 | **Tiled / seamless mode** (3×3 repeat display; strokes wrap across edges) | L–M | H | M | E S | Aseprite, PMNG, LibreSprite, Pixelorama, Piskel, Pixel Studio |
@@ -175,7 +175,7 @@ today. ✅ present · ◑ partial · ○ absent.
 | Spray/airbrush | ✅ ×3 modes | — |
 | Rect/ellipse/lasso/magic-wand selection with add/sub/intersect | ✅ (magic wand = Select by color, contiguous) | — |
 | RotSprite-class rotation + scale | ✅ cleanEdge | — |
-| Text tool | ✅ (2026-11-23, unreleased) | B13 |
+| Text tool | ✅ (2026-11-23, 1.14.0) | B13 |
 | Indexed mode / apply palette | ○ | B7 / D3 |
 | Palette from image | ✅ From artwork colors | — |
 | Palette ramps | ○ | B8 |

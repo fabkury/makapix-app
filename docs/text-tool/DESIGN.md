@@ -47,8 +47,8 @@ to the user as a question; each is flagged so it can be reversed.
 - **Tests:** `crates/engine/src/session/mask.rs` (the stamp), `app/test/text_layout_test.dart`
   (fonts and layout against the real assets), `app/test_engine/editor_text_tool_test.dart` (the
   tool on the real editor, including "one commit, one journal line").
-- **Not yet done:** a pass on a phone for the keyboard behavior and IME composition (the largest
-  risk below), and the store release notes.
+- **Shipped in 1.14.0 (2026-11-23)**, both stores. Still not checked on a device: typing through
+  an IME's composition mode (Japanese, Chinese), and the keyboard-up layout in landscape.
 
 ## Fonts
 
