@@ -1792,5 +1792,20 @@
   "fontPickerCannotDraw": "Ne peuvent pas afficher ce texte",
   "fontPickerLoadFailed": "Impossible de charger les polices.",
   "optPickReturn": "Retour",
-  "optPickReturnTip": "Après le prélèvement, revenir au dernier outil de dessin"
+  "optPickReturnTip": "Après le prélèvement, revenir au dernier outil de dessin",
+  "pulseTitle": "Pouls",
+  "pulseLikes": "{count, plural, one{<b>{who}</b> a réagi à une œuvre} other{<b>{who}</b> a réagi à {count} œuvres}}",
+  "pulsePosts": "{count, plural, one{<b>{who}</b> a publié une nouvelle œuvre} other{<b>{who}</b> a publié {count} nouvelles œuvres}}",
+  "pulseRemixes": "{count, plural, one{<b>{who}</b> a publié un remix} other{<b>{who}</b> a publié {count} remix}}",
+  "pulseComments": "{count, plural, one{<b>{who}</b> a écrit un commentaire} other{<b>{who}</b> a écrit {count} commentaires}}",
+  "pulsePlayer": "<b>{who}</b> a enregistré un nouveau lecteur",
+  "pulseBadges": "{count, plural, one{<b>{who}</b> a reçu un badge} other{<b>{who}</b> a reçu {count} badges}}",
+  "pulseReputation": "<b>{who}</b> a gagné en réputation",
+  "pulseReputationTotal": "Total : {total}",
+  "pulsePromoted": "{count, plural, one{Une œuvre de <b>{who}</b> a rejoint Recommandés} other{{count} œuvres de <b>{who}</b> ont rejoint Recommandés}}",
+  "pulseMore": "+{count} de plus",
+  "pulseComingSoon": "Pouls arrive bientôt : toute l'activité de la communauté au même endroit.",
+  "pulseFilterAll": "Tout",
+  "pulseFilterPlayers": "Lecteurs",
+  "pulseFilterReputation": "Réputation"
 }

@@ -1792,5 +1792,20 @@
   "fontPickerCannotDraw": "このテキストを表示できないフォント",
   "fontPickerLoadFailed": "フォントを読み込めませんでした。",
   "optPickReturn": "自動で戻る",
-  "optPickReturnTip": "色を取得したあと、最後に使った描画ツールに戻ります"
+  "optPickReturnTip": "色を取得したあと、最後に使った描画ツールに戻ります",
+  "pulseTitle": "パルス",
+  "pulseLikes": "<b>{who}</b>が{count}件の作品にリアクションしました",
+  "pulsePosts": "<b>{who}</b>が新しい作品を{count}件投稿しました",
+  "pulseRemixes": "<b>{who}</b>がリミックスを{count}件投稿しました",
+  "pulseComments": "<b>{who}</b>がコメントを{count}件書きました",
+  "pulsePlayer": "<b>{who}</b>が新しいプレーヤーを登録しました",
+  "pulseBadges": "<b>{who}</b>がバッジを{count}個獲得しました",
+  "pulseReputation": "<b>{who}</b>の評価が上がりました",
+  "pulseReputationTotal": "合計：{total}",
+  "pulsePromoted": "<b>{who}</b>の作品{count}件がおすすめに選ばれました",
+  "pulseMore": "他{count}件",
+  "pulseComingSoon": "パルスはまもなく始まります。コミュニティの動きをまとめて見られます。",
+  "pulseFilterAll": "すべて",
+  "pulseFilterPlayers": "プレーヤー",
+  "pulseFilterReputation": "評価"
 }

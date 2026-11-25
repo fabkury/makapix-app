@@ -1792,5 +1792,20 @@
   "fontPickerCannotDraw": "Não conseguem desenhar este texto",
   "fontPickerLoadFailed": "Não foi possível carregar as fontes.",
   "optPickReturn": "Voltar",
-  "optPickReturnTip": "Depois de pegar uma cor, volta à última ferramenta de pintura"
+  "optPickReturnTip": "Depois de pegar uma cor, volta à última ferramenta de pintura",
+  "pulseTitle": "Pulso",
+  "pulseLikes": "{count, plural, one{<b>{who}</b> reagiu a uma arte} other{<b>{who}</b> reagiu a {count} artes}}",
+  "pulsePosts": "{count, plural, one{<b>{who}</b> publicou uma arte nova} other{<b>{who}</b> publicou {count} artes novas}}",
+  "pulseRemixes": "{count, plural, one{<b>{who}</b> publicou um remix} other{<b>{who}</b> publicou {count} remixes}}",
+  "pulseComments": "{count, plural, one{<b>{who}</b> escreveu um comentário} other{<b>{who}</b> escreveu {count} comentários}}",
+  "pulsePlayer": "<b>{who}</b> registrou um player novo",
+  "pulseBadges": "{count, plural, one{<b>{who}</b> recebeu uma insígnia} other{<b>{who}</b> recebeu {count} insígnias}}",
+  "pulseReputation": "<b>{who}</b> ganhou reputação",
+  "pulseReputationTotal": "Total: {total}",
+  "pulsePromoted": "{count, plural, one{Uma arte de <b>{who}</b> entrou em Recomendados} other{{count} artes de <b>{who}</b> entraram em Recomendados}}",
+  "pulseMore": "+{count} mais",
+  "pulseComingSoon": "O Pulso chega em breve: tudo o que a comunidade faz, em um só lugar.",
+  "pulseFilterAll": "Tudo",
+  "pulseFilterPlayers": "Players",
+  "pulseFilterReputation": "Reputação"
 }

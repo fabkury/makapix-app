@@ -8,6 +8,7 @@ import '../state/auth_controller.dart';
 import '../state/feed_providers.dart';
 import '../state/notifications_providers.dart';
 import '../state/player_providers.dart';
+import '../state/pulse_providers.dart';
 import '../state/rules_gate.dart';
 import '../state/super_post_provider.dart';
 import 'about_dialog.dart';
@@ -23,6 +24,7 @@ import 'my_players_page.dart';
 import 'notifications_page.dart';
 import 'post_management_page.dart';
 import 'profile_page.dart';
+import 'pulse_view.dart';
 import 'rules_gate_page.dart';
 import 'search_page.dart';
 import 'settings_page.dart';
@@ -32,12 +34,24 @@ import 'widgets/hashtag_bar.dart';
 import 'widgets/send_target_binder.dart';
 
 /// The social hub. Top bar (left → right): the Makapix Club menu · my profile · notifications,
-/// then Contribute · Recommended · Recent · Following · Search. The selected page (Contribute, a
-/// feed, or Search) fills the body, and horizontal swipes move between them.
-/// Horizontal padding of the top bar's icon buttons. Eight of them sit side by side, which is
-/// 20 px too many for a 320 px phone at the regular padding — tighten there.
-EdgeInsets _navIconPadding(BuildContext context) => EdgeInsets.symmetric(
-    horizontal: MediaQuery.sizeOf(context).width < 340 ? 3 : 6);
+/// then Contribute · Recommended · Recent · Pulse · Following · Search. The selected page fills
+/// the body, and horizontal swipes move between them.
+/// The glyph size of the top bar's icon buttons.
+const double _navIconSize = 22;
+
+/// The top bar's icon buttons, all one explicit size. Nine of them sit side by side (the menu
+/// included), which is more than a phone fits at Material's 40 px: each gets a ninth of the bar
+/// (less the bar's own spacing), capped at 40 — 38 px on a 360 px phone, 33 px on a 320 px one.
+/// The size is set outright (no minimum, no padded tap target) so the row is exactly nine slots.
+ButtonStyle _navIconStyle(BuildContext context) {
+  final slot = ((MediaQuery.sizeOf(context).width - 16) / 9).floorToDouble().clamp(30.0, 40.0);
+  return IconButton.styleFrom(
+    fixedSize: Size(slot, 40),
+    minimumSize: Size.zero,
+    padding: EdgeInsets.zero,
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  );
+}
 
 class ClubHomePage extends ConsumerStatefulWidget {
   const ClubHomePage({super.key});
@@ -46,26 +60,53 @@ class ClubHomePage extends ConsumerStatefulWidget {
 }
 
 class _ClubHomePageState extends ConsumerState<ClubHomePage> {
-  // Swipeable pages, left → right matching the top-bar order. Page 0 is Contribute and the last
-  // page is Search (both peers to the feeds); the feeds sit between. The body lands on Recent
-  // ("New artworks", like the website), so a swipe reaches Recommended → Contribute one way and
-  // Following → Search the other.
-  static const List<FeedKind> _feeds = [FeedKind.promoted, FeedKind.recent, FeedKind.following];
-  // PageView layout: Contribute(0) · Recommended(1) · Recent(2) · Following(3) · Search(4).
-  // Feed i is at page i+1.
-  static const int _initialPage = 2; // FeedKind.recent
-  int get _searchPage => _feeds.length + 1;
-  int get _pageCount => _feeds.length + 2;
+  // Swipeable pages, left → right matching the top-bar order:
+  // Contribute(0) · Recommended(1) · Recent(2) · Pulse(3) · Following(4) · Search(5).
+  // Contribute, Pulse and Search are peers of the three artwork feeds.
+  static const List<FeedKind?> _pageFeeds = [
+    null, // Contribute
+    FeedKind.promoted,
+    FeedKind.recent,
+    null, // Pulse
+    FeedKind.following,
+    null, // Search
+  ];
+  static const int _contributePage = 0;
+  static const int _recentPage = 2;
+  static const int _pulsePage = 3;
+  static const int _searchPage = 5;
+  int get _pageCount => _pageFeeds.length;
 
-  late final PageController _pages = PageController(initialPage: _initialPage);
+  // The home opens on Pulse once this install has seen the server answer for it, and on Recent
+  // ("New artworks", like the website) until then — a server from before Pulse would only have
+  // an empty page to land on. Decided from what the last session learned, never from a
+  // request (ADR 0035). Set in initState, not lazily: a home that never shows its pages (signed
+  // out) is still disposed, and a lazy read of the provider there would come too late.
+  late final int _initialPage;
+  late final PageController _pages;
   // Owned here (not by SearchView) so the top-bar Search icon can focus the query field.
   final FocusNode _searchFocus = FocusNode();
-  // The active page. `_feed` derives from it: null on the Contribute and Search pages.
-  int _page = _initialPage;
-  FeedKind? get _feed => _page >= 1 && _page <= _feeds.length ? _feeds[_page - 1] : null;
+  // The active page. `_feed` derives from it: null on the Contribute, Pulse and Search pages.
+  late int _page;
+  FeedKind? get _feed => _pageFeeds[_page];
+
+  // Coming back from the background counts as coming back to Pulse.
+  late final AppLifecycleListener _lifecycle;
+
+  @override
+  void initState() {
+    super.initState();
+    _initialPage = ref.read(pulseLandingProvider) ? _pulsePage : _recentPage;
+    _page = _initialPage;
+    _pages = PageController(initialPage: _initialPage);
+    _lifecycle = AppLifecycleListener(onResume: () {
+      if (mounted && _page == _pulsePage) refreshPulseIfStale(ref);
+    });
+  }
 
   @override
   void dispose() {
+    _lifecycle.dispose();
     _pages.dispose();
     _searchFocus.dispose();
     super.dispose();
@@ -74,7 +115,7 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
   // Keep the top-bar selection (`_page`) in sync with the PageView's real page.
   // When the view mounts *after* the onboarding wizard, the deferred first layout makes PageView
   // fire a spurious `onPageChanged(0)` (highlighting Contribute) while the controller actually
-  // settles on `initialPage` (Recent). Re-assert `_page` from the controller's settled page after
+  // settles on `initialPage`. Re-assert `_page` from the controller's settled page after
   // the frame; only act on a settled (near-integer) page so an in-progress swipe isn't disturbed.
   void _syncFeedToPager() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -100,7 +141,7 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
     if (mounted) _searchFocus.requestFocus();
   }
 
-  void _selectFeed(FeedKind kind) => _goToPage(_feeds.indexOf(kind) + 1);
+  void _selectFeed(FeedKind kind) => _goToPage(_pageFeeds.indexOf(kind));
 
   void _openPost(FeedKind kind, Post p) => Navigator.push(
         context,
@@ -125,7 +166,11 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
         ),
       );
 
-  void _push(Widget page) => Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+  // Back from a pushed page onto Pulse: refetch it if what it shows has grown old.
+  Future<void> _push(Widget page) async {
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+    if (mounted && _page == _pulsePage) refreshPulseIfStale(ref);
+  }
 
   // What "Send to Player" targets per feed. Recent/Recommended map to player channels; the
   // Following feed has no server channel, so sending is disabled there (until an artwork is opened).
@@ -156,16 +201,14 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
     return FilterFabOverlay(filterKey: 'recent', child: grid);
   }
 
-  // A compact top-bar icon button (8 sit side-by-side, so they're tight).
+  // A compact top-bar icon button (nine sit side by side, so they're tight).
   Widget _navIcon(IconData icon, String tip, VoidCallback onTap, {Color? color}) {
     return IconButton(
       icon: Icon(icon),
-      iconSize: 22,
+      iconSize: _navIconSize,
       color: color,
       tooltip: tip,
-      visualDensity: VisualDensity.compact,
-      padding: _navIconPadding(context),
-      constraints: const BoxConstraints(),
+      style: _navIconStyle(context),
       onPressed: onTap,
     );
   }
@@ -179,9 +222,17 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
 
   // The Contribute selector: like a feed icon, but its "feed" is the Contribute page (page 0).
   Widget _contributeIcon(ColorScheme cs) {
-    final selected = _page == 0;
+    final selected = _page == _contributePage;
     return _navIcon(selected ? Icons.brush : Icons.brush_outlined, context.l10n.contribute,
-        () => _goToPage(0),
+        () => _goToPage(_contributePage),
+        color: selected ? cs.primary : null);
+  }
+
+  // The Pulse selector, between Recent and Following.
+  Widget _pulseIcon(ColorScheme cs) {
+    final selected = _page == _pulsePage;
+    return _navIcon(selected ? kPulseIcon : kPulseIconOutlined, context.l10n.pulseTitle,
+        () => _goToPage(_pulsePage),
         color: selected ? cs.primary : null);
   }
 
@@ -261,10 +312,13 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
     final mySqid = auth.me?.user.sub;
     final canModerate = ref.watch(isModeratorProvider);
     final cs = Theme.of(context).colorScheme;
-    // Trending-hashtag strip below the top bar — feed pages only (hidden on
-    // Contribute, `_feed == null`), and only once tags have loaded.
+    // Pulse is fetched as soon as the home shows, whichever page it opened on: that answer is
+    // what lets the next launch open on Pulse (pulseLandingProvider).
+    ref.listen(pulseProvider, (_, _) {});
+    // Trending-hashtag strip below the top bar — the feed pages and Pulse (hidden on
+    // Contribute and Search), and only once tags have loaded.
     final tags = ref.watch(topHashtagsProvider).valueOrNull ?? const <String>[];
-    final showHashtags = _feed != null && tags.isNotEmpty;
+    final showHashtags = (_feed != null || _page == _pulsePage) && tags.isNotEmpty;
     final l10n = context.l10n;
     return Scaffold(
       appBar: AppBar(
@@ -275,17 +329,10 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
         title: Row(mainAxisSize: MainAxisSize.min, children: [
           PopupMenuButton<String>(
             tooltip: 'Makapix Club', // l10n-ignore: brand name
-            icon: const Icon(Icons.menu, size: 22),
-            padding: _navIconPadding(context),
-            // The menu button keeps Material's 48 px minimum; on a 320 px phone that is what
-            // pushes the row past the bar, so it goes compact there like its neighbors.
-            style: MediaQuery.sizeOf(context).width < 340
-                ? IconButton.styleFrom(
-                    minimumSize: Size.zero,
-                    padding: _navIconPadding(context),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  )
-                : null,
+            icon: const Icon(Icons.menu, size: _navIconSize),
+            padding: EdgeInsets.zero,
+            // Sized like its neighbors: at Material's 48 px minimum it pushes the row past the bar.
+            style: _navIconStyle(context),
             onSelected: _onMenu,
             itemBuilder: (_) => [
               _menuItem('account', Icons.account_circle_outlined, l10n.accountTitle),
@@ -304,19 +351,20 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
               mySqid == null ? () {} : () => _push(ProfilePage(sqid: mySqid))),
           _NotifAction(unread: unread, onTap: () => _push(const NotificationsPage())),
         ]),
-        // Right group: Contribute · Recommended · Recent · Following · Search.
+        // Right group: Contribute · Recommended · Recent · Pulse · Following · Search.
         actions: [
           _contributeIcon(cs),
           _feedIcon(Icons.diamond_outlined, Icons.diamond, l10n.feedRecommended, FeedKind.promoted, cs),
           _feedIcon(Icons.visibility_outlined, Icons.visibility, l10n.feedRecent, FeedKind.recent, cs),
+          _pulseIcon(cs),
           _feedIcon(Icons.people_outline, Icons.people, l10n.feedFollowing, FeedKind.following, cs),
           _searchIcon(cs),
           const SizedBox(width: 4),
         ],
       ),
-      // Swipe horizontally to move Contribute ↔ Recommended ↔ Recent ↔ Following ↔ Search; the
-      // top-bar buttons jump to a page and stay in sync via onPageChanged. The Contribute and
-      // Search pages have no player channel, so sending is disabled there.
+      // Swipe horizontally to move Contribute ↔ Recommended ↔ Recent ↔ Pulse ↔ Following ↔
+      // Search; the top-bar buttons jump to a page and stay in sync via onPageChanged. The
+      // Contribute, Pulse and Search pages have no player channel, so sending is disabled there.
       body: Column(children: [
         // Signed in from the cached identity and the server can't be reached: say so, and offer
         // one retry that revalidates the sign-in and refetches the feeds together.
@@ -326,11 +374,20 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
             target: _feed == null ? null : _channelFor(_feed!),
             child: PageView(
               controller: _pages,
-              onPageChanged: (i) => setState(() => _page = i),
+              onPageChanged: (i) {
+                setState(() => _page = i);
+                if (i == _pulsePage) refreshPulseIfStale(ref);
+              },
               children: [
-                const ContributePage(),
-                for (final kind in _feeds) _feedBody(kind),
-                SearchView(searchFocus: _searchFocus),
+                for (final (i, kind) in _pageFeeds.indexed)
+                  if (kind != null)
+                    _feedBody(kind)
+                  else if (i == _contributePage)
+                    const ContributePage()
+                  else if (i == _pulsePage)
+                    const PulseView()
+                  else
+                    SearchView(searchFocus: _searchFocus),
               ],
             ),
           ),
@@ -342,9 +399,10 @@ class _ClubHomePageState extends ConsumerState<ClubHomePage> {
   Future<void> _retryOffline() async {
     // Feeds first (they refetch on rebuild), then the identity — the strip stays until the
     // revalidation lands, so a retry that fails again reads as exactly that.
-    for (final kind in _feeds) {
+    for (final kind in FeedKind.values) {
       ref.invalidate(feedProvider(kind));
     }
+    ref.invalidate(pulseProvider);
     ref.invalidate(topHashtagsProvider);
     await ref.read(authControllerProvider.notifier).reloadMe();
   }
@@ -409,11 +467,9 @@ class _NotifAction extends StatelessWidget {
     return Stack(alignment: Alignment.center, children: [
       IconButton(
         icon: const Icon(Icons.notifications_none),
-        iconSize: 22,
+        iconSize: _navIconSize,
         tooltip: context.l10n.notifications,
-        visualDensity: VisualDensity.compact,
-        padding: _navIconPadding(context),
-        constraints: const BoxConstraints(),
+        style: _navIconStyle(context),
         onPressed: onTap,
       ),
       if (unread > 0)

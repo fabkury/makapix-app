@@ -1792,5 +1792,20 @@
   "fontPickerCannotDraw": "Не подходят для этого текста",
   "fontPickerLoadFailed": "Не удалось загрузить шрифты.",
   "optPickReturn": "Возврат",
-  "optPickReturnTip": "После выбора цвета вернуться к последнему инструменту рисования"
+  "optPickReturnTip": "После выбора цвета вернуться к последнему инструменту рисования",
+  "pulseTitle": "Пульс",
+  "pulseLikes": "{count, plural, one{<b>{who}</b> отреагировал(а) на {count} работу} few{<b>{who}</b> отреагировал(а) на {count} работы} many{<b>{who}</b> отреагировал(а) на {count} работ} other{<b>{who}</b> отреагировал(а) на {count} работы}}",
+  "pulsePosts": "{count, plural, one{<b>{who}</b> опубликовал(а) {count} новую работу} few{<b>{who}</b> опубликовал(а) {count} новые работы} many{<b>{who}</b> опубликовал(а) {count} новых работ} other{<b>{who}</b> опубликовал(а) {count} новые работы}}",
+  "pulseRemixes": "{count, plural, one{<b>{who}</b> опубликовал(а) {count} ремикс} few{<b>{who}</b> опубликовал(а) {count} ремикса} many{<b>{who}</b> опубликовал(а) {count} ремиксов} other{<b>{who}</b> опубликовал(а) {count} ремикса}}",
+  "pulseComments": "{count, plural, one{<b>{who}</b> написал(а) {count} комментарий} few{<b>{who}</b> написал(а) {count} комментария} many{<b>{who}</b> написал(а) {count} комментариев} other{<b>{who}</b> написал(а) {count} комментария}}",
+  "pulsePlayer": "<b>{who}</b> зарегистрировал(а) новый плеер",
+  "pulseBadges": "{count, plural, one{<b>{who}</b> получил(а) {count} значок} few{<b>{who}</b> получил(а) {count} значка} many{<b>{who}</b> получил(а) {count} значков} other{<b>{who}</b> получил(а) {count} значка}}",
+  "pulseReputation": "<b>{who}</b> повысил(а) репутацию",
+  "pulseReputationTotal": "Всего: {total}",
+  "pulsePromoted": "{count, plural, one{В «Рекомендуемое» добавили {count} работу <b>{who}</b>} few{В «Рекомендуемое» добавили {count} работы <b>{who}</b>} many{В «Рекомендуемое» добавили {count} работ <b>{who}</b>} other{В «Рекомендуемое» добавили {count} работы <b>{who}</b>}}",
+  "pulseMore": "ещё {count}",
+  "pulseComingSoon": "Пульс скоро появится: всё, что делает сообщество, в одном месте.",
+  "pulseFilterAll": "Все",
+  "pulseFilterPlayers": "Плееры",
+  "pulseFilterReputation": "Репутация"
 }

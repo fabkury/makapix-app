@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app.dart';
 import 'club/api/club_user_agent.dart';
+import 'club/state/pulse_providers.dart';
 import 'dev/battery_stats.dart';
 import 'editor/text/font_licenses.dart';
 import 'l10n/app_locale.dart';
@@ -26,11 +27,15 @@ Future<void> main() async {
   // The language the user picked, if any — read before the first frame so the app never opens in
   // the device's language and then flips. Never throws, bounded at 2 s; null follows the device.
   final localeOverride = await AppLocalePrefs.read();
+  // Whether the Club home opens on Pulse: only once an earlier session saw the server answer
+  // for it (a server from before Pulse has nothing to show there). Never throws, bounded at 2 s.
+  final pulseLanding = await PulseLandingMemory.read();
   // ProviderScope hosts the Riverpod state (Club social layer + the editor↔Club bridge).
   runApp(ProviderScope(
     overrides: [
       launchPillarProvider.overrideWithValue(launchPillar),
       initialAppLocaleProvider.overrideWithValue(localeOverride),
+      pulseLandingProvider.overrideWithValue(pulseLanding),
     ],
     child: const MakapixApp(),
   ));

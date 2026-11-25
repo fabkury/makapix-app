@@ -379,6 +379,59 @@ Map<String, dynamic> _statsJson() => {
       'computed_at': _ago(const Duration(minutes: 10)),
     };
 
+/// One Pulse card of every kind (`GET /pulse`), with counts that exercise the plural forms and
+/// the "+N more" tails.
+List<Map<String, dynamic>> fixturePulseJson() {
+  Map<String, dynamic> card(String kind, Duration ago,
+          {int count = 1, bool mine = false, Map<String, dynamic> extra = const {}}) =>
+      {
+        'id': '$kind:${mine ? 't5' : 'b7'}:${ago.inMinutes}',
+        'kind': kind,
+        'actor': {
+          'public_sqid': mine ? 't5' : 'b7',
+          'handle': mine ? 'pixel_ada' : 'pixel_bob',
+          'avatar_url': null,
+        },
+        'started_at': _ago(ago + const Duration(hours: 1)),
+        'updated_at': _ago(ago),
+        'count': count,
+        'posts': null,
+        'comments': null,
+        'player': null,
+        'badges': null,
+        'reputation': null,
+        ...extra,
+      };
+  List<Map<String, dynamic>> posts(int n, {int from = 1}) =>
+      [for (var i = 0; i < n; i++) fixturePostJson(from + i)];
+  return [
+    card('likes', const Duration(minutes: 4), count: 12, extra: {'posts': posts(6)}),
+    card('posts', const Duration(minutes: 30), mine: true, extra: {'posts': posts(1, from: 7)}),
+    card('comments', const Duration(hours: 2), count: 5, extra: {
+      'comments': [
+        {'id': 'c1', 'preview': '8-bit', 'is_reply': false, 'created_at': _ago(const Duration(hours: 2)), 'post': fixturePostJson(1)},
+        {'id': 'c2', 'preview': '16-bit', 'is_reply': true, 'created_at': _ago(const Duration(hours: 3)), 'post': fixturePostJson(2)},
+      ],
+    }),
+    card('remixes', const Duration(hours: 5), count: 2, extra: {'posts': posts(2, from: 8)}),
+    card('promoted', const Duration(hours: 9), mine: true, count: 3, extra: {'posts': posts(3, from: 10)}),
+    card('badge', const Duration(days: 1), count: 2, extra: {
+      'badges': [
+        {'badge': 'early-adopter', 'label': 'Early Adopter', 'icon_url_64': ''},
+        {'badge': 'top-contributor', 'label': 'Top Contributor', 'icon_url_64': ''},
+      ],
+    }),
+    card('reputation', const Duration(days: 2), extra: {
+      'reputation': {'delta': 15, 'total': 12345},
+    }),
+    card('player', const Duration(days: 3), mine: true, extra: {
+      'player': {'device_model': 'p3a'},
+    }),
+    // A kind this build does not know: skipped, never an error.
+    card('joined', const Duration(days: 4)),
+  ];
+}
+
 /// A [FakeBackend] with the routes most screens touch. A sweep adds its own with [FakeBackend.on].
 FakeBackend fixtureBackend() => FakeBackend()
   ..on('GET', r'/post/\d+/comments', (_) => {'items': fixtureCommentsJson()})
@@ -392,6 +445,7 @@ FakeBackend fixtureBackend() => FakeBackend()
   ..on('GET', r'/feed/promoted', (_) => {'items': const []})
   ..on('GET', r'/feed/following', (_) => {'items': const []})
   ..on('GET', r'/post/recent', (_) => {'items': const []})
+  ..on('GET', r'/pulse', (_) => {'items': fixturePulseJson(), 'next_cursor': null})
   ..on('GET', r'/post', (_) => {'items': const []})
   ..on('GET', r'/hashtags/top', (_) => {
         'hashtags': ['wip', 'nsfw'],

@@ -1792,5 +1792,20 @@
   "fontPickerCannotDraw": "Können diesen Text nicht darstellen",
   "fontPickerLoadFailed": "Die Schriften konnten nicht geladen werden.",
   "optPickReturn": "Rückkehr",
-  "optPickReturnTip": "Nach dem Aufnehmen zurück zum letzten Malwerkzeug"
+  "optPickReturnTip": "Nach dem Aufnehmen zurück zum letzten Malwerkzeug",
+  "pulseTitle": "Puls",
+  "pulseLikes": "{count, plural, one{<b>{who}</b> hat auf ein Werk reagiert} other{<b>{who}</b> hat auf {count} Werke reagiert}}",
+  "pulsePosts": "{count, plural, one{<b>{who}</b> hat ein neues Werk veröffentlicht} other{<b>{who}</b> hat {count} neue Werke veröffentlicht}}",
+  "pulseRemixes": "{count, plural, one{<b>{who}</b> hat einen Remix veröffentlicht} other{<b>{who}</b> hat {count} Remixe veröffentlicht}}",
+  "pulseComments": "{count, plural, one{<b>{who}</b> hat einen Kommentar geschrieben} other{<b>{who}</b> hat {count} Kommentare geschrieben}}",
+  "pulsePlayer": "<b>{who}</b> hat einen neuen Player registriert",
+  "pulseBadges": "{count, plural, one{<b>{who}</b> hat ein Abzeichen erhalten} other{<b>{who}</b> hat {count} Abzeichen erhalten}}",
+  "pulseReputation": "<b>{who}</b> hat Reputation gewonnen",
+  "pulseReputationTotal": "Gesamt: {total}",
+  "pulsePromoted": "{count, plural, one{Ein Werk von <b>{who}</b> ist jetzt in den Empfehlungen} other{{count} Werke von <b>{who}</b> sind jetzt in den Empfehlungen}}",
+  "pulseMore": "+{count} weitere",
+  "pulseComingSoon": "Puls kommt bald: alles, was die Community macht, an einem Ort.",
+  "pulseFilterAll": "Alle",
+  "pulseFilterPlayers": "Player",
+  "pulseFilterReputation": "Reputation"
 }

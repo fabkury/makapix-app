@@ -1792,5 +1792,20 @@
   "fontPickerCannotDraw": "No pueden dibujar este texto",
   "fontPickerLoadFailed": "No se pudieron cargar las fuentes.",
   "optPickReturn": "Volver",
-  "optPickReturnTip": "Tras tomar un color, vuelve a la última herramienta de pintura"
+  "optPickReturnTip": "Tras tomar un color, vuelve a la última herramienta de pintura",
+  "pulseTitle": "Pulso",
+  "pulseLikes": "{count, plural, one{<b>{who}</b> reaccionó a una obra} other{<b>{who}</b> reaccionó a {count} obras}}",
+  "pulsePosts": "{count, plural, one{<b>{who}</b> publicó una obra nueva} other{<b>{who}</b> publicó {count} obras nuevas}}",
+  "pulseRemixes": "{count, plural, one{<b>{who}</b> publicó un remix} other{<b>{who}</b> publicó {count} remixes}}",
+  "pulseComments": "{count, plural, one{<b>{who}</b> escribió un comentario} other{<b>{who}</b> escribió {count} comentarios}}",
+  "pulsePlayer": "<b>{who}</b> registró un reproductor nuevo",
+  "pulseBadges": "{count, plural, one{<b>{who}</b> recibió una insignia} other{<b>{who}</b> recibió {count} insignias}}",
+  "pulseReputation": "<b>{who}</b> ganó reputación",
+  "pulseReputationTotal": "Total: {total}",
+  "pulsePromoted": "{count, plural, one{Una obra de <b>{who}</b> se añadió a Recomendados} other{{count} obras de <b>{who}</b> se añadieron a Recomendados}}",
+  "pulseMore": "+{count} más",
+  "pulseComingSoon": "Pulso llega pronto: todo lo que hace la comunidad, en un solo lugar.",
+  "pulseFilterAll": "Todo",
+  "pulseFilterPlayers": "Reproductores",
+  "pulseFilterReputation": "Reputación"
 }

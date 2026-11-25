@@ -2,6 +2,7 @@
 // the hashtag feed, the comments page, and the About dialog (batch C3).
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:makapix_club/club/state/pulse_providers.dart';
 import 'package:makapix_club/club/state/rules_gate.dart';
 import 'package:makapix_club/club/ui/about_dialog.dart';
 import 'package:makapix_club/club/ui/club_home_page.dart';
@@ -37,6 +38,25 @@ void main() {
     build: () => const ClubHomePage(),
     backend: fixtureBackend,
     overrides: (b) => clubOverrides(backend: b),
+  );
+
+  // The landing page once the server has Pulse: one card of every kind.
+  sweepScreen(
+    'Club home, Pulse',
+    prefs: _rulesAccepted,
+    build: () => const ClubHomePage(),
+    backend: fixtureBackend,
+    overrides: (b) => [...clubOverrides(backend: b), pulseLandingProvider.overrideWithValue(true)],
+    allowLatin: const ['p3a', ..._commentBodies],
+  );
+
+  // A server from before Pulse answers 404: the page says it is coming.
+  sweepScreen(
+    'Club home, Pulse before the server has it',
+    prefs: _rulesAccepted,
+    build: () => const ClubHomePage(),
+    backend: () => fixtureBackend()..on('GET', r'/pulse', (_) => const FakeStatus(404)),
+    overrides: (b) => [...clubOverrides(backend: b), pulseLandingProvider.overrideWithValue(true)],
   );
 
   sweepScreen(
