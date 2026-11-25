@@ -65,6 +65,7 @@ label must not be longer than the full name, and no two tools may share one.
 | post (noun) | publicación | publicação | publication | Beitrag | публикация | 投稿 | 帖子 |
 | publish / post (verb) | publicar | publicar | publier | veröffentlichen | опубликовать | 投稿する | 发布 |
 | feed | feed | feed | fil | Feed | лента | フィード | 动态 |
+| Pulse (the activity timeline page) | Pulso | Pulso | Pouls | Puls | Пульс | パルス | 脉动 |
 | follow | seguir | seguir | suivre | folgen | подписаться | フォローする | 关注 |
 | followers | seguidores | seguidores | abonnés | Follower | подписчики | フォロワー | 粉丝 |
 | following | siguiendo | seguindo | abonnements | Folge ich | подписки | フォロー中 | 关注 |
@@ -165,6 +166,16 @@ Open and Import are different gestures (CONTEXT.md): keep two distinct words in 
 - **"Reacted"** (the profile tab of artworks the user reacted to) must differ from
   "Reactions" (received): es *Reaccionó*, pt *Reagiu*, fr *Réagi*, de *Reagiert*,
   ru *Понравилось*, ja リアクション済み (checked by `glossary_test.dart`).
+- **Pulse** (decided in its review, 2026-11-25): the page is never zh 动态, which is the feed;
+  it is 脉动. In a Russian sentence the name takes «» («Пульс» скоро появится); the bare title
+  and tooltip do not. A feed name inside a French, Portuguese, or German sentence takes its
+  article (*les Recommandés*, *nos Recomendados*, *zu den Empfehlungen*); bare only as a label.
+- **Counting artworks** in Japanese: 作品 takes 点 ({count}点の作品); 件 counts reactions,
+  remixes, comments, and posts.
+- **"All" as a filter over mixed kinds** is the neuter in Russian, *Всё*; *Все* means everyone
+  or agrees with one plural noun.
+- **A Russian sentence with a count** keeps the number even for one («получил(а) 1 значок»): Flutter's
+  generator folds an `=1` branch into `one`, which also serves 21, 31, 101.
 - **Japanese spacing**, settled: a half-width space between Japanese and a Latin word or a
   placeholder that stands for a name, title, or handle (GitHub で登録, {name} を開きました);
   no space between a number or numeric placeholder and its Japanese counter ({count}フレーム,
