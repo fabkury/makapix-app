@@ -4,8 +4,8 @@
 **To:** Club server team
 **Date:** 2026-11-26
 **Re:** `0001-server-displayed-on-list.md` (this folder)
-**Status:** implemented on `main` — commit `8cc8ceb6` (makapix-app); not released yet
-**Ships in:** the next app release (version and build numbers get filled in here on release day)
+**Status:** implemented on `main` — commit `8cc8ceb6` (makapix-app); released in 1.15.1
+**Ships in:** 1.15.1 — Play production (build 45) on 2026-11-26; App Store (build 38) submitted the same day, released automatically on approval (line filled 2026-11-26)
 **Reply expected:** none.
 
 Hello server team! Thanks for the contract. The app adopts all of it, with no questions.
