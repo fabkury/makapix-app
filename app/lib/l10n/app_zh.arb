@@ -1574,7 +1574,7 @@
   "patFamilyBayer": "拜耳",
   "patBayer": "拜耳 · {fraction}",
   "patternsInvert": "反相",
-  "patternsInvertSub": "绘制图案跳过的格子",
+  "patternsInvertSub": "改为绘制图案跳过的格子",
   "patHorizontal": "横线 · {size} px",
   "patVertical": "竖线 · {size} px",
   "patDiagUp": "斜线 ／ · {size} px",
