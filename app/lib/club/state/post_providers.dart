@@ -2,11 +2,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/club_error.dart';
 import '../models/comment.dart';
+import '../models/impression_user.dart';
 import '../models/mention_markup.dart';
 import '../models/post.dart';
 import '../models/reactions.dart';
 import 'api_providers.dart';
 import 'auth_controller.dart';
+import 'paged.dart';
 import 'package:makapix_club/l10n/l10n.dart';
 
 /// Full post by sqid; also fires a (debounced, server-side) view registration.
@@ -87,6 +89,18 @@ final reactionsProvider =
 // autoDispose: released when the Reactions page closes. [audit F-19]
 final reactionUsersProvider = FutureProvider.autoDispose.family<List<ReactionUser>, int>(
     (ref, postId) => ref.read(postApiProvider).reactionUsers(postId));
+
+/// Members whose screens showed a post, backing the Displayed on page: cursor-paged, most
+/// recently shown first. Signed-in only, so the page builds it only for a signed-in viewer.
+// autoDispose: released when the page closes; a reopen refetches.
+final impressionUsersProvider = StateNotifierProvider.autoDispose
+    .family<PagedNotifier<ImpressionUser>, PagedState<ImpressionUser>, int>((ref, postId) {
+  ref.watch(currentUserSubProvider); // the list is filtered per viewer (blocks)
+  final api = ref.watch(postApiProvider);
+  final n = PagedNotifier<ImpressionUser>((cursor) => api.impressionUsers(postId, cursor: cursor));
+  n.loadInitial();
+  return n;
+});
 
 // ---- Grid "like" (👍) toggle ----
 //

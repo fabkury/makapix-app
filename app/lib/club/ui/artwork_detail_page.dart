@@ -22,6 +22,7 @@ import '../state/player_providers.dart';
 import '../state/pmd_providers.dart';
 import '../state/post_providers.dart';
 import '../state/publish_providers.dart';
+import 'displayed_on_page.dart';
 import 'edit_post_details_page.dart';
 import 'widgets/mention_text.dart';
 import 'lineage_page.dart';
@@ -338,7 +339,8 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
 
   /// Above the artwork: owner (avatar + handle + tagline) on the left; views, impressions,
   /// reactions, comments counts and the share button on the right. Tapping the owner opens their
-  /// profile; tapping the reactions count opens the Reactions page; tapping the comments count
+  /// profile; tapping the impressions count opens the Displayed on page; tapping the reactions
+  /// count opens the Reactions page; tapping the comments count
   /// scrolls down to the comments. Four count clusters beside the owner need a wide header, so on
   /// a phone the counts sit on their own line under the owner (since 2026-10-29, when Impressions
   /// joined Views).
@@ -371,7 +373,11 @@ class _ArtworkDetailViewState extends ConsumerState<_ArtworkDetailView> {
       // Views (deliberate looks) and Impressions (playback exposure on players) side by side,
       // as the website shows them; separate figures, never summed (server artwork-views D17).
       _stat(Icons.visibility_outlined, post.viewCount, tooltip: context.l10n.statViews),
-      _stat(Icons.tv_outlined, post.impressionCount, tooltip: context.l10n.statImpressions),
+      // Tapping 📺 opens the Displayed on list, as tapping ⚡ opens Reactions.
+      _stat(Icons.tv_outlined, post.impressionCount,
+          tooltip: context.l10n.statImpressions,
+          onTap: () => Navigator.push(
+              context, MaterialPageRoute(builder: (_) => DisplayedOnPage(post: post)))),
       _stat(Icons.bolt, reactionTotal,
           onTap: () => Navigator.push(
               context, MaterialPageRoute(builder: (_) => ReactionsPage(post: post)))),

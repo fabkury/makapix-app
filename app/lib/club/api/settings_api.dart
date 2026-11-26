@@ -2,7 +2,8 @@ import '../models/club_user.dart';
 import 'club_api_client.dart';
 
 /// User settings (`SPEC-CLUB.md` §21): the monitored-hashtag content filter
-/// (`approved_hashtags`) and who may mention you (`mention_policy`).
+/// (`approved_hashtags`), who may mention you (`mention_policy`), and whether you appear in
+/// Displayed on lists (`show_in_impression_lists`).
 class SettingsApi {
   final ClubApiClient client;
   SettingsApi(this.client);
@@ -32,5 +33,18 @@ class SettingsApi {
         return data.containsKey('mention_policy')
             ? MentionPolicy.fromWire(data['mention_policy'])
             : policy;
+      });
+
+  /// `PATCH /user/{userKey}` — whether this user appears in artworks' Displayed on lists.
+  /// One switch per account; off hides them from every list, for everyone. Returns the
+  /// server's resulting value.
+  Future<bool> setShowInImpressionLists(String userKey, bool show) => client.guard(() async {
+        final resp = await client.dio.patch(
+          '/user/${Uri.encodeComponent(userKey)}',
+          data: {'show_in_impression_lists': show},
+        );
+        final data = (resp.data as Map?)?.cast<String, dynamic>() ?? const {};
+        final applied = data['show_in_impression_lists'];
+        return applied is bool ? applied : show;
       });
 }

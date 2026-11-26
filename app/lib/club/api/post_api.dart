@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 
 import '../models/comment.dart';
+import '../models/impression_user.dart';
 import '../models/page.dart';
 import '../models/post.dart';
 import '../models/reactions.dart';
@@ -107,6 +108,17 @@ class PostApi {
         return items
             .map((e) => ReactionUser.fromJson((e as Map).cast<String, dynamic>()))
             .toList();
+      });
+
+  /// Members whose screens showed a post: the "Displayed on" list behind the 📺 number
+  /// (`GET /post/{id}/impression-users`, cursor-paged, most recently shown first). Signed-in
+  /// only (401 otherwise); 404 when the caller cannot see the post.
+  Future<Page<ImpressionUser>> impressionUsers(int postId, {String? cursor, int limit = 50}) =>
+      client.guard(() async {
+        final resp = await client.dio.get('/post/$postId/impression-users',
+            queryParameters: {'cursor': ?cursor, 'limit': limit});
+        return Page<ImpressionUser>.fromJson(
+            (resp.data as Map).cast<String, dynamic>(), ImpressionUser.fromJson);
       });
 
   /// Comments as a depth-≤2 tree (fetched flat, assembled client-side).

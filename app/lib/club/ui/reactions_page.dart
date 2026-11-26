@@ -7,8 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/post.dart';
 import '../models/reactions.dart';
 import '../state/post_providers.dart';
-import 'artwork_detail_page.dart';
 import 'profile_page.dart';
+import 'widgets/artwork_list_header.dart';
 import 'widgets/common.dart';
 
 /// Full-screen list of everyone who reacted to an artwork (newest first), reached from the ⚡
@@ -53,7 +53,7 @@ class _Body extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
       children: [
-        _ArtworkHeader(post: post),
+        ArtworkListHeader(post: post),
         const SizedBox(height: 12),
         if (counts.isNotEmpty) _SummaryBar(counts: counts),
         const Divider(height: 24),
@@ -133,50 +133,5 @@ class _ReactionRow extends StatelessWidget {
         Text(r.emoji, style: const TextStyle(fontSize: 18)),
       ]),
     );
-  }
-}
-
-/// (a) artwork thumbnail on the left, (b) title (and owner) to its right. Tapping the thumbnail
-/// opens the full artwork; tapping the owner handle opens their profile.
-class _ArtworkHeader extends StatelessWidget {
-  final Post post;
-  const _ArtworkHeader({required this.post});
-
-  @override
-  Widget build(BuildContext context) {
-    final title = post.title.trim().isEmpty ? context.l10n.untitled : post.title.trim();
-    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      GestureDetector(
-        onTap: () =>
-            Navigator.push(context, MaterialPageRoute(builder: (_) => ArtworkDetailPage(sqid: post.sqid))),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(6),
-          child: Container(
-            width: 76,
-            height: 76,
-            color: const Color(0xFF15171A),
-            child: PixelArtImage(
-                url: post.artUrl,
-                frameCount: post.frameCount,
-                width: post.width,
-                height: post.height),
-          ),
-        ),
-      ),
-      const SizedBox(width: 12),
-      Expanded(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title,
-              style: Theme.of(context).textTheme.titleMedium, maxLines: 2, overflow: TextOverflow.ellipsis),
-          const SizedBox(height: 4),
-          GestureDetector(
-            onTap: () =>
-                Navigator.push(context, MaterialPageRoute(builder: (_) => ProfilePage(sqid: post.owner.sqid))),
-            child: Text(context.l10n.byHandle(post.owner.handle),
-                style: const TextStyle(fontSize: 13, color: Colors.white54)),
-          ),
-        ]),
-      ),
-    ]);
   }
 }

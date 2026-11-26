@@ -56,6 +56,11 @@ class ClubUser {
   /// keeps it equal to the language it shows (`AuthController.syncLocale`).
   final String? locale;
 
+  /// Whether other members may see this user in artworks' Displayed on lists
+  /// (`show_in_impression_lists`; one switch per account). Listed is the server default, and
+  /// what an absent field reads as.
+  final bool showInImpressionLists;
+
   ClubUser({
     required this.sub,
     required this.userKey,
@@ -65,6 +70,7 @@ class ClubUser {
     this.approvedHashtags = const [],
     this.mentionPolicy = MentionPolicy.everyone,
     this.locale,
+    this.showInImpressionLists = true,
   });
 
   factory ClubUser.fromJson(Map<String, dynamic> j) => ClubUser(
@@ -77,11 +83,13 @@ class ClubUser {
             (j['approved_hashtags'] as List?)?.map((e) => e.toString()).toList() ?? const [],
         mentionPolicy: MentionPolicy.fromWire(j['mention_policy']),
         locale: j['locale'] as String?,
+        showInImpressionLists: j['show_in_impression_lists'] != false,
       );
 
   ClubUser copyWith({
     List<String>? approvedHashtags,
     MentionPolicy? mentionPolicy,
+    bool? showInImpressionLists,
   }) =>
       ClubUser(
         sub: sub,
@@ -92,6 +100,7 @@ class ClubUser {
         approvedHashtags: approvedHashtags ?? this.approvedHashtags,
         mentionPolicy: mentionPolicy ?? this.mentionPolicy,
         locale: locale,
+        showInImpressionLists: showInImpressionLists ?? this.showInImpressionLists,
       );
 }
 

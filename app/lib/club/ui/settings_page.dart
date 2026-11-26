@@ -7,8 +7,10 @@ import 'package:makapix_club/ui/layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../config/monitored_hashtags.dart';
+import '../models/club_error.dart';
 import '../models/club_user.dart';
 import '../state/animation_settings.dart';
+import '../state/api_providers.dart';
 import '../state/publish_providers.dart';
 import '../state/auth_controller.dart';
 import 'auth/account_management_page.dart';
@@ -20,7 +22,8 @@ import 'widgets/external_links.dart';
 
 /// User settings (`SPEC-CLUB.md` §21). General holds the device-local options that need no
 /// account (language); Account tiles push sub-pages (account management, blocked users, the
-/// monitored-hashtag content filter); Playback is device-local. Mirrors the website's
+/// monitored-hashtag content filter) and end with the Displayed on privacy switch; Playback is
+/// device-local. Mirrors the website's
 /// `/u/{sqid}/settings`.
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -104,6 +107,7 @@ class SettingsPage extends ConsumerWidget {
                   onTap: () => Navigator.push(context,
                       MaterialPageRoute(builder: (_) => const MonitoredHashtagsPage())),
                 ),
+                const _DisplayedOnSwitch(),
                 const Divider(height: 24),
                 // Playback is the page's first LOCAL setting: device-scoped, persisted via
                 // SharedPreferences, and applied immediately — no Save button (unlike the
@@ -164,6 +168,69 @@ class SettingsPage extends ConsumerWidget {
                 ),
               ),
             ])),
+    );
+  }
+}
+
+/// Account → "Show me in Displayed on lists" (`users.show_in_impression_lists`, server thread
+/// `messages/0009-impression-list/`): one switch per account, on by default. Off hides the
+/// member from every artwork's Displayed on list, for everyone; their showings still count.
+///
+/// Saved on the tap, like the Mentions radio: the switch moves at once and goes back, with a
+/// message, when the server did not take the change (offline included).
+class _DisplayedOnSwitch extends ConsumerStatefulWidget {
+  const _DisplayedOnSwitch();
+
+  @override
+  ConsumerState<_DisplayedOnSwitch> createState() => _DisplayedOnSwitchState();
+}
+
+class _DisplayedOnSwitchState extends ConsumerState<_DisplayedOnSwitch> {
+  /// The value being saved; null when idle, and the account's own value shows.
+  bool? _pending;
+
+  void _toast(String m) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: ClubMessageText(m)));
+
+  Future<void> _save(bool next) async {
+    if (_pending != null) return;
+    final userKey = ref.read(authControllerProvider).me?.user.userKey ?? '';
+    if (userKey.isEmpty) {
+      _toast(context.l10n.commonNoAccountId);
+      return;
+    }
+    final saveFailed = context.l10n.commonSaveChangesFailed;
+    setState(() => _pending = next);
+    String? failure;
+    try {
+      final applied =
+          await ref.read(settingsApiProvider).setShowInImpressionLists(userKey, next);
+      ref.read(authControllerProvider.notifier).updateShowInImpressionLists(applied);
+    } on ClubError catch (e) {
+      failure = e.describe(saveFailed);
+    } catch (_) {
+      failure = saveFailed;
+    }
+    if (!mounted) return;
+    setState(() => _pending = null);
+    if (failure != null) _toast(failure);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final saved = ref.watch(
+        authControllerProvider.select((s) => s.me?.user.showInImpressionLists ?? true));
+    return SwitchListTile(
+      value: _pending ?? saved,
+      onChanged: _pending != null ? null : _save,
+      contentPadding: EdgeInsets.zero,
+      secondary: const Icon(Icons.tv_outlined),
+      title: Text(l10n.settingsShowInDisplayedOn),
+      subtitle: Text(
+        l10n.settingsShowInDisplayedOnSubtitle,
+        style: const TextStyle(color: Colors.white54),
+      ),
     );
   }
 }

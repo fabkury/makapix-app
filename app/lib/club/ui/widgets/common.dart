@@ -83,6 +83,23 @@ String timeAgo(DateTime? t) {
   return l10n.timeAgoYears((d.inDays / 365).floor());
 }
 
+/// When an artwork was last shown on a member's screen, for the Displayed on list: "today",
+/// "yesterday", "5 days ago". [day] is a UTC calendar day and is compared with today's UTC
+/// day; nothing finer is ever derived or shown (a time of day would reveal when someone's
+/// player is running — server rule, `messages/0009-impression-list/`).
+String shownDayLabel(DateTime? day, {DateTime? now}) {
+  if (day == null) return '';
+  final l10n = appL10n;
+  final n = (now ?? DateTime.now()).toUtc();
+  final days = DateTime.utc(n.year, n.month, n.day)
+      .difference(DateTime.utc(day.year, day.month, day.day))
+      .inDays;
+  // A day ahead of ours (clock skew) still reads as today.
+  if (days <= 0) return l10n.displayedOnToday;
+  if (days == 1) return l10n.displayedOnYesterday;
+  return l10n.displayedOnDaysAgo(days);
+}
+
 /// An error message whose lines after the first are the server's own text
 /// (`ClubError.describe`): the first line in [style], the rest smaller and muted.
 /// A single-line message is a plain [Text].

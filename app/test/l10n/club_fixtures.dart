@@ -254,6 +254,42 @@ List<Map<String, dynamic>> fixturePlayersJson() => [
         },
     ];
 
+/// A UTC calendar day [daysAgo] days back, as the server sends `last_shown_on` (a date, no time).
+String fixtureDay(int daysAgo) =>
+    DateTime.now().toUtc().subtract(Duration(days: daysAgo)).toIso8601String().substring(0, 10);
+
+/// The Displayed on list (`GET /post/{id}/impression-users`): one row of each shape — player
+/// models, Web Player with the app, and a player with no reported model.
+List<Map<String, dynamic>> fixtureImpressionUsersJson() => [
+      {
+        'user_handle': 'pixel_bob',
+        'user_public_sqid': 'b7',
+        'device_models': ['p3a', 'Pixel Jukebox'],
+        'web_player': false,
+        'app': false,
+        'count': 14,
+        'last_shown_on': fixtureDay(0),
+      },
+      {
+        'user_handle': 'pixel_ada',
+        'user_public_sqid': 't5',
+        'device_models': const <String>[],
+        'web_player': true,
+        'app': true,
+        'count': 1,
+        'last_shown_on': fixtureDay(1),
+      },
+      {
+        'user_handle': 'pixel_bob',
+        'user_public_sqid': null,
+        'device_models': const <String>[],
+        'web_player': false,
+        'app': false,
+        'count': 12345,
+        'last_shown_on': fixtureDay(42),
+      },
+    ];
+
 typedef FakeHandler = Object? Function(RequestOptions request);
 
 /// A non-200 answer from a [FakeBackend] route.
@@ -521,6 +557,7 @@ FakeBackend fixtureBackend() => FakeBackend()
           {'emoji': '👍', 'created_at': _ago(const Duration(days: 2)), 'user_handle': ''},
         ],
       })
+  ..on('GET', r'/post/\d+/impression-users', (_) => {'items': fixtureImpressionUsersJson()})
   ..on('GET', r'/me/remixes', (_) => {
         'items': [
           {

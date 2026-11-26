@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:makapix_club/club/models/user_profile.dart';
 import 'package:makapix_club/club/ui/artist_dashboard_page.dart';
+import 'package:makapix_club/club/ui/displayed_on_page.dart';
 import 'package:makapix_club/club/ui/edit_profile_page.dart';
 import 'package:makapix_club/club/ui/follows_page.dart';
 import 'package:makapix_club/club/ui/my_remixes_page.dart';
@@ -92,6 +93,21 @@ void main() {
     build: () => ReactionsPage(post: fixturePost(1, title: '')),
     backend: fixtureBackend,
     overrides: (b) => clubOverrides(backend: b),
+  );
+
+  sweepScreen(
+    'Displayed on',
+    build: () => DisplayedOnPage(post: fixturePost(1, title: '')),
+    backend: fixtureBackend,
+    overrides: (b) => clubOverrides(backend: b),
+    // Player models are device names, shown as the server sends them.
+    allowLatin: const ['p3a', 'Pixel Jukebox'],
+  );
+
+  sweepScreen(
+    'Displayed on, signed out',
+    build: () => DisplayedOnPage(post: fixturePost(1, title: '')),
+    overrides: (_) => clubOverrides(signedIn: false),
   );
 
   sweepScreen(

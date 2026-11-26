@@ -361,6 +361,17 @@ class AuthController extends StateNotifier<AuthState> {
         stale: state.stale, error: state.error);
   }
 
+  /// Mirror a saved `show_in_impression_lists` into the in-memory identity, so Settings
+  /// reflects it without a round trip to `/auth/me`.
+  void updateShowInImpressionLists(bool show) {
+    final me = state.me;
+    if (me == null) return;
+    state = AuthState.signedIn(
+        me.copyWith(user: me.user.copyWith(showInImpressionLists: show)),
+        stale: state.stale,
+        error: state.error);
+  }
+
   /// Dismiss an error back to the sign-in form.
   void reset() => state = const AuthState.signedOut();
 }
