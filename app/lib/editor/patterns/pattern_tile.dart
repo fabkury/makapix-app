@@ -86,6 +86,50 @@ class PatternTile {
   /// The complementary tile (every cell flipped).
   PatternTile get inverse => PatternTile._(w, h, bits ^ ((BigInt.one << cellCount) - BigInt.one));
 
+  /// The same pattern at its smallest repeating size: a 4×4 or 8×8 tile that is only a 2×2 tile
+  /// repeated comes back as that 2×2 tile. Two tiles paint the same pixels exactly when their
+  /// canonical forms are equal, so this is what "the same pattern" means wherever tiles are
+  /// compared (the catalog, the recents, the selection highlight).
+  PatternTile get canonical {
+    var pw = w;
+    for (var p = 1; p < w; p++) {
+      if (w % p == 0 && _periodicX(p)) {
+        pw = p;
+        break;
+      }
+    }
+    var ph = h;
+    for (var p = 1; p < h; p++) {
+      if (h % p == 0 && _periodicY(p)) {
+        ph = p;
+        break;
+      }
+    }
+    if (pw == w && ph == h) return this;
+    return generate(pw, ph, on)!;
+  }
+
+  bool _periodicX(int p) {
+    for (var y = 0; y < h; y++) {
+      for (var x = p; x < w; x++) {
+        if (on(x, y) != on(x - p, y)) return false;
+      }
+    }
+    return true;
+  }
+
+  bool _periodicY(int p) {
+    for (var y = p; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        if (on(x, y) != on(x, y - p)) return false;
+      }
+    }
+    return true;
+  }
+
+  /// Whether this tile and [other] paint the same pixels, whatever size each is stored at.
+  bool samePixels(PatternTile other) => canonical == other.canonical;
+
   /// Fixed-width lowercase hex, `ceil(w*h/4)` digits: the engine's `Pattern::hex()`.
   String get hex => bits.toRadixString(16).padLeft((cellCount + 3) ~/ 4, '0');
 
@@ -106,7 +150,19 @@ class PatternTile {
 }
 
 /// Keep [tile] at the front of a most-recent-first list, deduplicated and capped at [cap].
+/// Tiles are held at their [PatternTile.canonical] size, so a pattern stored at two sizes (an
+/// older build listed some Bayer tiles twice) is one recent.
 List<PatternTile> pushRecentPattern(List<PatternTile> recents, PatternTile tile, {int cap = 10}) {
-  final out = <PatternTile>[tile, for (final t in recents) if (t != tile) t];
-  return out.length > cap ? out.sublist(0, cap) : out;
+  return canonicalRecents([tile, ...recents], cap: cap);
+}
+
+/// [tiles] at their canonical size, first occurrence kept, capped at [cap].
+List<PatternTile> canonicalRecents(Iterable<PatternTile> tiles, {int cap = 10}) {
+  final out = <PatternTile>[];
+  for (final t in tiles) {
+    final c = t.canonical;
+    if (!out.contains(c)) out.add(c);
+    if (out.length == cap) break;
+  }
+  return out;
 }

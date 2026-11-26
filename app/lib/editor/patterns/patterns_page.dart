@@ -1,5 +1,6 @@
-// The Patterns page (ADR 0025): a full-screen picker for the paint gate. Off first, a strip of
-// recently used tiles, then the built-in catalog by family. Tiles render in two fixed preview
+// The Patterns page (ADR 0025): a full-screen picker for the paint gate. Off first, the Invert
+// switch (every catalog tile with ON and OFF swapped; the catalog lists each pattern once), a
+// strip of recently used tiles, then the built-in catalog by family. Tiles render in two fixed preview
 // colors (ON and OFF, black on white by default, editable on the page and persisted by the
 // editor), never in the primary color: a primary close to the page background would make the
 // tiles unreadable, and the preview is about the tile's shape, not the paint. The tool itself
@@ -151,6 +152,13 @@ class _PatternsPageState extends State<PatternsPage> {
   late Color _on = widget.onColor;
   late Color _off = widget.offColor;
 
+  // The Invert switch (2026-11-26): every catalog tile is offered with ON and OFF swapped. It
+  // opens following the pattern in force, so that pattern's tile is the highlighted one: on
+  // when the tool's current pattern is the inverse of a catalog tile, off otherwise. Not
+  // persisted.
+  late bool _inverted =
+      widget.on && widget.current != null && (patternLookup(widget.current!)?.inverted ?? false);
+
   void _setColors(Color on, Color off) {
     setState(() {
       _on = on;
@@ -178,7 +186,9 @@ class _PatternsPageState extends State<PatternsPage> {
   // ---- the four gated tools ----
 
   Widget _patternBody(BuildContext context) {
-    final selected = widget.on ? widget.current : null;
+    // Tiles are compared by the pixels they paint, so a pattern stored at another size (an
+    // older build listed some Bayer tiles at 2×2, 4×4, and 8×8) still shows as selected.
+    final selected = widget.on ? widget.current?.canonical : null;
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
       children: [
@@ -188,6 +198,16 @@ class _PatternsPageState extends State<PatternsPage> {
             selected: !widget.on,
             subtitle: context.l10n.patternsOffSub,
             onTap: () => Navigator.pop(context, const PatternOff())),
+        // Its own labeled row, apart from the preview colors: swapping those only changes how
+        // the tiles are shown, this changes which cells get painted.
+        Card(
+          child: SwitchListTile(
+            title: Text(context.l10n.patternsInvert),
+            subtitle: Text(context.l10n.patternsInvertSub),
+            value: _inverted,
+            onChanged: (v) => setState(() => _inverted = v),
+          ),
+        ),
         if (widget.recents.isNotEmpty) ...[
           _header(context.l10n.patternsRecent),
           SizedBox(
@@ -198,7 +218,9 @@ class _PatternsPageState extends State<PatternsPage> {
                 for (final t in widget.recents)
                   Padding(
                     padding: const EdgeInsets.only(right: 8, top: 4, bottom: 4),
-                    child: _tileButton(context, t, selected: t == selected, name: patternName(t) ?? context.l10n.patternCustom),
+                    // A recent is the tile as it was picked: the Invert switch leaves it alone.
+                    child: _tileButton(context, t,
+                        selected: t.canonical == selected, name: patternName(t) ?? context.l10n.patternCustom),
                   ),
               ],
             ),
@@ -210,7 +232,11 @@ class _PatternsPageState extends State<PatternsPage> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              for (final e in f.entries) _tileButton(context, e.tile, selected: e.tile == selected, name: e.name),
+              for (final e in f.entries)
+                if (_inverted)
+                  _tileButton(context, e.tile.inverse, selected: e.tile.inverse == selected, name: e.inverseName)
+                else
+                  _tileButton(context, e.tile, selected: e.tile == selected, name: e.name),
             ],
           ),
         ],

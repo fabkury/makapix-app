@@ -80,7 +80,9 @@ extension _EditorEngine on _EditorPageState {
           // name in the On list is dropped, a bad dither size is Off. Re-send like AA if the
           // current tool is affected, since engine boot already pushed the defaults.
           final pat = patSaved == null ? null : PatternTile.parse(patSaved);
-          if (pat != null) _pattern = pat;
+          // Held at the smallest repeating size: an older build's catalog listed some Bayer
+          // tiles at 2×2, 4×4, and 8×8, and one pattern must be one tile (and one recent).
+          if (pat != null) _pattern = pat.canonical;
           if (patOnSaved != null) {
             for (final t in patOnSaved) {
               if (_kPatternTools.contains(t)) _patternOn[t] = true;
@@ -89,7 +91,7 @@ extension _EditorEngine on _EditorPageState {
           if (patRecents != null) {
             _patternRecents
               ..clear()
-              ..addAll([for (final s in patRecents) ?PatternTile.parse(s)].take(10));
+              ..addAll(canonicalRecents([for (final s in patRecents) ?PatternTile.parse(s)]));
           }
           if (patColors != null && patColors.length == 2) {
             _patternOnColor = _tryParseHex(patColors[0]) ?? _patternOnColor;

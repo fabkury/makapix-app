@@ -90,4 +90,36 @@ void main() {
     expect(recents.first, tiles[5]);
     expect(recents.where((t) => t == tiles[5]).length, 1);
   });
+
+  test('canonical is the smallest repeating size; samePixels ignores the stored size', () {
+    final checker = PatternTile.rows(['#.', '.#'])!;
+    final big = PatternTile.generate(8, 8, (x, y) => (x + y).isEven)!;
+    expect(big.canonical, checker);
+    expect(checker.canonical, same(checker), reason: 'already minimal');
+    expect(big.samePixels(checker), isTrue);
+    expect(big == checker, isFalse, reason: 'equality stays size-and-bits');
+    // Each axis reduces on its own.
+    expect(PatternTile.generate(4, 4, (x, y) => y == 0)!.canonical, PatternTile.rows(['#', '.', '.', '.']));
+    expect(PatternTile.generate(6, 2, (x, y) => x % 3 == 0)!.canonical, PatternTile.rows(['#..']));
+    // A shifted pattern is NOT the same pixels (the phase is the canvas origin).
+    expect(checker.samePixels(checker.inverse), isFalse);
+    // Not periodic: untouched.
+    final odd = PatternTile.parse('7,3,1')!;
+    expect(odd.canonical, odd);
+    // The canonical tile paints exactly what the original paints.
+    for (var y = 0; y < 16; y++) {
+      for (var x = 0; x < 16; x++) {
+        expect(big.canonical.on(x, y), big.on(x, y));
+      }
+    }
+  });
+
+  test('recents hold one tile per pattern, whatever size it was stored at', () {
+    final checker = PatternTile.rows(['#.', '.#'])!;
+    final big = PatternTile.generate(8, 8, (x, y) => (x + y).isEven)!;
+    final mid = PatternTile.generate(4, 4, (x, y) => (x + y).isEven)!;
+    final lines = PatternTile.rows(['#', '.'])!;
+    expect(canonicalRecents([big, lines, mid, checker]), [checker, lines]);
+    expect(pushRecentPattern([lines, big], mid), [checker, lines]);
+  });
 }

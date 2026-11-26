@@ -1,17 +1,18 @@
-// The built-in pattern catalog (ADR 0025): ~100 tiles up to 8×8, generated once from small
+// The built-in pattern catalog (ADR 0025): 45 tiles up to 8×8, generated once from small
 // generator functions and grouped by family for the Patterns page. Ids and names are UI-only -
 // prefs and the journal store the TILE (`PatternTile.pref` / `.dsl`), so renaming, reordering,
 // or extending this catalog never breaks a stored recent or a recorded session.
 //
-// Families (design decision 2026-09-03): the three Bayer ladders at coarse steps, lines,
-// diagonals and crosshatch, then dots / grids / bricks / checkers. EVERY tile is listed with its
-// exact inverse, so a two-color dither is two strokes with complementary tiles: the non-Bayer
-// families pair each tile with its inverse, and the Bayer ladders run by density with both
-// phases at each step (a Bayer level's inverse is NOT another level of the ladder: the
-// thresholds are not symmetric: so the inverses are explicit entries). Tiles the ladders already
-// contain (the 2×2 checker, the single-dot 2×2, the 2-px grid) are not repeated under a second
-// name: the catalog has no duplicate tiles, no all-ON tile (that is Off), and no all-OFF tile (it
-// would paint nothing).
+// Every pattern is listed ONCE (user decision 2026-11-26). "The same pattern" means the same
+// painted pixels, so tiles are compared at their smallest repeating size
+// (`PatternTile.canonical`): the Bayer 8×8 matrix at every 4th level IS the 4×4 ladder, and the
+// 4×4 ladder at every 4th level IS the 2×2 one, so the three ladders the catalog used to carry
+// (116 tiles, 36 of them repeats) are one "Bayer" ramp, light to dark: 1/64 · 2/64 · 3/64, then
+// 1/16 to 15/16, then 61/64 · 62/64 · 63/64 - the 4×4 steps plus the sparse and dense ends only
+// the 8×8 matrix reaches. Inverses are not entries either: the page's Invert switch swaps ON
+// and OFF for every tile, so a two-color dither is still two strokes with complementary tiles.
+// No tile is all-ON (that is Off) or all-OFF (it would paint nothing), and no tile is the
+// inverse of another (the switch already reaches it).
 import 'package:makapix_club/l10n/l10n.dart';
 
 import 'pattern_tile.dart';
@@ -26,7 +27,6 @@ class PatternEntry {
     required this.shape,
     required this.a,
     this.b = 0,
-    this.inverse = false,
     required this.tile,
   });
 
@@ -34,22 +34,22 @@ class PatternEntry {
   final String id;
   final PatternShape shape;
 
-  /// The size the name states: the Bayer matrix side, the line pitch, the brick width, the
-  /// checker cell.
+  /// The first number of the name: the Bayer density's numerator, the line pitch, the brick
+  /// width, the checker cell.
   final int a;
 
-  /// The second number of the name: the Bayer level, the brick height.
+  /// The second number of the name: the Bayer density's denominator (16 or 64), the brick
+  /// height.
   final int b;
 
-  /// Whether this is the tile with ON and OFF swapped.
-  final bool inverse;
+  /// At its canonical (smallest repeating) size.
   final PatternTile tile;
 
   /// The display name, in the current language.
   String get name {
     final l = appL10n;
-    final base = switch (shape) {
-      PatternShape.bayer => '$a×$a · $b/${a * a}',
+    return switch (shape) {
+      PatternShape.bayer => l.patBayer('$a/$b'),
       PatternShape.horizontal => l.patHorizontal(a),
       PatternShape.vertical => l.patVertical(a),
       PatternShape.diagUp => l.patDiagUp(a),
@@ -60,23 +60,22 @@ class PatternEntry {
       PatternShape.bricks => l.patBricks('$a×$b'),
       PatternShape.checker => l.patChecker(a),
     };
-    return inverse ? l.patInverse(base) : base;
   }
+
+  /// The name of this tile with ON and OFF swapped (what the page's Invert switch picks).
+  String get inverseName => appL10n.patInverse(name);
 }
 
 enum PatternGroup { bayer, lines, diagonals, dots }
 
 class PatternFamily {
-  const PatternFamily(this.group, this.n, this.entries);
+  const PatternFamily(this.group, this.entries);
   final PatternGroup group;
-
-  /// The matrix side of a Bayer family (0 for the others).
-  final int n;
   final List<PatternEntry> entries;
 
   /// The section heading, in the current language.
   String get name => switch (group) {
-        PatternGroup.bayer => appL10n.bayerSize(n),
+        PatternGroup.bayer => appL10n.patFamilyBayer,
         PatternGroup.lines => appL10n.patFamilyLines,
         PatternGroup.diagonals => appL10n.patFamilyDiagonals,
         PatternGroup.dots => appL10n.patFamilyDots,
@@ -108,7 +107,8 @@ List<List<int>> bayerMatrix(int n) {
   return m;
 }
 
-/// The Bayer n×n tile at density `level` (the `level` lowest thresholds ON), 1 ≤ level < n².
+/// The Bayer n×n tile at density `level` (the `level` lowest thresholds ON), 1 ≤ level < n²,
+/// stored n×n. Level 4k of the 2n×2n matrix paints the same pixels as level k of the n×n one.
 PatternTile bayerTile(int n, int level) {
   final m = bayerMatrix(n);
   return PatternTile.generate(n, n, (x, y) => m[y][x] < level)!;
@@ -126,75 +126,82 @@ Iterable<PatternEntry> get patternCatalogEntries sync* {
   }
 }
 
+/// A catalog tile found by its pixels: the entry, and whether the tile is the entry's inverse.
+typedef PatternMatch = ({PatternEntry entry, bool inverted});
+
+/// The catalog entry that paints the same pixels as [tile] (whatever size it is stored at), or
+/// whose inverse does; `null` for a tile the catalog doesn't carry.
+PatternMatch? patternLookup(PatternTile tile) {
+  final c = tile.canonical;
+  for (final e in patternCatalogEntries) {
+    if (e.tile == c) return (entry: e, inverted: false);
+  }
+  final ci = c.inverse;
+  for (final e in patternCatalogEntries) {
+    if (e.tile == ci) return (entry: e, inverted: true);
+  }
+  return null;
+}
+
 /// The catalog name of [tile], or `null` for a tile the catalog doesn't carry (a journal can
 /// carry any bits; the page shows such a tile as "Custom").
 String? patternName(PatternTile tile) {
-  for (final e in patternCatalogEntries) {
-    if (e.tile == tile) return e.name;
-  }
-  return null;
+  final m = patternLookup(tile);
+  if (m == null) return null;
+  return m.inverted ? m.entry.inverseName : m.entry.name;
 }
 
 List<PatternFamily> _build() {
   final seen = <PatternTile>{};
   final families = <PatternFamily>[];
 
-  // Adds the family, dropping any tile already listed (by value) and any all-ON / all-OFF tile.
-  void family(PatternGroup group, List<PatternEntry> entries, {int n = 0}) {
+  // Adds the family with every tile at its canonical size, dropping any all-ON / all-OFF tile
+  // and any tile that paints the same pixels as one already listed, or as its inverse.
+  void family(PatternGroup group, List<PatternEntry> entries) {
     final kept = <PatternEntry>[];
     for (final e in entries) {
-      if (e.tile.isAllOn || e.tile.isAllOff) continue;
-      if (!seen.add(e.tile)) continue;
-      kept.add(e);
+      final t = e.tile.canonical;
+      if (t.isAllOn || t.isAllOff) continue;
+      if (seen.contains(t) || seen.contains(t.inverse)) continue;
+      seen.add(t);
+      kept.add(PatternEntry(id: e.id, shape: e.shape, a: e.a, b: e.b, tile: t));
     }
-    if (kept.isNotEmpty) families.add(PatternFamily(group, n, kept));
+    if (kept.isNotEmpty) families.add(PatternFamily(group, kept));
   }
 
-  // A tile followed by its inverse.
-  List<PatternEntry> pair(String id, PatternShape shape, int a, PatternTile t, {int b = 0}) => [
-        PatternEntry(id: id, shape: shape, a: a, b: b, tile: t),
-        PatternEntry(id: '$id.inv', shape: shape, a: a, b: b, inverse: true, tile: t.inverse),
-      ];
+  PatternEntry one(String id, PatternShape shape, int a, PatternTile t, {int b = 0}) =>
+      PatternEntry(id: id, shape: shape, a: a, b: b, tile: t);
 
-  // Bayer ladders at coarse steps: 2×2 every level, 4×4 every level, 8×8 every 4th level -
-  // each level followed by its inverse, the whole ladder ordered by density (ON count).
   // l10n-ignore-start: catalog ids, never shown
-  for (final (n, step) in [(2, 1), (4, 1), (8, 4)]) {
-    final entries = <PatternEntry>[];
-    for (var level = step; level < n * n; level += step) {
-      final t = bayerTile(n, level);
-      entries.add(PatternEntry(id: 'bayer$n.$level', shape: PatternShape.bayer, a: n, b: level, tile: t));
-      entries.add(PatternEntry(
-          id: 'bayer$n.$level.inv', shape: PatternShape.bayer, a: n, b: level, inverse: true, tile: t.inverse));
-    }
-    // Stable sort by density; at equal density the level precedes its inverse.
-    final indexed = entries.asMap().entries.toList()
-      ..sort((a, b) {
-        final d = a.value.tile.onCount.compareTo(b.value.tile.onCount);
-        return d != 0 ? d : a.key.compareTo(b.key);
-      });
-    family(PatternGroup.bayer, [for (final e in indexed) e.value], n: n);
-  }
+  // The Bayer ramp, light to dark: the 4×4 ladder, with the three sparsest and the three densest
+  // 8×8 levels at its ends. (Every 8×8 level that is a multiple of 4 is a 4×4 level; the other
+  // 8×8 levels in between are left out: 42 near-identical tiles.)
+  family(PatternGroup.bayer, [
+    for (final level in [1, 2, 3]) one('bayer.$level/64', PatternShape.bayer, level, bayerTile(8, level), b: 64),
+    for (var level = 1; level < 16; level++) one('bayer.$level/16', PatternShape.bayer, level, bayerTile(4, level), b: 16),
+    for (final level in [61, 62, 63]) one('bayer.$level/64', PatternShape.bayer, level, bayerTile(8, level), b: 64),
+  ]);
 
   // Lines: one horizontal (or vertical) 1-px line per pitch.
   family(PatternGroup.lines, [
     for (final p in [2, 3, 4]) ...[
-      ...pair('lines.h$p', PatternShape.horizontal, p, PatternTile.generate(1, p, (x, y) => y == 0)!),
-      ...pair('lines.v$p', PatternShape.vertical, p, PatternTile.generate(p, 1, (x, y) => x == 0)!),
+      one('lines.h$p', PatternShape.horizontal, p, PatternTile.generate(1, p, (x, y) => y == 0)!),
+      one('lines.v$p', PatternShape.vertical, p, PatternTile.generate(p, 1, (x, y) => x == 0)!),
     ],
   ]);
 
-  // Diagonals and crosshatch. Pitch 2 is the 2×2 checker (a Bayer tile) for both directions and
+  // Diagonals and crosshatch. Pitch 2 is the 1-px checker (Bayer 8/16) for both directions and
   // all-ON for the crosshatch, so the family starts at 3.
   family(PatternGroup.diagonals, [
     for (final p in [3, 4, 8]) ...[
-      ...pair('diag.up$p', PatternShape.diagUp, p, PatternTile.generate(p, p, (x, y) => (x + y) % p == 0)!),
-      ...pair('diag.down$p', PatternShape.diagDown, p, PatternTile.generate(p, p, (x, y) => (x - y) % p == 0)!),
-      ...pair('cross$p', PatternShape.crosshatch, p, PatternTile.generate(p, p, (x, y) => (x + y) % p == 0 || (x - y) % p == 0)!),
+      one('diag.up$p', PatternShape.diagUp, p, PatternTile.generate(p, p, (x, y) => (x + y) % p == 0)!),
+      one('diag.down$p', PatternShape.diagDown, p, PatternTile.generate(p, p, (x, y) => (x - y) % p == 0)!),
+      one('cross$p', PatternShape.crosshatch, p, PatternTile.generate(p, p, (x, y) => (x + y) % p == 0 || (x - y) % p == 0)!),
     ],
   ]);
 
-  // Dots, grids, bricks, and checkers.
+  // Dots, grids, bricks, and checkers. A lone dot at pitch 4 or 8 is Bayer 1/16 or 1/64, so the
+  // dedupe keeps only the 3-px dots here.
   bool mortar(int x, int y, int bw, int bh) {
     final course = y ~/ bh;
     final shift = course.isOdd ? bw ~/ 2 : 0;
@@ -202,12 +209,12 @@ List<PatternFamily> _build() {
   }
 
   family(PatternGroup.dots, [
-    for (final p in [3, 4, 8]) ...pair('dots$p', PatternShape.dots, p, PatternTile.generate(p, p, (x, y) => x == 0 && y == 0)!),
-    for (final p in [3, 4, 8]) ...pair('grid$p', PatternShape.grid, p, PatternTile.generate(p, p, (x, y) => x == 0 || y == 0)!),
-    ...pair('bricks4x2', PatternShape.bricks, 4, PatternTile.generate(4, 4, (x, y) => mortar(x, y, 4, 2))!, b: 2),
-    ...pair('bricks8x4', PatternShape.bricks, 8, PatternTile.generate(8, 8, (x, y) => mortar(x, y, 8, 4))!, b: 4),
+    for (final p in [3, 4, 8]) one('dots$p', PatternShape.dots, p, PatternTile.generate(p, p, (x, y) => x == 0 && y == 0)!),
+    for (final p in [3, 4, 8]) one('grid$p', PatternShape.grid, p, PatternTile.generate(p, p, (x, y) => x == 0 || y == 0)!),
+    one('bricks4x2', PatternShape.bricks, 4, PatternTile.generate(4, 4, (x, y) => mortar(x, y, 4, 2))!, b: 2),
+    one('bricks8x4', PatternShape.bricks, 8, PatternTile.generate(8, 8, (x, y) => mortar(x, y, 8, 4))!, b: 4),
     for (final c in [2, 3, 4])
-      ...pair('checker$c', PatternShape.checker, c, PatternTile.generate(2 * c, 2 * c, (x, y) => (x ~/ c + y ~/ c).isEven)!),
+      one('checker$c', PatternShape.checker, c, PatternTile.generate(2 * c, 2 * c, (x, y) => (x ~/ c + y ~/ c).isEven)!),
   ]);
   // l10n-ignore-end
 

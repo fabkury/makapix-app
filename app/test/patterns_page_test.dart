@@ -1,5 +1,6 @@
 // The Patterns page (ADR 0025): the tap hint, the two preview colors (defaults, pick, swap,
-// reported to the host), Off first, the recents strip (order, hidden when empty), the catalog
+// reported to the host), Off first, the Invert switch (every tile with ON and OFF swapped; opens
+// following the current pattern), the recents strip (order, hidden when empty), the catalog
 // sections, tap-selects-and-pops with the tile, Off pops PatternOff, the selected state, and the
 // Gradient's "Dither" variant (every dither family by section + Off, popping a DitherKind). No
 // engine.
@@ -163,6 +164,59 @@ void main() {
     expect(boxes[1].tile, lines);
     expect(_boxWith(custom), findsOneWidget, reason: 'a custom tile appears only in the strip');
     expect(find.byWidgetPredicate((w) => w is Tooltip && (w.message ?? '').startsWith('Custom')), findsOneWidget);
+  });
+
+  testWidgets('Invert starts off, sits under Off, and offers every tile with ON and OFF swapped', (t) async {
+    final result = await _open<PatternPick>(t, PatternsPage(toolName: 'Pencil', current: checker, on: true, recents: [lines]));
+    final sw = t.widget<SwitchListTile>(find.byType(SwitchListTile));
+    expect(sw.value, isFalse);
+    expect((sw.title as Text).data, 'Invert');
+    expect(find.text('Paint the cells the pattern skips'), findsOneWidget);
+    expect(t.getTopLeft(find.byType(SwitchListTile)).dy, greaterThan(t.getTopLeft(find.text('Off')).dy));
+    expect(t.getTopLeft(find.byType(SwitchListTile)).dy, lessThan(t.getTopLeft(find.text('Recent')).dy));
+    final quarter = bayerTile(2, 1);
+    expect(_boxWith(quarter), findsOneWidget);
+    expect(_boxWith(quarter.inverse), findsNothing, reason: 'an inverse is not a tile of its own');
+
+    await t.tap(find.byType(SwitchListTile));
+    await t.pumpAndSettle();
+    expect(_boxWith(quarter), findsNothing);
+    expect(_boxWith(quarter.inverse), findsOneWidget);
+    expect(find.byWidgetPredicate((w) => w is Tooltip && w.message == 'Bayer · 4/16 (inverse), 2×2'), findsOneWidget);
+    // The current pattern is now shown inverted in the catalog, so no catalog tile is selected;
+    // the recents strip is left as it was picked.
+    expect(_boxWith(checker), findsNothing);
+    expect(_boxWith(lines), findsOneWidget, reason: 'the recent is not inverted');
+    expect(t.widgetList<PatternTileBox>(find.byType(PatternTileBox)).where((b) => b.selected), isEmpty);
+
+    await t.tap(_boxWith(quarter.inverse));
+    await t.pumpAndSettle();
+    final pick = await result();
+    expect((pick as PatternChosen).tile, quarter.inverse);
+  });
+
+  testWidgets('Invert opens following the current pattern, so that pattern is the highlighted tile', (t) async {
+    await _open<PatternPick>(t, PatternsPage(toolName: 'Brush', current: checker.inverse, on: true));
+    expect(t.widget<SwitchListTile>(find.byType(SwitchListTile)).value, isTrue);
+    expect(t.widget<PatternTileBox>(_boxWith(checker.inverse)).selected, isTrue);
+    // Back to normal: the plain checker is offered, unselected.
+    await t.tap(find.byType(SwitchListTile));
+    await t.pumpAndSettle();
+    expect(t.widget<PatternTileBox>(_boxWith(checker)).selected, isFalse);
+  });
+
+  testWidgets('Invert stays off for an inverse pattern the tool has Off', (t) async {
+    await _open<PatternPick>(t, PatternsPage(toolName: 'Brush', current: checker.inverse, on: false));
+    expect(t.widget<SwitchListTile>(find.byType(SwitchListTile)).value, isFalse);
+  });
+
+  testWidgets('a pattern stored at a larger size highlights the one tile that paints it', (t) async {
+    // An older build listed the 1-px checker as Bayer 2×2, 4×4, and 8×8 tiles.
+    final stored = bayerTile(8, 32);
+    await _open<PatternPick>(t, PatternsPage(toolName: 'Bucket', current: stored, on: true, recents: [stored]));
+    final selected = t.widgetList<PatternTileBox>(find.byType(PatternTileBox)).where((b) => b.selected).toList();
+    expect(selected.length, 2, reason: 'the recent and the catalog tile');
+    expect(selected.last.tile, checker);
   });
 
   testWidgets('every catalog family is a section', (t) async {
