@@ -6,6 +6,45 @@ following commit). Every decision below was taken with the user in a four-round 
 "As built". Companion ADR: [ADR 0025](../adr/0025-patterns-are-a-paint-gate.md). Inventory entry:
 `docs/editor-gaps/INVENTORY.md` A2.
 
+## As built: every pattern listed once, with an Invert switch (2026-11-26)
+
+The 2026-09-04 catalog listed the same pattern more than once, and the user asked for a page
+where each pattern appears once, in order. Decisions (user, 2026-11-26):
+
+- **"The same pattern" means the same painted pixels.** Tiles are compared at their smallest
+  repeating size (`PatternTile.canonical` / `samePixels`), not by stored size and bits. That is
+  what the old "no duplicates" check missed: with the recursive Bayer matrices, level 4k of the
+  8×8 matrix paints exactly what level k of the 4×4 matrix paints, and level 4k of 4×4 is level k
+  of 2×2. The "Bayer 8×8" section (every 4th level) was the "Bayer 4×4" section over again, and
+  "Bayer 2×2" was three of its tiles: 36 of the 116 tiles were repeats.
+- **One "Bayer" section, a ramp from light to dark, 21 tiles:** 1/64 · 2/64 · 3/64, then 1/16 to
+  15/16, then 61/64 · 62/64 · 63/64. The 4×4 steps plus the sparse and dense ends that only the
+  8×8 matrix reaches; the other 42 in-between 8×8 levels stay out (near-identical tiles). Named
+  by density as a fraction: "Bayer · 4/16", "Bayer · 1/64".
+- **Inverses are no longer tiles.** An **Invert** switch, in its own labeled row under the Off
+  card (apart from the preview-color swap, which only changes how tiles are *shown*), offers
+  every catalog tile with ON and OFF swapped. Two-color dithers are still two strokes with
+  complementary tiles: pick, paint, open the page, flip Invert, tap the same tile.
+- **The switch follows the current pattern** and is not persisted: the page opens inverted when
+  the tool's pattern is On and is the inverse of a catalog tile, so the pattern in force is
+  always the highlighted tile. The recents strip shows tiles as they were picked and ignores the
+  switch.
+- **The catalog holds 45 tiles** (Bayer 21 · lines 6 · diagonals and crosshatch 9 · dots, grids,
+  bricks, checkers 9), all at their canonical size, none the inverse of another. The lone-dot
+  tiles at pitch 4 and 8 are Bayer 1/16 and 1/64, so the Dots family keeps only pitch 3.
+- **Stored tiles carry over.** A pattern or recent saved by an older build at a larger size is
+  reduced to its canonical size on load (same pixels, so the journal line changes size but not
+  meaning); the selection highlight and `patternName` match by pixels, and an old inverse tile
+  reads as "<name> (inverse)".
+- Known and accepted: some tiles are *shifted* copies of others (the inverse of Bayer k/16 is
+  Bayer (16−k)/16 moved by a pixel; "Crosshatch · 4 px" is a shifted Bayer 6/16). The phase is the
+  canvas origin and matters for complementary strokes, so a shift is a different pattern.
+- The Gradient's Dither page is untouched: its families are threshold matrices walked through
+  every level, where 8×8 really differs from 4×4.
+
+Shell-only: no engine, verb, journal-format, or `.mkpx` change. Where the sections below say
+otherwise (three Bayer ladders, explicit inverses, 116 tiles), this section wins.
+
 ## As built (deviations from the decisions below, all 2026-09-04)
 
 - **Tile cap 16×16, not 8×8** (user decision at implementation time, to leave 12×12 and 16×16

@@ -17,7 +17,10 @@ not equivalent: a brush can only add, while a mask composes with whatever the to
 **A pattern is a gate.** The engine keeps one global `Option<Pattern>`; at write time a pixel is
 painted only if the selection admits it *and* the pattern bit at that canvas coordinate is ON. OFF
 bits are never touched — no second color, no transparent write. Two-color dithers are two strokes
-with complementary tiles, and the catalog carries every inverse so that costs one extra pick.
+with complementary tiles, and every inverse is one tap away so that costs one extra pick. *(Amended
+2026-11-26: the catalog first listed each inverse as a tile of its own; it now lists each pattern
+once and the page's **Invert** switch swaps ON and OFF for all of them. See "As built" in
+`docs/patterns/DESIGN.md`.)*
 The gate is anchored to the **canvas origin**, never to the stroke or to storage space, so
 overlapping strokes tile seamlessly and the overscan gutter does not shift the phase. No offset or
 scale control exists: a phase mismatch after a resize-canvas or a move is accepted, as in Aseprite.

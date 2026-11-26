@@ -215,6 +215,9 @@ More editor terms (Frames and Layers pages):
 - **ON / OFF** (the two preview colors of a pattern) are the words of a switch: ON / OFF in
   Spanish, Portuguese, and French; AN / AUS; ВКЛ / ВЫКЛ; オン / オフ; 开 / 关. The page hints
   use the same words.
+- **Invert** on the Patterns page swaps a pattern's painted and unpainted cells; it is not the
+  color Invert. Invertir, Inverter, Inverser, Invertieren, Инвертировать, 反相; Japanese says
+  オン／オフ反転 (as in the "(inverse)" tile names), since 色反転 would promise a color change.
 - **Color models**: RGB and HSV everywhere except French (RVB, TSV; channel letters R V B and
   T S V).
 
