@@ -1,7 +1,7 @@
 # CJK pixel font candidates: measurements and recommendation
 
 Measured 2026-11-26 for the Text tool (ADR 0039, `DESIGN.md`). The 26 recommended fonts were
-converted and bundled the same day (`tools/fonts/build_fonts.py --cjk`); the sizes in the tables
+converted and bundled the same day (`tools/fonts/build_fonts.py --cjk`) and shipped in 1.16.0; the sizes in the tables
 are the estimates made before converting, and the real files total 8.5 MB. This file records what
 was measured so the choice can be revisited without redoing the work.
 

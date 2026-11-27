@@ -60,7 +60,7 @@ to the user as a question; each is flagged so it can be reversed.
 - **CJK: Fusion Pixel Font at 8, 10 and 12 px.** Each size appears as four Fonts, one per language
   form: 日本語, 简体中文, 繁體中文, 한국어. Hong Kong and Taiwan forms collapse into Traditional.
   Named in the picker and the credits as "Fusion Pixel 12 · 日本語".
-- **CJK, added 2026-11-26: 26 more Fonts from the CJK library**, each a single design at one
+- **CJK, shipped in 1.16.0 (2026-11-26, both stores): 26 more Fonts from the CJK library**, each a single design at one
   size (12 Japanese, 9 Chinese, 5 Korean; 10 to 24 px; serif, rounded, bold and display styles
   next to Fusion's plain gothic). The list, each Font's measured coverage, and the candidates
   left out are in `CJK-FONT-CANDIDATES.md`. A Font that holds both Chinese forms carries the
