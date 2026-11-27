@@ -35,9 +35,14 @@ void main() {
   });
 
   group('the font library', () {
-    test('lists 59 VEXED fonts and 12 CJK entries, smallest first', () {
+    test('lists 59 VEXED fonts and 38 CJK entries, smallest first', () {
       expect(lib.entries.where((e) => e.source == 'vexed'), hasLength(59));
-      expect(lib.entries.where((e) => e.isCjk), hasLength(12));
+      expect(lib.entries.where((e) => e.source == 'fusion'), hasLength(12));
+      expect(lib.entries.where((e) => e.id.startsWith('cjk.')), hasLength(26));
+      expect(lib.entries.where((e) => e.isCjk), hasLength(38));
+      for (final e in lib.entries) {
+        expect(lib.credits, contains(e.source), reason: '${e.id} has no credit line');
+      }
       final sizes = [for (final e in lib.entries) e.px];
       expect(sizes, [...sizes]..sort());
       expect(lib.entries.map((e) => e.id).toSet(), hasLength(lib.entries.length));
@@ -53,6 +58,33 @@ void main() {
         expect(f.missingIn(e.name), 0, reason: '${e.id} cannot draw "${e.name}"');
         expect(f.glyph(0x41), isNotNull, reason: e.id);
       }
+    });
+
+    test('the CJK library fonts write their languages', () async {
+      Future<PixelFont> font(String id) async => (await lib.load(id))!;
+      // Read from embedded bitmaps, a BDF, and outlines on the pixel grid.
+      expect((await font('cjk.shinonome.gothic16')).missingIn('永遠の夢を描くドット絵'), 0);
+      expect((await font('cjk.k8x12')).missingIn('永遠の夢を描くドット絵'), 0);
+      expect((await font('cjk.roundpix.12')).missingIn('永远的梦想，像素画编辑器'), 0);
+      expect((await font('cjk.fashion.16')).missingIn('永遠的夢想，像素畫編輯器'), 0);
+      expect((await font('cjk.dunggeun.16')).missingIn('영원한 꿈을 그리는 픽셀 아트'), 0);
+      // A glyph with ink: the strike reader once produced blank pictures for a whole font.
+      for (final id in ['cjk.khdot.hibiya24', 'cjk.fashion.16', 'cjk.boutique.9x9bold', 'cjk.galmuri.14']) {
+        final g = (await font(id)).glyph(0x41)!;
+        expect(g.width * g.height, greaterThan(0), reason: id);
+      }
+      // One file backs the Japanese and the Korean entry of MaruMinya.
+      expect(lib.entry('cjk.maruminya.12.ja')!.files, lib.entry('cjk.maruminya.12.ko')!.files);
+      expect((await font('cjk.maruminya.12.ko')).missingIn('한글 日本語 かな'), 0);
+      // The two forms of one size share a base layer and differ where the scripts do.
+      final hansSong = await font('cjk.changban.16.zh-Hans');
+      final hantSong = await font('cjk.changban.16.zh-Hant');
+      expect(lib.entry('cjk.changban.16.zh-Hans')!.files.last, lib.entry('cjk.changban.16.zh-Hant')!.files.last);
+      final differing = [
+        for (var cp = 0x4E00; cp < 0xA000; cp++)
+          if (!identical(hansSong.glyph(cp), hantSong.glyph(cp))) cp,
+      ];
+      expect(differing, isNotEmpty);
     });
 
     test('the first font follows the app language', () {

@@ -2,13 +2,16 @@
 """Convert the Text tool's source fonts into the app's bitmap font assets (ADR 0039).
 
 Usage:
-    python tools/fonts/build_fonts.py --vexed <dir> --fusion <dir> [--out app/assets/pixel_fonts]
+    python tools/fonts/build_fonts.py --vexed <dir> --fusion <dir> --cjk <dir> [--out app/assets/pixel_fonts]
 
 Sources (NOT in this repository; only the converted data is committed):
   --vexed   the VEXED pixel-font pack: one "<Family>-All" folder per family, each holding the
             family's TTFs. Only each family's regular font is converted.
   --fusion  Fusion Pixel Font BDF releases, unpacked as <dir>/8px, <dir>/10px, <dir>/12px
             (the "proportional-bdf" zips of github.com/TakWolf/fusion-pixel-font).
+  --cjk     the CJK pixel font library: the folder holding ja/, zh/ and ko/, each font as its
+            author distributes it (CJK_FONTS below lists the files; tools/fonts/README.md says
+            where each comes from).
 
 Output: one .mkf file per font (or font layer), fonts.json (the manifest the app reads), and
 the license texts under licenses/. Everything is deterministic: the same sources always give
@@ -16,7 +19,9 @@ byte-identical files.
 
 Why a conversion at all: every VEXED outline sits exactly on a 128-unit pixel grid with no
 curves, and the Fusion sources are bitmaps to begin with, so 1-bit glyphs lose nothing. The
-app then draws text with no outline rasterizer, at each font's one native size.
+app then draws text with no outline rasterizer, at each font's one native size. The CJK
+library fonts are read from the most exact form each one ships: a BDF, else the bitmap strike
+embedded in its TrueType file, else outlines that sit on the pixel grid.
 
 The .mkf format (little-endian), version 1:
     0   "MKPF"
@@ -48,6 +53,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import struct
 import sys
 from collections import Counter
@@ -72,6 +78,137 @@ FUSION_FORMS = (
     ("zh-Hant", "zh_hant", "繁體中文"),
     ("ko", "ko", "한국어"),
 )
+
+# ---- the CJK library (--cjk) ------------------------------------------------------------------
+# One row per picker entry: id, name, native px, language form (None = no single form), source
+# group, reader, file(s). Readers: "bdf", "strike" (the TrueType file's embedded bitmaps at the
+# native size) and "outline" (TrueType outlines on the pixel grid). A row with several files
+# is a set of language forms stored as one base layer plus a delta layer per form.
+# Names: a font whose license reserves its name is listed under a name of our own (SIL OFL 1.1
+# forbids showing converted data under a Reserved Font Name); the credit names the original.
+JF = "ja/jf-dot/JF-Dot-"
+KH = "ja/kh-dot/KH-Dot-"
+MARUMINYA = "ko/x12y12pxMaruMinyaHangul/fonts/x12y12pxMaruMinyaHangul.bdf"
+CJK_FONTS = (
+    # Japanese
+    ("k8x12", "k8x12", 12, "ja", "k8x12", "bdf", "ja/k8x12/k8x12_bdf_2021-05-05/k8x12.bdf"),
+    ("shinonome.min12", "Shinonome Mincho 12", 12, "ja", "jfdot", "strike", JF + "ShinonomeMin12.ttf"),
+    ("shinonome.maru12", "Shinonome Marumoji 12", 12, "ja", "jfdot", "strike", JF + "ShinonomeMaru12.ttf"),
+    ("maruminya.12.ja", "MaruMinya 12 \u00b7 \u65e5\u672c\u8a9e", 12, "ja", "maruminya", "bdf", MARUMINYA),
+    ("shinonome.min14", "Shinonome Mincho 14", 14, "ja", "jfdot", "strike", JF + "ShinonomeMin14.ttf"),
+    ("shinonome.gothic16", "Shinonome Gothic 16", 16, "ja", "jfdot", "strike", JF + "Shinonome16.ttf"),
+    ("khdot.dougenzaka16", "KH Dougenzaka 16", 16, "ja", "khdot", "strike", KH + "Dougenzaka-16.ttf"),
+    ("khdot.akihabara16", "KH Akihabara 16", 16, "ja", "khdot", "strike", KH + "Akihabara-16.ttf"),
+    ("khdot.kabutochou16", "KH Kabutochou 16", 16, "ja", "khdot", "strike", KH + "Kabutochou-16.ttf"),
+    ("ayu.min18", "Ayu Mincho 18", 18, "ja", "jfdot", "strike", JF + "AyuMin18.ttf"),
+    ("kappa.20", "Kappa 20", 20, "ja", "jfdot", "strike", JF + "Kappa20.ttf"),
+    ("khdot.hibiya24", "KH Hibiya 24", 24, "ja", "khdot", "strike", KH + "Hibiya-24.ttf"),
+    # Chinese
+    ("boutique.9x9bold", "BoutiqueBitmap 9x9 Bold", 10, "zh", "boutique", "outline",
+     "zh/BoutiqueBitmap9x9/BoutiqueBitmap9x9_Bold_1.93.ttf"),
+    ("changban.12", "ChangBanDianSong 12", 12, "zh", "yzdnn", "bdf",
+     "zh/ChangBanDianSong-12/Sources/ChangBanDianSong-12.bdf"),
+    ("roundpix.12", "RoundPix 12", 12, "zh-Hans", "zlabs", "outline",
+     "zh/ZLabs-RoundPix-12px/release/ZLabsRoundPix_12px_M_CN.ttf"),
+    ("changban.16", "ChangBanDianSong 16", 16, None, "yzdnn", "bdf", (
+        ("zh-Hans", "\u7b80\u4f53\u4e2d\u6587", "zh/ChangBanDianSong-16/Sources/ChangBanDianSong-SC-16.bdf"),
+        ("zh-Hant", "\u7e41\u9ad4\u4e2d\u6587", "zh/ChangBanDianSong-16/Sources/ChangBanDianSong-TC-16.bdf"),
+    )),
+    ("renou.16", "RenOuFangSong 16", 16, "zh", "yzdnn", "bdf", "zh/RenOuFangSong-16/Sources/RenOuFangSong-16.bdf"),
+    ("qiuye.16", "QiuYeYuanTi 16", 16, "zh", "yzdnn", "bdf", "zh/QiuYeYuanTi-16/Sources/QiuYeYuanTi-16.bdf"),
+    ("shanwei.16", "ShanWeiZhouHei 16", 16, "zh-Hans", "yzdnn", "bdf",
+     "zh/ShanWeiZhouHei-16/Sources/ShanWeiZhouHei-16.bdf"),
+    ("fashion.16", "FashionBitmap 16", 16, "zh-Hant", "boutique", "outline",  # its embedded strike is blank
+     "zh/FashionBitmap16/FashionBitmap16_0.092.ttf"),
+    # Korean
+    ("galmuri.11bold", "Galmuri11 Bold", 12, "ko", "galmuri", "bdf", "ko/galmuri/dist/Galmuri11-Bold.bdf"),
+    ("galmuri.11condensed", "Galmuri11 Condensed", 12, "ko", "galmuri", "bdf",
+     "ko/galmuri/dist/Galmuri11-Condensed.bdf"),
+    ("maruminya.12.ko", "MaruMinya 12 \u00b7 \ud55c\uad6d\uc5b4", 12, "ko", "maruminya", "bdf", MARUMINYA),
+    ("galmuri.14", "Galmuri14", 15, "ko", "galmuri", "bdf", "ko/galmuri/dist/Galmuri14.bdf"),
+    ("dunggeun.16", "Dunggeun 16", 16, "ko", "neodgm", "outline", "ko/neodgm/release/neodgm.ttf"),
+)
+
+CJK_CREDITS = {
+    "jfdot": "Shinonome, Ayu and Kappa bitmap fonts (public domain), TrueType builds by Jikasei Font Kobo "
+             "(jikasei.me), converted to bitmap data",
+    "khdot": "KH Dot fonts by Keitarou Hiraki, TrueType builds by Jikasei Font Kobo (jikasei.me), SIL OFL 1.1, "
+             "converted to bitmap data",
+    "k8x12": "k8x12 by Num Kadoma (littlelimit.net), converted to bitmap data",
+    "maruminya": "x12y12pxMaruMinya by hicc and its Hangul edition by Lee Minseo "
+                 "(github.com/quiple/x12y12pxMaruMinyaHangul), SIL OFL 1.1, converted to bitmap data",
+    "yzdnn": "ChangBanDianSong, RenOuFangSong, QiuYeYuanTi and ShanWeiZhouHei by yzdnn (github.com/yzdnn), after "
+             "the KH Dot fonts, SIL OFL 1.1, converted to bitmap data",
+    "zlabs": "RoundPix 12 is converted from ZLabs RoundPix 12px by Astro_2539 (github.com/Astro-2539), SIL OFL 1.1",
+    "boutique": "BoutiqueBitmap9x9 and FashionBitmap16 by Luke Liu (github.com/scott0107000), SIL OFL 1.1, "
+                "converted to bitmap data",
+    "galmuri": "Galmuri by Lee Minseo (github.com/quiple/galmuri), SIL OFL 1.1, converted to bitmap data",
+    "neodgm": "Dunggeun 16 is converted from NeoDunggeunmo by Eunbin Jeong (github.com/neodgm/neodgm), SIL OFL 1.1",
+}
+
+# License assets: file name -> (heading, note, the texts to append, each (title, path in the library)).
+CJK_LICENSES = {
+    "jfdot.txt": (
+        "Shinonome, Ayu and Kappa bitmap fonts",
+        "Shinonome Mincho 12 and 14, Shinonome Marumoji 12, Shinonome Gothic 16, Ayu Mincho 18 and Kappa 20\n"
+        "are public-domain Japanese bitmap fonts. The app's data was converted from the TrueType builds\n"
+        "published as JF Dot fonts by Jikasei Font Kobo (http://jikasei.me/font/jf-dotfont/), read from\n"
+        "the bitmaps embedded at each font's native size. The glyphs are unchanged.\n", ()),
+    "khdot.txt": (
+        "KH Dot fonts",
+        "KH Dougenzaka 16, KH Akihabara 16, KH Kabutochou 16 and KH Hibiya 24: typefaces designed by\n"
+        "Keitarou Hiraki, made into TrueType fonts by Jikasei Font Kobo (http://jikasei.me/font/kh-dotfont/).\n"
+        "Changes: converted from the bitmaps embedded at each font's native size to the Makapix Club\n"
+        "app's glyph data. The glyphs are unchanged.\n",
+        (("KH Dot fonts", "ja/kh-dot/README_KHDotFont.txt"), ("License", "ja/kh-dot/SIL_Open_Font_License_1.1.txt"))),
+    "k8x12.txt": (
+        "k8x12",
+        "k8x12 by Num Kadoma (https://littlelimit.net/k8x12.htm). Changes: the BDF bitmaps were\n"
+        "converted to the Makapix Club app's glyph data. The glyphs are unchanged.\n",
+        (("k8x12", "ja/k8x12/k8x12_bdf_2021-05-05/k8x12.txt"),)),
+    "maruminya.txt": (
+        "x12y12pxMaruMinya and x12y12pxMaruMinyaHangul",
+        "MaruMinya 12 (Japanese and Korean entries). Changes: the BDF bitmaps of x12y12pxMaruMinyaHangul\n"
+        "were converted to the Makapix Club app's glyph data. The glyphs are unchanged.\n",
+        (("x12y12pxMaruMinyaHangul", "ko/x12y12pxMaruMinyaHangul/OFL.txt"),
+         ("x12y12pxMaruMinya", "ja/x12y12pxMaruMinya/OFL.txt"))),
+    "yzdnn.txt": (
+        "ChangBanDianSong, RenOuFangSong, QiuYeYuanTi and ShanWeiZhouHei",
+        "Chinese pixel fonts by yzdnn (https://github.com/yzdnn), built on the KH Dot fonts. Changes: the\n"
+        "BDF bitmaps were converted to the Makapix Club app's glyph data; the two forms of\n"
+        "ChangBanDianSong 16 share one base layer. The glyphs are unchanged.\n",
+        (("ChangBanDianSong 12", "zh/ChangBanDianSong-12/OFL.txt"),
+         ("ChangBanDianSong 16", "zh/ChangBanDianSong-16/OFL.txt"),
+         ("RenOuFangSong 16", "zh/RenOuFangSong-16/OFL.txt"),
+         ("QiuYeYuanTi 16", "zh/QiuYeYuanTi-16/OFL.txt"),
+         ("ShanWeiZhouHei 16", "zh/ShanWeiZhouHei-16/OFL.txt"))),
+    "zlabs.txt": (
+        "RoundPix 12 (from ZLabs RoundPix 12px)",
+        "\"RoundPix 12\" is a Modified Version of ZLabs RoundPix 12px by Astro_2539\n"
+        "(https://github.com/Astro-2539/ZLabs-RoundPix-12px), listed under a different name because the\n"
+        "original names are reserved. Changes: the outlines, which sit on the pixel grid, were converted\n"
+        "to 1-bit bitmap glyph data for the Makapix Club app. The designs are unchanged.\n",
+        (("License", "zh/ZLabs-RoundPix-12px/LICENSE-OFL"),)),
+    "boutique.txt": (
+        "BoutiqueBitmap9x9 and FashionBitmap16",
+        "BoutiqueBitmap 9x9 Bold and FashionBitmap 16, by Luke Liu (https://github.com/scott0107000).\n"
+        "Changes: converted to 1-bit bitmap glyph data for the Makapix Club app from their outlines,\n"
+        "which sit on the pixel grid. The designs are unchanged.\n",
+        (("BoutiqueBitmap9x9", "zh/BoutiqueBitmap9x9/OFL.txt"), ("FashionBitmap16", "zh/FashionBitmap16/OFL.txt"))),
+    "galmuri.txt": (
+        "Galmuri",
+        "Galmuri11 Bold, Galmuri11 Condensed and Galmuri14 by Lee Minseo (https://github.com/quiple/galmuri).\n"
+        "Changes: the BDF bitmaps were converted to the Makapix Club app's glyph data. The glyphs are\n"
+        "unchanged.\n",
+        (("License", "ko/galmuri/ofl.md"),)),
+    "neodgm.txt": (
+        "Dunggeun 16 (from NeoDunggeunmo)",
+        "\"Dunggeun 16\" is a Modified Version of NeoDunggeunmo by Eunbin Jeong\n"
+        "(https://github.com/neodgm/neodgm), listed under a different name because the original name is\n"
+        "reserved. Changes: the outlines, which sit on the pixel grid, were converted to 1-bit bitmap\n"
+        "glyph data for the Makapix Club app. The designs are unchanged.\n",
+        (("License", "ko/neodgm/LICENSE.txt"),)),
+}
 
 VEXED_CREDIT = "VEXED (v3x3d.itch.io), CC BY 4.0, converted to bitmap data"
 FUSION_CREDIT = "TakWolf and contributors (github.com/TakWolf/fusion-pixel-font), SIL OFL 1.1, converted to bitmap data"
@@ -264,7 +401,7 @@ def convert_vexed(root: Path, out: Path) -> list[dict]:
 
 # ---- Fusion Pixel (BDF bitmaps) --------------------------------------------------------------
 
-def read_bdf(path: Path) -> tuple[int, int, int, dict[int, Glyph]]:
+def read_bdf(path: Path, native_px: int | None = None) -> tuple[int, int, int, dict[int, Glyph]]:
     px = ascent = descent = None
     glyphs: dict[int, Glyph] = {}
     cp = adv = bbx = None
@@ -295,6 +432,8 @@ def read_bdf(path: Path) -> tuple[int, int, int, dict[int, Glyph]]:
                 ascent = int(line.split()[1])
             elif line.startswith("FONT_DESCENT "):
                 descent = int(line.split()[1])
+    if native_px is not None:
+        px = native_px  # the design size; several BDFs give only a line height, or nothing
     if px is None or ascent is None or descent is None:
         raise SystemExit(f"{path.name}: missing PIXEL_SIZE / FONT_ASCENT / FONT_DESCENT")
     glyphs.pop(65534, None)  # the .notdef box: the app draws its own missing-glyph marker
@@ -349,6 +488,231 @@ def convert_fusion(root: Path, out: Path) -> list[dict]:
     return entries
 
 
+# ---- the CJK library: embedded bitmap strikes and on-grid outlines ---------------------------
+
+def _keep(cp: int) -> bool:
+    return 0x20 <= cp < 0x110000 and not (0x7F <= cp < 0xA0) and not (0xD800 <= cp < 0xE000)
+
+
+def read_strike(path: Path, px: int) -> tuple[int, int, int, dict[int, Glyph]]:
+    """Glyphs from the bitmap strike a TrueType file embeds at [px] (EBLC/EBDT formats 5 and 7)."""
+    from fontTools.ttLib import TTFont
+
+    font = TTFont(str(path))
+    cmap = font.getBestCmap()
+    strike_no = next((i for i, s in enumerate(font["EBLC"].strikes) if s.bitmapSizeTable.ppemY == px), None)
+    if strike_no is None:
+        raise SystemExit(f"{path.name}: no embedded bitmaps at {px} px")
+    strike = font["EBLC"].strikes[strike_no]
+    line = strike.bitmapSizeTable.hori
+    data = font["EBDT"].strikeData[strike_no]
+    shared = {}  # glyph name -> the metrics its index subtable gives every glyph (format 5)
+    for sub in strike.indexSubTables:
+        for name in sub.names:
+            shared[name] = getattr(sub, "metrics", None)
+    upm, hmtx = font["head"].unitsPerEm, font["hmtx"]
+    glyphs: dict[int, Glyph] = {}
+    cache: dict[str, Glyph] = {}
+    for cp, name in cmap.items():
+        if not _keep(cp):
+            continue
+        if name not in cache:
+            bitmap = data.get(name)
+            if bitmap is None:  # no picture (a space): the outline font's advance, no ink
+                cache[name] = Glyph(round(hmtx[name][0] * px / upm), 0, 0, 0, 0, [])
+            else:
+                bitmap.ensureDecompiled()
+                m = getattr(bitmap, "metrics", None) or shared[name]
+                rows = []
+                for y in range(m.height):
+                    packed = bitmap.getRow(y, bitDepth=1, metrics=m)
+                    rows.append(int.from_bytes(packed, "big") >> (len(packed) * 8 - m.width))
+                adv = m.horiAdvance if hasattr(m, "horiAdvance") else m.Advance
+                bx = m.horiBearingX if hasattr(m, "horiBearingX") else m.BearingX
+                by = m.horiBearingY if hasattr(m, "horiBearingY") else m.BearingY
+                cache[name] = Glyph(adv, bx, by, m.width, m.height, rows).trimmed()
+        glyphs[cp] = cache[name]
+    return px, line.ascender, -line.descender, glyphs
+
+
+def read_outline(path: Path, px: int) -> tuple[int, int, int, dict[int, Glyph]]:
+    """Glyphs from TrueType outlines drawn on the pixel grid: nonzero-winding coverage sampled at
+    pixel centers. Every edge must be straight; a stray unit off the grid cannot move a sample."""
+    from fontTools.pens.recordingPen import DecomposingRecordingPen
+    from fontTools.ttLib import TTFont
+
+    font = TTFont(str(path))
+    upp = font["head"].unitsPerEm / px  # font units per pixel
+    if upp != int(upp):
+        raise SystemExit(f"{path.name}: {font['head'].unitsPerEm} units per em is not a whole number of units per pixel")
+    upp = int(upp)
+    cmap, glyph_set, hmtx, hhea = font.getBestCmap(), font.getGlyphSet(), font["hmtx"], font["hhea"]
+
+    off_grid: list[str] = []
+
+    def snap(units: float, what: str) -> int:
+        v = round(units / upp)
+        if abs(units - v * upp) * 4 > upp:
+            raise SystemExit(f"{path.name}: {what} = {units} units is not on the {upp}-unit pixel grid")
+        return v
+
+    def draw(name: str) -> Glyph:
+        pen = DecomposingRecordingPen(glyph_set)
+        glyph_set[name].draw(pen)
+        edges, cur, start = [], None, None  # (x0, y0, x1, y1) for every non-horizontal edge
+        for op, args in pen.value:
+            if op == "moveTo":
+                cur = start = args[0]
+                continue
+            if op == "lineTo":
+                nxt = args[0]
+            elif op in ("closePath", "endPath"):
+                nxt = start
+            else:
+                raise SystemExit(f"{path.name}: glyph {name} has a curve ({op})")
+            if cur is not None and nxt is not None and cur[1] != nxt[1]:
+                edges.append((cur[0], cur[1], nxt[0], nxt[1]))
+            cur = nxt
+        adv = snap(hmtx[name][0], f"{name}.advance")
+        if not edges:
+            return Glyph(adv, 0, 0, 0, 0, [])
+        xs = [e[0] for e in edges] + [e[2] for e in edges]
+        ys = [e[1] for e in edges] + [e[3] for e in edges]
+        # A few glyphs in some fonts sit off the grid: they are sampled at pixel centers like the
+        # rest, inside the whole-pixel box that holds them, and counted for the build log.
+        if any(abs(v - round(v / upp) * upp) > 2 for v in xs + ys):
+            off_grid.append(name)
+        x0, x1 = math.floor(min(xs) / upp), math.ceil(max(xs) / upp)
+        y0, y1 = math.floor(min(ys) / upp), math.ceil(max(ys) / upp)
+        w, h = x1 - x0, y1 - y0
+        rows = []
+        for py in range(h):  # top row first
+            yc2 = (y1 - py) * upp * 2 - upp  # twice the sample's y: stays an integer for odd upp
+            crossings = []
+            for ax, ay, bx, by in edges:
+                lo, hi = min(ay, by) * 2, max(ay, by) * 2
+                if lo < yc2 < hi:
+                    # twice the x where the edge crosses the sample row, as an exact fraction
+                    crossings.append(((ax * 2 * (by - ay) + (bx - ax) * (yc2 - ay * 2)) / (by - ay), 1 if by > ay else -1))
+            crossings.sort()
+            row, wind, k = 0, 0, 0
+            for pxl in range(w):
+                xc2 = (x0 + pxl) * upp * 2 + upp
+                while k < len(crossings) and crossings[k][0] < xc2:
+                    wind += crossings[k][1]
+                    k += 1
+                row = (row << 1) | (1 if wind != 0 else 0)
+            rows.append(row)
+        return Glyph(adv, x0, y1, w, h, rows).trimmed()
+
+    glyphs: dict[int, Glyph] = {}
+    cache: dict[str, Glyph] = {}
+    for cp, name in cmap.items():
+        if not _keep(cp):
+            continue
+        if name not in cache:
+            cache[name] = draw(name)
+        glyphs[cp] = cache[name]
+    if off_grid:
+        print(f"  ({path.name}: {len(off_grid)} of {len(cache)} glyphs are off the pixel grid and were sampled)")
+    return px, round(hhea.ascent / upp), round(-hhea.descent / upp), glyphs
+
+
+CJK_READERS = {"bdf": read_bdf, "strike": read_strike, "outline": read_outline}
+
+
+def _scripts(glyphs: dict[int, Glyph]) -> list[str]:
+    scripts = []
+    if all(cp in glyphs for cp in range(0x41, 0x5B)) and all(cp in glyphs for cp in range(0x61, 0x7B)):
+        scripts.append("latin")
+    if sum(1 for cp in glyphs if 0x400 <= cp <= 0x4FF) >= 60:
+        scripts.append("cyrillic")
+    scripts.append("cjk")
+    return scripts
+
+
+def convert_cjk(root: Path, out: Path) -> list[dict]:
+    entries = []
+    written: dict[str, tuple[str, int, list[str]]] = {}  # source path -> (file, px, scripts)
+    for fid, name, px, lang, group, reader, src in CJK_FONTS:
+        if isinstance(src, str):
+            if src not in written:
+                path = root / src
+                if not path.exists():
+                    raise SystemExit(f"missing {path}")
+                _, ascent, descent, glyphs = CJK_READERS[reader](path, px)
+                glyphs.pop(65534, None)
+                file = f"cjk_{fid.replace('.', '_')}.mkf"
+                size = write_mkf(out / file, px, ascent, descent, 0, glyphs, {}, delta=False)
+                written[src] = (file, px, _scripts(glyphs))
+                print(f"  {file:42s} {px:3d} px  {len(glyphs):5d} glyphs  {'':>16s}  {size:8d} bytes")
+                missing = [c for c in name if c != " " and ord(c) not in glyphs]
+                if missing:
+                    raise SystemExit(f"{fid}: the font cannot draw its own name ({missing})")
+            file, _, scripts = written[src]
+            entry = {"id": f"cjk.{fid}", "name": name, "px": px, "scripts": scripts}
+            if lang is not None:
+                entry["lang"] = lang
+            entry.update({"files": [file], "source": group})
+            entries.append(entry)
+            continue
+        # Language forms: one base layer (the glyph most forms agree on) plus a delta per form.
+        forms, metrics = {}, None
+        for form_lang, _, form_src in src:
+            path = root / form_src
+            if not path.exists():
+                raise SystemExit(f"missing {path}")
+            _, ascent, descent, glyphs = CJK_READERS[reader](path, px)
+            glyphs.pop(65534, None)
+            if metrics is None:
+                metrics = (ascent, descent)
+            elif metrics != (ascent, descent):
+                raise SystemExit(f"{path.name}: metrics differ between language forms")
+            forms[form_lang] = glyphs
+        ascent, descent = metrics
+        base: dict[int, Glyph] = {}
+        for cp in sorted(set().union(*forms.values())):
+            votes, first = Counter(), {}
+            for form_lang, _, _ in src:
+                g = forms[form_lang].get(cp)
+                if g is not None:
+                    votes[g.key()] += 1
+                    first.setdefault(g.key(), g)
+            best = max(votes.items(), key=lambda kv: (kv[1], -list(first).index(kv[0])))[0]
+            base[cp] = first[best]
+        stem = f"cjk_{fid.replace('.', '_')}"
+        base_file = f"{stem}_base.mkf"
+        size = write_mkf(out / base_file, px, ascent, descent, 0, base, {}, delta=False)
+        print(f"  {base_file:42s} {px:3d} px  {len(base):5d} glyphs  {'':>16s}  {size:8d} bytes")
+        for form_lang, label, _ in src:
+            delta = {cp: g for cp, g in forms[form_lang].items() if base[cp].key() != g.key()}
+            file = f"{stem}_{form_lang.lower().replace('-', '_')}.mkf"
+            dsize = write_mkf(out / file, px, ascent, descent, 0, delta, {}, delta=True)
+            print(f"  {file:42s} {px:3d} px  {len(delta):5d} glyphs  {'(delta layer)':>16s}  {dsize:8d} bytes")
+            entries.append({
+                "id": f"cjk.{fid}.{form_lang}",
+                "name": f"{name} \u00b7 {label}",
+                "px": px,
+                "scripts": _scripts(forms[form_lang]),
+                "lang": form_lang,
+                "files": [file, base_file],
+                "source": group,
+            })
+    return entries
+
+
+def write_cjk_licenses(root: Path, out: Path) -> None:
+    lic = out / "licenses"
+    lic.mkdir(exist_ok=True)
+    for file, (heading, note, texts) in CJK_LICENSES.items():
+        parts = [f"{heading}\n\n{note}"]
+        for title, rel in texts:
+            raw = (root / rel).read_bytes()
+            text = raw.decode("utf-8-sig", errors="replace").replace("\r\n", "\n").strip() + "\n"
+            parts.append(f"\n==== {title} ====\n\n{text}")
+        (lic / file).write_text("".join(parts), encoding="utf-8", newline="\n")
+
+
 def write_licenses(fusion_root: Path | None, out: Path) -> None:
     lic = out / "licenses"
     lic.mkdir(exist_ok=True)
@@ -385,10 +749,11 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--vexed", type=Path, help="the VEXED pack folder")
     ap.add_argument("--fusion", type=Path, help="the folder holding 8px/ 10px/ 12px/ BDF releases")
+    ap.add_argument("--cjk", type=Path, help="the CJK pixel font library (the folder holding ja/, zh/, ko/)")
     ap.add_argument("--out", type=Path, default=Path(__file__).resolve().parents[2] / "app" / "assets" / "pixel_fonts")
     args = ap.parse_args()
-    if not args.vexed and not args.fusion:
-        ap.error("give --vexed and/or --fusion")
+    if not args.vexed and not args.fusion and not args.cjk:
+        ap.error("give --vexed, --fusion and/or --cjk")
     args.out.mkdir(parents=True, exist_ok=True)
     manifest_path = args.out / "fonts.json"
     old = json.loads(manifest_path.read_text(encoding="utf-8"))["fonts"] if manifest_path.exists() else []
@@ -409,11 +774,20 @@ def main() -> None:
             stale.unlink()
         for e in convert_fusion(args.fusion, args.out):
             fonts[e["id"]] = e
+    if args.cjk:
+        print("CJK library:")
+        for stale in [k for k, e in fonts.items() if e["source"] in CJK_CREDITS]:
+            del fonts[stale]
+        for stale in args.out.glob("cjk_*.mkf"):
+            stale.unlink()
+        for e in convert_cjk(args.cjk, args.out):
+            fonts[e["id"]] = e
+        write_cjk_licenses(args.cjk, args.out)
     write_licenses(args.fusion, args.out)
     ordered = sorted(fonts.values(), key=lambda e: (e["px"], e["source"] != "vexed", e["name"]))
     manifest = {
         "version": 1,
-        "credits": {"vexed": VEXED_CREDIT, "fusion": FUSION_CREDIT},
+        "credits": {"vexed": VEXED_CREDIT, "fusion": FUSION_CREDIT, **CJK_CREDITS},
         "fonts": ordered,
     }
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=1) + "\n", encoding="utf-8", newline="\n")

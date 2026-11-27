@@ -2,7 +2,16 @@
  "version": 1,
  "credits": {
   "vexed": "VEXED (v3x3d.itch.io), CC BY 4.0, converted to bitmap data",
-  "fusion": "TakWolf and contributors (github.com/TakWolf/fusion-pixel-font), SIL OFL 1.1, converted to bitmap data"
+  "fusion": "TakWolf and contributors (github.com/TakWolf/fusion-pixel-font), SIL OFL 1.1, converted to bitmap data",
+  "jfdot": "Shinonome, Ayu and Kappa bitmap fonts (public domain), TrueType builds by Jikasei Font Kobo (jikasei.me), converted to bitmap data",
+  "khdot": "KH Dot fonts by Keitarou Hiraki, TrueType builds by Jikasei Font Kobo (jikasei.me), SIL OFL 1.1, converted to bitmap data",
+  "k8x12": "k8x12 by Num Kadoma (littlelimit.net), converted to bitmap data",
+  "maruminya": "x12y12pxMaruMinya by hicc and its Hangul edition by Lee Minseo (github.com/quiple/x12y12pxMaruMinyaHangul), SIL OFL 1.1, converted to bitmap data",
+  "yzdnn": "ChangBanDianSong, RenOuFangSong, QiuYeYuanTi and ShanWeiZhouHei by yzdnn (github.com/yzdnn), after the KH Dot fonts, SIL OFL 1.1, converted to bitmap data",
+  "zlabs": "RoundPix 12 is converted from ZLabs RoundPix 12px by Astro_2539 (github.com/Astro-2539), SIL OFL 1.1",
+  "boutique": "BoutiqueBitmap9x9 and FashionBitmap16 by Luke Liu (github.com/scott0107000), SIL OFL 1.1, converted to bitmap data",
+  "galmuri": "Galmuri by Lee Minseo (github.com/quiple/galmuri), SIL OFL 1.1, converted to bitmap data",
+  "neodgm": "Dunggeun 16 is converted from NeoDunggeunmo by Eunbin Jeong (github.com/neodgm/neodgm), SIL OFL 1.1"
  },
  "fonts": [
   {
@@ -455,6 +464,21 @@
    "source": "vexed"
   },
   {
+   "id": "cjk.boutique.9x9bold",
+   "name": "BoutiqueBitmap 9x9 Bold",
+   "px": 10,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "zh",
+   "files": [
+    "cjk_boutique_9x9bold.mkf"
+   ],
+   "source": "boutique"
+  },
+  {
    "id": "fusion.10.ja",
    "name": "Fusion Pixel 10 · 日本語",
    "px": 10,
@@ -544,6 +568,21 @@
    "source": "vexed"
   },
   {
+   "id": "cjk.changban.12",
+   "name": "ChangBanDianSong 12",
+   "px": 12,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "zh",
+   "files": [
+    "cjk_changban_12.mkf"
+   ],
+   "source": "yzdnn"
+  },
+  {
    "id": "fusion.12.ja",
    "name": "Fusion Pixel 12 · 日本語",
    "px": 12,
@@ -608,6 +647,125 @@
    "source": "fusion"
   },
   {
+   "id": "cjk.galmuri.11bold",
+   "name": "Galmuri11 Bold",
+   "px": 12,
+   "scripts": [
+    "latin",
+    "cjk"
+   ],
+   "lang": "ko",
+   "files": [
+    "cjk_galmuri_11bold.mkf"
+   ],
+   "source": "galmuri"
+  },
+  {
+   "id": "cjk.galmuri.11condensed",
+   "name": "Galmuri11 Condensed",
+   "px": 12,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "ko",
+   "files": [
+    "cjk_galmuri_11condensed.mkf"
+   ],
+   "source": "galmuri"
+  },
+  {
+   "id": "cjk.maruminya.12.ja",
+   "name": "MaruMinya 12 · 日本語",
+   "px": 12,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "ja",
+   "files": [
+    "cjk_maruminya_12_ja.mkf"
+   ],
+   "source": "maruminya"
+  },
+  {
+   "id": "cjk.maruminya.12.ko",
+   "name": "MaruMinya 12 · 한국어",
+   "px": 12,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "ko",
+   "files": [
+    "cjk_maruminya_12_ja.mkf"
+   ],
+   "source": "maruminya"
+  },
+  {
+   "id": "cjk.roundpix.12",
+   "name": "RoundPix 12",
+   "px": 12,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "zh-Hans",
+   "files": [
+    "cjk_roundpix_12.mkf"
+   ],
+   "source": "zlabs"
+  },
+  {
+   "id": "cjk.shinonome.maru12",
+   "name": "Shinonome Marumoji 12",
+   "px": 12,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "ja",
+   "files": [
+    "cjk_shinonome_maru12.mkf"
+   ],
+   "source": "jfdot"
+  },
+  {
+   "id": "cjk.shinonome.min12",
+   "name": "Shinonome Mincho 12",
+   "px": 12,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "ja",
+   "files": [
+    "cjk_shinonome_min12.mkf"
+   ],
+   "source": "jfdot"
+  },
+  {
+   "id": "cjk.k8x12",
+   "name": "k8x12",
+   "px": 12,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "ja",
+   "files": [
+    "cjk_k8x12.mkf"
+   ],
+   "source": "k8x12"
+  },
+  {
    "id": "vexed.logic_loop",
    "name": "Logic Loop",
    "px": 13,
@@ -644,6 +802,21 @@
     "vexed_whacky_joe.mkf"
    ],
    "source": "vexed"
+  },
+  {
+   "id": "cjk.shinonome.min14",
+   "name": "Shinonome Mincho 14",
+   "px": 14,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "ja",
+   "files": [
+    "cjk_shinonome_min14.mkf"
+   ],
+   "source": "jfdot"
   },
   {
    "id": "vexed.endless_love",
@@ -694,6 +867,20 @@
     "vexed_queens_quill.mkf"
    ],
    "source": "vexed"
+  },
+  {
+   "id": "cjk.galmuri.14",
+   "name": "Galmuri14",
+   "px": 15,
+   "scripts": [
+    "latin",
+    "cjk"
+   ],
+   "lang": "ko",
+   "files": [
+    "cjk_galmuri_14.mkf"
+   ],
+   "source": "galmuri"
   },
   {
    "id": "vexed.border_basic",
@@ -795,6 +982,172 @@
    "source": "vexed"
   },
   {
+   "id": "cjk.changban.16.zh-Hans",
+   "name": "ChangBanDianSong 16 · 简体中文",
+   "px": 16,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "zh-Hans",
+   "files": [
+    "cjk_changban_16_zh_hans.mkf",
+    "cjk_changban_16_base.mkf"
+   ],
+   "source": "yzdnn"
+  },
+  {
+   "id": "cjk.changban.16.zh-Hant",
+   "name": "ChangBanDianSong 16 · 繁體中文",
+   "px": 16,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "zh-Hant",
+   "files": [
+    "cjk_changban_16_zh_hant.mkf",
+    "cjk_changban_16_base.mkf"
+   ],
+   "source": "yzdnn"
+  },
+  {
+   "id": "cjk.dunggeun.16",
+   "name": "Dunggeun 16",
+   "px": 16,
+   "scripts": [
+    "latin",
+    "cjk"
+   ],
+   "lang": "ko",
+   "files": [
+    "cjk_dunggeun_16.mkf"
+   ],
+   "source": "neodgm"
+  },
+  {
+   "id": "cjk.fashion.16",
+   "name": "FashionBitmap 16",
+   "px": 16,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "zh-Hant",
+   "files": [
+    "cjk_fashion_16.mkf"
+   ],
+   "source": "boutique"
+  },
+  {
+   "id": "cjk.khdot.akihabara16",
+   "name": "KH Akihabara 16",
+   "px": 16,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "ja",
+   "files": [
+    "cjk_khdot_akihabara16.mkf"
+   ],
+   "source": "khdot"
+  },
+  {
+   "id": "cjk.khdot.dougenzaka16",
+   "name": "KH Dougenzaka 16",
+   "px": 16,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "ja",
+   "files": [
+    "cjk_khdot_dougenzaka16.mkf"
+   ],
+   "source": "khdot"
+  },
+  {
+   "id": "cjk.khdot.kabutochou16",
+   "name": "KH Kabutochou 16",
+   "px": 16,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "ja",
+   "files": [
+    "cjk_khdot_kabutochou16.mkf"
+   ],
+   "source": "khdot"
+  },
+  {
+   "id": "cjk.qiuye.16",
+   "name": "QiuYeYuanTi 16",
+   "px": 16,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "zh",
+   "files": [
+    "cjk_qiuye_16.mkf"
+   ],
+   "source": "yzdnn"
+  },
+  {
+   "id": "cjk.renou.16",
+   "name": "RenOuFangSong 16",
+   "px": 16,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "zh",
+   "files": [
+    "cjk_renou_16.mkf"
+   ],
+   "source": "yzdnn"
+  },
+  {
+   "id": "cjk.shanwei.16",
+   "name": "ShanWeiZhouHei 16",
+   "px": 16,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "zh-Hans",
+   "files": [
+    "cjk_shanwei_16.mkf"
+   ],
+   "source": "yzdnn"
+  },
+  {
+   "id": "cjk.shinonome.gothic16",
+   "name": "Shinonome Gothic 16",
+   "px": 16,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "ja",
+   "files": [
+    "cjk_shinonome_gothic16.mkf"
+   ],
+   "source": "jfdot"
+  },
+  {
    "id": "vexed.bubbly_bold",
    "name": "Bubbly Bold",
    "px": 17,
@@ -844,6 +1197,21 @@
    "source": "vexed"
   },
   {
+   "id": "cjk.ayu.min18",
+   "name": "Ayu Mincho 18",
+   "px": 18,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "ja",
+   "files": [
+    "cjk_ayu_min18.mkf"
+   ],
+   "source": "jfdot"
+  },
+  {
    "id": "vexed.digital_display",
    "name": "Digital Display",
    "px": 19,
@@ -854,6 +1222,21 @@
     "vexed_digital_display.mkf"
    ],
    "source": "vexed"
+  },
+  {
+   "id": "cjk.kappa.20",
+   "name": "Kappa 20",
+   "px": 20,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "ja",
+   "files": [
+    "cjk_kappa_20.mkf"
+   ],
+   "source": "jfdot"
   },
   {
    "id": "vexed.party_pack",
@@ -904,6 +1287,21 @@
     "vexed_pixel_promise.mkf"
    ],
    "source": "vexed"
+  },
+  {
+   "id": "cjk.khdot.hibiya24",
+   "name": "KH Hibiya 24",
+   "px": 24,
+   "scripts": [
+    "latin",
+    "cyrillic",
+    "cjk"
+   ],
+   "lang": "ja",
+   "files": [
+    "cjk_khdot_hibiya24.mkf"
+   ],
+   "source": "khdot"
   },
   {
    "id": "vexed.modern_macro",

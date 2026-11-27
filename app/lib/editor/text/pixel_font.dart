@@ -234,10 +234,12 @@ class PixelFontEntry {
   /// The `.mkf` layers in lookup order.
   final List<String> files;
 
-  /// 'vexed' or 'fusion' (which credit and license apply).
+  /// Which credit and license apply: 'vexed', 'fusion', or a CJK library group ('khdot',
+  /// 'galmuri', …); a key of [PixelFontLibrary.credits].
   final String source;
 
-  /// The language form of a CJK face ('ja', 'zh-Hans', 'zh-Hant', 'ko'); null otherwise.
+  /// The language a CJK face is drawn for ('ja', 'zh-Hans', 'zh-Hant', 'ko', or 'zh' for one
+  /// that holds both Chinese forms); null otherwise.
   final String? lang;
 
   bool get isCjk => scripts.contains('cjk');
@@ -262,7 +264,7 @@ class PixelFontLibrary {
   /// Every Font, in manifest order (smallest native size first).
   final List<PixelFontEntry> entries;
 
-  /// Credit line per source ('vexed', 'fusion').
+  /// Credit line per source ('vexed', 'fusion', and one per CJK library group).
   final Map<String, String> credits;
   final Future<Uint8List> Function(String file) _read;
   final Map<String, Future<PixelFontLayer>> _layers = {};

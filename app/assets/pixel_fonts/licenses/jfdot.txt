@@ -1,0 +1,6 @@
+Shinonome, Ayu and Kappa bitmap fonts
+
+Shinonome Mincho 12 and 14, Shinonome Marumoji 12, Shinonome Gothic 16, Ayu Mincho 18 and Kappa 20
+are public-domain Japanese bitmap fonts. The app's data was converted from the TrueType builds
+published as JF Dot fonts by Jikasei Font Kobo (http://jikasei.me/font/jf-dotfont/), read from
+the bitmaps embedded at each font's native size. The glyphs are unchanged.

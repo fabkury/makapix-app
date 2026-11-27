@@ -60,7 +60,13 @@ to the user as a question; each is flagged so it can be reversed.
 - **CJK: Fusion Pixel Font at 8, 10 and 12 px.** Each size appears as four Fonts, one per language
   form: 日本語, 简体中文, 繁體中文, 한국어. Hong Kong and Taiwan forms collapse into Traditional.
   Named in the picker and the credits as "Fusion Pixel 12 · 日本語".
-- **About 71 picker rows in all.**
+- **CJK, added 2026-11-26: 26 more Fonts from the CJK library**, each a single design at one
+  size (12 Japanese, 9 Chinese, 5 Korean; 10 to 24 px; serif, rounded, bold and display styles
+  next to Fusion's plain gothic). The list, each Font's measured coverage, and the candidates
+  left out are in `CJK-FONT-CANDIDATES.md`. A Font that holds both Chinese forms carries the
+  language tag `zh`; ChangBanDianSong 16 comes as two forms over one base layer, and one file
+  backs the Japanese and the Korean entry of MaruMinya 12.
+- **97 picker rows in all** (59 Western, 38 CJK).
 
 ### Measured facts
 
@@ -82,6 +88,10 @@ to the user as a question; each is flagged so it can be reversed.
 - **Fusion Pixel: SIL OFL 1.1, no Reserved Font Name.** The license text ships in the app's
   licenses page. Its Korean glyphs come from Galmuri, whose author states that parts of it are not
   original designs; accepted.
+- **The CJK library Fonts: public domain, an M+-style grant, or SIL OFL 1.1**, one license
+  text per group on the licenses page, each saying what was changed. Two reserve their names,
+  so they are listed under names of our own, with the original named in the credit: "RoundPix
+  12" (ZLabs RoundPix 12px) and "Dunggeun 16" (NeoDunggeunmo).
 - **Source TTF and BDF files stay out of the repo.** Only the converted data and the conversion
   script are committed.
 - Paid CJK fonts were examined and rejected: Zpix is $1,000 per product, has no Korean, and forbids
